@@ -2,20 +2,28 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
 import numpy as np
 import pytest
 
+from XBrainLab.backend.application.saliency_render import (
+    SaliencyPlanIdentity,
+    SaliencyRenderData,
+    SaliencyRenderPublisher,
+    SaliencyRenderRequest,
+    SaliencyRunIdentity,
+)
 from XBrainLab.backend.training.record.eval import EvalRecord
 from XBrainLab.backend.training.saliency_provenance import (
     SaliencyArtifactContext,
     SaliencyContextError,
     SaliencyProducerIdentity,
 )
+from XBrainLab.backend.training_state_contract import TrainingReadBoundary
 from XBrainLab.backend.visualization.base import Visualizer
-from XBrainLab.backend.visualization.saliency_3d_engine import Saliency3DEngine
 
 
 class _EpochContext:
@@ -56,6 +64,7 @@ def _record(epoch_data: _EpochContext) -> EvalRecord:
         {},
         {},
         {},
+        evaluation_split="test",
         saliency_context=SaliencyArtifactContext.from_epoch_data(
             epoch_data,
             class_count=2,
@@ -67,6 +76,45 @@ def _record(epoch_data: _EpochContext) -> EvalRecord:
             ),
         ),
     )
+
+
+def _publish(
+    record: EvalRecord, epoch_data: _EpochContext, *, view="channel_time"
+) -> SaliencyRenderData:
+    """Use the real validation/copy boundary with only the runtime shell substituted."""
+    identity = SaliencyProducerIdentity.from_components(
+        dataset={"name": "visualizer"},
+        split={"name": "visualizer"},
+        run={"name": "visualizer"},
+        model={"name": "visualizer"},
+    )
+    run = SimpleNamespace(get_saliency_eval_record=lambda: record)
+    holder = SimpleNamespace(
+        get_plans=lambda: (run,),
+        get_dataset=lambda: SimpleNamespace(get_epoch_data=lambda: epoch_data),
+        build_saliency_producer_identity=lambda *_args, **_kwargs: identity,
+    )
+    boundary = TrainingReadBoundary.no_trainer()
+    publication = SimpleNamespace(generation=1, usable=True, training_boundary=boundary)
+    publisher = SaliencyRenderPublisher(
+        training_runtime=cast(
+            Any,
+            SimpleNamespace(
+                has_trainer=lambda: True,
+                training_plan_holders=lambda: (holder,),
+            ),
+        ),
+        get_publication=lambda: cast(Any, publication),
+        capture_training_boundary=lambda: boundary,
+    )
+    return publisher.publish(
+        SaliencyRenderRequest(
+            publication_generation=1,
+            run=SaliencyRunIdentity(SaliencyPlanIdentity(0), 0),
+            method="Gradient",
+            view=view,
+        )
+    ).data
 
 
 @pytest.mark.parametrize(
@@ -105,10 +153,8 @@ def test_visualizer_rejects_context_drift_instead_of_rebinding_indices(
     epoch_data = _EpochContext()
     record = _record(epoch_data)
     mutate(epoch_data)
-    visualizer = Visualizer(record, cast(Any, epoch_data))
-
     with pytest.raises(SaliencyContextError, match=expected_detail):
-        visualizer.iter_saliency_by_label("Gradient")
+        Visualizer(_publish(record, epoch_data)).iter_saliency_by_label("Gradient")
 
 
 def test_rebind_rejects_mutated_eeg_even_with_original_sealed_fingerprint() -> None:
@@ -140,7 +186,7 @@ def test_visualizer_rejects_safe_artifact_without_identity_context(tmp_path) -> 
     assert loaded.saliency_context_status == "legacy_missing"
 
     with pytest.raises(SaliencyContextError, match=r"legacy.*identity context"):
-        Visualizer(loaded, cast(Any, epoch_data)).iter_saliency_by_label("Gradient")
+        Visualizer(_publish(loaded, epoch_data)).iter_saliency_by_label("Gradient")
 
 
 def test_visualizer_uses_persisted_class_identity_after_round_trip(tmp_path) -> None:
@@ -150,9 +196,7 @@ def test_visualizer_uses_persisted_class_identity_after_round_trip(tmp_path) -> 
     loaded = EvalRecord.load(str(tmp_path))
     assert loaded is not None
 
-    labels = Visualizer(loaded, cast(Any, epoch_data)).iter_saliency_by_label(
-        "Gradient"
-    )
+    labels = Visualizer(_publish(loaded, epoch_data)).iter_saliency_by_label("Gradient")
 
     assert [(key, name) for key, name, _values in labels] == [
         (0, "left"),
@@ -169,7 +213,7 @@ def test_visualizer_validates_without_rebinding_artifact_identity() -> None:
         "bind_saliency_context",
         side_effect=AssertionError("renderer must not bind artifact identity"),
     ):
-        labels = Visualizer(record, cast(Any, epoch_data)).iter_saliency_by_label(
+        labels = Visualizer(_publish(record, epoch_data)).iter_saliency_by_label(
             "Gradient"
         )
 
@@ -179,12 +223,9 @@ def test_visualizer_validates_without_rebinding_artifact_identity() -> None:
     ]
 
 
-def test_3d_engine_cannot_bypass_channel_identity_validation(monkeypatch) -> None:
+def test_3d_publication_rejects_channel_drift_before_rendering() -> None:
     epoch_data = _EpochContext()
     record = _record(epoch_data)
     epoch_data.ch_names = ["C4", "C3"]
-    monkeypatch.setattr(Saliency3DEngine, "_load_models", lambda _self: None)
-    engine = Saliency3DEngine()
-
     with pytest.raises(SaliencyContextError, match="channel order"):
-        engine.process_data(record, epoch_data, "left")
+        _publish(record, epoch_data, view="three_dimensional")

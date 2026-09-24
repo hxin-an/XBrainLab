@@ -476,7 +476,7 @@ class SaliencySpectrogramMapViz(Visualizer):
                     f"times={timestamps.size}.",
                 )
             magnitude.setflags(write=False)
-            epoch_start = float(getattr(self.epoch_data, "tmin", 0.0))
+            epoch_start = self.render_data.tmin
             time_centers = epoch_start + timestamps
             if time_centers.size == 1:
                 half_bin_width = segment_samples / (2 * sfreq)
@@ -526,7 +526,7 @@ class SaliencySpectrogramMapViz(Visualizer):
 
         """
         del absolute  # STFT magnitude is non-negative by definition.
-        sfreq = float(self.epoch_data.get_model_args()["sfreq"])
+        sfreq = self.render_data.sfreq
         if sfreq <= 0:
             raise ValueError("Sampling frequency must be positive for a spectrogram.")
         if self.fig is None:
@@ -547,7 +547,7 @@ class SaliencySpectrogramMapViz(Visualizer):
             )
 
         normalized = (
-            bool(getattr(self.epoch_data, "normalized", False))
+            self.render_data.normalized
             if display_normalized is None
             else bool(display_normalized)
         )

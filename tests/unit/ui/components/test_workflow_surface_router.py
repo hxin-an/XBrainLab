@@ -36,13 +36,11 @@ class _DialogSurface:
     result: WorkflowSurfaceResult
     opened: int = 0
     error: Exception | None = None
-    received_suggestions: dict[str, str] = field(default_factory=dict)
     received_decision_fields: tuple[str, ...] = ()
     received_request_id: str = ""
 
     def __call__(self, request: WorkflowSurfaceRequest) -> WorkflowSurfaceResult:
         self.opened += 1
-        self.received_suggestions = request.suggestions
         self.received_decision_fields = request.decision_fields
         self.received_request_id = request.request_id
         if self.error is not None:
@@ -51,7 +49,7 @@ class _DialogSurface:
 
 
 def _router(
-    surface: _DialogSurface | None,
+    surface: _DialogSurface,
     *,
     command_name: str = "create_epoch",
     panel: WorkflowPanel = WorkflowPanel.PREPROCESS,
@@ -91,7 +89,7 @@ def test_completed_dialog_is_the_only_verified_workflow_completion():
     assert dialog.opened == 1
 
 
-def test_router_passes_user_supplied_values_to_existing_surface_adapter():
+def test_router_passes_decision_fields_and_request_identity_to_existing_surface():
     dialog = _DialogSurface(
         WorkflowSurfaceResult(WorkflowSurfaceStatus.CANCELLED, "Cancelled.")
     )
@@ -101,13 +99,8 @@ def test_router_passes_user_supplied_values_to_existing_surface_adapter():
         "create_epoch",
         request_id="request-1",
         decision_fields=("target_event", "epoch_window"),
-        suggested_values={"target_event": "769", "t_min": "-0.2"},
     )
 
-    assert dialog.received_suggestions == {
-        "target_event": "769",
-        "t_min": "-0.2",
-    }
     assert dialog.received_decision_fields == ("target_event", "epoch_window")
     assert dialog.received_request_id == "request-1"
 
@@ -148,22 +141,6 @@ def test_dialog_exit_without_completion_is_not_reported_as_completed(status, mes
     assert outcome.message == message
     assert outcome.routed is True
     assert outcome.is_verified_completion is False
-
-
-def test_panel_only_route_reports_navigation_without_completion():
-    router, navigator = _router(
-        None,
-        command_name="review_interpretation",
-        panel=WorkflowPanel.DATASET,
-    )
-
-    outcome = router.open(" REVIEW_INTERPRETATION ")
-
-    assert outcome.status is WorkflowSurfaceStatus.NAVIGATED
-    assert outcome.command_name == "review_interpretation"
-    assert outcome.routed is True
-    assert outcome.is_verified_completion is False
-    assert navigator.targets == [WorkflowPanel.DATASET]
 
 
 def test_blocked_surface_is_explicit_and_not_reported_as_completed():

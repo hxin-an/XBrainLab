@@ -1,4 +1,4 @@
-"""Focused product presentation tests for assistant confirmation cards."""
+"""Card rendering tests; structured stress values are not tool-admission evidence."""
 
 from __future__ import annotations
 
@@ -25,10 +25,9 @@ def _show_card(
     request: AgentConfirmationRequest,
     *,
     width: int,
-    current_values: dict[str, str] | None = None,
 ) -> None:
     card.setFixedWidth(width)
-    card.present(request, current_values=current_values)
+    card.present(request)
     card.show()
     card.adjustSize()
     qtbot.wait(20)
@@ -45,14 +44,14 @@ def test_compact_actions_share_a_row_when_their_measured_widths_fit(
     qtbot,
 ) -> None:
     request = AgentConfirmationRequest.for_action(
-        command_name="configure_training",
+        command_name="compute_saliency",
         params={"batch_size": 16},
         action_label="Apply reviewed settings",
         description="Use the reviewed training configuration.",
         destructive=False,
         publication_generation=7,
     )
-    confirmation_card.present(request, current_values={"Batch size": "32"})
+    confirmation_card.present(request)
     confirmation_card.ensurePolished()
     layout = confirmation_card.layout()
     assert layout is not None
@@ -85,13 +84,13 @@ def confirmation_card(qtbot) -> AssistantConfirmationCard:
 
 
 @pytest.mark.parametrize("width", [320, 420, 760])
-def test_setting_change_uses_human_labels_and_structured_values_at_target_widths(
+def test_action_details_use_human_labels_and_structured_values_at_target_widths(
     confirmation_card,
     qtbot,
     width: int,
 ) -> None:
     request = AgentConfirmationRequest.for_action(
-        command_name="configure_training",
+        command_name="compute_saliency",
         params={
             "evaluation_option": "val_auc",
             "optimizer_settings": {
@@ -116,11 +115,10 @@ def test_setting_change_uses_human_labels_and_structured_values_at_target_widths
         qtbot,
         request,
         width=width,
-        current_values={"evaluation_option": "last_epoch"},
     )
 
     card = confirmation_card
-    assert card.details_title.text() == "Proposed settings"
+    assert card.details_title.text() == "Action details"
     assert card.reason_title.text() == "Reason"
     assert card.reason_label.text() == request.description
     assert card.proposal_scroll.horizontalScrollBar().maximum() == 0
@@ -136,9 +134,7 @@ def test_setting_change_uses_human_labels_and_structured_values_at_target_widths
     assert all("_" not in label for label in labels)
 
     evaluation = _row_by_label(card, "Model selection")
-    assert evaluation.current_caption.text() == "Current"
-    assert evaluation.proposed_caption.text() == "Proposed"
-    assert _visible_text(evaluation.current_value.text()) == "Last training epoch"
+    assert evaluation.proposed_caption.text() == "Details"
     assert _visible_text(evaluation.proposed_value.text()) == "Validation AUC"
 
     optimizer = _row_by_label(card, "Optimizer settings")
@@ -150,7 +146,7 @@ def test_setting_change_uses_human_labels_and_structured_values_at_target_widths
     for row in card.proposal_rows:
         assert row.width() <= card.proposal_scroll.viewport().width()
         assert row.label.wordWrap()
-        for value_label in (row.current_value, row.proposed_value):
+        for value_label in (row.proposed_value,):
             for segment in re.split(r"[\s\u200b]+", value_label.text()):
                 if segment:
                     assert (
@@ -160,7 +156,7 @@ def test_setting_change_uses_human_labels_and_structured_values_at_target_widths
 
 
 @pytest.mark.parametrize("width", [320, 420, 760])
-def test_large_setting_proposal_delegates_vertical_scroll_and_keeps_every_value(
+def test_large_action_details_delegate_vertical_scroll_and_keep_every_value(
     confirmation_card,
     qtbot,
     width: int,
@@ -172,7 +168,7 @@ def test_large_setting_proposal_delegates_vertical_scroll_and_keeps_every_value(
         for index in range(14)
     }
     request = AgentConfirmationRequest.for_action(
-        command_name="configure_training",
+        command_name="compute_saliency",
         params=params,
         action_label="Apply reviewed settings",
         description="Review every setting before applying the configuration.",
@@ -196,7 +192,7 @@ def test_large_setting_proposal_delegates_vertical_scroll_and_keeps_every_value(
         == params["training_parameter_13"]
     )
     for row in card.proposal_rows:
-        for label in (row.label, row.current_value, row.proposed_value):
+        for label in (row.label, row.proposed_value):
             if not label.isVisible() or not label.text():
                 continue
             needed = label.fontMetrics().boundingRect(
@@ -209,8 +205,8 @@ def test_large_setting_proposal_delegates_vertical_scroll_and_keeps_every_value(
                 label.text(),
             )
             assert needed.height() <= label.contentsRect().height() + 3
-    assert card.primary_button.text() == "Apply changes"
-    assert card.secondary_button.text() == "Keep current"
+    assert card.primary_button.text() == "Compute saliency"
+    assert card.secondary_button.text() == "Cancel"
 
     viewport = scroll.viewport()
     last_row = card.proposal_rows[-1]
@@ -226,7 +222,7 @@ def test_confirmation_buttons_use_compact_complete_labels_without_overflow(
     width: int,
 ) -> None:
     request = AgentConfirmationRequest.for_action(
-        command_name="configure_training",
+        command_name="compute_saliency",
         params={"batch_size": 16},
         action_label=(
             "Apply every reviewed training parameter and checkpoint setting now"
@@ -239,8 +235,8 @@ def test_confirmation_buttons_use_compact_complete_labels_without_overflow(
     _show_card(confirmation_card, qtbot, request, width=width)
 
     card = confirmation_card
-    assert card.primary_button.text() == "Apply change"
-    assert card.secondary_button.text() == "Keep current value"
+    assert card.primary_button.text() == "Compute saliency"
+    assert card.secondary_button.text() == "Cancel"
     for button in (card.secondary_button, card.primary_button):
         assert button.accessibleName() == button.text()
         assert (
@@ -258,7 +254,7 @@ def test_high_risk_confirmation_stays_explicit_and_emits_the_exact_request(
     width: int,
 ) -> None:
     request = AgentConfirmationRequest.for_action(
-        command_name="reset_preprocess",
+        command_name="reset_preprocessing",
         params={},
         action_label=("Reset preprocessing while keeping the loaded EEG dataset"),
         description="This restores the current workflow to raw loaded data.",
@@ -278,7 +274,7 @@ def test_high_risk_confirmation_stays_explicit_and_emits_the_exact_request(
     assert card.description_label.isVisibleTo(card)
     assert card.reason_title.text() == "Reason"
     assert card.secondary_button.text() == "Cancel"
-    assert card.primary_button.text() == "Reset Preprocess"
+    assert card.primary_button.text() == "Reset preprocessing"
     assert card.property("destructive") is True
 
     card.primary_button.click()
@@ -334,105 +330,3 @@ def test_start_training_renders_compact_long_running_confirmation(
     for widget in (card.impact_label, card.primary_button):
         assert widget.mapTo(card, QPoint(0, 0)).x() >= 0
         assert widget.mapTo(card, widget.rect().bottomRight()).x() < card.width()
-
-
-@pytest.mark.parametrize("width", [300, 520])
-def test_setting_proposal_without_authoritative_current_values_is_not_a_diff(
-    confirmation_card,
-    qtbot,
-    width: int,
-) -> None:
-    request = AgentConfirmationRequest.for_action(
-        command_name="configure_training",
-        params={
-            "model_name": "Deep4Net",
-            "epoch": 5,
-            "batch_size": 16,
-            "learning_rate": 0.0005,
-            "repeat": 1,
-            "device": "cpu",
-            "optimizer": "adam",
-            "evaluation_option": "last_epoch",
-            "save_checkpoints_every": 0,
-        },
-        action_label="Apply training settings",
-        description="Use the reviewed configuration for the next run.",
-        destructive=False,
-        publication_generation=22,
-        confirmation_kind="setting_change",
-        risk=AgentConfirmationRisk(
-            high_impact=True,
-            decision_boundary="high_impact_setting_change",
-            impact_text=(
-                "Changes the model or training settings used by the next run."
-            ),
-        ),
-    )
-
-    _show_card(confirmation_card, qtbot, request, width=width, current_values=None)
-
-    card = confirmation_card
-    assert card.current_state_warning.isVisibleTo(card)
-    assert card.current_state_warning.objectName() == "AssistantActionContextWarning"
-    assert "color:" in card.current_state_warning.styleSheet()
-    assert "background-color:" in card.current_state_warning.styleSheet()
-    assert "could not be verified" in card.current_state_warning.text()
-    assert "not a verified comparison" in card.current_state_warning.text()
-    assert card.property("riskHighImpact") is True
-    for row in card.proposal_rows:
-        assert row.current_caption.isHidden()
-        assert row.current_value.isHidden()
-        assert row.proposed_caption.text() == "Proposed value"
-
-
-def test_complete_setting_proposal_renders_verified_current_and_proposed_values(
-    confirmation_card,
-    qtbot,
-) -> None:
-    request = AgentConfirmationRequest.for_action(
-        command_name="configure_training",
-        params={
-            "model_name": "Deep4Net",
-            "epoch": 5,
-            "batch_size": 16,
-            "learning_rate": 0.0005,
-            "repeat": 1,
-            "device": "cpu",
-            "optimizer": "adam",
-            "evaluation_option": "last_epoch",
-            "save_checkpoints_every": 0,
-        },
-        action_label="Apply training settings",
-        description="Use the reviewed configuration for the next run.",
-        destructive=False,
-        publication_generation=23,
-    )
-
-    _show_card(
-        confirmation_card,
-        qtbot,
-        request,
-        width=520,
-        current_values={
-            "Model name": "EEGNet",
-            "Training epochs": "1",
-            "Batch size": "4",
-            "Learning rate": "0.001",
-            "Repeat": "1",
-            "Device": "cpu",
-            "Optimizer": "adam",
-            "Evaluation option": "last_epoch",
-            "Save checkpoints every": "0",
-        },
-    )
-
-    card = confirmation_card
-    assert card.current_state_warning.isHidden()
-    for row in card.proposal_rows:
-        assert row.current_caption.text() == "Current"
-        assert row.proposed_caption.text() == "Proposed"
-        label = _visible_text(row.label.text())
-        if label in {"Batch size", "Training epochs", "Learning rate", "Model"}:
-            assert row.current_value.isVisibleTo(card)
-        else:
-            assert row.current_value.isHidden()

@@ -98,7 +98,6 @@ def test_template_date_and_role_capabilities_are_explicit():
     )
     assert research_template_kwargs("google/gemma-3-4b-it") == ()
     gemma = research_model_spec("google/gemma-3-4b-it")
-    assert gemma.supports_system_role is True
     assert gemma.supports_consecutive_user_roles is False
 
 

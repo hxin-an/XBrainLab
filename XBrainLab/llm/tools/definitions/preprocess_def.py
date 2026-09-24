@@ -3,7 +3,7 @@
 from typing import Any
 
 from ..base import BaseTool
-from ..result_contract import ToolExecutionResult
+from ..result_contract import ToolCommandResult
 
 
 class BaseBandPassFilterTool(BaseTool):
@@ -26,7 +26,7 @@ class BaseBandPassFilterTool(BaseTool):
             "required": ["low_freq", "high_freq"],
         }
 
-    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
+    def execute(self, study: Any, **kwargs) -> ToolCommandResult:
         raise NotImplementedError
 
 
@@ -47,7 +47,7 @@ class BaseNotchFilterTool(BaseTool):
             "required": ["freq"],
         }
 
-    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
+    def execute(self, study: Any, **kwargs) -> ToolCommandResult:
         raise NotImplementedError
 
 
@@ -68,7 +68,7 @@ class BaseResampleTool(BaseTool):
             "required": ["rate"],
         }
 
-    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
+    def execute(self, study: Any, **kwargs) -> ToolCommandResult:
         raise NotImplementedError
 
 
@@ -91,7 +91,7 @@ class BaseNormalizeTool(BaseTool):
             "required": ["method"],
         }
 
-    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
+    def execute(self, study: Any, **kwargs) -> ToolCommandResult:
         raise NotImplementedError
 
 
@@ -112,5 +112,5 @@ class BaseRereferenceTool(BaseTool):
             "required": ["method"],
         }
 
-    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
+    def execute(self, study: Any, **kwargs) -> ToolCommandResult:
         raise NotImplementedError

@@ -37,9 +37,9 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptDecision,
 )
 from XBrainLab.llm.tools.application_surface import (
-    ToolCommandResult,
     execute_application_tool_command,
 )
+from XBrainLab.llm.tools.result_contract import ToolCommandResult
 
 
 def _required_receipt(

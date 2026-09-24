@@ -10,7 +10,7 @@ from XBrainLab.product_language import ASSISTANT_CANCELLED_MESSAGE
 
 ROOT = Path(__file__).resolve().parents[3]
 
-ASSISTANT_EVIDENCE_CONTRACT_VERSION = 15
+ASSISTANT_EVIDENCE_CONTRACT_VERSION = 16
 ASSISTANT_STANDARD_DOCK_WIDTH = 420
 ASSISTANT_NARROW_DOCK_WIDTH = 320
 
@@ -21,17 +21,16 @@ ASSISTANT_BLOCKED_REQUEST = "Import another dataset now."
 ASSISTANT_SUCCESS_REQUEST = "What is ready now?"
 ASSISTANT_ERROR_REQUEST = "Show a runtime error."
 ASSISTANT_RECOVERY_REQUEST = "Preview the selected data again."
-ASSISTANT_CANCEL_CONFIRMATION_REQUEST = "Cancel the proposed session reset."
-ASSISTANT_CONFIRM_CONFIRMATION_REQUEST = "Confirm the proposed session reset."
+ASSISTANT_CANCEL_CONFIRMATION_REQUEST = "Cancel the proposed preprocessing reset."
+ASSISTANT_CONFIRM_CONFIRMATION_REQUEST = "Confirm the proposed preprocessing reset."
 ASSISTANT_EXISTING_UI_REQUEST = "Continue evaluation in the existing app view."
-ASSISTANT_HANDOFF_REQUEST_ID = "walkthrough-evaluate-001"
 ASSISTANT_STOPPED_MESSAGE = ASSISTANT_CANCELLED_MESSAGE
 ASSISTANT_WORKFLOW_CLARIFICATION_MESSAGE = (
     "Tell me which step you want to do next: import data, preview labels and "
     "metadata, preprocess, create EEG epochs, build a dataset, train, evaluate, or "
     "inspect saliency."
 )
-ASSISTANT_CONFIRMED_TERMINAL_MESSAGE = "New session started."
+ASSISTANT_CONFIRMED_TERMINAL_MESSAGE = "Preprocessing reset to loaded raw data."
 ASSISTANT_RAW_TRACEBACK = (
     "Traceback (most recent call last): File /tmp/walkthrough_agent.py, line 7, "
     "in run RuntimeError: deterministic runtime failure"
@@ -142,8 +141,10 @@ _ASSISTANT_FINGERPRINT_BASE_PATHS = (
     ROOT / "XBrainLab/backend/application/view_publication.py",
     ROOT / "XBrainLab/backend/application/application_publication_lifecycle.py",
     ROOT / "XBrainLab/ui/chat/panel.py",
+    ROOT / "XBrainLab/ui/chat/transcript_view.py",
     ROOT / "XBrainLab/ui/chat/composer.py",
     ROOT / "XBrainLab/ui/chat/action_card.py",
+    ROOT / "XBrainLab/ui/chat/assistant_dock.py",
     ROOT / "XBrainLab/ui/chat/message_bubble.py",
     ROOT / "XBrainLab/ui/chat/presentation.py",
     ROOT / "XBrainLab/ui/chat/segmented_control.py",
@@ -157,6 +158,7 @@ _ASSISTANT_FINGERPRINT_BASE_PATHS = (
     ROOT / "XBrainLab/product_language.py",
     ROOT / "XBrainLab/ui/components/agent_manager.py",
     ROOT / "XBrainLab/ui/components/agent_presentation_service.py",
+    ROOT / "XBrainLab/ui/components/assistant_application_publication_coordinator.py",
     ROOT / "XBrainLab/ui/components/assistant_command_dispatcher.py",
     ROOT / "XBrainLab/ui/components/assistant_runtime_coordinator.py",
     ROOT / "XBrainLab/ui/components/assistant_runtime_lifecycle.py",

@@ -1,11 +1,9 @@
 """RAG retriever for querying similar examples from Qdrant.
 
-Provides lazy initialization, auto-indexing from bundled gold-set data,
-and semantic similarity search against a Qdrant vector store.
-Supports **hybrid retrieval** — a weighted combination of dense
-(semantic) similarity and sparse (BM25 keyword) scoring — for improved
-exact-match recall without sacrificing semantic coverage. The retriever
-is synchronous; GUI callers must run it through the owned RAG lifecycle.
+Explicitly initializes a pinned local embedding and verified gold-set index.
+Cosine similarity admits candidates; a weighted combination of cosine and
+normalized BM25 scores ranks that pool. The retriever is synchronous; GUI
+callers run it through the owned RAG process lifecycle.
 """
 
 from __future__ import annotations
@@ -21,7 +19,7 @@ from XBrainLab.llm.agent.context_encoding import (
     UntrustedContextSource,
     encode_untrusted_context,
 )
-from XBrainLab.llm.agent.intent import infer_user_intent
+from XBrainLab.llm.agent.intent import should_suppress_action_examples
 
 if TYPE_CHECKING:
     from langchain_huggingface import HuggingFaceEmbeddings
@@ -35,8 +33,6 @@ from .example_policy import (
 )
 
 logger = logging.getLogger(__name__)
-
-_NON_ACTION_INTENTS = frozenset({"no_tool", "ask_clarification"})
 
 
 @dataclass(frozen=True)
@@ -52,13 +48,13 @@ class _RetrievalLease:
 class RAGRetriever:
     """Retrieves similar gold-set examples from a Qdrant vector store.
 
-    Supports lazy initialization: the embedding model and Qdrant client
-    are loaded on first use.  If the collection does not exist, it is
-    automatically populated from the bundled ``gold_set.json``.
+    Call ``initialize`` before retrieval to load the local embedding and verify
+    or rebuild the collection from the bundled ``gold_set.json``.
 
     **Hybrid mode** (default, configurable via ``hybrid_alpha``):
     combines dense semantic scores with sparse BM25 keyword scores.
-    ``alpha=1.0`` → pure semantic, ``alpha=0.0`` → pure BM25.
+    ``alpha=1.0`` uses cosine ranking; ``alpha=0.0`` uses BM25 ranking within
+    the semantically admitted pool, not a separate keyword-only search.
 
     Attributes:
         client: The ``QdrantClient`` instance (``None`` until initialized).
@@ -70,7 +66,7 @@ class RAGRetriever:
 
     """
 
-    # Default interpolation weight; tuned on validation split.
+    # Ranking weight; this constant alone is not evidence of validation tuning.
     DEFAULT_HYBRID_ALPHA = 0.7
 
     def __init__(self, hybrid_alpha: float | None = None):
@@ -95,7 +91,7 @@ class RAGRetriever:
         )
 
     def initialize(self) -> None:
-        """Lazily initializes RAG components.
+        """Explicitly initialize the local RAG components once.
 
         Imports heavy dependencies, sets up the embedding model and
         Qdrant client, and auto-indexes from the bundled gold-set if
@@ -186,10 +182,8 @@ class RAGRetriever:
 
     @staticmethod
     def _close_client(client: QdrantClient) -> None:
-        close = getattr(client, "close", None)
-        if callable(close):
-            with suppress(Exception):
-                close()
+        with suppress(Exception):
+            client.close()
 
     @staticmethod
     def _create_embeddings() -> HuggingFaceEmbeddings:
@@ -241,17 +235,14 @@ class RAGRetriever:
                 client=client,
                 embeddings=embeddings,
             )
-            try:
-                docs = indexer.load_gold_set(str(gold_set_path))
-                if docs:
-                    indexer.index_data(docs)
-                    vectorstore = self._create_vectorstore(
-                        client,
-                        embeddings,
-                    )
-                    return vectorstore
-            finally:
-                indexer.close()
+            docs = indexer.load_gold_set(str(gold_set_path))
+            if docs:
+                indexer.index_data(docs)
+                vectorstore = self._create_vectorstore(
+                    client,
+                    embeddings,
+                )
+                return vectorstore
         except Exception as e:
             logger.error("RAG auto-init failed: %s", e)
         return None
@@ -358,7 +349,7 @@ class RAGRetriever:
             matches are found.
 
         """
-        if infer_user_intent(query) in _NON_ACTION_INTENTS:
+        if should_suppress_action_examples(query):
             return ""
         safe_k = min(max(int(k), 0), RAGConfig.TOP_K)
         if safe_k == 0:
@@ -387,7 +378,7 @@ class RAGRetriever:
                 return ""
 
             # ── 2. Build candidate pool with dense scores ──
-            # Normalize dense scores to [0,1] via min-max
+            # Admission uses raw cosine scores, before BM25 reranking.
             semantically_admitted = [
                 point
                 for point in search_result
@@ -440,11 +431,6 @@ class RAGRetriever:
             alpha = lease.hybrid_alpha
             ranked: list[tuple[float, str, dict]] = []
             for c in candidates.values():
-                if not self._example_is_allowed(
-                    c.get("metadata", {}),
-                    allowed_tool_names=allowed_tool_names,
-                ):
-                    continue
                 hybrid = alpha * c["dense_score"] + (1 - alpha) * c["bm25_score"]
                 ranked.append((hybrid, c["content"], c["metadata"]))
 

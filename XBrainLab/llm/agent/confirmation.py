@@ -85,11 +85,6 @@ class AgentConfirmationRisk:
             else decision_boundary
         )
         impact_text = _COMMAND_IMPACT_TEXT.get(command)
-        if typed_high_impact and command in {"configure_training", "set_model"}:
-            impact_text = (
-                "Changes the model or training settings used by the next run. "
-                "XBrainLab will validate the reviewed values before applying them."
-            )
         return cls(
             destructive=destructive,
             high_impact=typed_high_impact,

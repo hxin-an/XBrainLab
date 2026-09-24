@@ -2,31 +2,23 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
 
-from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.backend.application.results import ChangedState, CommandResult
-from XBrainLab.backend.application.state import (
-    ActiveDatasetSnapshot,
-    ApplicationStateSnapshot,
-    InterpretationStateSnapshot,
-)
-from XBrainLab.backend.application.view_publication import (
-    ApplicationViewPublication,
-    InterpretationReviewIdentity,
-)
 from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolutionStatus,
     WorkflowUiHandoffSurfaceKind,
+    build_tool_workflow_handoff,
     workflow_ui_handoff_routes,
 )
+from XBrainLab.llm.tools import get_all_tools
+from XBrainLab.llm.tools.result_contract import UiRequest, UiRequestKind
 from XBrainLab.ui.components.workflow_surface_router import WorkflowPanel
 from XBrainLab.ui.components.workflow_ui_handoff_host import WorkflowUiHandoffHost
 from XBrainLab.ui.interaction_outcome import (
@@ -51,11 +43,14 @@ def _main_window() -> Any:
                 ),
             ),
             sidebar=SimpleNamespace(
+                open_channel_selection=MagicMock(
+                    return_value=InteractionOutcome.completed("Channels selected.")
+                ),
                 open_electrode_layout=MagicMock(
                     return_value=InteractionOutcome.completed(
                         "Electrode layout applied."
                     )
-                )
+                ),
             ),
         ),
         preprocess_panel=SimpleNamespace(
@@ -75,11 +70,6 @@ def _main_window() -> Any:
                 training_setting=MagicMock(
                     return_value=InteractionOutcome.completed(
                         "Training settings were saved."
-                    )
-                ),
-                configure_training=MagicMock(
-                    return_value=InteractionOutcome.completed(
-                        "Training configuration was saved."
                     )
                 ),
                 select_model=MagicMock(
@@ -116,6 +106,89 @@ def _main_window() -> Any:
     return window
 
 
+@pytest.mark.parametrize(
+    ("tool_name", "command", "panel_index", "expected_method"),
+    [
+        (
+            "import_eeg_data",
+            CommandName.SCAN_SOURCE,
+            0,
+            "dataset_panel.action_handler.import_data",
+        ),
+        (
+            "select_channels",
+            CommandName.PREPROCESS,
+            0,
+            "dataset_panel.sidebar.open_channel_selection",
+        ),
+        (
+            "set_montage",
+            CommandName.APPLY_MONTAGE,
+            0,
+            "dataset_panel.sidebar.open_electrode_layout",
+        ),
+        (
+            "create_epochs",
+            CommandName.CREATE_EPOCH,
+            1,
+            "preprocess_panel.sidebar.open_epoching",
+        ),
+        (
+            "configure_dataset_split",
+            CommandName.CONFIGURE_DATASET_SPLIT,
+            2,
+            "training_panel.sidebar.split_data",
+        ),
+        (
+            "select_model",
+            CommandName.CONFIGURE_TRAINING,
+            2,
+            "training_panel.sidebar.select_model",
+        ),
+        (
+            "configure_training",
+            CommandName.CONFIGURE_TRAINING,
+            2,
+            "training_panel.sidebar.training_setting",
+        ),
+        (
+            "compute_saliency",
+            CommandName.SALIENCY,
+            4,
+            "visualization_panel.compute_saliency",
+        ),
+    ],
+)
+def test_registered_gui_tools_reach_their_existing_surface(
+    tool_name,
+    command,
+    panel_index,
+    expected_method,
+) -> None:
+    """Use real tool producers, not hand-authored legacy handoff payloads."""
+    tool = next(tool for tool in get_all_tools() if tool.name == tool_name)
+    effect = tool.execute(None)
+    assert isinstance(effect, UiRequest)
+    assert effect.kind is UiRequestKind.WORKFLOW_HANDOFF
+    request = build_tool_workflow_handoff(effect.params)
+    assert request is not None
+    assert request.command is command
+    assert request.tool_name == tool_name
+    window = _main_window()
+    host = WorkflowUiHandoffHost(window)
+
+    result = host.open(request)
+
+    assert result.status is WorkflowUiHandoffResolutionStatus.COMPLETED
+    assert result.matches(request)
+    assert host.active_request is None
+    assert window.navigation_calls == [panel_index]
+    method = window
+    for attribute in expected_method.split("."):
+        method = getattr(method, attribute)
+    method.assert_called_once_with()
+
+
 def test_host_route_table_is_derived_from_typed_handoff_descriptors() -> None:
     host = WorkflowUiHandoffHost(_main_window())
 
@@ -133,29 +206,6 @@ def test_host_route_table_is_derived_from_typed_handoff_descriptors() -> None:
         )
 
 
-def _review_identity() -> InterpretationReviewIdentity:
-    return InterpretationReviewIdentity(
-        publication_generation=9,
-        scan_id="scan-a",
-        candidate_id="candidate-a",
-    )
-
-
-def _publication(
-    state: ApplicationStateSnapshot,
-    *,
-    usable: bool = True,
-) -> ApplicationViewPublication:
-    return ApplicationViewPublication(
-        generation=1,
-        revision=1,
-        state=state,
-        capabilities=build_capability_policy(state),
-        verified=usable,
-        stale=not usable,
-    )
-
-
 def _scheduled_acceptance() -> InteractionOutcome:
     completion = current_interaction_completion()
     assert completion is not None
@@ -166,199 +216,6 @@ def _scheduled_acceptance() -> InteractionOutcome:
     )
     callbacks.mark_started(True)
     return InteractionOutcome.accepted("Epoch creation was scheduled.")
-
-
-def test_current_data_import_opens_file_chooser_from_empty_state() -> None:
-    state = ApplicationStateSnapshot.empty()
-    window = _main_window()
-    publication = _publication(state)
-    host = WorkflowUiHandoffHost(window)
-
-    outcome = host.open_current_data_import(publication)
-
-    assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
-    assert outcome.command_name == CommandName.SCAN_SOURCE.value
-    assert outcome.decision_fields == ("source_path",)
-    window.dataset_panel.action_handler.import_data.assert_called_once_with()
-    window.statusBar.return_value.showMessage.assert_called_with(
-        "Data imported.",
-        6000,
-    )
-
-
-@pytest.mark.parametrize(
-    ("interpretation", "expected_command"),
-    [
-        (
-            InterpretationStateSnapshot(
-                source_path="/datasets/demo",
-                has_scan_result=True,
-                latest_scan_id="scan-a",
-            ),
-            CommandName.PREVIEW_INTERPRETATION,
-        ),
-        (
-            InterpretationStateSnapshot(
-                source_path="/datasets/demo",
-                has_scan_result=True,
-                has_candidate=True,
-                latest_scan_id="scan-a",
-                latest_candidate_id="candidate-a",
-            ),
-            CommandName.VALIDATE_INTERPRETATION,
-        ),
-    ],
-)
-def test_current_data_import_navigates_to_backend_projected_stage(
-    interpretation: InterpretationStateSnapshot,
-    expected_command: CommandName,
-) -> None:
-    state = replace(
-        ApplicationStateSnapshot.empty(),
-        interpretation=interpretation,
-    )
-    window = _main_window()
-    host = WorkflowUiHandoffHost(window)
-
-    outcome = host.open_current_data_import(_publication(state))
-
-    assert outcome.status is WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI
-    assert outcome.command_name == expected_command.value
-    assert window.navigation_calls == [0]
-    window.dataset_panel.action_handler.import_data.assert_not_called()
-    window.dataset_panel.action_handler.review_current_import.assert_not_called()
-
-
-def test_current_data_import_opens_exact_published_review_for_apply_stage() -> None:
-    state = replace(
-        ApplicationStateSnapshot.empty(),
-        interpretation=InterpretationStateSnapshot(
-            source_path="/datasets/demo",
-            has_scan_result=True,
-            has_candidate=True,
-            has_validation_decision=True,
-            latest_scan_id="scan-a",
-            latest_candidate_id="candidate-a",
-            validation_decision="needs_confirmation",
-            pending_confirmation=True,
-        ),
-    )
-    window = _main_window()
-    publication = _publication(state)
-    host = WorkflowUiHandoffHost(window)
-
-    outcome = host.open_current_data_import(publication)
-
-    assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
-    assert outcome.command_name == CommandName.APPLY_INTERPRETATION.value
-    window.dataset_panel.action_handler.import_data.assert_not_called()
-    window.dataset_panel.action_handler.review_current_import.assert_called_once_with(
-        initial_step="Review and Import",
-        expected_identity=InterpretationReviewIdentity(
-            publication_generation=publication.generation,
-            scan_id="scan-a",
-            candidate_id="candidate-a",
-        ),
-    )
-
-
-def test_current_data_import_opens_blocked_review_at_resolvable_step() -> None:
-    state = replace(
-        ApplicationStateSnapshot.empty(),
-        interpretation=InterpretationStateSnapshot(
-            source_path="/datasets/demo",
-            has_scan_result=True,
-            has_candidate=True,
-            has_validation_decision=True,
-            latest_scan_id="scan-a",
-            latest_candidate_id="candidate-a",
-            validation_decision="blocked",
-            blocked_reasons=["Label placement is unresolved."],
-            action_items=[
-                {
-                    "issue": "Label placement is unresolved.",
-                    "impact": "Labels cannot be applied safely.",
-                    "next_action": "Review label placement.",
-                    "target_step": "Match Labels",
-                    "severity": "blocked",
-                }
-            ],
-        ),
-    )
-    window = _main_window()
-    publication = _publication(state)
-    host = WorkflowUiHandoffHost(window)
-
-    outcome = host.open_current_data_import(publication)
-
-    assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
-    assert outcome.command_name == CommandName.APPLY_INTERPRETATION.value
-    window.dataset_panel.action_handler.review_current_import.assert_called_once_with(
-        initial_step="Match Labels",
-        expected_identity=InterpretationReviewIdentity(
-            publication_generation=publication.generation,
-            scan_id="scan-a",
-            candidate_id="candidate-a",
-        ),
-    )
-
-
-def test_current_data_import_fails_closed_for_unusable_publication() -> None:
-    state = ApplicationStateSnapshot.empty()
-    window = _main_window()
-    host = WorkflowUiHandoffHost(window)
-
-    outcome = host.open_current_data_import(_publication(state, usable=False))
-
-    assert outcome.status is WorkflowUiHandoffResolutionStatus.FAILED
-    assert outcome.message == "Application state is unavailable. Try again shortly."
-    window.dataset_panel.action_handler.import_data.assert_not_called()
-    window.statusBar.return_value.showMessage.assert_called_with(
-        outcome.message,
-        6000,
-    )
-
-
-def test_stale_open_data_import_action_does_not_route_to_non_import_workflow() -> None:
-    state = replace(
-        ApplicationStateSnapshot.empty(),
-        pipeline_stage="data_loaded",
-        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
-        interpretation=InterpretationStateSnapshot(
-            has_applied_interpretation=True,
-        ),
-    )
-    window = _main_window()
-    host = WorkflowUiHandoffHost(window)
-
-    outcome = host.open_current_data_import(_publication(state))
-
-    assert outcome.status is WorkflowUiHandoffResolutionStatus.FAILED
-    assert outcome.message == "There is no pending Data Import step to open."
-    assert window.navigation_calls == []
-    window.dataset_panel.action_handler.import_data.assert_not_called()
-    window.dataset_panel.action_handler.review_current_import.assert_not_called()
-
-
-def test_current_data_import_fails_closed_when_apply_identity_is_incomplete() -> None:
-    state = replace(
-        ApplicationStateSnapshot.empty(),
-        interpretation=InterpretationStateSnapshot(
-            source_path="/datasets/demo",
-            has_scan_result=True,
-            has_candidate=True,
-            has_validation_decision=True,
-            validation_decision="safe",
-        ),
-    )
-    window = _main_window()
-    host = WorkflowUiHandoffHost(window)
-
-    outcome = host.open_current_data_import(_publication(state))
-
-    assert outcome.status is WorkflowUiHandoffResolutionStatus.FAILED
-    assert "identity is unavailable" in outcome.message
-    window.dataset_panel.action_handler.review_current_import.assert_not_called()
 
 
 def test_completed_modal_routes_through_concrete_epoch_adapter() -> None:
@@ -412,122 +269,74 @@ def test_unmaterialized_modal_handoff_defers_without_touching_placeholder() -> N
     )
 
 
-def test_epoch_handoff_prefills_values_already_supplied_by_user() -> None:
+def test_epoch_handoff_leaves_choices_to_existing_dialog() -> None:
     window = _main_window()
     host = WorkflowUiHandoffHost(window)
     request = WorkflowUiHandoffRequest.for_decision(
         "create_epoch",
         decision_fields=("epoch_window",),
-        suggested_values={"target_event": "769"},
     )
 
     outcome = host.open(request)
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
-    window.preprocess_panel.sidebar.open_epoching.assert_called_once_with(
-        suggested_values={"target_event": "769"}
-    )
+    window.preprocess_panel.sidebar.open_epoching.assert_called_once_with()
 
 
-def test_dataset_handoff_prefills_values_already_supplied_by_user() -> None:
+def test_dataset_handoff_leaves_choices_to_existing_dialog() -> None:
     window = _main_window()
     host = WorkflowUiHandoffHost(window)
     request = WorkflowUiHandoffRequest.for_decision(
         "configure_dataset_split",
         decision_fields=("split_strategy",),
-        suggested_values={"training_mode": "individual", "test_ratio": "0.2"},
     )
 
     outcome = host.open(request)
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
-    window.training_panel.sidebar.split_data.assert_called_once_with(
-        suggested_values={"training_mode": "individual", "test_ratio": "0.2"}
-    )
-
-
-def test_training_handoff_coordinates_missing_model_and_explicit_options() -> None:
-    window = _main_window()
-    host = WorkflowUiHandoffHost(window)
-    request = WorkflowUiHandoffRequest.for_decision(
-        "configure_training",
-        decision_fields=("model", "training_options"),
-        suggested_values={"batch_size": "32", "learning_rate": "0.001"},
-    )
-
-    outcome = host.open(request)
-
-    assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
-    window.training_panel.sidebar.configure_training.assert_called_once_with(
-        suggested_model=None,
-        suggested_values={"batch_size": "32", "learning_rate": "0.001"},
-    )
-    window.training_panel.sidebar.select_model.assert_not_called()
-    window.training_panel.sidebar.training_setting.assert_not_called()
+    window.training_panel.sidebar.split_data.assert_called_once_with()
 
 
 def test_training_handoff_stops_when_model_selection_is_cancelled() -> None:
     window = _main_window()
-    window.training_panel.sidebar.configure_training.return_value = (
-        InteractionOutcome.cancelled("Training configuration was cancelled.")
+    window.training_panel.sidebar.select_model.return_value = (
+        InteractionOutcome.cancelled("Model selection was cancelled.")
     )
     host = WorkflowUiHandoffHost(window)
+    tool = next(tool for tool in get_all_tools() if tool.name == "select_model")
+    effect = tool.execute(None)
+    assert isinstance(effect, UiRequest)
+    request = build_tool_workflow_handoff(effect.params)
+    assert request is not None
 
-    outcome = host.open(
-        WorkflowUiHandoffRequest.for_decision(
-            "configure_training",
-            decision_fields=("model", "training_options"),
-        )
-    )
+    outcome = host.open(request)
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.CANCELLED
-    window.training_panel.sidebar.configure_training.assert_called_once_with(
-        suggested_model=None,
-        suggested_values={},
-    )
-    window.training_panel.sidebar.select_model.assert_not_called()
+    assert outcome.matches(request)
+    assert host.active_request is None
+    window.training_panel.sidebar.select_model.assert_called_once_with()
     window.training_panel.sidebar.training_setting.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    ("decision_fields", "suggested_values", "expected_action", "expected_kwargs"),
-    [
-        (
-            ("model",),
-            {"model": "EEGNet"},
-            "select_model",
-            {"suggested_model": "EEGNet"},
-        ),
-        (
-            ("training_options",),
-            {"batch_size": "32"},
-            "training_setting",
-            {"suggested_values": {"batch_size": "32"}},
-        ),
-    ],
-)
-def test_training_handoff_preserves_standalone_configuration_actions(
-    decision_fields: tuple[str, ...],
-    suggested_values: dict[str, str],
-    expected_action: str,
-    expected_kwargs: dict[str, object],
-) -> None:
+def test_training_options_handoff_preserves_cancelled_outcome() -> None:
     window = _main_window()
+    window.training_panel.sidebar.training_setting.return_value = (
+        InteractionOutcome.cancelled("Training settings were cancelled.")
+    )
     host = WorkflowUiHandoffHost(window)
+    tool = next(tool for tool in get_all_tools() if tool.name == "configure_training")
+    effect = tool.execute(None)
+    assert isinstance(effect, UiRequest)
+    request = build_tool_workflow_handoff(effect.params)
+    assert request is not None
 
-    outcome = host.open(
-        WorkflowUiHandoffRequest.for_decision(
-            "configure_training",
-            decision_fields=decision_fields,
-            suggested_values=suggested_values,
-        )
-    )
+    outcome = host.open(request)
 
-    assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
-    getattr(window.training_panel.sidebar, expected_action).assert_called_once_with(
-        **expected_kwargs
-    )
-    window.training_panel.sidebar.configure_training.assert_not_called()
+    assert outcome.status is WorkflowUiHandoffResolutionStatus.CANCELLED
+    assert outcome.matches(request)
+    assert host.active_request is None
+    window.training_panel.sidebar.training_setting.assert_called_once_with()
+    window.training_panel.sidebar.select_model.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -554,7 +363,12 @@ def test_host_owns_modal_route_table_and_outcome_conversion(
     request = (
         WorkflowUiHandoffRequest.for_action(command_name)
         if command_name == "saliency"
-        else WorkflowUiHandoffRequest.for_decision(command_name)
+        else WorkflowUiHandoffRequest.for_decision(
+            command_name,
+            decision_fields=("training_options",)
+            if command_name == "configure_training"
+            else (),
+        )
     )
     outcome = host.open(request)
 
@@ -563,74 +377,6 @@ def test_host_owns_modal_route_table_and_outcome_conversion(
     if command_name == "saliency":
         window.visualization_panel.compute_saliency.assert_called_once_with()
         window.visualization_panel.sidebar.set_saliency.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    ("decision_fields", "expected_step"),
-    [
-        (("metadata_review",), "Review Metadata"),
-        (("label_source",), "Load Labels"),
-        (("label_matching",), "Match Labels"),
-        (("import_review",), "Review and Import"),
-    ],
-)
-def test_apply_interpretation_handoff_opens_current_review_at_target_step(
-    decision_fields: tuple[str, ...],
-    expected_step: str,
-) -> None:
-    window = _main_window()
-    host = WorkflowUiHandoffHost(window)
-    identity = _review_identity()
-
-    outcome = host.open(
-        WorkflowUiHandoffRequest.for_decision(
-            "apply_interpretation",
-            decision_fields=decision_fields,
-            interpretation_identity=identity,
-        )
-    )
-
-    assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
-    assert window.navigation_calls == [0]
-    window.dataset_panel.action_handler.review_current_import.assert_called_once_with(
-        initial_step=expected_step,
-        expected_identity=identity,
-    )
-    window.dataset_panel.action_handler.import_data.assert_not_called()
-    assert not hasattr(host, "_application_service")
-
-
-def test_apply_interpretation_handoff_without_domain_identity_fails_closed() -> None:
-    window = _main_window()
-    host = WorkflowUiHandoffHost(window)
-
-    outcome = host.open(
-        WorkflowUiHandoffRequest.for_decision(
-            "apply_interpretation",
-            decision_fields=("import_review",),
-        )
-    )
-
-    assert outcome.status is WorkflowUiHandoffResolutionStatus.BLOCKED
-    assert "identity" in outcome.message.lower()
-    window.dataset_panel.action_handler.review_current_import.assert_not_called()
-
-
-def test_panel_only_handoff_defers_to_manual_ui_without_claiming_completion() -> None:
-    window = _main_window()
-    host = WorkflowUiHandoffHost(window)
-
-    outcome = host.open(
-        WorkflowUiHandoffRequest.for_decision(
-            "evaluate",
-            decision_fields=("result_view",),
-        )
-    )
-
-    assert outcome.status is WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI
-    assert outcome.command_name == "evaluate"
-    assert host.active_request is None
-    assert window.navigation_calls == [3]
 
 
 def test_epoch_handoff_retains_request_until_correlated_terminal_completion() -> None:
@@ -842,27 +588,19 @@ def test_epoch_handoff_without_registered_command_returns_failed_resolution() ->
     assert host.active_request is None
 
 
-def test_montage_handoff_uses_existing_dialog_and_preserves_agent_suggestion() -> None:
+def test_montage_handoff_uses_existing_dialog_without_supplied_choices() -> None:
     window = _main_window()
     host = WorkflowUiHandoffHost(window)
     request = WorkflowUiHandoffRequest.for_decision(
         "apply_montage",
         decision_fields=("channel_mapping",),
-        suggested_values={
-            "montage_name": "standard_1020",
-            "warning": "Review channel identities.",
-        },
     )
 
     outcome = host.open(request)
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.COMPLETED
-    assert outcome.suggested_values == request.suggested_values
     assert window.navigation_calls == [0]
-    window.dataset_panel.sidebar.open_electrode_layout.assert_called_once_with(
-        default_montage="standard_1020",
-        warning="Review channel identities.",
-    )
+    window.dataset_panel.sidebar.open_electrode_layout.assert_called_once_with()
     window.statusBar.return_value.showMessage.assert_called_with(
         "Opened Dataset panel."
     )
@@ -895,10 +633,7 @@ def test_montage_handoff_preserves_cancelled_dataset_outcome() -> None:
     outcome = host.open(WorkflowUiHandoffRequest.for_decision("apply_montage"))
 
     assert outcome.status is WorkflowUiHandoffResolutionStatus.CANCELLED
-    window.dataset_panel.sidebar.open_electrode_layout.assert_called_once_with(
-        default_montage=None,
-        warning="",
-    )
+    window.dataset_panel.sidebar.open_electrode_layout.assert_called_once_with()
 
 
 def test_montage_dialog_failure_returns_correlated_failed_resolution() -> None:

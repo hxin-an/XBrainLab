@@ -65,6 +65,7 @@ from XBrainLab.llm.core.runtime_selection import (
 from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     AssistantRuntimeLifecycle,
+    RuntimeActivationStatus,
     RuntimeCommandAdmissionStatus,
 )
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
@@ -112,22 +113,18 @@ class _TestLaunchResolver(AssistantRuntimeLaunchResolver):
 class _ControlledEngine:
     """Minimal model backend with deterministic loading/generation barriers."""
 
-    uses_owned_process = True
-
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
         self.active_backend: object | None = object()
+        self.restart_required = False
         self.load_started = Event()
         self.load_release = Event()
-        self.switch_started = Event()
-        self.switch_release = Event()
         self.generation_started = Event()
         self.generation_release = Event()
         self.cancel_requested = Event()
         self.close_called = Event()
         self._lock = Lock()
         self.load_calls = 0
-        self.switch_calls = 0
         self.generation_calls = 0
         self.cancel_calls = 0
         self.active_generations = 0
@@ -152,13 +149,6 @@ class _ControlledEngine:
             self.load_calls += 1
         self.load_started.set()
         self._wait_for_release(self.load_release, "model load")
-
-    def switch_backend(self, _backend_mode: str) -> None:
-        with self._lock:
-            self.switch_calls += 1
-        self.switch_started.set()
-        self._wait_for_release(self.switch_release, "model switch")
-        self.active_backend = object()
 
     def generate_stream(
         self,
@@ -206,7 +196,6 @@ class _ControlledEngine:
     def release_all(self) -> None:
         """Release every barrier so teardown cannot strand a native thread."""
         self.load_release.set()
-        self.switch_release.set()
         self.generation_release.set()
 
 
@@ -335,8 +324,12 @@ class _RuntimeHarness:
     manager: AgentManager
     main_window: QMainWindow
     study: Study
-    engine: _ControlledEngine
+    engines: list[_ControlledEngine]
     config: LLMConfig
+
+    @property
+    def engine(self) -> _ControlledEngine:
+        return self.engines[-1]
 
     @property
     def controller(self) -> Any:
@@ -427,6 +420,7 @@ def _runtime_harness(
     monkeypatch: Any,
     *,
     use_real_workflow_router: bool = False,
+    use_real_main_window: bool = False,
     resolver: AssistantRuntimeLaunchResolver | None = None,
 ) -> Iterator[_RuntimeHarness]:
     """Build the real Qt runtime while replacing only external model work."""
@@ -437,15 +431,21 @@ def _runtime_harness(
     config = LLMConfig()
     config.timeout = 30
     engine = _ControlledEngine(config)
+    engines = [engine]
+    engine_created = False
 
     config.local_model_enabled = True
     config.local_runtime_notice_acknowledged = True
 
     def _engine_factory(runtime_config: LLMConfig) -> _ControlledEngine:
-        engine.config = runtime_config
-        return engine
+        nonlocal engine_created
+        if engine_created:
+            engines.append(_ControlledEngine(runtime_config))
+        engine_created = True
+        engines[-1].config = runtime_config
+        return engines[-1]
 
-    monkeypatch.setattr(worker_module, "LLMEngine", _engine_factory)
+    monkeypatch.setattr(worker_module, "LocalRuntimeProcessOwner", _engine_factory)
     monkeypatch.setattr(
         LLMConfig,
         "load_from_file",
@@ -466,7 +466,7 @@ def _runtime_harness(
         "local_backend_cpu_fallback_reason",
         lambda self: None,
     )
-    monkeypatch.setattr(LLMConfig, "save_to_file", lambda self, filepath=None: None)
+    monkeypatch.setattr(LLMConfig, "save_to_file", lambda self, filepath=None: True)
     monkeypatch.setattr(
         controller_module,
         "ProcessRAGRetrieverLifecycle",
@@ -479,28 +479,38 @@ def _runtime_harness(
             _UnusedWorkflowUiHandoffHost,
         )
 
-    main_window = cast(Any, QMainWindow())
-    main_window.ai_btn = QToolButton(main_window)
-    main_window.setCentralWidget(QWidget(main_window))
-    main_window.resize(900, 640)
-
     study = Study()
-    main_window.study = study
-    manager = AgentManager(main_window, study)
+    if use_real_main_window:
+        from XBrainLab.ui.main_window import MainWindow
+
+        main_window = cast(Any, MainWindow(study))
+        main_window.init_agent()
+        manager = main_window.agent_manager
+        assert manager is not None
+    else:
+        main_window = cast(Any, QMainWindow())
+        main_window.ai_btn = QToolButton(main_window)
+        main_window.setCentralWidget(QWidget(main_window))
+        main_window.resize(900, 640)
+        main_window.study = study
+        manager = AgentManager(main_window, study)
+        manager.init_ui()
     if resolver is not None:
         cast(Any, manager.assistant_runtime)._resolver = resolver
-    manager.init_ui()
     main_window.show()
     assert manager.chat_dock is not None
-    manager.chat_dock.show()
 
-    harness = _RuntimeHarness(manager, main_window, study, engine, config)
+    harness = _RuntimeHarness(manager, main_window, study, engines, config)
     try:
-        manager.start_system()
+        manager.toggle()
         yield harness
     finally:
-        engine.release_all()
+        for owned_engine in engines:
+            owned_engine.release_all()
         _close_runtime_harness(qtbot, harness)
+        if use_real_main_window:
+            main_window.close()
+            qtbot.waitUntil(lambda: not main_window.isVisible(), timeout=WATCHDOG_MS)
         _dispose_runtime_harness(harness)
 
 
@@ -540,6 +550,92 @@ def _send_request(harness: _RuntimeHarness, text: str) -> None:
     harness.panel.send_btn.click()
 
 
+def test_real_runtime_command_trace_remains_scoreable(qtbot, monkeypatch, tmp_path):
+    """Keep real dispatch/Command/terminal owners; isolate inference and RAG only."""
+    import mne
+    import numpy as np
+
+    from scripts.dev.assistant_pilot_observation import PilotCaseTrace
+    from scripts.dev.assistant_pilot_scoring import score_case_decisions
+    from tests.integration.data_interpretation_support import (
+        import_recording_through_interpretation,
+    )
+    from XBrainLab.backend.application import get_application_service
+
+    case = {
+        "case_id": "public-runtime-observer-resample",
+        "decision": "Action",
+        "expected_workflow_stage": "data_loaded",
+        "expected_tool": "resample_data",
+        "expected_parameters": {"rate": 64},
+    }
+    with _runtime_harness(
+        qtbot, monkeypatch, use_real_workflow_router=True, use_real_main_window=True
+    ) as harness:
+        _release_initial_load(qtbot, harness)
+        path = tmp_path / "observer_raw.fif"
+        raw = mne.io.RawArray(
+            np.zeros((2, 512)),
+            mne.create_info(["C3", "C4"], sfreq=256, ch_types="eeg"),
+            verbose=False,
+        )
+        raw.save(path, overwrite=True, verbose=False)
+        assert import_recording_through_interpretation(
+            get_application_service(harness.study), path
+        ).ok
+        harness.engine.generation_output = (
+            '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+            '"parameters":{"rate":64}}'
+        )
+        trace = PilotCaseTrace(case["case_id"])
+        trace.attach(harness.controller, harness.runtime)
+        try:
+            _send_request(harness, "Resample to 64 Hz")
+            _wait_for_event(qtbot, harness.engine.generation_started)
+            harness.engine.generation_release.set()
+            qtbot.waitUntil(
+                lambda: trace.snapshot()["turn_terminal"] is not None,
+                timeout=WATCHDOG_MS,
+            )
+            report = trace.snapshot()
+            assert report["measurement_issues"] == []
+            assert harness.engine.generation_calls == 1
+            assert len(report["generations"]) == 1
+            generation = report["generations"][0]
+            assert generation["raw_response"] == harness.engine.generation_output
+            assert generation["terminal"] == "finished"
+            assert generation["request"]["response_contract"] == "structured_action"
+            assert [dict(message) for message in generation["request"]["messages"]] == (
+                harness.engine.generated_messages[0]
+            )
+            events = report["events"]
+            assert [
+                event["payload"]["phase"]
+                for event in events
+                if event["kind"] == "generation_event"
+            ] == ["started", "chunk", "finished"]
+            results = [
+                event["payload"]
+                for event in events
+                if event["kind"] == "command_result"
+            ]
+            assert len(results) == 1
+            assert results[0]["ok"] is True
+            assert results[0]["tool_name"] == "resample_data"
+            assert harness.study.preprocessed_data_list[0].get_mne().info["sfreq"] == 64
+            submission = next(
+                event["payload"] for event in events if event["kind"] == "submission"
+            )
+            assert report["turn_terminal"]["correlation"] == submission["correlation"]
+            assert report["turn_terminal"]["outcome"] == "completed"
+            score = score_case_decisions(case, report, max_format_recovery_attempts=0)
+            assert score["measurement_valid"] is True, score["measurement_issues"]
+            assert score["first_decision_correct"] is True
+            assert score["final_decision_correct"] is True
+        finally:
+            trace.detach()
+
+
 def _install_host_turn_lease(harness: _RuntimeHarness) -> AssistantTurnCorrelation:
     """Install one exact lease for tests that inject a post-admission callback."""
     submission = harness.manager._assistant_turn_state.begin_submission()
@@ -552,7 +648,7 @@ def _install_host_turn_lease(harness: _RuntimeHarness) -> AssistantTurnCorrelati
             submission,
             correlation,
         )
-        is not None
+        is True
     )
     harness.runtime._active_turn = correlation
     harness.controller._turn_orchestrator.host_turn_generation = correlation.generation
@@ -931,7 +1027,7 @@ def test_pending_agent_decision_resolves_through_real_ui_handoff_signal(
                 request_id=request.request_id,
                 turn_id=correlation.turn_id,
                 generation=correlation.generation,
-                decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
+                decision_owner=AssistantDecisionOwner.GUI_DIALOG,
             )
         )
 
@@ -1019,7 +1115,7 @@ def test_cancelled_confirmation_has_one_terminal_manager_presentation(
         harness.panel.confirmation_card_widget.secondary_button.click()
 
         qtbot.waitUntil(
-            lambda: controller.pending_interactions.confirmation_decision is None,
+            lambda: controller.pending_interactions.confirmation is None,
             timeout=WATCHDOG_MS,
         )
         qtbot.waitUntil(
@@ -1059,13 +1155,18 @@ def test_model_switch_ignores_stale_ready_until_target_is_ready(
 
         with _stale_snapshot_publisher(controller) as (publisher, stale_thread):
             model_request_spy = QSignalSpy(harness.runtime.dispatcher.model_requested)
-            harness.manager.set_model(target_model)
+            config = harness.runtime.load_config()
+            config.model_name = target_model
+            activation = harness.runtime.activate(config)
+            assert activation.status is RuntimeActivationStatus.SWITCHING
             requested_spec = model_request_spy[-1][0]
             assert requested_spec.requested_model_id == target_model
             assert requested_spec.model_id == target_model
-            _wait_for_event(qtbot, harness.engine.switch_started)
+            qtbot.waitUntil(lambda: len(harness.engines) == 2, timeout=WATCHDOG_MS)
+            _wait_for_event(qtbot, harness.engine.load_started)
             _wait_for_phase(qtbot, harness, AssistantRuntimePhase.LOADING)
-            assert harness.engine.switch_calls == 1
+            assert harness.engines[0].close_called.is_set()
+            assert harness.engine.load_calls == 1
             baseline = len(runtime_spy)
 
             stale_ready = AssistantRuntimeSnapshot(
@@ -1084,7 +1185,7 @@ def test_model_switch_ignores_stale_ready_until_target_is_ready(
             assert harness.runtime.current.phase is AssistantRuntimePhase.LOADING
             assert not harness.panel.input_field.isEnabled()
 
-            harness.engine.switch_release.set()
+            harness.engine.load_release.set()
             _wait_for_phase(qtbot, harness, AssistantRuntimePhase.READY)
             assert harness.runtime.current.model_id == target_model
             assert harness.panel.input_field.isEnabled()
@@ -1128,8 +1229,12 @@ def test_retry_loading_replaces_only_stale_runtime_failure_presentation(
         ] == ["Keep this question", "Keep this answer"]
 
         target_model = TEST_TARGET_MODEL_ID
-        harness.manager.set_model(target_model)
-        _wait_for_event(qtbot, harness.engine.switch_started)
+        config = harness.runtime.load_config()
+        config.model_name = target_model
+        activation = harness.runtime.activate(config)
+        assert activation.status is RuntimeActivationStatus.SWITCHING
+        qtbot.waitUntil(lambda: len(harness.engines) == 2, timeout=WATCHDOG_MS)
+        _wait_for_event(qtbot, harness.engine.load_started)
         _wait_for_phase(qtbot, harness, AssistantRuntimePhase.LOADING)
 
         assert harness.panel.runtime_state_widget.isVisible()
@@ -1138,7 +1243,7 @@ def test_retry_loading_replaces_only_stale_runtime_failure_presentation(
             message["content"] for message in harness.manager.chat_controller.messages
         ] == ["Keep this question", "Keep this answer"]
 
-        harness.engine.switch_release.set()
+        harness.engine.load_release.set()
         _wait_for_phase(qtbot, harness, AssistantRuntimePhase.READY)
         assert harness.controller is original_controller
         assert harness.controller.worker_thread is original_worker_thread
@@ -1159,9 +1264,12 @@ def test_model_switch_is_rejected_without_disturbing_active_generation(
         _wait_for_event(qtbot, harness.engine.generation_started)
 
         target_model = TEST_TARGET_MODEL_ID
-        harness.manager.set_model(target_model)
+        config = harness.runtime.load_config()
+        config.model_name = target_model
+        activation = harness.runtime.activate(config)
+        assert activation.status is RuntimeActivationStatus.BUSY
 
-        assert harness.engine.switch_started.is_set() is False
+        assert len(harness.engines) == 1
         assert harness.runtime.current.phase is AssistantRuntimePhase.READY
         assert harness.runtime.current.initialized is True
         assert harness.runtime.current.model_id == LLMConfig.default_local_model_id()
@@ -1312,11 +1420,12 @@ def test_worker_traceback_is_sanitized_before_visible_bubble(
         assert "secret-token-123" not in visible_message
         qtbot.waitUntil(
             lambda: (
-                (bubble := harness.panel._latest_message_bubble()) is not None
+                (bubble := harness.panel.transcript_view.latest_message_bubble())
+                is not None
                 and bubble.get_text() == visible_message
             ),
             timeout=WATCHDOG_MS,
         )
-        bubble = harness.panel._latest_message_bubble()
+        bubble = harness.panel.transcript_view.latest_message_bubble()
         assert bubble is not None
         assert bubble.get_text() == visible_message

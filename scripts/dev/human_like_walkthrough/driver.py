@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 from unittest.mock import patch
 
-from PyQt6.QtCore import QObject, Qt, pyqtSignal
+from PyQt6.QtCore import QObject, Qt, pyqtSignal, pyqtSlot
 from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QWidget
 
@@ -19,7 +19,6 @@ from scripts.dev.human_like_walkthrough.contract import (
     ASSISTANT_CONFIRMED_TERMINAL_MESSAGE,
     ASSISTANT_ERROR_REQUEST,
     ASSISTANT_EXISTING_UI_REQUEST,
-    ASSISTANT_HANDOFF_REQUEST_ID,
     ASSISTANT_NORMAL_REQUEST,
     ASSISTANT_PROCESSING_REQUEST,
     ASSISTANT_RAW_TRACEBACK,
@@ -28,7 +27,6 @@ from scripts.dev.human_like_walkthrough.contract import (
     ASSISTANT_SUCCESS_REQUEST,
     ASSISTANT_WORKFLOW_CLARIFICATION_MESSAGE,
 )
-from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantDecisionOwner,
     AssistantTurnActivity,
@@ -44,6 +42,8 @@ from XBrainLab.llm.agent.controller import (
     AgentInteractionStatus,
 )
 from XBrainLab.llm.agent.response_presentation import (
+    AssistantPanelNavigationRequest,
+    AssistantPanelTarget,
     AssistantResponseKind,
     AssistantResponsePresentation,
     interaction_outcome_kind,
@@ -60,11 +60,6 @@ from XBrainLab.llm.agent.turn import (
     AssistantTurnCorrelation,
     AssistantTurnRequest,
     AssistantTurnTerminal,
-)
-from XBrainLab.llm.agent.ui_handoff import (
-    WorkflowUiHandoffRequest,
-    WorkflowUiHandoffResolution,
-    WorkflowUiHandoffResolutionStatus,
 )
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.model_catalog import PRIMARY_LOCAL_MODEL_ID
@@ -162,11 +157,13 @@ class WalkthroughAssistantController(QObject):
         self._stop_pending = False
         self.events: list[str] = []
         self.confirmed_execution_count = 0
-        self.session_generation = 0
+        self.preprocessing_reset_count = 0
         self.last_confirmation_request: AgentConfirmationRequest | None = None
-        self.last_workflow_handoff: WorkflowUiHandoffRequest | None = None
-        self.last_workflow_resolution: WorkflowUiHandoffResolution | None = None
-        self._pending_workflow_handoff: WorkflowUiHandoffRequest | None = None
+        self.last_panel_navigation: AssistantPanelNavigationRequest | None = None
+        self.last_navigation_resolution: (
+            tuple[AssistantPanelNavigationRequest, bool] | None
+        ) = None
+        self.navigation_terminal_count = 0
         self._pending_confirmation_request: AgentConfirmationRequest | None = None
         self._runtime_model_id = "walkthrough-local-model"
         self._active_launch_spec: object | None = None
@@ -334,13 +331,6 @@ class WalkthroughAssistantController(QObject):
         self._active_turn = payload.correlation
         self._handle_admitted_user_input(payload.text)
 
-    def handle_user_input(self, _text: str) -> None:
-        """Reject the legacy uncorrelated entry point in evidence harnesses."""
-        raise RuntimeError(
-            "Walkthrough user input requires AssistantTurnRequest via "
-            "handle_user_turn()."
-        )
-
     def _handle_admitted_user_input(self, text: str) -> None:
         """Process text only after the product-shaped admission contract succeeds."""
         if self._active_turn is None:
@@ -376,12 +366,12 @@ class WalkthroughAssistantController(QObject):
             ASSISTANT_CANCEL_CONFIRMATION_REQUEST,
             ASSISTANT_CONFIRM_CONFIRMATION_REQUEST,
         }:
-            self.status_update.emit("Waiting for confirmation: new_session")
+            self.status_update.emit("Waiting for confirmation: reset_preprocessing")
             confirmation = AgentConfirmationRequest.for_action(
-                command_name=CommandName.NEW_SESSION.value,
+                command_name="reset_preprocessing",
                 params={},
-                action_label="Start new session",
-                description="Start a new session and clear the current one.",
+                action_label="Reset preprocessing",
+                description="Reset preprocessing to the loaded raw data.",
                 destructive=True,
                 publication_generation=1,
             )
@@ -399,23 +389,18 @@ class WalkthroughAssistantController(QObject):
             return
         if request == ASSISTANT_EXISTING_UI_REQUEST:
             self.status_update.emit("Opening Evaluation")
-            handoff = WorkflowUiHandoffRequest.for_decision(
-                CommandName.EVALUATE,
-                decision_fields=("evaluation_result",),
-                request_id=ASSISTANT_HANDOFF_REQUEST_ID,
+            navigation = AssistantPanelNavigationRequest(
+                AssistantPanelTarget.EVALUATION,
+                correlation=self._active_turn,
             )
-            self.last_workflow_handoff = handoff
-            self._pending_workflow_handoff = handoff
+            self.last_panel_navigation = navigation
             self._publish_activity(
-                AssistantTurnActivityPhase.WAITING_FOR_DECISION,
-                command_name=handoff.command_name,
-                request_id=handoff.request_id,
-                decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
+                AssistantTurnActivityPhase.RUNNING_COMMAND,
+                command_name="switch_panel",
             )
-            self.events.append("handoff:typed_requested:evaluate")
-            self.workflow_ui_handoff_requested.emit(handoff)
-            self.events.append("handoff:typed_emitted:evaluate")
             self._finish_generation()
+            self.events.append("navigation:typed_emitted:evaluation")
+            self.panel_navigation_requested.emit(navigation)
             return
         if request == ASSISTANT_SUCCESS_REQUEST:
             outcome = "success" if self._state_response.command_ok else "failed"
@@ -483,7 +468,7 @@ class WalkthroughAssistantController(QObject):
         self._finish_generation(AssistantGenerationEventPhase.CANCELLED)
         self._finish()
 
-    def _finish(self) -> None:
+    def _finish(self, outcome: str = "completed") -> None:
         self._finish_generation()
         correlation = self._active_turn
         self.is_processing = False
@@ -493,7 +478,9 @@ class WalkthroughAssistantController(QObject):
         self._stop_pending = False
         self.processing_finished.emit()
         if correlation is not None:
-            self.turn_finished.emit(AssistantTurnTerminal(correlation=correlation))
+            self.turn_finished.emit(
+                AssistantTurnTerminal(correlation=correlation, outcome=outcome)
+            )
 
     def set_model(self, model_request: object) -> None:
         self._active_launch_spec = model_request
@@ -527,7 +514,7 @@ class WalkthroughAssistantController(QObject):
                 request_id=request.request_id,
             )
             self.confirmed_execution_count += 1
-            self.session_generation += 1
+            self.preprocessing_reset_count += 1
             self.interaction_resolved.emit(
                 AgentInteractionOutcome(
                     status=AgentInteractionStatus.CONFIRMED,
@@ -555,59 +542,39 @@ class WalkthroughAssistantController(QObject):
             self.events.append("response:cancelled")
         self._finish()
 
-    def on_workflow_ui_handoff_resolved(self, payload: object) -> None:
-        """Consume the same correlated typed resolution as the product controller."""
-        if not isinstance(payload, WorkflowUiHandoffResolution):
-            self.events.append("handoff:resolution_rejected:untyped")
-            return
-        request = self._pending_workflow_handoff
-        if request is None:
-            self.events.append("handoff:resolution_rejected:no_pending_request")
-            return
-        if (
-            payload.request_id != request.request_id
-            or payload.command is not request.command
-            or payload.decision_fields != request.decision_fields
-        ):
-            self.events.append("handoff:resolution_rejected:mismatched")
-            return
+    def on_workflow_ui_handoff_resolved(self, _payload: object) -> None:
+        """This scripted scenario does not request a workflow decision."""
+        self.events.append("handoff:resolution_rejected:no_pending_request")
 
-        self._pending_workflow_handoff = None
-        self.last_workflow_resolution = payload
-        interaction_status = {
-            WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI: (
-                AgentInteractionStatus.DEFERRED_TO_UI
-            ),
-            WorkflowUiHandoffResolutionStatus.COMPLETED: (
-                AgentInteractionStatus.COMPLETED_IN_UI
-            ),
-            WorkflowUiHandoffResolutionStatus.CANCELLED: (
-                AgentInteractionStatus.CANCELLED
-            ),
-            WorkflowUiHandoffResolutionStatus.BLOCKED: AgentInteractionStatus.BLOCKED,
-            WorkflowUiHandoffResolutionStatus.UNAVAILABLE: (
-                AgentInteractionStatus.UNAVAILABLE
-            ),
-            WorkflowUiHandoffResolutionStatus.FAILED: AgentInteractionStatus.FAILED,
-        }[payload.status]
-        outcome = AgentInteractionOutcome(
-            status=interaction_status,
-            command_name=request.command_name,
-            request_id=request.request_id,
-            decision_fields=request.decision_fields,
-            message=payload.message,
-        )
-        self.interaction_resolved.emit(outcome)
+    @pyqtSlot(object, bool)
+    def on_panel_navigation_resolved(self, payload: object, success: bool) -> None:
+        """Finish only the current navigation after the desktop callback."""
+        if (
+            not isinstance(payload, AssistantPanelNavigationRequest)
+            or payload != self.last_panel_navigation
+            or payload.correlation is None
+            or payload.correlation != self._active_turn
+        ):
+            self.events.append("navigation:resolution_rejected:stale")
+            return
+        self.last_navigation_resolution = (payload, success)
+        self.navigation_terminal_count += 1
         self.response_presentation_ready.emit(
             self._response_presentation(
-                text=interaction_outcome_message(outcome),
-                kind=interaction_outcome_kind(outcome),
+                text=(
+                    "Opened Evaluation panel."
+                    if success
+                    else "The Evaluation view could not be opened."
+                ),
+                kind=(
+                    AssistantResponseKind.TOOL_RESULT
+                    if success
+                    else AssistantResponseKind.ERROR
+                ),
             )
         )
-        self.events.append(
-            f"handoff:resolution_accepted:{payload.status.value}:{payload.request_id}"
-        )
-        self._finish()
+        self.events.append(f"navigation:resolved:{success}")
+        self._finish("completed" if success else "panel_navigation_failed")
 
     def execute_debug_tool(self, tool_name: str, _params: dict[Any, Any]) -> None:
         self.events.append(f"debug:{tool_name}")
@@ -637,7 +604,18 @@ def install_walkthrough_assistant(manager: Any) -> WalkthroughAssistantControlle
         manager.assistant_runtime.start(launch_spec=launch_spec)
     if manager.agent_controller is not controller or not manager.agent_initialized:
         raise RuntimeError("Walkthrough assistant did not start through AgentManager.")
-    return controller
+    # The transport always queues initialization, including this model-free
+    # presentation driver. Do not publish a scripted phase ahead of that command.
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        QTest.qWait(5)
+        if (
+            "initialize" in controller.events
+            and manager.assistant_runtime.current.phase is AssistantRuntimePhase.LOADING
+        ):
+            return controller
+    manager.close()
+    raise RuntimeError("Walkthrough assistant initialization did not finish.")
 
 
 def click_assistant_control(control: QWidget) -> None:
@@ -661,9 +639,18 @@ def drive_assistant_request(
     click_assistant_control(cast(QWidget, panel.send_btn))
     app.processEvents()
     if expect_processing:
-        if not manager.chat_controller.is_processing or panel.send_btn.text() != "Stop":
-            raise RuntimeError("Assistant did not enter the expected processing state.")
-        return
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            QTest.qWait(5)
+            controller = manager.agent_controller
+            if (
+                controller is not None
+                and controller.events[-1:] == ["processing:pending"]
+                and manager.chat_controller.is_processing
+                and panel.send_btn.text() == "Stop"
+            ):
+                return
+        raise RuntimeError("Assistant did not enter the expected processing state.")
     deadline = time.monotonic() + 1.0
     while time.monotonic() < deadline:
         app.processEvents()

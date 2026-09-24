@@ -110,14 +110,6 @@ class EvaluationWorkController:
             self._registry.complete(normalized_operation_id)
             return publication
 
-    def cancel(self, operation_id: str) -> bool:
-        """Request cancellation without entering the application command lock."""
-        return self._registry.cancel(str(operation_id))
-
-    def snapshot(self, operation_id: str) -> OwnedOperationSnapshot:
-        """Return immutable progress from the application's shared registry."""
-        return self._registry.snapshot(str(operation_id))
-
     @staticmethod
     def _validate_publication(
         publication: object,

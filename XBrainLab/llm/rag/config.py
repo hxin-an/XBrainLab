@@ -4,26 +4,24 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import platform
 from collections.abc import Mapping
 from pathlib import Path
+
+from XBrainLab.llm.core.model_catalog import RAG_EMBEDDING_SPEC
+from XBrainLab.platform_paths import RAG_CACHE_DIR_ENV, user_rag_cache_dir
 
 
 class RAGConfig:
     """Pinned embedding identity and per-user local storage boundaries."""
 
-    CACHE_DIR_ENV = "XBRAINLAB_RAG_CACHE_DIR"
+    CACHE_DIR_ENV = RAG_CACHE_DIR_ENV
 
-    EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-    EMBEDDING_REVISION = (
-        "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"  # pragma: allowlist secret
-    )
+    EMBEDDING_MODEL = RAG_EMBEDDING_SPEC.repo_id
+    EMBEDDING_REVISION = RAG_EMBEDDING_SPEC.revision
     EMBEDDING_LICENSE = "Apache-2.0"
     EMBEDDING_SOURCE_URL = (
         "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2"
     )
-    EMBEDDING_ESTIMATED_DOWNLOAD_GB = 0.10
 
     GOLD_SET_SHA256 = (
         "ac13581292dfe89d27cdb13a39b3c099"  # pragma: allowlist secret
@@ -60,42 +58,7 @@ class RAGConfig:
         home: str | Path | None = None,
     ) -> Path:
         """Return the per-user RAG cache root without creating it."""
-        env = os.environ if environ is None else environ
-        user_home = Path.home() if home is None else Path(home).expanduser()
-        explicit = str(env.get(cls.CACHE_DIR_ENV, "")).strip()
-        if explicit:
-            explicit_path = Path(explicit).expanduser()
-            root = (
-                explicit_path
-                if explicit_path.is_absolute()
-                else user_home / explicit_path
-            )
-            return root.resolve(strict=False)
-
-        current_system = system_name or platform.system()
-        if current_system == "Windows":
-            local_app_data = str(env.get("LOCALAPPDATA", "")).strip()
-            local_path = Path(local_app_data).expanduser()
-            base = (
-                local_path
-                if local_app_data and local_path.is_absolute()
-                else user_home / "AppData" / "Local"
-            )
-            return (base / "XBrainLab" / "cache" / "rag").resolve(strict=False)
-
-        if current_system == "Darwin":
-            return (user_home / "Library" / "Caches" / "XBrainLab" / "rag").resolve(
-                strict=False
-            )
-
-        xdg_cache_home = str(env.get("XDG_CACHE_HOME", "")).strip()
-        xdg_path = Path(xdg_cache_home).expanduser()
-        base = (
-            xdg_path
-            if xdg_cache_home and xdg_path.is_absolute()
-            else user_home / ".cache"
-        )
-        return (base / "xbrainlab" / "rag").resolve(strict=False)
+        return user_rag_cache_dir(environ=environ, system_name=system_name, home=home)
 
     @classmethod
     def get_embedding_cache_path(cls) -> str:

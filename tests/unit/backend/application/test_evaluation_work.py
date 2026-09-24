@@ -118,7 +118,7 @@ def test_evaluation_work_cancel_is_lock_independent_and_retryable() -> None:
     worker.start()
     assert started.wait(timeout=1.0)
 
-    assert controller.cancel(scheduled.operation_id) is True
+    assert registry.cancel(scheduled.operation_id) is True
     assert registry.snapshot(scheduled.operation_id).phase is OwnedWorkPhase.CANCELLING
     release.set()
     worker.join(timeout=1.0)

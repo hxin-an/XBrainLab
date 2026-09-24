@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PyQt6.QtCore import QObject, pyqtSignal
+import pytest
+from PyQt6.QtCore import QMetaObject, QObject, Qt, pyqtSignal, pyqtSlot
 
 from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH
 from XBrainLab.llm.agent.confirmation import (
@@ -43,10 +44,23 @@ from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeActivationStatus,
     RuntimeCommandAdmissionResult,
     RuntimeCommandAdmissionStatus,
+    RuntimeSetupAction,
 )
 
 TEST_ACTIVE_MODEL_ID = "test/runtime-active"
 TEST_TARGET_MODEL_ID = "test/runtime-target"
+
+
+def test_first_run_save_failure_does_not_enable_or_acknowledge_runtime(monkeypatch):
+    config = LLMConfig(device="cpu", local_model_enabled=False)
+    monkeypatch.setattr(config, "save_to_file", lambda: False)
+
+    outcome = AssistantRuntimeLifecycle.apply_first_run_choice(config, "enable")
+
+    assert outcome.action is RuntimeSetupAction.STOP
+    assert outcome.message
+    assert config.local_model_enabled is False
+    assert config.local_runtime_notice_acknowledged is False
 
 
 def _terminal(
@@ -94,6 +108,9 @@ class _Controller(QObject):
     def on_workflow_ui_handoff_resolved(self, _resolution: object) -> bool:
         return True
 
+    def on_panel_navigation_resolved(self, _request: object, _success: bool) -> None:
+        return None
+
     def execute_debug_tool(self, _request: object) -> bool:
         return True
 
@@ -105,6 +122,15 @@ class _SignalDrivenShutdownController(_Controller):
         super().__init__()
         self.shutdown_in_progress = False
 
+    def close(self) -> bool:
+        self.shutdown_in_progress = not self.closed
+        return self.closed
+
+    @pyqtSlot()
+    def report_shutdown_pending(self) -> None:
+        self.shutdown_finished.emit(False, "Still stopping.")
+
+    @pyqtSlot()
     def complete_shutdown(self) -> None:
         self.shutdown_in_progress = False
         self.closed = True
@@ -123,8 +149,12 @@ class _ControllerMissingTerminalSignal(QObject):
         return True
 
 
-class _Dispatcher:
+class _Dispatcher(QObject):
+    cleanup_finished = pyqtSignal(bool, str)
+    turn_delivery_acknowledged = pyqtSignal(object)
+
     def __init__(self) -> None:
+        super().__init__()
         self.bound_controller: object | None = None
         self.bind_calls = 0
         self.initialized = False
@@ -222,38 +252,9 @@ class _CleanupPendingDispatcher(_Dispatcher):
         return self.closed
 
 
-class _SignalledCleanupDispatcher(QObject, _Dispatcher):
-    cleanup_finished = pyqtSignal(bool, str)
-
-    def __init__(self) -> None:
-        QObject.__init__(self)
-        _Dispatcher.__init__(self)
-
+class _SignalledCleanupDispatcher(_Dispatcher):
     def close(self) -> bool:
         return False
-
-
-class _ControllerSignalCleanupDispatcher(QObject, _Dispatcher):
-    cleanup_finished = pyqtSignal(bool, str)
-
-    def __init__(self) -> None:
-        QObject.__init__(self)
-        _Dispatcher.__init__(self)
-        self.close_attempts = 0
-
-    def close(self) -> bool:
-        self.close_attempts += 1
-        if self.close_attempts == 1:
-            controller = self.bound_controller
-            assert isinstance(controller, _SignalDrivenShutdownController)
-            controller.shutdown_in_progress = True
-            self.cleanup_finished.emit(
-                False,
-                "Assistant controller did not finish shutdown.",
-            )
-            return False
-        self.closed = True
-        return True
 
 
 class _ExceptionThenSuccessDispatcher(_Dispatcher):
@@ -640,6 +641,9 @@ def test_model_switch_is_rejected_while_a_turn_is_active() -> None:
         controller_factory=lambda _study: controller,
         dispatcher=dispatcher,
         config_loader=_ready_config,
+        resolver=_TestLaunchResolver(
+            LLMConfig.default_local_model_id(), TEST_TARGET_MODEL_ID
+        ),
     )
     assert lifecycle.start() is True
     activation_id = lifecycle.expected_activation_id
@@ -656,7 +660,7 @@ def test_model_switch_is_rejected_while_a_turn_is_active() -> None:
     turn = lifecycle.submit("active")
     assert turn.turn_id is not None
 
-    blocked = lifecycle.switch_model(TEST_TARGET_MODEL_ID)
+    blocked = lifecycle.activate(_ready_config(TEST_TARGET_MODEL_ID))
 
     assert blocked.status is RuntimeActivationStatus.BUSY
     assert blocked.available is False
@@ -1007,30 +1011,73 @@ def test_async_cleanup_signal_completes_the_same_typed_shutdown_terminal() -> No
     assert cleanup_events == [(True, "closed")]
 
 
-def test_controller_terminal_signal_resumes_pending_dispatcher_cleanup() -> None:
+@pytest.mark.parametrize("report_pending", [False, True])
+def test_real_dispatcher_waits_for_controller_and_thread_before_terminal(
+    qtbot, report_pending
+) -> None:
     controller = _SignalDrivenShutdownController()
-    dispatcher = _ControllerSignalCleanupDispatcher()
     lifecycle = AssistantRuntimeLifecycle(
         study=object(),
         controller_factory=lambda _study: controller,
-        dispatcher=dispatcher,
         config_loader=_ready_config,
     )
-    assert lifecycle.start() is True
+    assert lifecycle.start_diagnostics() is True
+    admission = lifecycle.debug("get_pipeline_state", {})
+    assert admission.accepted
+    terminals: list[AssistantTurnTerminal] = []
     cleanup_events: list[tuple[bool, str]] = []
+    lifecycle.turn_finished.connect(terminals.append)
     lifecycle.cleanup_finished.connect(
         lambda ok, message: cleanup_events.append((ok, message))
     )
+    command_thread = lifecycle.dispatcher.command_thread
+    assert command_thread is not None
+    try:
+        assert lifecycle.close() is False
+        qtbot.waitUntil(lambda: controller.shutdown_in_progress)
+        assert command_thread.isRunning()
+        assert lifecycle.turn_in_flight
+        assert terminals == []
+        assert cleanup_events == []
+        expected_cleanup = []
+        if report_pending:
+            QMetaObject.invokeMethod(
+                controller,
+                "report_shutdown_pending",
+                Qt.ConnectionType.QueuedConnection,
+            )
+            qtbot.waitUntil(lambda: bool(cleanup_events))
+            expected_cleanup.append((False, "Still stopping."))
+            assert cleanup_events == expected_cleanup
+            assert lifecycle.state is AssistantRuntimeLifecycleState.CLEANUP_PENDING
+            assert command_thread.isRunning()
+            assert lifecycle.turn_in_flight
+            assert terminals == []
 
-    assert lifecycle.close() is False
-    assert lifecycle.state is AssistantRuntimeLifecycleState.CLEANUP_PENDING
-    assert cleanup_events == []
-
-    controller.complete_shutdown()
-
-    assert dispatcher.close_attempts == 2
-    assert lifecycle.state is AssistantRuntimeLifecycleState.CLOSED
-    assert cleanup_events == [(True, "")]
+        QMetaObject.invokeMethod(
+            controller, "complete_shutdown", Qt.ConnectionType.QueuedConnection
+        )
+        qtbot.waitUntil(
+            lambda: lifecycle.state is AssistantRuntimeLifecycleState.CLOSED
+        )
+        assert not command_thread.isRunning()
+        assert controller.thread() is lifecycle.thread()
+        assert not lifecycle.turn_in_flight
+        assert terminals == [_terminal(admission, outcome="shutdown_cancelled")]
+        expected_cleanup.append((True, ""))
+        assert cleanup_events == expected_cleanup
+        assert lifecycle.close() is True
+        controller.shutdown_finished.emit(True, "late duplicate")
+        assert terminals == [_terminal(admission, outcome="shutdown_cancelled")]
+        assert cleanup_events == expected_cleanup
+    finally:
+        if lifecycle.state is not AssistantRuntimeLifecycleState.CLOSED:
+            QMetaObject.invokeMethod(
+                controller, "complete_shutdown", Qt.ConnectionType.QueuedConnection
+            )
+            qtbot.waitUntil(
+                lambda: lifecycle.state is AssistantRuntimeLifecycleState.CLOSED
+            )
 
 
 def test_lifecycle_activation_owns_readiness_start_and_model_switch() -> None:
@@ -1196,7 +1243,8 @@ def test_model_switch_resolves_once_and_dispatches_the_exact_spec() -> None:
         )
     )
 
-    switched = lifecycle.switch_model(target_model)
+    config.model_name = target_model
+    switched = lifecycle.activate(config)
 
     assert switched.status is RuntimeActivationStatus.SWITCHING
     assert switched.launch_spec is dispatcher.models[0]
@@ -1204,7 +1252,17 @@ def test_model_switch_resolves_once_and_dispatches_the_exact_spec() -> None:
     assert switched.launch_spec.model_id == target_model
     assert lifecycle.current.model_id == switched.launch_spec.model_id
 
-    rejected = lifecycle.switch_model("unknown/model")
+    lifecycle.accept_runtime_snapshot(
+        _ActivationTransition(
+            phase=AssistantRuntimePhase.READY,
+            initialized=True,
+            backend_mode="local",
+            model_id=target_model,
+            activation_id=switched.activation_id or 0,
+        )
+    )
+    config.model_name = "unknown/model"
+    rejected = lifecycle.activate(config)
 
     assert rejected.status is RuntimeActivationStatus.UNAVAILABLE
     assert rejected.failure is not None
@@ -1245,7 +1303,7 @@ def test_model_switch_registers_expected_activation_before_dispatch() -> None:
         )
     )
 
-    switched = lifecycle.switch_model(target_model)
+    switched = lifecycle.activate(_ready_config(target_model))
 
     assert switched.status is RuntimeActivationStatus.SWITCHING
     assert dispatcher.models == [switched.launch_spec]
@@ -1281,12 +1339,12 @@ def test_failed_activation_can_retry_without_rebuilding_controller() -> None:
         )
     )
 
-    failed = lifecycle.switch_model(target_model)
+    failed = lifecycle.activate(_ready_config(target_model))
     assert failed.launch_spec is not None
     lifecycle.accept_runtime_snapshot(
         _ActivationTransition(
             phase=AssistantRuntimePhase.FAILED,
-            initialized=False,
+            initialized=True,
             backend_mode="local",
             model_id=primary_model,
             error="generation is active",
@@ -1298,7 +1356,7 @@ def test_failed_activation_can_retry_without_rebuilding_controller() -> None:
     assert lifecycle.current.model_id == primary_model
     assert lifecycle.active_local_runtime_blocks_model_deletion() is True
 
-    retried = lifecycle.switch_model(target_model)
+    retried = lifecycle.activate(_ready_config(target_model))
     assert retried.launch_spec is not None
     assert lifecycle.current.phase is AssistantRuntimePhase.LOADING
     assert retried.activation_id != failed.activation_id
@@ -1393,6 +1451,20 @@ def test_activation_watchdog_fails_and_retry_restores_ready(qtbot) -> None:
     )
     assert "timed out" in lifecycle.current.error.lower()
 
+    blocked = lifecycle.activate(_ready_config(model_id))
+    assert blocked.status is RuntimeActivationStatus.BUSY
+    assert lifecycle.expected_activation_id == started.activation_id
+    assert dispatcher.models == []
+    lifecycle.accept_runtime_snapshot(
+        _ActivationTransition(
+            phase=AssistantRuntimePhase.FAILED,
+            initialized=False,
+            backend_mode="local",
+            model_id=model_id,
+            error="load failed",
+            activation_id=started.activation_id or 0,
+        )
+    )
     retried = lifecycle.activate(_ready_config(model_id))
     assert retried.status is RuntimeActivationStatus.SWITCHING
     assert retried.launch_spec is not None
@@ -1410,6 +1482,40 @@ def test_activation_watchdog_fails_and_retry_restores_ready(qtbot) -> None:
     assert lifecycle.current.phase is AssistantRuntimePhase.READY
     assert factory_calls == 1
     assert dispatcher.bind_calls == 1
+
+
+def test_repeated_activation_cannot_replace_pending_load_identity():
+    model_id = LLMConfig.default_local_model_id()
+    dispatcher = _Dispatcher()
+    lifecycle = AssistantRuntimeLifecycle(
+        study=object(),
+        controller_factory=lambda _study: _Controller(),
+        dispatcher=dispatcher,
+        config_loader=lambda: _ready_config(model_id),
+    )
+    first = lifecycle.activate(_ready_config(model_id))
+
+    repeated = lifecycle.activate(_ready_config(model_id))
+    switched = lifecycle.activate_persisted()
+
+    assert repeated.status is RuntimeActivationStatus.BUSY
+    assert switched.status is RuntimeActivationStatus.BUSY
+    assert lifecycle.expected_activation_id == first.activation_id
+    assert dispatcher.models == []
+    lifecycle.accept_runtime_snapshot(
+        _ActivationTransition(
+            phase=AssistantRuntimePhase.READY,
+            initialized=True,
+            backend_mode="local",
+            model_id=model_id,
+            activation_id=first.activation_id or 0,
+        )
+    )
+    assert (
+        lifecycle.activate(_ready_config(model_id)).status
+        is RuntimeActivationStatus.ALREADY_READY
+    )
+    lifecycle.close()
 
 
 def test_timed_out_activation_recovers_when_its_late_ready_arrives(qtbot) -> None:
@@ -1468,8 +1574,18 @@ def test_stale_same_model_completion_does_not_finish_new_activation() -> None:
             activation_id=started.activation_id or 0,
         )
     )
-    first = lifecycle.switch_model(target_model)
-    second = lifecycle.switch_model(target_model)
+    first = lifecycle.activate(_ready_config(target_model))
+    lifecycle.accept_runtime_snapshot(
+        _ActivationTransition(
+            phase=AssistantRuntimePhase.FAILED,
+            initialized=False,
+            backend_mode="local",
+            model_id=target_model,
+            error="first load failed",
+            activation_id=first.activation_id or 0,
+        )
+    )
+    second = lifecycle.activate(_ready_config(target_model))
     assert first.launch_spec is not None
     assert second.launch_spec is not None
 
@@ -1714,6 +1830,7 @@ def test_deactivation_unloads_persists_and_can_reactivate_in_same_process(
 
 def test_production_dispatcher_deactivation_closes_controller_and_reopens(
     monkeypatch,
+    qtbot,
 ) -> None:
     controllers: list[_Controller] = []
 
@@ -1729,19 +1846,22 @@ def test_production_dispatcher_deactivation_closes_controller_and_reopens(
         controller_factory=controller_factory,
         config_loader=lambda: config,
     )
-    assert lifecycle.start() is True
+    try:
+        assert lifecycle.start() is True
+        result = lifecycle.request_deactivation(config)
+        assert result.accepted is True
+        qtbot.waitUntil(lambda: lifecycle.controller is None)
+        assert controllers[0].closed is True
+        assert config.local_model_enabled is False
 
-    result = lifecycle.request_deactivation(config)
-
-    assert result.accepted is True
-    assert controllers[0].closed is True
-    assert lifecycle.controller is None
-    assert config.local_model_enabled is False
-
-    config.local_model_enabled = True
-    assert lifecycle.activate(config).status is RuntimeActivationStatus.STARTED
-    assert lifecycle.controller is controllers[1]
-    assert lifecycle.close() is True
+        config.local_model_enabled = True
+        assert lifecycle.activate(config).status is RuntimeActivationStatus.STARTED
+        assert lifecycle.controller is controllers[1]
+    finally:
+        lifecycle.close()
+        qtbot.waitUntil(
+            lambda: lifecycle.state is AssistantRuntimeLifecycleState.CLOSED
+        )
 
 
 def test_deactivation_rejects_active_turn_without_mutating_config(monkeypatch) -> None:

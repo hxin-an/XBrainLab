@@ -6,11 +6,11 @@ import pytest
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from scripts.dev.assistant_pilot_observation import PilotCaseTrace
+from scripts.dev.assistant_pilot_scoring import score_case_decisions
 from XBrainLab.llm.agent.turn import (
     AssistantGenerationEvent,
     AssistantGenerationEventPhase,
     AssistantGenerationRequest,
-    AssistantResponseContract,
     AssistantTurnCorrelation,
     AssistantTurnRequest,
     AssistantTurnTerminal,
@@ -56,7 +56,6 @@ def begin(host, trace):
 def generation(host, generation_id, text):
     request = AssistantGenerationRequest.from_messages(
         [{"role": "user", "content": "User request"}],
-        response_contract=AssistantResponseContract.STRUCTURED_ACTION,
     ).correlated(generation_id)
     host.controller.sig_generate.emit(request)
     for phase, chunk in [
@@ -312,7 +311,76 @@ def test_observer_exception_and_mutation_do_not_change_owner_decision(qtbot):
         '{"workflow_stage":"empty","tool_name":"resample_data","parameters":{"rate":128}}'
     )
     try:
-        assert controller._handle_tool_envelope_failure("unused", envelope) is False
+        assert controller._handle_tool_envelope_failure(envelope) is False
         assert envelope.commands[0][1] == {"rate": 128}
     finally:
         close_controller_and_wait(controller, qtbot)
+
+
+@pytest.mark.parametrize(
+    "request_kind",
+    ["typed", "missing_contract", "wrong_contract", "missing_request", "wrong_profile"],
+)
+def test_observed_request_preserves_scoring_contract_without_defaulting_missing_data(
+    host, monkeypatch, request_kind
+):
+    if request_kind == "wrong_profile":
+        from XBrainLab.llm.core.generation import GenerationProfile
+
+        monkeypatch.setattr(
+            AssistantGenerationRequest,
+            "generation_profile",
+            property(lambda _self: GenerationProfile.INFORMATIONAL_TEXT),
+        )
+    case = {
+        "case_id": "public-observer-contract",
+        "decision": "Action",
+        "expected_workflow_stage": "data_loaded",
+        "expected_tool": "resample_data",
+        "expected_parameters": {"rate": 128},
+    }
+    trace = PilotCaseTrace(case["case_id"])
+    correlation = begin(host, trace)
+    request = AssistantGenerationRequest.from_messages(
+        [{"role": "user", "content": "Resample to 128 Hz"}]
+    ).correlated(1)
+    try:
+        if request_kind in {"typed", "wrong_profile"}:
+            host.controller.sig_generate.emit(request)
+        elif request_kind != "missing_request":
+            payload = {
+                "generation_id": 1,
+                "messages": request.to_model_messages(),
+            }
+            if request_kind == "wrong_contract":
+                payload["response_contract"] = "natural_language"
+            host.controller.sig_generate.emit(payload)
+        raw = '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{"rate":128}}'
+        for phase, text in [
+            (AssistantGenerationEventPhase.STARTED, ""),
+            (AssistantGenerationEventPhase.CHUNK, raw),
+            (AssistantGenerationEventPhase.FINISHED, ""),
+        ]:
+            host.controller.generation_event.emit(
+                AssistantGenerationEvent(1, phase, text)
+            )
+        host.runtime.turn_finished.emit(AssistantTurnTerminal(correlation))
+        report = trace.snapshot()
+        score = score_case_decisions(case, report, max_format_recovery_attempts=0)
+        expected_valid = request_kind == "typed"
+        assert score["measurement_valid"] is expected_valid, score["measurement_issues"]
+        assert score["first_decision_correct"] is (True if expected_valid else None)
+        assert score["final_decision_correct"] is (True if expected_valid else None)
+        if expected_valid:
+            saved_request = report["generations"][0]["request"]
+            assert saved_request["response_contract"] == "structured_action"
+            assert saved_request["generation_id"] == request.generation_id
+            assert [dict(message) for message in saved_request["messages"]] == (
+                request.to_model_messages()
+            )
+        else:
+            assert "invalid_generation_request:1" in score["measurement_issues"]
+            if request_kind == "wrong_profile":
+                assert "unserializable_event" in report["measurement_issues"]
+    finally:
+        trace.detach()

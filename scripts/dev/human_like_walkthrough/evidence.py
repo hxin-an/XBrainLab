@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QAbstractButton,
     QComboBox,
     QLabel,
+    QScrollArea,
     QToolButton,
     QWidget,
 )
@@ -21,18 +22,11 @@ from PyQt6.QtWidgets import (
 from scripts.dev.capture_chatpanel_local_walkthrough import collect_visible_messages
 from scripts.dev.human_like_walkthrough.driver import WalkthroughAssistantController
 from XBrainLab.ui.chat.message_bubble import MessageBubble
-from XBrainLab.ui.components.agent_presentation_service import (
-    AgentPresentationService,
-)
-from XBrainLab.ui.components.workflow_surface_router import (
-    WorkflowSurfaceOutcome,
-    WorkflowSurfaceStatus,
-)
 
 
 def chat_panel_geometry(widget: QWidget) -> dict[str, Any]:
     """Return evidence for ChatPanel transcript/composer overlap."""
-    scroll_area = getattr(widget, "scroll_area", None)
+    scroll_area = getattr(widget, "transcript_view", None)
     control_panel = getattr(widget, "control_panel", None)
     if scroll_area is None or control_panel is None:
         return {}
@@ -103,20 +97,11 @@ def assistant_main_window_handoff_evidence(
     expected_button = (
         nav_buttons[expected_index] if 0 <= expected_index < len(nav_buttons) else None
     )
-    workflow_opened = bool(
-        active_panel == expected_panel
-        and active_index == expected_index
-        and expected_button is not None
-        and expected_button.isChecked()
-        and active_widget is not None
-        and active_widget.isVisible()
-    )
     evidence = assistant_main_window_evidence(
         window,
         dock,
         panel,
         state="assistant_existing_ui_handoff",
-        workflow_status="opened" if workflow_opened else "not_opened",
     )
     evidence.update(
         {
@@ -131,7 +116,6 @@ def assistant_main_window_handoff_evidence(
             ),
             "assistant_dock_visible": bool(dock.isVisible()),
             "expected_panel": expected_panel,
-            "workflow_opened": workflow_opened,
             "evaluation_plot_readability": evaluation_plot_readability_evidence(window),
         }
     )
@@ -159,7 +143,7 @@ def assistant_main_window_evidence(
     panel: Any,
     *,
     state: str,
-    workflow_status: str,
+    workflow_status: str | None = None,
 ) -> dict[str, Any]:
     """Measure whether an assistant state is readable in the complete product window."""
     title_bar = getattr(dock, "titleBarWidget", lambda: None)()
@@ -295,10 +279,9 @@ def assistant_main_window_evidence(
         and compact_nav_text_fits
         and not overlaps
     )
-    return {
+    evidence = {
         "capture_target": "full_main_window",
         "state": state,
-        "workflow_status": workflow_status,
         "main_window_visible": bool(window.isVisible()),
         "window_width": int(window.width()),
         "window_height": int(window.height()),
@@ -331,6 +314,9 @@ def assistant_main_window_evidence(
         "overlapping_widgets": overlaps,
         "geometry_passed": geometry_passed,
     }
+    if workflow_status is not None:
+        evidence["workflow_status"] = workflow_status
+    return evidence
 
 
 def evaluation_plot_readability_evidence(window: Any) -> dict[str, Any]:
@@ -339,7 +325,7 @@ def evaluation_plot_readability_evidence(window: Any) -> dict[str, Any]:
     matrix_widget = getattr(panel, "matrix_widget", None)
     canvas = getattr(matrix_widget, "canvas", None)
     figure = getattr(matrix_widget, "fig", None)
-    if canvas is None or figure is None:
+    if matrix_widget is None or canvas is None or figure is None:
         return {
             "available": False,
             "fully_visible": False,
@@ -434,7 +420,7 @@ def evaluation_plot_readability_evidence(window: Any) -> dict[str, Any]:
     canvas_width = int(canvas.width())
     canvas_height = int(canvas.height())
     canvas_size_ok = canvas_width >= 180 and canvas_height >= 120
-    fully_visible = (
+    content_readable = (
         bool(rows)
         and canvas_size_ok
         and not (
@@ -445,9 +431,29 @@ def evaluation_plot_readability_evidence(window: Any) -> dict[str, Any]:
             or not aggregate_info["fully_readable"]
         )
     )
+    # Figure bounds include content outside the visible scroll viewport. A
+    # complete offscreen canvas is not proof of a complete screenshot.
+    visible_canvas = canvas.visibleRegion().boundingRect()
+    canvas_fully_visible = bool(
+        canvas.isVisible() and visible_canvas.contains(canvas.rect())
+    )
+    scroll_area = matrix_widget.findChild(QScrollArea)
+    scroll_range = (
+        {
+            "horizontal": scroll_area.horizontalScrollBar().maximum(),
+            "vertical": scroll_area.verticalScrollBar().maximum(),
+        }
+        if scroll_area is not None
+        else {"horizontal": 0, "vertical": 0}
+    )
+    fully_visible = content_readable and canvas_fully_visible
     return {
         "available": bool(rows),
         "fully_visible": fully_visible,
+        "content_readable": content_readable,
+        "canvas_fully_visible": canvas_fully_visible,
+        "requires_scrolling": any(scroll_range.values()),
+        "scroll_range": scroll_range,
         "figure_width": round(figure_width, 2),
         "figure_height": round(figure_height, 2),
         "canvas_width": canvas_width,
@@ -466,7 +472,7 @@ def evaluation_plot_readability_evidence(window: Any) -> dict[str, Any]:
             ""
             if fully_visible
             else "Evaluation plot labels, aggregate information, axes, or responsive "
-            "layout are not fully readable in the full-window assistant handoff "
+            "layout are not fully visible in the captured viewport of the assistant handoff "
             "artifact."
         ),
     }
@@ -593,24 +599,6 @@ def _overlapping_x_tick_labels(
         if too_close:
             overlaps.append(f"{left['text']} / {right['text']}")
     return overlaps
-
-
-def workflow_handoff_product_copy_evidence() -> dict[str, str]:
-    """Render non-navigation handoff outcomes through production copy policy."""
-    return {
-        status.value: AgentPresentationService.workflow_surface_outcome_message(
-            WorkflowSurfaceOutcome(
-                status=status,
-                command_name="evaluate",
-                message="",
-            )
-        )
-        for status in (
-            WorkflowSurfaceStatus.CANCELLED,
-            WorkflowSurfaceStatus.COMPLETED,
-            WorkflowSurfaceStatus.FAILED,
-        )
-    }
 
 
 def assistant_notice_evidence(panel: Any) -> dict[str, Any]:
@@ -857,7 +845,7 @@ def _assistant_text_overflow(panel: Any) -> list[str]:
             if isinstance(label, QLabel) and _label_text_exceeds_bounds(label):
                 overflows.append(f"confirmation_card/{name}")
         for index, row in enumerate(confirmation_card.proposal_rows):
-            for name in ("label", "current_value", "proposed_value"):
+            for name in ("label", "proposed_value"):
                 label = getattr(row, name, None)
                 if (
                     isinstance(label, QLabel)
@@ -869,16 +857,14 @@ def _assistant_text_overflow(panel: Any) -> list[str]:
     for index, bubble in enumerate(
         child for child in panel.findChildren(MessageBubble) if child.isVisible()
     ):
-        text_edit = bubble.text_edit
-        if text_edit is None:
-            continue
-        document = text_edit.document()
-        layout = document.documentLayout() if document is not None else None
-        if layout is None:
-            continue
-        document_size = layout.documentSize()
-        if document_size.height() > text_edit.viewport().height() + 4:
-            overflows.append(f"message_bubble_{index}")
+        for text_view in bubble.content_view.text_views:
+            document = text_view.document()
+            layout = document.documentLayout() if document is not None else None
+            if layout is None:
+                continue
+            if layout.documentSize().height() > text_view.viewport().height() + 4:
+                overflows.append(f"message_bubble_{index}")
+                break
 
     placeholder = assistant_composer_placeholder_evidence(panel)
     if placeholder["visible"] and not placeholder["fits"]:
@@ -957,13 +943,13 @@ def assistant_dock_evidence(dock: QWidget, panel: Any) -> dict[str, Any]:
             title_text_fits = bool(
                 title_text and required_width <= title_label.contentsRect().width() + 1
             )
-    scroll_area = getattr(panel, "scroll_area", None)
+    scroll_area = getattr(panel, "transcript_view", None)
     horizontal_scrollbar = (
         scroll_area.horizontalScrollBar() if scroll_area is not None else None
     )
     runtime_state = getattr(panel, "runtime_state_widget", None)
     runtime_actions = getattr(panel, "runtime_actions", None)
-    chat_content = getattr(panel, "chat_content_widget", None)
+    chat_content = panel.transcript_view.content_widget
     setup_action = getattr(panel, "setup_btn", None)
     retry_action = getattr(panel, "retry_runtime_btn", None)
     runtime_visible = bool(runtime_state is not None and runtime_state.isVisible())
@@ -1208,7 +1194,7 @@ def assistant_runtime_evidence(panel: Any) -> dict[str, Any]:
         "inline_state_visible": inline_state.isVisible(),
         "inline_state_location": (
             "content"
-            if inline_state.parentWidget() is panel.chat_content_widget
+            if inline_state.parentWidget() is panel.transcript_view.content_widget
             else "other"
         ),
         "inline_state_title": " ".join(panel.runtime_state_title.text().split()),

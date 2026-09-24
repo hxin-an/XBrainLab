@@ -88,7 +88,6 @@ def research_model_spec(model_id: str) -> LocalModelSpec:
                 bnb_4bit_quant_type="nf4",
                 bnb_4bit_compute_dtype="bfloat16",
                 runtime_context_tokens=8192,
-                supports_system_role=True,
                 supports_consecutive_user_roles=consecutive,
                 preferred_cuda_dtype="bfloat16",
                 source_url=f"https://huggingface.co/{repo}",

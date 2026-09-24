@@ -122,7 +122,8 @@ class LocalBackend:
                 "Research runtime requires a matching immutable model pin."
             )
         if self.config.load_in_4bit and (
-            type(spec.estimated_4bit_vram_gb) not in {int, float}
+            spec.estimated_4bit_vram_gb is None
+            or type(spec.estimated_4bit_vram_gb) not in {int, float}
             or not math.isfinite(spec.estimated_4bit_vram_gb)
             or spec.estimated_4bit_vram_gb <= 0
             or spec.bnb_4bit_quant_type not in {"fp4", "nf4"}
@@ -416,75 +417,27 @@ class LocalBackend:
                 self._unloading = False
 
     def _process_messages_for_template(self, messages: list) -> list:
-        """Processes messages for models with strict chat template rules.
+        """Preserve native policy/context boundaries and merge ordinary repeats.
 
-        Handles two common issues:
-
-        1. **No system role support** — merges system messages into the
-           first user message.
-        2. **Consecutive roles** — merges ordinary same-role messages, but
-           native Granite templates keep untrusted context and request separate.
-
-        Args:
-            messages: List of message dicts with ``role`` and ``content``.
-
-        Returns:
-            A new message list preserving native system/context boundaries
-            and merging legacy or ordinary same-role content.
-
+        All supported templates accept system messages. Keep untrusted context
+        separate where the pinned template accepts consecutive user roles.
         """
         if not messages:
             return messages
 
         spec = self._model_spec()
-        preserves_system_role = bool(spec and spec.supports_system_role)
-
-        # Step 1: Preserve native system-role support where the pinned model
-        # declares it; legacy strict templates receive the compatibility merge.
-        system_content = None
-        filtered = []
-        for msg in messages:
-            if msg.get("role") == "system" and not preserves_system_role:
-                system_content = msg.get("content", "")
-            else:
-                filtered.append(dict(msg))
-
-        # Step 2: Merge system into first user message
-        if system_content:
-            merged_system = False
-            for i, msg in enumerate(filtered):
-                if msg.get("role") == "user":
-                    filtered[i] = {
-                        "role": "user",
-                        "content": (
-                            f"[Instructions]\n{system_content}\n\n"
-                            f"[Query]\n{msg.get('content', '')}"
-                        ),
-                    }
-                    merged_system = True
-                    break
-            if not merged_system:
-                filtered.insert(
-                    0,
-                    {"role": "user", "content": f"[Instructions]\n{system_content}"},
-                )
-
-        # Step 3: Keep native context/request boundaries; merge ordinary repeats.
-        if not filtered:
-            return filtered
-
+        filtered = [dict(message) for message in messages]
         result = [filtered[0]]
         for msg in filtered[1:]:
             if msg.get("role") == result[-1].get("role"):
                 if (
-                    preserves_system_role
-                    and spec is not None
+                    spec is not None
                     and spec.supports_consecutive_user_roles
                     and msg.get("role") == "user"
                     and self._is_untrusted_context_message(result[-1])
                 ):
-                    # Both supported Granite templates accept consecutive user
-                    # roles. Do not fabricate a prose assistant response here.
+                    # Do not fabricate an assistant response between context
+                    # and request for templates that accept this boundary.
                     result.append(msg)
                     continue
                 # Same role - merge content
@@ -693,12 +646,10 @@ class LocalBackend:
             if options.do_sample:
                 generation_kwargs["temperature"] = options.temperature
                 generation_kwargs["top_p"] = options.top_p
-            stopping_criteria = self._build_stopping_criteria(
+            generation_kwargs["stopping_criteria"] = self._build_stopping_criteria(
                 transformers,
                 lease.cancel_event,
             )
-            if stopping_criteria is not None:
-                generation_kwargs["stopping_criteria"] = stopping_criteria
 
             errors: list[BaseException] = []
 
@@ -756,12 +707,10 @@ class LocalBackend:
         self,
         transformers_module: Any,
         cancel_event: Event,
-    ) -> Any | None:
+    ) -> Any:
         """Return a HuggingFace stopping criterion tied to backend cancellation."""
-        stopping_base = getattr(transformers_module, "StoppingCriteria", None)
-        stopping_list = getattr(transformers_module, "StoppingCriteriaList", None)
-        if not isinstance(stopping_base, type) or stopping_list is None:
-            return None
+        stopping_base = transformers_module.StoppingCriteria
+        stopping_list = transformers_module.StoppingCriteriaList
 
         def _cancel_requested(_self, input_ids, scores, **kwargs):
             _ = input_ids, scores, kwargs

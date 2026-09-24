@@ -7,7 +7,7 @@ and implement its abstract interface.
 from abc import ABC, abstractmethod
 from typing import Any
 
-from .result_contract import ToolExecutionResult
+from .result_contract import ToolCommandResult, UiRequest
 
 
 class BaseTool(ABC):
@@ -51,7 +51,7 @@ class BaseTool(ABC):
         return False
 
     @abstractmethod
-    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
+    def execute(self, study: Any, **kwargs) -> ToolCommandResult | UiRequest:
         """Executes the tool action.
 
         Args:

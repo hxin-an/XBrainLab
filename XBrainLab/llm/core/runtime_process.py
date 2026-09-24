@@ -258,7 +258,6 @@ class LocalRuntimeProcessOwner:
     runtime Retry must construct a fresh owner.
     """
 
-    uses_owned_process = True
     _LIVE_SETTING_FIELDS = (
         "temperature",
         "top_p",
@@ -298,7 +297,9 @@ class LocalRuntimeProcessOwner:
 
     @property
     def active_backend(self) -> LocalRuntimeProcessOwner | None:
-        """Compatibility readiness marker used by the worker switch path."""
+        """Report readiness separately from retained process ownership."""
+        if self._close_requested.is_set():
+            return None
         return self if self._initialized and self.is_alive else None
 
     @property
@@ -364,15 +365,6 @@ class LocalRuntimeProcessOwner:
         finally:
             self._loading.clear()
 
-    def switch_backend(self, mode: str) -> None:
-        """Replace the process after the worker updates this owner's config."""
-        del mode
-        if not self.close(wait_timeout=DEFAULT_PROCESS_CLOSE_GRACE_SECONDS):
-            raise RuntimeError("The previous local model process did not close.")
-        self._restart_required = False
-        self._closed = False
-        self.load_model()
-
     def generate_stream(
         self,
         messages: list[dict[str, Any]],
@@ -380,9 +372,8 @@ class LocalRuntimeProcessOwner:
         profile: GenerationProfile,
     ) -> Iterator[str]:
         generation_id = self._begin_generation()
-        command_connection = self._require_command_connection()
-        command_connection.send(
-            _RuntimeCommand(
+        try:
+            command = _RuntimeCommand(
                 kind="generate",
                 generation_id=generation_id,
                 messages=tuple(dict(message) for message in messages),
@@ -392,8 +383,14 @@ class LocalRuntimeProcessOwner:
                     for field_name in self._LIVE_SETTING_FIELDS
                 ),
             )
-        )
-        try:
+            try:
+                self._require_command_connection().send(command)
+            except (OSError, EOFError, LocalRuntimeRestartRequiredError) as exc:
+                self._restart_required = True
+                self._initialized = False
+                raise LocalRuntimeRestartRequiredError(
+                    "The local model process command channel is unavailable."
+                ) from exc
             while True:
                 event = self._next_generation_event(generation_id)
                 if event.kind == "chunk":
@@ -435,6 +432,7 @@ class LocalRuntimeProcessOwner:
             return True
         grace = max(0.0, float(wait_timeout))
         self._close_requested.set()
+        self._initialized = False
         if self._process is not None and not self._transport_ready.wait(grace):
             return False
         if self._active_generation_id is not None:
@@ -509,7 +507,11 @@ class LocalRuntimeProcessOwner:
                 raise LocalRuntimeRestartRequiredError(
                     "The local model process must be recreated."
                 )
-            if not self._initialized or not self.is_alive:
+            if (
+                self._close_requested.is_set()
+                or not self._initialized
+                or not self.is_alive
+            ):
                 self._restart_required = True
                 raise LocalRuntimeRestartRequiredError(
                     "The local model process is unavailable."

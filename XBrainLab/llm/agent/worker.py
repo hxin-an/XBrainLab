@@ -15,9 +15,7 @@ from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.runtime_process import (
     EngineFactory,
     LocalRuntimeLoadError,
-)
-from XBrainLab.llm.core.runtime_process import (
-    LocalRuntimeProcessOwner as LLMEngine,
+    LocalRuntimeProcessOwner,
 )
 from XBrainLab.llm.core.runtime_selection import AssistantRuntimeLaunchSpec
 from XBrainLab.llm.tools.result_contract import (
@@ -96,7 +94,7 @@ class GenerationThread(QThread):
         """Initializes the GenerationThread.
 
         Args:
-            engine: The ``LLMEngine`` instance to use for generation.
+            engine: The ``LocalRuntimeProcessOwner`` instance to use for generation.
             request: Typed request containing messages and decoding policy.
 
         """
@@ -132,9 +130,10 @@ class RuntimeLoadThread(QThread):
     load_succeeded = pyqtSignal(object)
     load_failed = pyqtSignal(object, object)
 
-    def __init__(self, engine: LLMEngine):
+    def __init__(self, engine: LocalRuntimeProcessOwner):
         super().__init__()
         self.engine = engine
+        self.persist_selection = False
 
     def run(self) -> None:
         try:
@@ -170,7 +169,7 @@ class AgentWorker(QObject):
     Attributes:
         error: Signal emitted for runtime/model lifecycle errors.
         log: Signal emitted with status/log messages.
-        engine: The underlying ``LLMEngine`` instance (``None`` until initialized).
+        engine: The owned local process, or ``None`` before allocation/after close.
         generation_thread: The currently running ``GenerationThread``, if any.
 
     """
@@ -195,7 +194,7 @@ class AgentWorker(QObject):
         super().__init__()
         self._engine_factory = engine_factory
         self._generation_config_loader = generation_config_loader
-        self.engine: LLMEngine | None = None
+        self.engine: LocalRuntimeProcessOwner | None = None
         self.generation_thread: GenerationThread | None = None
         self.runtime_load_thread: RuntimeLoadThread | None = None
         self.timeout_timer: QTimer | None = None
@@ -244,6 +243,19 @@ class AgentWorker(QObject):
             return
 
         activation_id = self._activation_id(launch_spec)
+        if self.runtime_load_thread is not None:
+            return
+        if self.engine is not None and self.engine.active_backend is None:
+            if not self._close_engine(
+                self.engine, wait_ms=GENERATION_THREAD_SHUTDOWN_WAIT_MS
+            ):
+                self._publish_runtime(
+                    AssistantRuntimePhase.FAILED,
+                    error=SAFE_UNEXPECTED_FAILURE_MESSAGE,
+                    activation_id=activation_id,
+                )
+                return
+            self.engine = None
         if self.engine:
             if activation_id > 0:
                 active = self._runtime_launch_spec
@@ -283,25 +295,22 @@ class AgentWorker(QObject):
             )
             self.log.emit(redact_public_text(launch_spec.selection_detail))
 
-        candidate_engine: LLMEngine | None = None
+        candidate_engine: LocalRuntimeProcessOwner | None = None
         try:
             logger.info("Initializing LLM Engine...")
             self.log.emit("Loading AI Model...")
 
             candidate_engine = (
-                LLMEngine(config, engine_factory=self._engine_factory)
+                LocalRuntimeProcessOwner(config, engine_factory=self._engine_factory)
                 if self._engine_factory is not None
-                else LLMEngine(config)
+                else LocalRuntimeProcessOwner(config)
             )
             self.engine = candidate_engine
             self._start_runtime_load(candidate_engine)
         except Exception as exc:
             failure_message = _runtime_load_failure_message(exc)
-            close = getattr(candidate_engine, "close", None)
-            if callable(close):
-                with contextlib.suppress(Exception):
-                    close()
-            self.engine = None
+            if candidate_engine is not None and self._close_engine(candidate_engine):
+                self.engine = None
             self._publish_runtime(
                 AssistantRuntimePhase.FAILED,
                 error=failure_message,
@@ -309,7 +318,7 @@ class AgentWorker(QObject):
             )
             self.error.emit(f"Model Load Error: {failure_message}")
 
-    def _start_runtime_load(self, engine: LLMEngine) -> None:
+    def _start_runtime_load(self, engine: LocalRuntimeProcessOwner) -> None:
         """Track one asynchronous process load while retaining close ownership."""
         thread = RuntimeLoadThread(engine)
         self.runtime_load_thread = thread
@@ -326,9 +335,25 @@ class AgentWorker(QObject):
         if payload is not self.runtime_load_thread or payload.engine is not self.engine:
             return
         if self._shutdown_requested:
-            self._close_engine(payload.engine)
-            self.engine = None
+            if self._close_engine(payload.engine):
+                self.engine = None
             return
+        if payload.persist_selection:
+            try:
+                saved = payload.engine.config.save_to_file()
+            except Exception as exc:
+                saved = False
+                safe_unexpected_failure(
+                    logger,
+                    exc,
+                    boundary="assistant_worker",
+                    operation="persist_switched_model",
+                )
+            if not saved:
+                self.error.emit(
+                    "Model switched for this session, "
+                    "but the setting could not be saved."
+                )
         self._publish_runtime(
             AssistantRuntimePhase.READY,
             activation_id=self._runtime_activation_id,
@@ -352,8 +377,9 @@ class AgentWorker(QObject):
             or thread_payload.engine is not self.engine
         ):
             return
-        if self._shutdown_requested:
+        if self._close_engine(thread_payload.engine):
             self.engine = None
+        if self._shutdown_requested:
             return
         error = (
             error_payload
@@ -361,8 +387,6 @@ class AgentWorker(QObject):
             else RuntimeError("Local model process failed to load.")
         )
         failure_message = _runtime_load_failure_message(error)
-        self._close_engine(thread_payload.engine)
-        self.engine = None
         self._publish_runtime(
             AssistantRuntimePhase.FAILED,
             error=failure_message,
@@ -377,13 +401,17 @@ class AgentWorker(QObject):
         _retire_finished_thread(thread)
 
     @staticmethod
-    def _close_engine(engine: object, *, wait_ms: int = 0) -> bool:
-        close = getattr(engine, "close", None)
-        if not callable(close):
-            return True
-        if getattr(engine, "uses_owned_process", False) is True:
-            return close(wait_timeout=max(0, int(wait_ms)) / 1000.0) is not False
-        return close() is not False
+    def _close_engine(engine: LocalRuntimeProcessOwner, *, wait_ms: int = 0) -> bool:
+        try:
+            return engine.close(wait_timeout=max(0, int(wait_ms)) / 1000.0) is not False
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_worker",
+                operation="close_runtime",
+            )
+            return False
 
     def _cleanup_runtime_load(self, *, wait_ms: int) -> bool:
         """Stop an in-flight process load through the exact owned process."""
@@ -467,12 +495,12 @@ class AgentWorker(QObject):
 
     def _cancel_backend_generation(self, *, wait_ms: int) -> bool:
         """Request backend cancellation and preserve an explicit failure."""
-        cancel = getattr(self.engine, "cancel_generation", None)
-        if not callable(cancel):
+        engine = self.engine
+        if engine is None:
             return True
         try:
             return bool(
-                cancel(wait_timeout=max(0, int(wait_ms)) / 1000 if wait_ms > 0 else 0.0)
+                engine.cancel_generation(wait_timeout=max(0, int(wait_ms)) / 1000.0)
             )
         except Exception as exc:
             safe_unexpected_failure(
@@ -484,21 +512,15 @@ class AgentWorker(QObject):
             return False
 
     def _engine_requires_restart(self) -> bool:
-        return (
-            self.engine is not None
-            and getattr(self.engine, "restart_required", False) is True
-        )
+        return self.engine is not None and self.engine.restart_required is True
 
     def _retire_restart_required_engine(self) -> None:
         """Fence a terminated model process and publish retry-only readiness."""
         engine = self.engine
         if engine is None:
             return
-        close = getattr(engine, "close", None)
-        if callable(close):
-            with contextlib.suppress(Exception):
-                self._close_engine(engine)
-        self.engine = None
+        if self._close_engine(engine):
+            self.engine = None
         self._publish_runtime(
             AssistantRuntimePhase.FAILED,
             error=RUNTIME_RESTART_REQUIRED_MESSAGE,
@@ -531,19 +553,8 @@ class AgentWorker(QObject):
         if running:
             backend_stopped = self._cancel_backend_generation(wait_ms=wait_ms)
             thread.requestInterruption()
-            wait_for_thread = getattr(thread, "wait", None)
-            if (
-                backend_stopped
-                and getattr(self.engine, "uses_owned_process", False) is True
-                and callable(wait_for_thread)
-            ):
-                wait_completed = bool(wait_for_thread(GENERATION_THREAD_EXIT_WAIT_MS))
-            elif (
-                wait_ms > 0
-                and not isinstance(thread, QThread)
-                and callable(wait_for_thread)
-            ):
-                wait_completed = bool(wait_for_thread(max(0, int(wait_ms))))
+            if backend_stopped:
+                wait_completed = bool(thread.wait(GENERATION_THREAD_EXIT_WAIT_MS))
         if self._engine_requires_restart():
             self._retire_restart_required_engine()
         stopped = backend_stopped and (not running or wait_completed)
@@ -616,16 +627,13 @@ class AgentWorker(QObject):
 
     @staticmethod
     def _require_generation_engine(
-        engine: LLMEngine | None,
-    ) -> LLMEngine:
+        engine: LocalRuntimeProcessOwner | None,
+    ) -> LocalRuntimeProcessOwner:
         if engine is None:
             raise AssistantGenerationAdmissionError(
                 "Failed to initialize LLM engine.",
             )
-        if (
-            getattr(engine, "uses_owned_process", False) is True
-            and engine.active_backend is None
-        ):
+        if engine.active_backend is None:
             if engine.restart_required:
                 raise AssistantGenerationAdmissionError(
                     RUNTIME_RESTART_REQUIRED_MESSAGE,
@@ -814,12 +822,7 @@ class AgentWorker(QObject):
             # Product runtimes get a cooperative grace followed by owned-process
             # termination. The parent generation thread is still fenced until
             # Qt confirms that this exact correlated request has exited.
-            wait_ms = (
-                GENERATION_THREAD_SHUTDOWN_WAIT_MS
-                if getattr(self.engine, "uses_owned_process", False) is True
-                else 0
-            )
-            self._cleanup_generation_thread(wait_ms=wait_ms)
+            self._cleanup_generation_thread(wait_ms=GENERATION_THREAD_SHUTDOWN_WAIT_MS)
 
     def _on_generation_chunk(self, generation_id: int, chunk: str) -> None:
         """Forward output only for the worker's still-active generation."""
@@ -869,12 +872,12 @@ class AgentWorker(QObject):
             self.error.emit(f"Switch Failed: {message}")
             return
         activation_id = self._activation_id(launch_spec)
-        if self._generation_is_active():
+        if self._generation_is_active() or self.runtime_load_thread is not None:
             message = "Wait for the active generation to finish or stop it."
             self._publish_runtime(
                 AssistantRuntimePhase.FAILED,
                 error=message,
-                launch_spec=launch_spec,
+                launch_spec=self._runtime_launch_spec or launch_spec,
                 activation_id=activation_id,
             )
             self.error.emit(f"Switch Failed: {message}")
@@ -886,92 +889,24 @@ class AgentWorker(QObject):
         )
         self.log.emit(f"Switching to {redact_public_text(launch_spec.model_id)}...")
 
-        engine = self.engine
-        if engine is None:
-            config = launch_spec.build_config()
-            try:
-                config.save_to_file()
-            except Exception as exc:
-                failure = safe_unexpected_failure(
-                    logger,
-                    exc,
-                    boundary="assistant_worker",
-                    operation="save_model_selection",
-                )
-                self._publish_runtime(
-                    AssistantRuntimePhase.FAILED,
-                    error=failure.message,
-                    launch_spec=launch_spec,
-                    activation_id=activation_id,
-                )
-                self.error.emit(f"Switch Failed: {failure.message}")
-                return
-            self.initialize_agent(launch_spec)
-            return
-
-        old_config = engine.config
-        old_launch_spec = self._runtime_launch_spec
-        new_config = launch_spec.build_config()
-
-        try:
-            self._runtime_launch_spec = launch_spec
-            self._runtime_activation_id = activation_id
-            self._publish_runtime(
-                AssistantRuntimePhase.LOADING,
-                activation_id=activation_id,
-            )
-            engine.config = new_config
-            engine.switch_backend(launch_spec.backend_mode)
-        except Exception as exc:
-            failure = safe_unexpected_failure(
-                logger,
-                exc,
-                boundary="assistant_worker",
-                operation="switch_backend",
-            )
-            engine.config = old_config
-            if engine.active_backend is None:
-                with contextlib.suppress(Exception):
-                    engine.close()
-                self.engine = None
-            self._runtime_launch_spec = (
-                launch_spec if self.engine is None else old_launch_spec
-            )
+        if self.engine is not None and not self._close_engine(
+            self.engine, wait_ms=GENERATION_THREAD_SHUTDOWN_WAIT_MS
+        ):
             self._publish_runtime(
                 AssistantRuntimePhase.FAILED,
-                error=failure.message,
-                launch_spec=launch_spec,
+                error=SAFE_UNEXPECTED_FAILURE_MESSAGE,
+                launch_spec=self._runtime_launch_spec or launch_spec,
                 activation_id=activation_id,
             )
-            self.error.emit(f"Switch Failed: {failure.message}")
+            self.error.emit(f"Switch Failed: {SAFE_UNEXPECTED_FAILURE_MESSAGE}")
             return
 
-        try:
-            new_config.save_to_file()
-        except Exception as exc:
-            safe_unexpected_failure(
-                logger,
-                exc,
-                boundary="assistant_worker",
-                operation="persist_switched_model",
-            )
-            self.error.emit(
-                "Model switched for this session, but the setting could not be saved.",
-            )
-
-        if launch_spec.fallback_used:
-            self.log.emit(redact_public_text(launch_spec.selection_detail))
-        self.log.emit(
-            f"Switched to local model: {redact_public_text(launch_spec.model_id)}"
-        )
-        self._publish_runtime(
-            AssistantRuntimePhase.READY,
-            activation_id=activation_id,
-        )
-        logger.info(
-            "Model switch successful to local model %s",
-            redact_public_text(launch_spec.model_id),
-        )
+        # Replacement uses the same asynchronous load as startup, so queued
+        # shutdown remains available while the new process loads its model.
+        self.engine = None
+        self.initialize_agent(launch_spec)
+        if self.runtime_load_thread is not None:
+            self.runtime_load_thread.persist_selection = True
 
     def shutdown(self, wait_ms: int = GENERATION_THREAD_SHUTDOWN_WAIT_MS) -> bool:
         """Stop generation work and release the loaded local model backend."""
@@ -1022,9 +957,11 @@ class AgentWorker(QObject):
             device_fallback_reason = redact_public_text(
                 launch_spec.device_fallback_reason
             )
+        initialized = self.engine is not None and self.engine.active_backend is not None
         snapshot = AssistantRuntimeSnapshot(
             phase=self._runtime_phase,
-            initialized=self.engine is not None,
+            initialized=initialized,
+            cleanup_pending=self.engine is not None and not initialized,
             backend_mode=backend_mode,
             model_id=model_id,
             requested_model_id=requested_model_id,

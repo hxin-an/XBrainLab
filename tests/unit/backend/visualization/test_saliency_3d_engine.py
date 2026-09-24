@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 import XBrainLab.backend.visualization.saliency_3d_engine as saliency_3d_module
+from XBrainLab.backend.application.saliency_render import SaliencyRenderData
 from XBrainLab.backend.visualization.saliency_3d_engine import Saliency3DEngine
 
 
@@ -77,19 +78,30 @@ def _process_timed_saliency(
     engine.head_mesh = MagicMock()
     engine.head_mesh.bounds = (0.0, 1.0, 0.0, 1.0, 0.0, 1.0)
     engine.brain_mesh = MagicMock()
-    eval_record = type(
-        "EvalRecord",
-        (),
-        {"gradient": {0: np.ones((2, 1, sample_count), dtype=dtype)}},
-    )()
     epoch_data = _TimedEpochData(
         sample_count=sample_count,
         sfreq=sfreq,
         tmin=tmin,
     )
 
-    engine.process_data(eval_record, epoch_data, "left")
+    data = _render_data(epoch_data, np.ones((2, 1, sample_count), dtype=dtype))
+    engine.process_data(data, "left")
     return engine
+
+
+def _render_data(epoch_data, values):
+    return SaliencyRenderData(
+        method="Gradient",
+        saliency_by_class={0: values},
+        class_map=((0, "left"),),
+        event_ids=epoch_data.event_id,
+        channel_names=tuple(epoch_data.get_channel_names()),
+        channel_positions=tuple(map(tuple, epoch_data.get_montage_position())),
+        sfreq=epoch_data.get_model_args()["sfreq"]
+        if isinstance(epoch_data, _TimedEpochData)
+        else 100.0,
+        tmin=getattr(epoch_data, "tmin", 0.0),
+    )
 
 
 def test_3d_static_mesh_assets_are_loaded_and_scaled_once(
@@ -273,18 +285,14 @@ def test_3d_process_data_rejects_channel_identity_count_mismatch(
 ) -> None:
     monkeypatch.setattr(Saliency3DEngine, "_load_models", lambda _self: None)
     engine = Saliency3DEngine()
-    eval_record = type(
-        "EvalRecord",
-        (),
-        {"gradient": {0: np.ones((2, saliency_channels, 32))}},
-    )()
     epoch_data = _ChannelEpochData(
         names_count=names_count,
         positions_count=positions_count,
     )
 
+    data = _render_data(epoch_data, np.ones((2, saliency_channels, 32)))
     with pytest.raises(ValueError, match="3D channel identity mismatch"):
-        engine.process_data(eval_record, epoch_data, "left")
+        engine.process_data(data, "left")
 
     assert engine.saliency is None
 
@@ -369,14 +377,14 @@ def test_3d_trial_aggregation_preserves_cancellation_sensitive_mean(
         lambda _positions: saliency_cap,
     )
     values = np.array([1e8, 1.0, -1e8], dtype=np.float32).reshape(3, 1, 1)
-    eval_record = type("EvalRecord", (), {"gradient": {0: values}})()
     epoch_data = _TimedEpochData(sample_count=1, sfreq=128.0, tmin=0.0)
     engine = Saliency3DEngine()
     engine.head_mesh = MagicMock()
     engine.head_mesh.bounds = (0.0, 1.0, 0.0, 1.0, 0.0, 1.0)
     engine.brain_mesh = MagicMock()
 
-    engine.process_data(eval_record, epoch_data, "left")
+    data = _render_data(epoch_data, values)
+    engine.process_data(data, "left")
 
     assert engine.saliency is not None
     assert engine.saliency[0, 0] == pytest.approx(1.0 / 3.0)

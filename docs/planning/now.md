@@ -1,9 +1,635 @@
 # XBrainLab Now
 
-最後更新：`2026-09-23`
+最後更新：`2026-09-24`
 
-## 本輪狀態
+## Active — 統一產品／研究工程基線，再打磨 Agent 部件
 
+2026-09-24 使用者希望在第一版實驗前，逐一討論與打磨整個 Agent 部件，而非再次只按
+程式檔案清理。範圍包含用途、內容、方法、操作體驗、實作、測試、腳本及研究可觀測性；
+RAG 作法與庫內數量等基本合理性也須查證，不能把目前做法或工程測試通過當成設計合理。
+最初僅制定計畫與唯讀審查；2026-09-24 使用者追加授權由本代理統一整合產品／實驗兩線，
+先建立可靠共同基線，再分回產品部件與研究推進。允許本機checkpoint、整合候選及直接必要
+的相容修理／補測；不自行發布PR、merge main、下載模型或啟動正式實驗，不更改公開工具、
+可見UI、研究題庫／判分政策。下面各部件先討論，再依已確認的方案授權施工；計畫不是
+把所有候選技術都批准實作。前輪內部清理的結果與限制保留在下節，不重做或改標研究證據。
+
+使用者隨後澄清：本輪目標是先建立可靠基礎，完成後才開始跑 Development 改善。
+不能把必要的 RAG／tool call／prompt 內容與方法打磨提前算成 Development，也不能
+以「這應留給實驗」為由，讓已知基礎缺口進入 Development。部件小驗證是準備的證據，
+不是正式 Development 成績；正式研究仍須有明確的起始版本與資料使用界線。
+
+### 目標、基線與文件分工
+
+- **目標**：形成一套能說清楚各部件的目的、輸入輸出、責任與取捨，且能被可靠測量的
+  第一版工程候選；不是先追求最高分、最少行數或全產品零缺陷。
+- **版本**：整合 worktree 為 `XBrainLab-agent-baseline`／`integration/agent-baseline`，
+  以研究線 clean `293f1890` 為起點，帶入產品 checkpoint `8c50bee9`；原兩線保留。
+  這不是 main 已發布基線，也不因任一線先前通過就稱共同基線已驗收。
+  本輪先固定產品source、runtime與研究observer／runner相容的**共同工程基線**，再由
+  兩線從同一精確版本接續。這不表示下方六塊設計／內容已打磨完成，也不自動成為
+  正式研究起始配置；後續部件準備與研究條件仍依各自已確認的範圍、版本及授權驗收。
+  該版本與既有研究 B0 的命名／比較關係，在啟動研究前核對；舊 B0 與其證據不覆寫，
+  不只記 HEAD 而漏掉 dirty diff。新授權允許必要本機checkpoint／整合worktree，
+  不備份權重、不覆寫原實驗產物；兩線原始來源保持可恢復。
+- **接續順序**：**共同工程基線整合／固定版本 → 兩線接續部件準備與研究流程核對 →
+  確認研究起始條件 → 依授權執行研究**。後續Development／Validation／凍結／Test
+  的題庫與測量門檻以
+  [研究規格](../validation/thesis_protocol.md)為準；下方M0–M6只保留歷史，不重新派工。
+  必要pilot驗實驗流程與成本，不代替部件準備，也不默認重跑已完成的歷史pilot／d0。
+  前置工作可查證方法、補足或清理 RAG 內容、釐清工具／prompt、做有界小驗證與修缺陷；
+  不能因觸及這些部件就稱已開始 Development。Development 是在固定可靠起點後，
+  按明定研究問題與搜尋預算做系統性改善比較，另保存候選與成績。
+- **文件**：本節是本線順序／狀態／next step 的唯一入口；實作事實歸 architecture/current，
+  公開行為決策歸 target，題數／split／判分／模型矩陣歸 thesis_protocol。
+  研究線最新入口與完成狀態已向 clean `293f1890` 核對，不以舊里程碑推斷題目尚未完成，
+  不讀取sealed Validation／Test；跨線整合統一由本代理協調，原研究worktree先唯讀保留。
+
+### 共同工程整合已完成／下一步
+
+產品 `8c50bee9` 與研究 `293f1890` 的必要改動已在 `integration/agent-baseline` 合成，
+直接接合驗證與獨立覆核通過；結果、初次失敗及證據限制由
+[Current](../current.md#assistant-integration-baseline)擁有。原兩線與歷史B0／DEV封存保留，
+不更改scorer／題庫、不恢復失效產品欄位或另建owner。這是本機工程scope完成，不是main發布、
+release handoff-ready或六部件全部通過。
+
+接續以此整合分支的精確clean commit為共同起點，而不是繼續各自舊HEAD：產品線按下方順序
+先討論Tool call／操作能力，再逐塊打磨；研究線先核對封存入口與起始配置，不自動重跑歷史
+pilot／d0或開始新DEV／VALID／TEST。任何改變研究條件的後續部件改動另立candidate，
+舊結果不換標。公開工具、可見UI、模型／RAG／prompt政策改變仍須先確認；原worktree、
+使用者settings及資料不刪除，也沒有push／PR／merge授權。
+
+### 第一步：先確認目前架構與品質
+
+使用者再次明定：更進一步前須先確認現況。這是逐部件討論的共同起點，不直接啟動新一轮
+大改或假定每塊都有問題。前輪已核實的責任分析與仍適用證據沿用；只補本次產品部件視角
+尚未回答的問題與來源已變更的證據，不為新計畫重跑等價全套。
+
+- **架構現況**：用一條真實要求串起工具公開、context／RAG、模型輸出、驗證、確認、
+  Command／GUI交接與結果回報，查責任是否清楚、是否重複決策、是否存在不必要等待或轉接。
+- **設計與內容品質**：核對工具契約、prompt的資訊／規則、RAG內容與方法是否足以承擔
+  各自目的；查缺項、矛盾、過期、重複及資料來源，不能只以可執行或沒有exception判合格。
+- **實作與證據品質**：檢查直接相關產品碼、tests／fixtures、scripts／設定／文件的一致性；
+  大檔與過度設計、真正行為oracle、mock邊界、失敗／取消／重跑與可重現性一起判斷。
+  區分已驗、未驗與失效證據，不把passing數當coverage，也不以審查取代必要動態驗證。
+- **交付與判斷**：先給目前系統的簡明評價，每塊列「已有證據支持保留」「進入打磨前需修」
+  或「尚待查證」及其依據；獨立reviewer核對重要結論、重大缺口與保留理由，主代理負責
+  最後核實。未查清項不算通過，不承諾永不出錯，也不因行數大就預設要拆。
+- **出口**：架構／品質現況與已知缺口明確後，逐塊討論處置；共同工程基線先保護接合
+  可靠性，後續仍須在核准的研究起點前處置必要內容／方法缺口，不把基礎修理當調優成績。
+
+### 每塊固定的討論與施工節奏
+
+1. **我先準備現況**：從正式入口追到實際模型輸入、輸出、操作與錯誤；提供具體例子，
+   清楚分開已實作、設計目標及未知項，不只給 class／檔案圖。
+2. **補查依據與內容盤點**：查相關原始論文／官方技術文件，記適用情境與限制；核對
+   實際內容、分布、重複與維護來源。分開標示基本工程要求、可選方法與待驗假設；
+   不因某技術流行就導入，也不把外部參數／效果直接套成本專案標準。
+3. **一起做一組有界決策**：每次一個部件，提出保留／調整／刪除選项、理由、成本與
+   可觀察的驗收方式；集中討論會影響使用行為或研究的選擇，不逐個 helper 詢問。
+   保留現有 UI 為預設；可見行為、public tool contract 或研究條件改變先明確確認。
+4. **確認後施工與小驗證**：維持既有 owner／Command 路徑；同步處理直接 tests、fixtures、
+   scripts、文件與無用能力。先 characterization，真 defect 先 RED，再做 focused integration。
+   Engineering checks 與有界模型小驗證使用明確標記的公開工程樣例／準備用案例並保存軌跡，
+   不冒稱 Development 實驗、不讀 Validation／Test 除錯。模型下載／執行仍依實際授權與
+   資源限制；安全／功能與內容缺口須在可靠基礎驗收前修好，不推給後續研究。
+5. **獨立覆核後銜接下一塊**：review 實際 diff、內容與證據，同時檢查未改部分的保留理由；
+   無 blocker 才記本塊完成。若需跨塊修理，記清直接依賴，不把一塊完成當整體完成。
+   保留無新證據不重開決策的原則；每塊不另要求完整手測或 merge。
+
+### 建議順序與每塊出口
+
+順序是討論提案，不把表內候選改法當核准契約。各塊均沿用上述五步。
+
+| 部件 | 要一起釐清的內容 | 本塊出口與驗證 |
+| --- | --- | --- |
+| 1. Tool call／操作能力 | 現行工具如何區分開窗、填參數、直接操作、導覽與回覆；名稱／描述／schema是否清楚；缺資訊、狀態不可用、確認與成功各代表什麼；是否有重疊或缺口。 | 用代表性原話→實際公開工具→模型決策→backend／UI結果說清楚；逐工具契約與正常、缺資訊、不應操作、失敗邊界可核對，不能把開窗／排程當任務完成。 |
+| 2. Context／prompt／歷史 | 模型實際看到哪些狀態、工具、規則、上一輪內容；哪些是權威、哪些只是參考；是否重複、矛盾、過期或超出 token budget。 | 保存可讀的最終模型輸入樣本；檢查資訊來源、順序、截斷、無資料／長輸入與狀態改變；不讓評分答案進入 prompt。 |
+| 3. RAG 與知識／範例庫 | 它究竟補什麼；schema已足夠的情況是否需要檢索；資料來源、條目粒度、分布與更新；embedding、關鍵字混合、top-k、排序、token成本與失敗行為各有何依據。 | 盤點實際內容與獨立情境，不用總筆數冒充涵蓋；以獨立於庫內原文的準備用查詢核對相關條目命中、錯誤／無關取回、缺適用資料與延遲，修好已知內容與檢索缺口。基礎可用性小驗證不冒稱正式效益；改善幅度與一般化效果留待可靠基礎完成後的實驗回答。 |
+| 4. 回合控制、確認與使用者回饋 | 一回合何時完成；缺資訊接續、格式修復、backend失敗、人工取消與Stop有何差別；忙碌、等待人工、錯誤與再次操作如何呈現。 | 正常與故障路徑含遲到／重複回覆、拒絕確認、關閉／重啟；驗副作用恰一次、舊回覆不覆蓋新狀態，重試不重送已執行操作。UI有變才做局部預覽確認，不重開已接受排版。 |
+| 5. 模型與 runtime | 精確模型／模板與設定、載入／切換、離線資源、取消／釋放、冷啟動與逐題等待如何區分；現行產品與研究模型支援是否一致。 | 核对 pinned identity與可行性，無silent fallback；依授權做有界真模型 smoke及失敗／清理檢查。時間按載入、RAG準備、決策、操作分開；未量測不承諾加速，不為比較一次載入全部權重。 |
+| 6. Evaluator／評估題庫／實驗腳本 | 和研究線核對已備妥題目、family分組與適用工具；scorer是否誤判、觀測是否貼近真產品；單一入口如何選實驗、保存輸入／輸出／失敗並重現。 | 評估oracle／scorer與產品路徑對齐；正常、錯誤、不操作與未完成不混算，先做判分正反例與人工抽核。沿用既有研究規格，不另定題數或擴張矩陣；正式Test只由保管者核實封存。 |
+
+### RAG 庫數量與評估題數不混為一談
+
+- **RAG corpus**：數原始來源、有效條目、重複／近重複及各工具／stage／情境覆蓋，
+  不把改寫筆數當獨立知識。補內容由缺口驅動；top-k、混合搜尋或reranker均待具體證據，
+  不是預先承諾導入。避免把失效工具、其他狀態的例子或錯誤參數當可執行指示。
+- **評估題庫**：依 protocol 核對 family、類別與split的數量和獨立性；是否足以回答研究問題，
+  要看每類／每工具的樣本與不確定性，不能只看總題數或把repeats算成新題。
+  已公開工程例子不得改標封存Test，正式測試題／oracle不得回填RAG；Validation不參與內容調整。
+- **外部依據起點**：[Contextual Retrieval](https://www.anthropic.com/engineering/contextual-retrieval)
+  用於理解chunk／混合搜尋／rerank的取捨；[RAG evaluation](https://learn.microsoft.com/en-us/azure/foundry/concepts/evaluation-evaluators/rag-evaluators)
+  用於區分檢索與最終輸出評估。它們不是本產品效果證據，也沒有在此核准任何最低條目數。
+
+### 全部件整合、停止條件與接續
+
+- 每塊都回答前輪固定的四項：實作是否過度複雜、測試是否真保護行為、不拆是否有具體
+  工程理由、是否涵蓋原始完整範圍；這次另確認部件目的／內容／方法合理性，不只審程式碼。
+- 全部六塊的已確認改善完成、已知重要缺陷與阻擋證據缺口處置後，做一次跨部件獨立覆核，
+  核對相同候選的適用CI／真模型／Windows gates，再集中一次端到端手測。
+  各塊的可見設計確認只用局部預覽，不要求每次全套重測；需要修理只驗受影響及必要相鄰流程。
+- 凍結第一版時保存精確source（含所需程式碼備份身分）、模型／模板／prompt、工具契約、
+  RAG內容／索引、設定／環境、題庫／scorer身分及可重跑入口；工程版本與研究B0不混稱。
+  不默認複製全部資料或權重，也不把目前尚未實作的runner命令寫成已可執行。
+- 可靠基礎驗收完成後，核對既有題庫與測量就緒門檻，再依授權跑pilot → 有界Development →
+  Validation選版 → 凍結正式配置 → Test。Development不得先於可靠基礎驗收啟動；
+  保存負結果，不以分數漂亮才結束，也不把基礎功能修好宣稱為研究改善效果。
+- 只對新證據、具體缺陷、契約衝突或必要依賴重開已定部件；非阻擋改善最多列三項後續，
+  不無限追加方法。壓縮不丟失決策；每次對話更新本節當前塊與next step，不另寫平行worklog。
+- **目前狀態／Next**：第一輪架構／品質核對與最新user來源修理已完成；目前先完成上方
+  共同工程基線整合，再從 **Tool call** 的代表情境討論六塊打磨。未下載／載入模型、
+  未讀sealed Validation／Test；研究線最新工程能力已核對，但不等於共同基線已驗收。
+- **本次文件驗收**：與既有研究規格的分工／基線／順序／授權不衝突，連結、guidance audit、
+  strict docs build通過即交付討論計畫；不執行模型評測或以文件通過宣稱產品就緒。
+
+### 初步審查結論與仍待討論的部件
+
+- **可保留**：18個正式工具沿用同一backend publication、Host驗證、Command／GUI
+  outcome及correlation邊界；RAG是英文操作範例檢索，不是EEG文件知識庫。沒有證據支持
+  新增執行owner或重寫整套架構。
+- **已修復的來源缺陷**：最新user以 `System:`／`Tool Output:` 開頭曾被誤排除，
+  模型輸入與參數來源驗證回退上一要求；6案RED包含真Command錯用舊128Hz而非當前64Hz。
+  `8c50bee9` 以既有history的明確 `internal` role隔離host trace，保留真人原文；
+  outbound仍只有既有模型roles。331案直接回歸與22案runner回歸、獨立review通過。
+  這是model-free工程修理，沒有重跑模型或把舊研究結果換標。
+- **本線契約／RAG待釐清**：target對select_channels stage有矛盾、resample的number
+  與實作integer不一致、repair範圍與目前terminal分界不同；不自動放寬或增加重試。
+  corpus為72筆／18工具各4筆／29種tool+parameters組合，均是單步肯定正例。
+  公開36正例probe至少1筆與corpus原文完全重合，不能沿用文字獨立性主張；六題
+  diagnostic缺實質相關性oracle。既有34/36僅是舊檢索工程結果，不是本輪Agent成績。
+  target canonical/top-2與目前semantic/top-3仍待決，未批准擴库或新方法。
+- **評估腳本結論限於本線副本**：本線舊runner的dirty內容身分、完整capture、真操作
+  outcome與關鍵字scorer有證據限制；不能據此判定研究線最新版也有相同缺口。
+  2026-09-24 核對研究 clean `293f1890` 與產品 checkpoint `8c50bee9`，共同基點為main
+  `94328196`；研究線領先main38個commits，不是舊dirty runner副本。
+  研究線不只改scripts，也改controller／parser／prompt_policy／worker／local backend／
+  engine／model_catalog／main_window，必須按共有契約整合，不能只複製scripts目錄。
+  已核對最新入口、封存／capture與真操作觀測，整合已獲授權；在獨立候選逐一處理共有
+  邊界並用公開工程案例驗證。新版本的成績另記，不把舊分數當新系統證據，
+  不維護兩套互相追補的runner，不改sealed題庫或scorer政策。
+
+## Completed record — 產品 Assistant 深度清理（整合前 checkpoint）
+
+以下保留產品線施工與當時覆核紀錄，已固定於 `8c50bee9`；原先漏失的最新要求來源錯置
+亦已修復並獨立覆核。下方數字與dirty來源描述屬當時證據，不是新整合版本的證據；
+不能據此宣稱共同Agent基線已驗收。
+
+先前把已完成切片誤報為完整模組結案的判斷已撤回。2026-09-24 重新按原始範圍比較
+重要責任群的保留／收斂／拆分方案，完成 source 改善、同候選直接整合與非實作者覆核。
+最後的 long-session fixture 與 capture 樣式污染亦已處置；四項原始結案標準均完成，
+無剩餘已確認的 in-scope blocker。主代理已核對實際 diff、XML 與保留理由。
+目前為 `64bd5fdca29ae10ea0ad089b24f3d5b41e2137d1` 加本輪 dirty diff 的本機
+scope-complete，不是 handoff-ready；沒有 commit／push／PR／merge 授權或同 head CI。
+
+### 四項結案標準與本次處置
+
+| 必須回答的問題 | 已完成處置與判斷依據 |
+| --- | --- |
+| 功能必要，實作是否仍過度複雜？ | 刪 accepted 同步回呼 FIFO、重複 shutdown observer、必備依賴的 optional fallback、舊模板／metadata 尾鏈、下載清理 subclass 與 RAG 重複 filter。取消、失敗資源持有、exact correlation、confirmation 與 cache integrity 保留。 |
+| 測試通過，是否真正保護重要行為？ | 真 Qt dispatcher 強制先 emit，驗 GUI 返回後處理及 transcript 順序；真 delayed shutdown 驗失敗通知與最終釋放；真 HF 停止條件取消生成 thread，空 criteria mutation 確實失敗。真 transcript／timer 保護通知重試、clear／close；兩個 CLI 真入口拒 missing／failed／duplicate／stale terminal，不以有文字判成功。 |
+| 決定不拆，是否有工程依據？ | 下方逐責任群比較狀態、affinity、回呼與替代方案；已拆完整 viewport，publication 歸回既有 coordinator，不替仍大的檔案給 blanket approval。 |
+| 切片完成，是否滿足原始整體目標？ | 下方原始範圍保留 Agent／tools／core／RAG、Chat、runtime、接線與相關 tests／scripts／config／docs，並揭露共享檔閱讀界線；最後整合與非實作者模組覆核已通過，不以單片 approval 代替。 |
+
+### 邊界決策與保留理由
+
+- **ChatPanel → ChatTranscriptView**：完整移交 widgets／layout、分批重建、六個 timers、
+  reader anchor／follow-tail；Panel 保留 runtime／turn／composer／confirmation 呈現。
+  四個既有 transient surfaces 借用同一 viewport，三個窄 signals 協調幾何與 replacement。
+  只抽 rebuild helper 會留下十多個跨類欄位／回呼；搬到 ChatController 會混入 widgets，
+  皆否決。新增 presentation class／責任 owner 一個，但沒有新增可變 history／runtime policy。
+  刪 Panel 舊 append／layout 相容入口，產品 capture 與 tests 全部遷到真正 owner。
+- **Publication → 既有 coordinator**：bridge、rendered revision、兩個 retry timers、
+  render commit 與 training notice 歸同一 owner；Manager 只提供 status／terminal rendering、
+  idle 查詢三個窄 ports。只搬 projection 仍需跨類拼裝同一 retry transaction，另建 owner
+  無必要；因此由既有 coordinator 直接擁有 Qt lifecycle，刪 schedule DTO／test-only snapshot。
+  Assistant 不 acknowledge Desktop，失敗 obligation、latest revision、clear／close 保留。
+- **Controller 保留的組合責任**：generation／worker／RAG shutdown 共同處理 affinity、
+  回呼斷線、late callback fence、failed close retry 與 release。搬往 GUI Lifecycle 是反向
+  依賴與錯 thread；另建 shutdown owner 需大量 resource ports 或整個 Controller proxy，
+  沒有移除政策。proposal／confirmation／execution 已交既有 policy、pending、tool owners；
+  debug 只保留 model-free origin，執行鏈共用，另拆只會新增 history／metrics／terminal 接線。
+- **Runtime 保留不同生命週期**：admission reservation 在 Controller 綁定前；delivery ACK、
+  terminal-before-ACK、startup rollback、dispatcher cleanup 不是同一狀態。
+  deactivation 可重新啟用，永久 close 不可，不能盲目合併。physical cleanup 由 dispatcher
+  單一回報，刪重複 observer；未 bind startup rollback 與 failed cleanup ownership 仍必要。
+- **Manager 保留兩個呈現入口**：normal/debug 的 composer、rejection 與 copy 不同，但
+  reservation／reject／matching commit 只有 turn_state 一個 owner。抽共用 helper 需新增
+  錯誤 taxonomy、文案 flags 或 callback 協定，沒有刪除 state policy。command-in-flight
+  與含 GUI handoff 的 turn RUNNING 語意不同，不能以後者替代 Stop 門禁。
+- **Core／RAG／tools 保留信任界線**：process owner 與 model-thread lease、persisted
+  integrity 與 operation lease、tool schema 與 backend capability 各保護不同邊界。
+  Dispatcher 的 optional shutdown signal 有真 scripted walkthrough controller consumer，
+  同步 close 是其正式生命週期；不是為測試保留。兩現行模型原生 system role，已刪無用
+  capability 欄位與不可達 template fallback，現行 prompt／token budget 不改。
+
+### 授權、複雜度與整合規則
+
+- **Outcome／非目標**：維持既有可見 UI、功能、18 tools、模型／prompt／RAG policy、
+  Command 與 EEG 語意。不改研究 scorer／題庫／artifact、使用者 settings、其他 worktree，
+  不下載或執行 commit／push／PR／merge。既有 Evaluation／Saliency 修改保留、不計本次增量。
+- **複雜度**：唯一新增 class 是完整 viewport presentation owner；其餘責任歸回既有 owner。
+  首次 viewport 候選 +804/-734，觸及略超1,500行的 architecture exception 明確限於完整
+  layout／六 timers／anchor／rebuild 移交，無有效的半遷移中間態，不用 facade 或壓縮碼避門檻。
+  四大檔並非字數達標就結案；按上列實際耦合選擇拆分或保留。
+- **驗證方法**：Windows native、timeout／core=0、先 passing characterization；
+  發現真缺陷再 RED→GREEN。保留失敗報告，不以放寬 assertion 消除紅燈。
+  模型、時鐘、外部 IO 可隔離；queued delivery、transcript、timers、QObject 銷毀採真實機制。
+  Source-bound capture fingerprint 包含新 viewport 與 coordinator；bytes mutation 會改 fingerprint。
+- **整合中發現**：截圖量測把 QRect inclusive bottom 算多一像素，已補12px接受／13px拒絕
+  邊界測試並修量測式，門檻未改。整組失敗已定位為 UIUX capture tests 未還原 QApplication
+  style（native空白12px、裸Fusion14px、正式完整theme10px）。還原後又揭露四個截圖測試
+  隱性依賴前例的Fusion；已明確套用正式capture樣式並在各測試後還原，不改圖像門檻。
+  整組371通過，session結束樣式仍是原windows11，不留跨測試污染。
+  Long-session 舊 runtime fixture 缺必要 signal 且使用同步 submit，已遷 Qt queued delivery，
+  原資料／流程／延遲斷言不改，含202回合 soak 的24案通過。
+- **回退／基準**：本次 before 為
+  `/tmp/xbrainlab-agent-boundaries-before-20260924.iEtqAF.tar.gz`，只撤 owned patch。
+  下方以前階段數字不重計為本次成果；測試組有重疊，不能相加宣稱 coverage。
+- **結案／發布界線**：同候選直接整合、文件同步與非實作者四項結案核對完成。
+  正式發布另需授權與同 clean head applicable CI／人工 gates；本機深度清理不等於
+  handoff-ready，不因本輪結案自行建立PR或要求合併。
+
+### 原始範圍與保留理由
+
+以下是模組／直接共享路徑覆蓋，不宣稱整個 repository 或所有測試逐行閱讀。
+非實作者覆核包含未修改的 source，不能以單片 approval 取代模組結案。
+
+| 範圍與入口 | 責任／去留 | 閱讀與直接證據 |
+| --- | --- | --- |
+| `llm/agent` 27 檔（含 package） | Controller 組合 turn；orchestrator 擁有 correlation，pending owner 擁有待決互動；保留 parser/schema/origin/confirmation/publication 邊界。刪舊入口、未用參數／DTO／欄位及不可達 handoff 路由。 | 全 source；大型 controller 測試讀相關 fixtures／案例及全部增量，非全測試逐行。正式 parser、18-tool producer、取消與原生 import dialog 路徑。 |
+| `llm/tools` 10 檔＋action contracts／pipeline | registry/schema→capability→Command 或 typed UI request，不新增 policy owner。分類與 model-facing projection 保留真 consumer；結果歸既有 ToolCommandResult。 | 全 source、直接 caller；工具／verifier 與真 public projection 的 hostile、cyclic、redaction 測試。 |
+| `llm/core`／backends 11 檔 | config→resolver→process owner→child engine→local backend。保留 exact model、quota、consent、設定 migration、失敗時持有資源。刪假 owner/thread fallback、無用 config API 與無 producer fallback 標記。 | 全 source；config 全測試，其他直接 fixture／案例和全部 diff；實際 process ownership tests，未下載或重跑真模型。 |
+| RAG 6 Python 檔＋bundled corpus | retriever 擁有 client／embedding，indexer 借用；manifest/digest 為持久化信任檢查。BM25／ranking／corpus 保留不變。 | 全 source、indexer/security 全測試及直接 retriever 案例；未將單元回歸冒稱新模型準確率。 |
+| Chat 13 檔＋ChatController | 保留呈現、scroll、bounded history、restore 與確認。typed history 唯一可變紀錄；viewport 責任已完整移交，刪隱藏 renderer、無用樣式／icon、雙 list 和不可達 update transport。 | 全 source；native chat／controller、真 subscriber reentry、anchor／rebind／delete-during-rebuild 與202回合兩次 prune，非只有 panel queue。 |
+| Manager／runtime／dispatcher／publication／presentation／status | 既有 owner 分掌 Qt affinity、turn admission、resource lifecycle 與 publication acknowledgement；identity 各守不同 async 邊界。刪測試専用入口與無效傳遞，Stop 晚到 navigation callback 用既有 lease fence。 | 各 owner 全 source 由分工覆蓋、主 agent 查實際 diff；真 Qt activation、取消、關閉／重試及 revision tests，無新控制層。 |
+| workflow host／router；settings/download／MainWindow 接線 | 真 GUI completion 留在既有 dialog／panel owner；只保留 registry 產生的 Agent routes，lazy navigation／command pending 不是成功 terminal。Settings standalone、app-parent download 與 optional manager 有實際使用情境。 | host/router/settings 全檔；MainWindow 等共享檔只查 Assistant 直接路徑。真 import dialog 取消、Stop 後 callback 及訓練設定路由回歸。 |
+| 產品 capture／DPI／RAG／setup scripts、profiles | local 單回合、雙回合、UI geometry、DPI 與人工 profiles 各有不同 consumer，不刪有用途腳本。capture 成功需 matching request＋typed result＋successful terminal，不以有文字判成功。 | 兩個 local CLI、UIUX／DPI／driver／contract／capture config／fixture／5 profiles 全讀；巨大共享 capture、setup、verify 等只讀相關路徑。研究 evaluator 僅同步內部參數，scorer／題庫不改。 |
+| 相關 tests／fixtures／arch guards | 保留真外部資源隔離；刪無效入口専屬 AST 模擬器／白名單，保留 hostile payload、failed-close、stale／duplicate 保護。 | 各區清楚區分全檔與直接案例；passing counts 不代表 coverage 提升。尚無本輪 coverage 百分比或全產品 CI。 |
+| 文件／設定／開發規則 | current architecture 擁有實際責任；now 記錄結案與發布界線。refactor workflow 要求原始模組範圍獨立結案。 | guidance audit／strict docs build；不碰使用者 settings、模型政策、研究 worktree。target 的 select_channels stage 文案矛盾只列非阻擋 follow-up，不偷改契約。 |
+
+具名保留：`compact_tool_state.interpretation` 有真 backend snapshot producer；parser
+`_BARE_COMMANDS` 仍用於 malformed-output 診斷，不是執行兼容入口。未用 result／metadata
+專屬測試已移除或遷到真 producer，hostile payload、取消／stale／duplicate 安全斷言保留。
+Controller／Manager 仍大，但已評估並否決只搬行數、增加 adapter 的微型抽取。
+
+### 本次追加清理的改動與證據
+
+相對本次 boundaries before，不含前階段、Evaluation／Saliency 或 main：production 14檔
++1050/-1381（淨減331），tests 22檔 +1582/-709（淨增873），scripts 7檔 +112/-71
+（淨增41）；文件與流程規則另計。測試增加包含真行為 oracle、失敗時序與正式入口基線，
+不是為 deleted helper 留相容測試。尚未量測 coverage 百分比。
+
+目前大型檔案：Controller 2420行、Manager 1447行、RuntimeLifecycle 1477行、Panel 1426行；
+新 viewport 752行。這些是維護風險訊號，不是零風險保證，保留理由以上方責任分析為準。
+
+以下為同一未提交 candidate 的 Windows native focused evidence，各組重疊，不相加：
+
+- UI／admission／publication／ChatController／RAG：568通過；最後 canonical import 調整後的
+  publication＋architecture另269通過。
+- Runtime units330、runtime／offline context integration24、core template／取消64、
+  downloader／lifecycle75、catalog38均通過。Downloader最初Windows長路徑fixture失敗，
+  改短pytest專用temp後通過，沒有改模型／cache政策。
+- Product UI walkthrough10通過；long-session24通過，含202回合／兩次prune，
+  每回合 terminal 與 admission exact correlation 一致。
+- 六個source-bound capture／DPI script test files整組371通過，零失敗／錯誤／跳過；
+  樣式隔離7個focused正反例亦通過，原12px與影像門檻不變。
+- 所需 Ruff／format、修改production typing與兩個local CLI typing通過；guidance audit、
+  strict docs build通過。共享 evidence script 的既有 QLabel optional typing 診斷仍存在，
+  未把該整檔宣稱零診斷。
+
+XML 位於 `build/assistant-cleanup/`；紅燈、mutation與前候選報告保留原意，未改標成綠燈。
+沒有本次真模型新實驗、新機網路安裝、clean-head CI或新版人工驗收；不宣稱全repo逐檔
+或所有測試逐行讀完。目標文件 `select_channels` stage 文案矛盾是另需契約決策的非阻擋
+follow-up，不在本輪偷改公開契約。
+
+### 前一階段驗證與限制（不是本次深度結案）
+
+以下均為 dirty working tree 的 Windows native、model-free 證據；不是 clean-head CI、真人
+workflow、模型準確率或論文結果。各組有重疊，不相加宣稱 coverage：
+
+- 最後批准尾項完成後：Agent＋architecture **1179 passed**；tools/root **185 passed**；
+  UI **388 passed**；Agent／runtime／LLM integration **80 passed**；native host／Import／Stop
+  與相關 host units **57 passed**；source-bound scripts **316 passed**。原始報告保留在
+  `build/assistant-cleanup/`，均正常 exit0。
+- Response/parser 同選集在施工前為497通過、兩個新增 fixture 缺少 json import；補 import 後
+  該兩案在 production 修改前通過。施工後 **498 passed**，僅刪一個未用 natural-language
+  capability 專屬案；evaluator recovery／trajectory **9 passed**。108個現有公開 parser 測試
+  literal、432次 recovery 對照，其保留欄位／action／七個 taxonomy 字串逐項一致。
+- 尾項 direct Ruff／typing 與分片覆核已通過。此尾项對 before archive：production 15檔
+  +51/-379（淨減328），tests 20檔 +201/-325（淨減124），scripts 無新增變更；文件另計。
+- 整輪重開清理對 reclosure before（ChatController 使用獨立 before）：production 43檔
+  +259/-1750（淨減1491），tests 52檔 +1279/-2212（淨減933），scripts 8檔 +96/-30
+  （淨增66）；workflow 1檔 +10/-10。這不含此前 Saliency／Evaluation／第一輪 Agent 修改。
+- 較早候選證據保留：core281、RAG107、UI／ChatController652、git-bound scripts316 曾通過，
+  不重標為尾項後執行；Stop 有真 Manager callback RED→GREEN。早先 Flow72中一個舊 fixture 參數已遷移，
+  原失敗未改標成功。腳本最初16個失敗來自兩個長路徑、兩個抓圖 seam、12個空 Git identity；
+  以短 pytest-owned 路徑、明確外部 seam 及正確 Windows Git metadata 修正後重跑，不關閉檢查。
+- 既有 cache 真離線 RAG gate 曾通過（72 points、Top-3 34/36），未做新機完整安裝／網路下載。
+  另一次舊跨域單 process Qt teardown timeout 未證明原因，沒有宣稱已修；採既有隔離 runner。
+  歷史數字不當作本次真模型或人工驗收，也不修改研究 sealed cases／scorer／舊 artifact。
+
+先前 reviewer 的廣泛結論已撤回；上述測試與有效清理保留，不回寫成新候選證據。
+本次責任群替代方案與最終整合結果已在上方補齊。尚未量測完整 coverage 百分比。Current 責任見
+[Agent 架構](../architecture/agent.md)，安裝限制見[本機環境](../developer/local-setup.md)；
+本頁不保留逐片施工流水帳。
+
+## Current — Evaluation 內部清理與補測完成，尚未發布
+
+使用者已要求依逐模組六項準則，加上完整範圍清單、數值／不必要工作檢查、獨立 reviewer
+退件權審查 Evaluation；隨後授權不改 UI／功能／資料語意的清理與補測，並明確授權五個
+無產品 caller 的舊數值 API 退役。已完成修理、補測及非實作者交叉覆核，無剩餘已確認
+的 in-scope blocker。下方 UI 迭代是歷史證據，不是新的待辦。
+這是本機 scope-complete，不是 handoff-ready：仍為 `64bd5fdc` 加本輪 dirty diff，
+沒有 clean head CI，也尚無 commit／push／PR／merge 授權。main 與使用者 settings 未改。
+
+- 範圍：產品 Evaluation（非 Assistant 評測研究線）：render publisher／work、panel 與
+  四個呈現檔、EvalRecord／TrainRecord／Evaluator 的結果與分類計算路徑、analysis/service／
+  state／UI ports 直接邊界、相關測試與 product evidence scripts。共享檔只審／改相關段落。
+- 證據：三路独立唯讀審查確認：相同 Evaluation signature publication 清掉已顯示 DTO，
+  百分比 checkbox 後續不更新；舊 backend get_confusion_figure 只有測試 caller；部分
+  回呼便利分支／DTO 欄位／work API 無正式 caller；數值 oracle 對稱或只驗 support；
+  screenshot readability 只驗整張 canvas，20 類 canvas2028×1809／viewport968×526
+  仍回 fully_visible=True。數值真 probe 正確，100k×4 pooled read 約5.15–5.56ms，
+  尚無可支持的效能 blocker，不新增 cache／worker 或架構層。
+- Outcome：上述已確認缺口關閉；入口、責任、去留、保留理由及測試對應逐塊覆核。
+  保留現有排版、完整名稱可捲動、統計 pooling 定義、public Command/query、split／
+  producer identity、immutable DTO、取消／stale／close／publication 保護。
+- A 完成：populated panel no-op publication 先 RED 再修；刪 test-only callback／work／
+  UI adapter leaves，producer serialized contract 不改。此切片 production +9/-60，淨減51行。
+- B 完成：不對稱、unequal-fold、未完成 sentinel 手算 oracle；刪 backend confusion
+  plotting、`TrainRecord.get_acc/get_auc/get_kappa`、`EvalRecord.get_auc/get_kappa`，
+  保留有正式 caller 的 `EvalRecord.get_acc`。AUC 收回既有 Evaluator，不留多餘 helper；
+  數值／持久化 oracle 移到正式 scorer 與獨立 sklearn 對照。production +3/-174，淨減171行。
+- C 完成：canvas 完整／viewport 可見／捲動可達分開判定，必要 gate 不放寬；真 widget
+  回歸與真 service→panel workflow 已完成。evidence script +24/-3；沒有刪整支正式腳本。
+- 以上內部 A/B 共 production +12/-234、淨減222行，與前輪 Saliency／Evaluation UI
+  diff 分開計算；不以整個 dirty worktree 當本次新增量。新 owner／module／class 均為零。
+
+### 最終 focused evidence 與獨立覆核
+
+- Windows Evaluation UI／ports／read-side architecture：183 passed；
+  `build/evaluation-ui-preview/integrated-native.xml`。
+- 數值／record persistence／render／deterministic pipeline／training history：144 passed；
+  五 API 退役獨立覆核另選18項通過（不與前述數量相加）。
+- 最終真 training→persisted results→Evaluation Windows workflow：1 passed；
+  `build/evaluation-ui-preview/service-workflow-native.xml`。
+- source-bound evidence focused：34 passed、197 deselected；
+  `build/evaluation-ui-preview/evidence-viewport-native.xml`。
+  前兩次33/34的原因已查清：WSL建立的worktree `.git`含Linux絕對路徑，Windows Git
+  無法查來源而回空 digest，不是已證實的source drift；僅在驗證程序指定正確Windows
+  `GIT_DIR`／`GIT_WORK_TREE`後通過，未改Git metadata／產品／斷言。
+- 最終來源的既有 `run_public_cross_source_training_smoke.py --format json --strict`：
+  4 passed、0 missing／failed；EDF／GDF完成訓練與artifact reload，EEGLAB／CNT保留
+  import／preprocess及缺少足夠class語意時阻擋監督epoch，不能宣稱四者都做了訓練。
+- 修改檔 Ruff／format、production typing、diff check 通過。共享 evidence script 的
+  Assistant label 可空型別診斷在 HEAD baseline 已存在，本輪未改其行為，不冒稱該整檔零診斷。
+- 非實作者覆核實際diff與證據：生命週期／數值與API／evidence producer／真service
+  integration／測試替代／範圍完整性均無blocking finding；不是實作者自己的PASS宣告。
+  合成fixture不代表科學品質；新integration未涵蓋Validation split或model-summary真worker
+  失敗，不替代既有窄層保護，也不替代未來同headCI／真人Windows驗收。
+
+### Evaluation 範圍盤點與保留理由
+
+以下是本模組範圍，不是全專案逐檔審查。完整閱讀的專属核心為
+`ui/panels/evaluation/` 五檔（含匯出入口）與 `application/evaluation_render.py`、
+`evaluation_work.py`；共享檔只涵蓋列明路徑，沒有把搜尋命中當作讀完整檔。
+
+| 區塊／入口 | 清理或保留判斷 | 直接保護 |
+| --- | --- | --- |
+| Service → render publisher → immutable DTO | 保留來源／split／producer／選取前後驗證、不可變複本；跨 Fold 限同 cohort／round／Run、互斥 Test masks；先 pooling predictions 再算 metrics | render tests：不對稱手算、unequal-fold、未完成排除、來源與 stale 拒絕 |
+| Service → evaluation work → shared registry | 保留 admission／single claim／checkpoint／commit fence；刪無正式 caller 的 cancel／snapshot 轉接，不另建取消 owner | work tests：取消、重試、single claim、request identity |
+| Panel → typed UI ports → worker → charts | 刪 test-only callback overload、wait helper、未使用 DTO storage、舊 scalar split fallback、無 caller 的 UI 同步 adapter；真正 service 同步入口仍供 scripts 使用 | publication／panel／read-side tests；真 service workflow |
+| Model summary 與 Qt lifecycle | 保留 bounded cache、request/worker identity、pending latest、terminal callback 後釋放及 shutdown／cleanup 差異；這些分別保護可重現 stale／關閉邊界，不是第二套業務真相 | summary failure、A→B→A、取消／close／late callback tests |
+| Confusion matrix／bar chart／table | 只呈現 detached 數值；保留既有 label 量測、局部捲動、figure cleanup；百分比只影響矩陣，不改 metrics | 真 artist／table 數值、geometry、wheel／pixel、空／錯誤狀態 |
+| EvalRecord／TrainRecord／Evaluator 分類與結果路徑 | 刪舊 backend confusion plotting 與專屬 tests；五個已授權便利 API 已退役；保留有正式 caller 的 accuracy、history figures、持久化與 split 讀取 | evaluator／record／deterministic oracle；真保存結果重新讀取 |
+| analysis／service／state／ports 相鄰邊界 | 保留既有 Command/query、正式 serialized catalog 與 revision；不另增 owner／receipt／compatibility path | analysis 相關測試、UI ports、read-side architecture |
+| Product evidence scripts | baseline、polish、human-like、visualization walkthrough、native smoke、source-diverse、MOABB journey／UI capture 均有不同正式用途，沒有已證實可刪的整支腳本；只修 canvas 完整被誤當 screenshot 完整的證據 | 真 4／20 類 widget、既有 evidence consumers／manifest gate |
+
+測試清理保留行為對照：舊 backend plotting 三個專屬案例隨能力刪除；重複的 Evaluation
+model-summary callback「integration」案例刪除，獨有 visible／capture 斷言併入原三種錯誤
+component test（該兩檔 7→6 cases，實際通過）。真 service integration 另走
+FIF→epoch→兩 Fold×兩 Run CPU 訓練→保存／載回→Run／Train／Test／Summary／跨 Fold→
+真 publisher 失敗與恢復→reset／close，直接檢查 matrix／table／三組 bars，不偽稱
+model-summary 真 worker 覆蓋，也不以合成資料聲稱科學有效性或來源多樣性。
+
+目前沒有量測到需要新 cache／thread 的 Evaluation bottleneck。Panel 與 publisher 仍大，
+但不為縮行把有共同生命週期的狀態搬成新控制層；此次新增 owner 數為零。
+
+### 已完成 UI 迭代與當時證據（歷史記錄，不取代上方結案狀態）
+
+- 觸控板追加修理（使用者已授權，不改排版）：原生診斷證實 angleDelta 水平事件能捲動，
+  pixelDelta-only 事件在 canvas → viewport 後被忽略（bar 100→100）。尚未擷取使用者
+  實體觸控板事件，不將此重現等同完整裝置驗收。
+- Outcome／steps：先加入真 chart 的像素位移 RED，涵蓋水平／垂直、雙方向、細小位移、
+  混合 pixel／angle 不重複捲動與邊界；在既有 canvas 處理像素位移，保留 angle 路徑。
+  focused native tests／typing／review 後重開獨立 Windows 預覽並帶到前景。
+  不新增手勢 owner／全域攔截／設定，不改其他 panel；Stop 為修理證據完成且預覽可操作，
+  實體雙指操作仍交由使用者確認，不提前開始後端清理或重型 gates。
+- 觸控板修理結果：新回歸先重現 pixel-only 不動與 mixed delta 錯誤距離；existing canvas
+  現直接依 pixelDelta 更新兩軸既有 scrollbar，Qt 自行限制範圍；像素優先且不再套一次
+  angleDelta，不重複反轉平台已處理的自然捲動方向。沒有 pixelDelta 時保留原 Qt 路徑。
+  垂直短圖最大位移不足 120 的 fixture 改用 30px 精確距離驗證，另保留兩端 clamp 檢查。
+  Windows focused 44 passed（`build/evaluation-ui-preview/touchpad-native.xml`），Ruff／
+  Basedpyright 通過。獨立 reviewer 讀實作與 artifact，無 blocking finding；實體裝置事件
+  送達仍未驗證。已替換舊版，重新以獨立 Windows 程序開預覽，不依附工具終端。
+
+- 最新確認：上一版矩陣偏右上、比例不佳，UI 尚未接受。使用者同意跨 Fold 的
+  `Run 1 (Summary)` 改為 `Run 1`（各次序號保留）；單一 Fold 內的多 Run 彙總仍為
+  `Summary`。矩陣改回较大、置中的正方形；放不下兩張圖時提前使用既有 chart tabs。
+- 已重現滾輪缺陷：真 Windows canvas 收到 wheel 後 accepted，但垂直 scrollbar 留在
+  0；同事件送 scroll viewport 則前進到 200。Matplotlib 消耗事件，未交給外層捲動區。
+  修理只讓 Evaluation chart canvas 將捲動交回 Qt，不改全產品／資料或新增捲動 owner。
+- 本次步驟：wheel 真事件 RED（上下／水平／邊界）與矩陣 square／center／大小回歸 →
+  既有 canvas、panel layout 與顯示字串最小修理 → 相鄰 UI tests／截圖 → 開新 Windows
+  隔離預覽。原生可操作預覽是本次終點，UI 確認前不宣稱 Evaluation 模組結案。
+
+- 使用者已確認修理長 class label 擠壓、下方資料列推擠圖表；Run 彙總名稱指定為
+  `Summary`，單一 completed Run 不顯示、至少兩個 completed Run 才提供。追加檢查
+  Fold／Run／Split 下拉選單是否有 Saliency 同類白邊，確認缺陷才修。
+- 證據：metrics table 以最多 12 列同時設定 min/max height；圖中文字主要依畫布寬度
+  而非 label 長度排版；on_model_changed 只要有任一完成 Run 即加入舊 Summary 文案。
+  白邊尚需 Windows pixel／原生檢查，不以相同元件推定已重現。
+- Outcome：長名稱仍可讀、多列在表格內捲動而不擠壓主圖、單次無冗餘彙總、選單深色
+  背景連續；保留 run identity、跨 fold 彙總、split、計算與 publication 語意。
+- Scope：Evaluation 既有 UI 元件與直接測試；優先重用現有 popup 呈現方式，不新增
+  backend owner，不改其他模組樣式、不展開 Evaluation 後端清理、不動 main 或設定。
+- Steps：真 widget／繪圖與 native popup 建立 RED → 最小 coherent UI 修理 → focused
+  regression／geometry／pixels／lint → 開 Windows 隔離示例預覽並確認有回應。
+- Validation：短／長 class 名、多列／少列、縮窄再放寬；單次／多次／未完成 Run、選取
+  與 split 保留、popup 頂底背景及清單末列／鍵盤可達。模型與昂貴計算可在預覽隔離。
+- Stop：使用者可直接操作本次 changed-surface 原生預覽；等待 UI 設計確認後才進行
+  內部清理與重型／正式 gates。Saliency 已結案 dirty slices 保留，不重做或發布。
+- 已重現：Windows 三個 popup 的頂／底白邊（2／50 項），以及 metrics 3→40 列時
+  plot group 高度 467→248；先 RED 再修。popup 只改獨立 frame 背景，無全域樣式改動。
+  長清單初次末列失敗是 fixture 在 native window exposure 前開 popup，修為等待真實
+  exposure，保留像素與末列／鍵盤斷言，不增加 production 捲動 workaround。
+- Summary 已使用至少兩個完成 Run 的条件，保留原 identity／split／跨 fold 路徑；舊
+  summary freshness／失敗案例改用兩個完成 Run 作 fixture，沒有刪除這些保護。
+- 長標籤第一版雖通過 non-overlap，但 native screenshot 四類別仍需過量捲動，因此
+  不作交付；正調整現有 canvas 的文字量測／換行／軸間距並保留很多類別的局部捲動。
+  表格取消依列數強制增高，保留短表上限與長 class tooltip；不碰 backend 數值。
+- 上一版 UI 候選（未接受）：普通四類長名稱在 460×350 圖區完整可見且無捲動；matrix 完整換行／
+  X 軸直排、寬高獨立分配，很多類別才局部捲動，不縮為 7／8pt。長→短→空資料會
+  釋放多餘捲動範圍；現有 canvas 共用，無新 owner／模組／類別。
+- 上一版直接證據：Windows 五個相關 UI test files 共 101 passed，四個 production files
+  Basedpyright 零診斷、Ruff 通過。`build/evaluation-ui-preview/focused-native.xml`；
+  獨立 reviewer 檢查 Summary identity、table sizing、canvas lifecycle／resize 及原生
+  圖，無 blocking finding；這不是 Evaluation 後端結案審查。
+- 已開 Windows 原生預覽：`build/evaluation-ui-preview/preview.py`，標示合成資料，
+  使用真 panel／chart／controls 與隔離 runtime；可切短名／長名／20 類及一／兩次完成
+  Run，不使用研究模型或使用者資料，不改 main。Qt timer 已確認 window visible、
+  platform windows、五列表格、Run 1／Run 2／Summary，截圖已人工視覺檢查。
+- 本次修正結果：跨 Fold 顯示 `Run 1`／`Run 2`，同 Fold 多完成 Run 的 `Summary`
+  不變。矩陣恢復置中正方形，保留完整水平換行名稱；plots／details 分配調為 3:1，
+  兩圖不能等寬容納時使用既有頁籤。滾輪事件只從 Evaluation canvas 轉送至既有
+  QScrollArea viewport，保留方向、delta、phase、device 與事件接受狀態。
+- 獨立覆核另重現 1500／1600 中間寬度仍溢出：原門檻將兩張圖所需寬度相加，
+  實際並排卻等寬分配。補原生 RED 後改為兩倍最大需求，加間距；回歸涵蓋窄／中／寬
+  來回切換、selection 保留、真正上下／水平 wheel 與捲動終點，不只直接操作 scrollbar。
+- 本次直接證據：Windows 五個 UI test files 107 passed，artifact
+  `build/evaluation-ui-preview/revision-native.xml`；三個本次 production files Basedpyright
+  零診斷，Ruff／diff check 通過。跨 Fold 名稱另有 backend／UI／capture script focused
+  33 passed（與 UI 群組重疊，不加總）。已檢視原生四長名稱截圖，無多餘捲動、圖方正置中。
+- 獨立 reviewer 以小型 Windows 診斷覆驗 1280／1400／1500／1600 頁籤與 1800 並排皆無
+  水平溢出，原 finding 已關閉；本次 wheel／geometry／layout 無新 blocker，不代表後端結案。
+- 新版原生預覽已開啟，Qt timer 確認 visible／windows／五列表格及三個 Run 選項。
+- Next／Stop：等待使用者確認本次修正版 Windows 預覽；尚未展開 Evaluation 後端清理、正式重型 gates
+  或 PR。已接受的 Saliency 不重測，不把預覽視為完整 workflow 手測。
+
+## Current — Saliency 清理已結案，尚未發布
+
+2026-09-23 使用者確認改由 Saliency 往前討論，Import 最後；先建立隔離工作區與保存
+計畫，不修改正在手測的 main。工作區 `XBrainLab-product-workflow`，分支
+`refactor/product-workflow`，起點為已接受的 main `94328196`（PR #146）。
+本節保留先前取代「Import Wizard 優先」的決策；最新 active scope 以本文件頂部為準。
+
+目前沒有尚未完成的 Saliency 施工切片。使用者已接受 UI；內部清理與最後三項缺口
+已完成，非實作者已按下列六項準則獨立覆核，未發現新的 blocking finding。
+這是本機 `scope-complete`，不是 `handoff-ready`：來源仍為 `64bd5fdc` 加本輪 dirty diff，
+尚未獲得 commit／push／PR／merge 授權，也沒有對應 clean head 的 CI。
+Saliency 先保留未發布成果；Evaluation 最新授權以本文件頂部 active slice 為準。
+以下保留的施工證據不是新的派工，不因 context recovery 重做已完成切片。
+
+### 已完成並接受的 UI 修理 — Saliency 縮窄時功能列文字擠壓
+
+- 使用者追加回報：調整視窗寬度時 Saliency 功能列文字疊在一起，明確要求先修這項 UI，
+  再繼續內部清理與獨立審核。既有其他 UI 接受保留，不重新整套手測。
+- 初步線索：panel 的 responsive grid 以固定 700／760 門檻及 ctrl_bar／panel 寬度估算
+  選擇 layout；需用真 Qt geometry 確認縮窄／再放寬是否採到 stale width、是否低估文字與
+  controls 實際需要的寬度。這是待驗原因，不能只改門檻猜測修好。
+- Outcome：支援視窗寬度與 Windows DPI 下標籤／選擇框／checkbox 不重疊或被擠掉，
+  窄寬來回調整能正確換行；保留功能、選取、busy／cancel 行為與既有文案。
+- Scope：只修 Visualization 功能列及直接受影響的 layout／geometry tests／原生預覽；
+  不新增 backend owner、不改 EEG／計算語意、不同步做後端清理。若發現不同 UI 設計取捨另確認。
+- Steps：真實 widget 縮放重現並補 RED → 既有 layout 內最小修理 → 同測試與相鄰控制列回歸
+  → Windows native 縮放預覽，明示示例資料、確認有回應後讓使用者看。
+- Validation：連續縮窄／放寬、長 method／class、Absolute 顯示／隱藏、選取不丟失、
+  控制列 containment／文字尺寸／不重疊；檢查 100／125／150% 的直接 changed surface。
+  此設計確認前不重跑全套 compute／跨平台重型 gates。
+- Stop：本 UI defect 的直接證據收齊並展示原生畫面；確認修理後再恢復下方內部三項未結工作。
+- 已重現與修理：嵌入 panel 在 1180 寬（bar 880）仍採 wide，Run label 與 Fold combo
+  的 QRect 實際相交；側欄隱藏時亦重現。先建立 RED，再改為聽取 bar 自己的 Resize／Show，
+  由既有 QGridLayout 的實際 minimumSize 選擇可容納的一／二／三行。避免寬版 minimum
+  size 反過來鎖死 window 縮窄；保留窄版最小寬度，修正 wide 未還原 class combo 寬度。
+  不縮字、不隱藏功能、不新增佈局 owner，不改計算或資料流程。
+- 直接驗證：Windows panel suite 123 passed，125／150% 各 4 個連續 resize regression
+  passed；包含 embedded／top-level、側欄顯示／隱藏、長 method／class、真選取保留、
+  Spectrogram 的 Absolute 隱藏／還原、文字尺寸／containment／無重疊。Ruff 通過。
+  150% 初次 top-level 測試因要求超出螢幕的寬度失敗，改以螢幕可用寬度測 top-level，
+  embedded 仍保留完整寬度範圍；未放寬文字／重疊斷言。另修測試 parent/child teardown。
+- 原生預覽：build/saliency-ui-preview/resize_preview.py 使用真 panel controls 與隔離示例
+  選項，renderer／計算不執行；Windows 三倍率截圖位於同目錄 resize-*。已檢視窄／中寬
+  圖，預覽不是正式 workflow handoff。使用者已明確回覆「沒問題了開始修後端吧」，
+  本 UI 修理已接受；不重測其餘已接受 UI。單檔 Basedpyright 零診斷。
+
+### 已完成 — 內部責任收斂與取消證據
+
+- 問題與 outcome：處理獨立 reviewer 提出的三項缺口；在已接受 UI baseline 上消除
+  3D 重複 lifecycle presentation，補真 3D 取消／重試，量測昂貴 evaluator 的取消耗時。
+- 切片 A：先用正式 panel 的 unavailable status 與 pending runtime probe 回歸保護可見
+  行為，再刪 3D 的 status field／setter／重複提示與 test-only 入口。Panel 仍是呈現 owner，
+  backend publication／native commit／generation fences 全部保留，不新增 owner。
+- 切片 B：沿用既有真 GUI／Assistant fixture 與 EEGNet／Captum，在 Windows interactive
+  3D 驗 compute → 重算 → prepare 中取消 → late callback → 再算成功及關閉。CPU attribution
+  與互動 VTK 真實執行，僅用可釋放同步 barrier 定位取消時點；不以 stub scene 取代證據。
+- 切片 C：先量測代表性 Gradient／SmoothGrad workload 的取消請求到 worker 結束，區分
+  UI 接受、拒絕 publication 與實體釋放；不以預設性能目標新增 cache／worker。若需修改
+  合作式取消粒度，先記錄量測、直接 baseline／失敗回歸、caller、同值與原子性保護再施工；
+  可見語意或新架構取捨另提決策。
+- 驗證：各切片 focused baseline／回歸，資料／非同步獨立覆核，再整合六項結案準則。
+  保留既有 dirty slices；限定檔案可分別回退，不以全 worktree reset 回復。PR／merge 尚未授權。
+- Stop：三項逐一有實際結論與直接證據，再請未參與實作的 reviewer 判斷模組結案；
+  不因一批測試綠燈就宣稱全模組乾淨，也不以未知項自行轉 follow-up 結案。
+- 取消 baseline：Windows CPU／Torch 4 threads，固定 seed 未訓練 EEGNet，128×32×256
+  合成輸入、batch 16、SmoothGrad 預設 5 noise samples。首個 forward 後發取消標記，
+  evaluator 仍跑完全部 8 batches；Gradient 8 forwards／83–89 ms，SmoothGrad 16 forwards／
+  455–468 ms（各 3 次）。這是 evaluator tail，不是 GUI end-to-end 或所有硬體延遲。
+  evidence：build/dev-artifacts/saliency-validation/cancellation-before.json。
+- 最小修理決定：唯一 production caller TrainingPlanHolder 已持有 should_cancel，直接
+  傳入 evaluator，在進入工作、每個 batch 與各 attribution 方法間檢查；沿用既有
+  StaleSaliencyUpdateError 及 manager 的取消／拒絕發布／cleanup，不新增 owner 或 thread。
+  要求是取消後不再啟動下一個計算單位；已進行中的單次 Torch/Captum 呼叫仍合作式完成，
+  不承諾硬體搶占或固定毫秒上限。先 RED 驗 pre-cancel／forward 中取消／noise 中取消、
+  false callback 下同 seed 同結果，再修改 evaluator + holder 兩檔及直接測試。
+- 最後結果：A 刪除 3D 重複 status／setter／提示與 class coverage map，八個真 panel／
+  late probe baseline 在刪除前後通過；Panel 是唯一 lifecycle 呈現 owner。B 真 Windows
+  GUI／Assistant → EEGNet／Captum → 3D 取消／晚到結果拒絕／重試／native cleanup 六案
+  全通過，檢查互動 QtInteractor、actors、finite scalars 及有空間差異的 framebuffer。
+  C 取消訊號已傳入 evaluator；真 manager 中途取消驗證後續計算不啟動、舊 record 保留、
+  retry 成功，同 seed 五種方法的值不變。未新增 owner、thread、state 或 exception。
+- 同一測量條件修理後首個 forward 後即退出，Gradient／SmoothGrad 各為 1 forward；
+  evaluator tail 0.038–0.101 ms。這只說明未再執行剩餘批次，不是 GUI／CUDA 延遲保證。
+  單次已在執行的 Torch／Captum 仍完成後才觀察取消。前後 probe JSON 保留在同一 evidence 目錄。
+- 最後覆核：原獨立 reviewer 直接讀 diff／測試並解析 artifacts，確認原三項 findings
+  可關閉、六項準則於 Saliency 範圍達成；responsive 修理另由未參與該修理的 reviewer
+  檢查 layout／reentry／selection，未找到 blocker。不宣称整個 repo 或永久零缺陷。
+- 最後本機證據：`final-panel-native.xml` 256 passed；`cancellation-regression.xml`
+  34 passed；`final-source-diverse.json` 4 passed。均位於
+  `build/dev-artifacts/saliency-validation/`。`build/dev-artifacts/` 的
+  `saliency-final-native-entrypoints.xml` 6 passed、`saliency-final-offscreen-entrypoints.xml`
+  4 passed／2 explicit native-only skips；不把重疊群組加總。63 個修改 Python 檔 Ruff
+  check／format 通過，全專案 Basedpyright 零診斷；未調整 diagnostic baseline。
+  真 3D native 案例不在一般 offscreen CI 執行，後續影響該路徑仍須補 native evidence。
+
+### 已同意的逐模組結案準則與順序
+
+2026-09-23 使用者同意依下列六項準則逐模組討論、清理；並明確確認**以下順序適用
+每一個模組，不只是 Saliency：討論並確認 UI 行為 → 清理後端、測試與相關 scripts →
+獨立 reviewer 結案 → 下一個模組**。本輪從 Saliency 開始，後續 Evaluation、Training／
+Data Split、Preprocess／Epoch、Import 同樣遵循，不在 UI 未確認時提前展開其後端清理。
+這取代「限定切片回歸通過即可
+視為模組清理完成」的判斷；不以「重大歷史包袱」等無可核對的形容詞作為退出條件。
+
+1. 無已確認無用途的程式：追查正式 caller、動態註冊、設定、scripts 與文件後，刪除
+   無用途 API、分支、狀態、包裝及專屬測試；只有測試呼叫不是保留理由。
+2. 同一政策不多處獨立實作：同一 workflow 狀態／決策有明確權威；多層防護須指出
+   各自保護的不同邊界，不能把必要的 freshness／integrity 檢查當成重複刪除。
+3. 每份狀態、cache、轉接都有用途：能指出產生者、消費者、失效時機，以及不能直接
+   使用既有資料的原因；未查清的項目不可標為完成。
+4. 處理責任混雜：若修改同一規則需要同步修改多份判斷／狀態，就收斂責任；不按
+   檔案行數強迫拆分，也不以搬檔／新增代理層冒充改善。
+5. 測試保護正式行為：重要成功、失敗、取消、重試、stale result、關閉路徑有適用
+   observable evidence；只塞內部狀態或 mock 成功不代表完整流程已驗。先有替代證據
+   再刪維持舊入口的測試，保留必要外部依賴隔離。
+6. 相關 scripts 逐支去留：指出現行用途、入口、與其他腳本的差異；一次性任務已結束、
+   用途退役或功能重複時，連同專屬設定／測試／文件清理，不移到 legacy。
+
+節奏：先逐項討論 UI 操作與預期狀態，用正式 Windows 流程確認正常及異常行為；
+必要的可見修改先取得確認，不能把已接受的 warning 外觀當作整個 Saliency 行為驗收。
+UI 行為確認後才追加後端內部清理，保持已確認行為並補 focused regression；若 UI
+驗證重現 backend defect，先定位、明示直接修理範圍，不以此提前展開整輪後端重構。
+既有 dirty 修改保留，不撤回。使用者已再次明確確認 Saliency UI 行為已確認過，
+該模組直接接續後端／內部清理，不重開 UI 討論或要求重測；其餘模組仍先確認 UI。
+後續若影響已接受行為，補受影響部分的驗證，不預設整套重測。模組結案由獨立 reviewer 核對
+六項準則；範圍內已確認要修的項目須關閉，未查清不得自行轉為下一輪 follow-up。
+保留項要有可核對理由，需要行為／效能取捨時由使用者確認。不承諾永遠沒有新 bug。
+模組討論／UI 行為確認不等於每塊都要求正式手測或 merge；整合版本才集中驗收，
+仍依既有 exact-source／CI gate 與授權辦理，不新增第二套清理平台或任意數字門檻。
+
+Saliency 已按這些準則完成本輪結案；上述三項已修理並獨立覆核，不再列為未結項。
+模組範圍是下方核心 production、直接測試與四支 scripts，不外推為全專案清理完成。
+
+## Completed record — 研究線最新工程與歷史量測
 
 2026-09-23 核准的封存包／Linux evaluator 工程範圍已 scope-complete；
 固定20題、搬移後離線報告／原候選判分核對、歷史d0不變及三方獨立覆核完成。
@@ -11,7 +637,29 @@
 擁有；執行及研究契約由[研究規格](../validation/thesis_protocol.md)擁有。
 本輪未PR／push／merge；不自動開始新候選、完整DEV、正式VALID或TEST。
 
-## 最近完成
+### 產品 Saliency 施工界線補記（歷史，非當前整合授權）
+- 問題與證據：上一輪 Import 修理已合併，但本文件仍指向已刪除的 worktree 及待 PR
+  狀態；使用者現在要求逐站討論 UI／操作，並審查是否存在無用途或重複腳本。
+  這是新的審查方向，不代表已確認 Saliency 有新 defect 或腳本可直接刪除。
+- Outcome：Saliency 每塊 production／tests／scripts 都追清實際入口、責任與用途，
+  刪除已確認死碼、無用腳本與專屬測試，收斂重複政策／轉接／狀態；必要保留項有理由。
+  三項 UI 修整與測試綠燈只是基線，不代表深度清理完成；逐塊施工後再整合驗收。
+- 順序：Saliency／Visualization → 產品 Evaluation 結果頁 → Training／Data Split →
+  Preprocess／Epoch → Import Wizard。後續各站目前是候選，不同時展開全部重構。
+- 目前授權：使用者提供 Windows 截圖並確認三項修整：Assistant 與 3D 同時使用時的
+  VRAM 提醒可勾選 Do not ask again；Fold 不再包含可選的 Select a fold；下拉選單
+  上下白邊修正。保留整體 UI 操作。另審查 Saliency 後端、測試、架構及相關腳本。
+  未確認的計算語意／流程取捨只回報，不直接實作；其他 panel 仍未授權施工。
+- 最新澄清：使用者要求深入查冗餘設計、死碼、無用 scripts，從 Saliency 一塊塊修好。
+  授權行為保持的內部刪除／收斂與直接測試修理；保留已接受外觀、方法／資料語意、
+  Assistant 工具契約、取消／一致性保護。不以額外 UI／政策改動替代清理。
+- Non-goals：不更換 main 手測版本、不改另一條 Assistant Evaluation 研究線的
+  題庫／runner／scorer／模型／prompt／RAG／封存，不升級或複製 virtual environment、
+  不下載或搬資料、不動任何既有 settings.json，不自動發布 PR／merge。
+- 假設：後續可重用現有 Windows Python 與資料；本次不建立新環境；設計接受後執行必要計算驗證。
+  新 worktree 不帶入 main 的本機設定；需要原生預覽時另確認啟動路徑與測試資料。
+
+### 研究線最近完成（原來源證據）
 
 報告閱讀介面與產生器可讀性整理已完成；實際能力及證據邊界見
 [Current](../current.md#assistant-research-baseline)。這不是其餘 evaluator 政策修理、
@@ -28,6 +676,183 @@
 
 上述已完成工程範圍之外，下方 DEV 調優候選仍未授權；不自動執行第二套、VALID／TEST，
 不重跑已完成的起始基準或歷史 Pilot。以下保留歷史及候選，不作新的施工授權。
+
+## Completed record — 產品 Saliency 清理證據補記
+
+以下保留整合前產品線的施工狀態與證據，當時的dirty／待發布描述不代表共同基線目前狀態。
+- 文件準備已完成；下方清理與本機整合證據屬本輪 dirty candidate，不使用 PR #146
+  或清理前的 UI 綠燈代替本輪驗證。
+- 後續施工：focused tests、相鄰流程與適用 source-diverse gates；可見改動需同來源
+  畫面／walkthrough 與 Windows native 確認。沿用 validation contract，不另建 gate 系統。
+- Next：Saliency 內部工作已完成，待發布授權；沒有 pending 施工或 reviewer。
+  不要求使用者重測全部已接受 UI。發布後仍依 exact-head CI／適用 gate 決定正式交付；
+  其他模組尚未因此取得 UI 接受或施工結案。
+- Stop：Saliency 清單逐塊有實際讀取與去留結論，確認的冗餘完成刪除／收斂並有直接
+  行為驗證與獨立覆核，最後整合 review 才交付。未知項不得算完成；PR／merge 另需授權。
+  本輪審查結論須區分已檢查範圍、實際 findings 與未證明的科學有效性。
+
+### 深度清理清單與施工界線
+
+| 區塊 | 已做的限定清理 | 模組結案狀態 |
+| --- | --- | --- |
+| Settings／參數與方法 | 收斂 store mapping、參數重算、dialog alias；保留 command admission 與 artifact decoder 的不同責任 | 已獨立覆核結案 |
+| Compute／取消／publication | 移除 test-only prepare／defer／holder setter；保留正式批次發布、ack／retry、commit fences；evaluator 採用既有取消訊號 | 已覆核；保留單次 Torch／Captum 合作式取消界線 |
+| 結果與 provenance／快取 | 刪重複 copy／不可達 fallback；保留模型與資料 provenance、artifact 語意 integrity、filesystem transport 三種不同保護 | 已獨立覆核結案 |
+| 四視圖與 controls | renderer 只收 detached DTO；刪隱藏 selector、同步 scene fallback、死 helper、重複 3D status；保留 native resource ownership | 已獨立覆核結案，responsive UI 已接受 |
+| 專用測試與 fixture | 先遷移正式入口與真 publisher 再刪退休入口測試；補 artifact／alias／shared selector／真 3D 取消重試／數值與中途取消 | 已覆核；native-only 案例需原生環境執行 |
+| 相關 scripts／gate／docs | 四支直接腳本均有 gate／人工入口；保留整支，刪內部重複並修兩個驗證缺口；不是全 repo scripts 審查 | 已核對去留並獨立覆核結案 |
+
+- 每塊先列具體檔案、caller、deletion candidates、owners before/after 與 focused baseline；
+  不新增通用盤點系統、legacy 目錄、第二套 owner 或純搬檔重構。小切片可逐一回退。
+- 既有 source-diverse／Windows 真 compute 與 render 證據是施工前基線；變更後先驗直接
+  影響，整合完成再取得新 source 的必要 gates。未改模組不反覆跑同等重型驗證。
+
+#### 已核對的第一批施工切片
+
+- Backend：Evaluator 已算好的 effective noise parameters 重用於 batch，方法名稱／store
+  mapping 收回既有輕量 saliency_methods；EvalRecord 的 decoder 已強制 dict，刪 load 端
+  不可達 malformed-store 分支及 getter／setter 外重複 metadata copy。保留 decode、
+  context／integrity 檢查與持久化隔離；owner 不增，先過原數值／tamper baseline 再改。
+- Views／Settings：移除無 production caller 的 PlotType/get_saliency 舊便利 API 與
+  專屬無效測試；Settings 移除重複 alias／重複初始化。3D 永遠隱藏的 class_combo
+  退役，保留 shared panel selector 的 canonical key 與 first-available／blocked 語意；
+  改成只保存選定 key，不新增選擇 owner。保留公開 SaliencyRenderData／worker 保護。
+- Panel：刪無 caller 的 _has_service_saliency_summary；cache 的 presence 與 lookup
+  改用一次同一查詢，重用既有 publication identity predicate；各 renderer 保持不同
+  update_plot 參數，但共同 publication／terminal 綁定只保留一份。保留 queued worker
+  finished、stale、operation／commit fences，不在這個切片移除 compute-attempt ledger。
+- Scripts／tests：walkthrough validator 的 optional final_state 可略過終態檢查，先
+  RED 重現缺失／空值後改 fail closed；runtime claim 不再硬寫 XCB。reviewer capture
+  的 29+5 歷史 inventory 合成同一份 34 項，保留名稱／順序；polish 同檔 PNG 轉換
+  重用既有函式。刪被目錄級 guard 覆蓋的單檔 guard／舊拼字 assertions，不削弱 gate。
+- Rollback：上述切片各由限定檔案 diff 回復；不碰既有 UI acceptance 修改或其他工作區。
+  先 focused baseline，修改後同組回歸，hidden selector 與 publication 變更獨立覆核。
+- 第二批限定候選已查 caller：render 的單份 prepare 只有 service 空轉接、stress fixture
+  與舊測試，正式 UI port 使用 prepare_variants；notification.defer 只有測試，正式流程
+  使用 reserve／publish_reserved／release。刪前將既有測試移至真實入口，保留取消、
+  commit、queue handoff／retry／ack 保護；不更動 Command／query DTO 或 Assistant 契約。
+  Sidebar.update_info 是空方法，刪除自身與 panel 的空呼叫；實際資訊仍由 InfoPanelService 更新。
+  3D checkbox callback 包裝未被使用，下一片改為既有 scene 上兩個布林值；constructor
+  的同步 engine／自行建立 plotter fallback 只供舊測試，改由現有背景準備與 QtInteractor
+  入口測試。prepare_engine 本身仍由 worker 使用，必須保留。以上不增加 owner。
+- Renderer 邊界：所有實際繪圖 caller 已使用 SaliencyRenderData；Visualizer 與 3D engine
+  的 EvalRecord／Epochs 第二入口只留在測試。遷移到同一 detached DTO，將 context drift、
+  legacy missing、持久化 roundtrip 的 oracle 放回真 SaliencyRenderPublisher → renderer
+  路徑，再刪 renderer 內重複 record mapping／context fallback。不改 publisher、artifact
+  admission 或數值算法；先取得遷移後 passing baseline，沒有替代證據的案例不刪。
+- Holder.set_saliency_params 只有七個 unit 與兩個 integration fixture 呼叫；正式 manager
+  使用 prepare_saliency_update + 整批 publish。將九個 caller 改真 preparation/publication
+  流程後刪此 convenience，不刪 Study／TrainingManager 的正式設定入口，不改批次原子性。
+- 整合檢查：全專案 Basedpyright（不同於單檔分析）指出 Captum kwargs 失去舊 helper 的
+  Any seam；為已經 canonical normalizer 驗證過的 effective_parameters 補同等型別註記，
+  不新增轉換／驗證、不改任何計算值，重跑完整 gate，不調整 diagnostic baseline。
+- 實際 stress 驗證發現 runner 不理會 QT_QPA_PLATFORM=windows，固定改為 offscreen，
+  因此 --require-interactive-3d 在 Windows 永遠失敗。先 RED 驗 explicit Windows 選擇，
+  再只開放 Windows 的既有環境變數 opt-in；預設 CI/offscreen、macOS 與原 resource gates
+  保持。原生重跑明確設定 PYVISTA_OFF_SCREEN=false；不假冒 offscreen 為 desktop。
+
+### 本輪深度清理結果與限制
+
+- 完整讀取的核心 production 範圍為 30 檔：panel 1 檔；views／Settings／renderer 17 檔；
+  application saliency services、方法定義、Evaluator、provenance／integrity、EvalRecord／
+  artifact store 12 檔。另讀 warning 元件、被刪 CheckboxObj 與共享 owner 的相關段落；
+  不把後者算成全檔審查。直接腳本四支；測試按修改責任追到真行為，非全 repo 逐檔審查。
+- 最終 production 27 檔 +288/-1055，淨減 767 行；scripts +29/-44，淨減 15 行；
+  tests +1619/-770，淨增 849 行（補 observable evidence，不用淨減測試當品質指標）。
+  未增加 owner、state machine、receipt 或
+  compatibility path。移除 ui/core/utils.py 及其專屬 test；其餘為原 owner 內收斂，
+  沒有刪使用者資料、模型、環境或研究線檔案。腳本沒有可整支刪除項。
+- 保留 compute-attempt ledger：同一 publication 的 dispatch／confirmation 期間需要擋
+  重複提交，failure／cancel／reset 會釋放；不是第二套 backend operation state。
+  保留 geometry／STFT 等 bounded cache 及 native async cleanup，未以縮行數移除它們。
+- 覆核：backend／publication 與 UI／native lifecycle 由非實作者交叉審查；主 agent
+  檢查實際 diff 與整合證據。DTO 遷移保留 context drift／legacy missing／持久化 roundtrip、
+  一基底事件碼與字串 class key、VarGrad absolute、float64 cancellation-sensitive 數值 oracle。
+- 清理後本機證據：backend renderer 161；Windows UI／Settings／panel／views 364；
+  真 GUI／Assistant compute、SmoothGrad 重算、取消與 native lifecycle 9；source-diverse 4
+  通過。這些是不同執行組、部分有重疊，不加總成唯一案例或全專案覆蓋率。
+  Holder 正式路徑與六模型 family workflow 34、scripts stress 62 通過；完整 Basedpyright
+  零診斷、architecture compliance 通過。POSIX-only filesystem 案例未由 Windows 取代。
+- Windows 真四視圖 capture：compute completed、互動 3D framebuffer 有 actor、無未捕捉
+  例外、clean shutdown。原生 stress 2 輪 warmup +12 輪量測，14 次 3D close 成功，
+  零晚到回呼／active Qt worker，resource 與 memory contracts 通過；不是無 memory leak
+  的普遍證明。Windows 100/125/150% app-polish matrix 通過。
+- 證據位於 build/dev-artifacts/saliency-validation/ 的 deep-*、renderer-detached.xml；
+  綁定 64bd5fdc 加清理 dirty source，最後文件收斂與 test formatting 另記於 diff，
+  不是未來 clean PR head 的同版本 CI。初次完整 typing 與 native stress 的失敗已修正並
+  重跑，不掩蓋初次結果。source-diverse 重用 E 槽，沒有下載／複製環境。
+- 限制：大型 panel／base view／3D view 仍有整合責任，不因大小判定必拆；取消粒度與
+  測量已完成，界線見上方結論。相關 scripts 之外的全 repo 腳本尚未
+  審查，隨後續模組逐支處理，不冒充本輪已清完。Attribution 科學有效性、所有模型／
+  資料與逐 bit 重現不是本輪工程測試的保證。
+
+### 已接受 UI 與清理前基線（以下舊數字不是深度清理後證據）
+
+- Fold 的提示項目前在 init／refresh／clear 三處作為普通選項加入；改為空清單的
+  placeholder，無資料時不可選；有結果只列真實 Fold／Fold Set，保留 selection identity。
+- VRAMConflictChecker 的提醒是 UI advisory，不是 backend resource admission 或 Assistant
+  工具授權。沿用 ModalAlertDialog presentation 與 application_settings 保存個別提醒偏好；
+  只有使用者勾選並按 OK 才保存，關閉／Escape 不默認同意。跨重啟記住選擇，不讀寫 root
+  settings.json，不略過 OOM／資源 preflight／工具確認。預覽與測試使用隔離 config root。
+- 2026-09-23 使用者追加確認：Do not ask again 移至 dialog 最下方左側，與右側 OK
+  同一列；只調整 opt-out dialog 排版，未使用 opt-out 的既有 modal 位置保持不變。
+  先以真 Qt geometry 驗證同列、不重疊與按鈕可達，再開原生警示框；仍不跑重型測試。
+- 最新文案確認取代舊提醒：標題 GPU Memory Usage，正文說明 local Assistant 與 3D
+  同用可能增加 GPU memory usage，若變慢可分開使用；這不是已偵測不足。
+  勾選改為 Don’t show this again。使用者不接受上一版外觀，已授權再做一版：縮短正文、
+  統一標題／正文／勾選框左緣、調整標題與操作列間距，保留黃色圖示；其他 modal 不變。
+  最新確認：正文合為單一段落，移除句間強制換行，依視窗寬度自然折行；其他排版不變。
+  本次只驗直接 modal／VRAM 小測試和 Windows 原生警示預覽，未接受設計前不跑重型 gate。
+  新版對齊檢查先重現左緣 18／52 不一致，修正後直接 modal／VRAM 39 cases 在 Windows
+  通過；已開真實警示框、確認有回應並檢視截圖；使用者已接受單段正文設計。
+- 白邊先用 Windows popup 擷取確認來源；只修 Visualization 的受影響選單，不任意
+  改全產品樣式。保留鍵盤、滑鼠選擇和長清單捲動。
+- Owner before/after：backend command／operation／publication owners 不變；既有 VRAM
+  checker 保有提醒政策，modal 只負責呈現，Qt settings 保存使用者偏好。不新增 owner、
+  state machine、receipt 或 compatibility path；production 3 檔 +91/-23，淨增 68 LOC。
+- 驗證：真 Qt dialog 勾選／未勾選／取消及 fresh checker 持久化；Fold empty／多項／刷新
+  保留及跨 fold set 選取；native 展開 Fold／Run／Method／Class 的像素及鍵盤操作，
+  另跑直接相關 lifecycle／render regression。測試隔離昂貴推論／GPU，不啟動研究模型。
+- 審查：沿資料→completed run→saliency method／class→artifact→render 追蹤真入口與
+  取消／stale／整批發布；核對測試 oracle、mock 邊界及相關腳本用途。不將通過測試數量
+  或 3D 頭部圖宣稱為 attribution 科學有效性或腦內定位。
+- 整合回歸發現兩個舊測試仍把空 Fold 視為 enabled：補空／有結果情境，保留 busy
+  還原與 summary query 不阻塞 Qt 的原始保護；不為舊 assertion 改回可選空提示。
+  完整型別 gate 另發現 combo.view()/window() 的 Qt stub 可為 None；補呈現層窄 guard，
+  保持正常 popup 外觀不變，再驗型別與直接 popup 回歸；不放寬 analyzer baseline。
+- 清理前 UI 整合結果：UI 396、backend 數值／artifact／publication 315、Windows 真 GUI／Assistant
+  compute／SmoothGrad 重算／取消／render lifecycle 9、canonical source-diverse 4 通過；
+  source-diverse 重用 E 槽資料，不下載。兩項舊空 Fold assertion 改成空／有結果案例，
+  獨立覆核確認沒有削弱 busy／Qt 回應性保護；沒有刪除測試或 backend 功能。
+- 原生證據：四視圖含互動 3D、clean shutdown 通過；Windows 100/125/150% 完整
+  app-polish matrix 通過；變更表面 modal／popup 三倍率各 47 通過。capture 初次因
+  WSL worktree Git 路徑及共用環境 namespace 來源檢查失敗，改用行程限定 Git 路徑／
+  import path 後補跑成功，保留 failed artifacts；未改共用環境、Git metadata 或 gate。
+  以上 capture 綁定 guard 修理前的 source fingerprint，不是最終 commit 的交付證據。
+  最後 nullable guard 後 Windows popup／Fold 54、完整 Basedpyright 零診斷及 changed-file
+  Ruff 通過。完整 regression／Linux visual／跨平台 CI 留給獲授權後的同一 PR head。
+- 證據位置：`build/dev-artifacts/saliency-validation/`，早期 JUnit 在
+  `build/saliency-validation/`。本機來源仍為 `64bd5fdc` 加本 slice dirty diff；沒有
+  commit／push／開 PR／merge。main 的 protected settings.json 雜湊核對未變。
+- 已驗：Windows 原生四種 popup 白邊先全部重現；僅改 list style／combo palette 不足，
+  最後針對 popup 獨立 window 補背景。Fold 改動的 busy refresh／empty restore 風險由
+  獨立覆核抓到並修正，保留既有 operation fence，無新增 owner。直接 Fold／popup
+  22 cases 在 Windows 通過（含 50-item 清單最後列可達與鍵盤選取）；VRAM／modal
+  38 cases 通過，包含勾選、OK、Escape、close、INI 及新 process 讀回。不是 full suite。
+- 預覽：`build/saliency-ui-preview/preview.py` 為忽略於 Git 的一次性 native preview，
+  重用真實產品 controls 與既有 detached fixture，示例 Fold／class，計算與 render 隔離；
+  Qt 設定寫入該預覽的獨立 config root，不動使用者設定。截圖與預覽不是完整 GUI handoff。
+- 清理前初步唯讀審查：compute／artifact／render 的整批發布、取消不覆寫及 stale 拒絕有
+  實際 owner／測試；亦有真 MNE／EEGNet／Captum 與解析梯度 oracle，非全靠 mock。
+  未確認新 backend blocker，未逐行審完全套大型 tests，也未重跑數值／跨平台 gates。
+  三項後續候選：取消只在 run 前後檢查，延遲尚未量測；核心 panel orchestration 仍大；
+  label-render 固定等待與 GUI compute 矩陣未納 3D 的 evidence 邊界可再改善。不在本輪改政策。
+- 相關腳本：visualization render walkthrough、native render stress、reviewer captures、
+  polish captures／DPI runner 均查到 gate／CI／其他 capture caller，暫無可整支刪除項。
+  部分 Settings fixture 重複不等於整支無用途；全 repo 腳本清單仍未完成。
+- 解讀限制：一個 completed run 缺完整 Test／Validation class coverage 會讓本批 Saliency
+  不發布，舊結果保留。Attribution 對 true class output；3D 是 electrode 值插值，不是
+  腦內 source localization。方法科學有效性、跨模型梯度與隨機方法逐 bit 重現未由本輪證明。
 
 ## Accepted history — 產品品質線：Import 適配與內部整理
 
@@ -701,7 +1526,9 @@ agent 負責模板、非 Test 輔助工作、直接必要實作／驗證、紀�
 
 下方是既有產品優先順序與候選背景，不覆蓋本輪授權至 Pilot 的範圍，也不授權本線施工其他候選。
 
-## Agreed order — Import UI → Assistant evaluator → cleanup/refactoring
+## Historical order — Import UI → Assistant evaluator → cleanup/refactoring
+
+以下為2026-09-16的順序與候選背景，不是目前狀態或派工入口；最新授權以上方Active為準。
 
 使用者於 2026-09-16 指定以上順序；Preprocess panel 暫不作為下一個優先施工項目。
 Import 白框修正已於 2026-09-16 完成 Windows 局部手測，使用者回覆「沒問題了可以準備合併」。

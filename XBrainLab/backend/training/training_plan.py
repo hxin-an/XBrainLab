@@ -1049,18 +1049,6 @@ class TrainingPlanHolder:
             model=model_component,
         )
 
-    # setter
-    def set_saliency_params(self, saliency_params: dict | None) -> None:
-        """Set new saliency parameters and re-evaluate all finished repeats.
-
-        Args:
-            saliency_params: New dictionary of saliency method parameters. Empty
-                values keep finished records on metric-only evaluation.
-
-        """
-        prepared_update = self.prepare_saliency_update(saliency_params)
-        publish_prepared_saliency_updates([prepared_update])
-
     def prepare_saliency_update_plan(
         self,
         saliency_params: dict | None,
@@ -1183,6 +1171,7 @@ class TrainingPlanHolder:
                         target_loader,
                         plan.saliency_params,
                         evaluation_split=evaluation_split,
+                        should_cancel=should_cancel,
                     )
                     self._raise_if_saliency_plan_stale(
                         plan,

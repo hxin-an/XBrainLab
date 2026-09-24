@@ -323,10 +323,7 @@ class PilotUiDriver(QObject):
                 route = workflow_ui_handoff_route_for(request.command)
                 expected = _DIALOGS.get(route.route_identity.value) if route else None
                 if route and route.route_identity.value == "training_settings_dialog":
-                    model = (
-                        "model" in request.decision_fields
-                        or "model" in request.suggestions
-                    )
+                    model = "model" in request.decision_fields
                     expected = (
                         ("training.model_selection_dialog", "ModelSelectionDialog")
                         if model

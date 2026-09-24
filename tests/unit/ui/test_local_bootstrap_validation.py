@@ -218,7 +218,7 @@ class TestLocalBootstrapValidation:
                 "XBrainLab.llm.core.config.importlib.util.find_spec",
                 return_value=object(),
             ),
-            patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEngine,
+            patch("XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner") as MockEngine,
         ):
             resolution = AssistantRuntimeLaunchResolver().resolve(config)
 
@@ -313,7 +313,7 @@ class TestLocalBootstrapValidation:
                 "XBrainLab.ui.dialogs.model_settings_dialog.LLMConfig.load_from_file",
                 return_value=config,
             ),
-            patch("XBrainLab.llm.agent.worker.LLMEngine") as MockEngine,
+            patch("XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner") as MockEngine,
         ):
             from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
 
@@ -333,7 +333,19 @@ class TestLocalBootstrapValidation:
 
             resolution = AssistantRuntimeLaunchResolver().resolve(config)
             assert resolution.launch_spec is not None
-            worker.initialize_agent(resolution.launch_spec)
+            try:
+                worker.initialize_agent(resolution.launch_spec)
+                qtbot.waitUntil(
+                    lambda: worker.runtime_load_thread is None, timeout=3000
+                )
+                assert worker.engine is MockEngine.return_value
+                assert worker.engine.active_backend is not None
+            finally:
+                if not worker.shutdown():
+                    qtbot.waitUntil(
+                        lambda: worker.runtime_load_thread is None, timeout=3000
+                    )
+                    assert worker.shutdown() is True
 
         engine_config = MockEngine.call_args.args[0]
         assert engine_config.model_name == config.model_name

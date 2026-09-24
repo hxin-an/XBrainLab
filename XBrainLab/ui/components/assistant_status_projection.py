@@ -48,7 +48,6 @@ class AssistantStatusProjection:
     evidence: tuple[str, ...] = ()
     blocked_reasons: tuple[str, ...] = ()
     existing_ui_surface: AssistantWorkflowSurface | None = None
-    available_commands: tuple[str, ...] = ()
     blocked_reason: str | None = None
     tooltip: str = ""
     footer_hint: str = ""
@@ -112,10 +111,6 @@ def build_assistant_status_projection(
     blocked_reasons = tuple(workflow.blocked_reasons)
     blocked_reason = "; ".join(blocked_reasons) or None
     stage = workflow_stage_label(publication.state)
-    available_commands = _assistant_available_commands(
-        recommended_command=recommended,
-        execution_controls=workflow.execution_controls,
-    )
     recommended_label = command_label(recommended) if recommended else None
 
     return AssistantStatusProjection(
@@ -130,7 +125,6 @@ def build_assistant_status_projection(
         evidence=tuple(workflow.evidence),
         blocked_reasons=blocked_reasons,
         existing_ui_surface=surface,
-        available_commands=available_commands,
         blocked_reason=blocked_reason,
         tooltip=_status_tooltip(
             stage=stage,
@@ -145,18 +139,6 @@ def build_assistant_status_projection(
             stage,
             blocked_reason,
         ),
-    )
-
-
-def _assistant_available_commands(
-    *,
-    recommended_command: str | None,
-    execution_controls: tuple[str, ...] = (),
-) -> tuple[str, ...]:
-    """Expose backend-projected workflow actions and explicit runtime controls."""
-    commands = (recommended_command,) if recommended_command else ()
-    return commands + tuple(
-        command for command in execution_controls if command not in commands
     )
 
 

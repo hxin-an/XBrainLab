@@ -10,7 +10,7 @@ from typing import Any, TypeAlias
 
 from XBrainLab.backend.application.pipeline_stage import PipelineStage
 
-from .decision_contract import MODEL_RESPONSE_TOOL_NAME, ModelDecision
+from .decision_contract import MODEL_RESPONSE_TOOL_NAME
 
 ToolCommand: TypeAlias = tuple[str, dict[str, Any]]
 
@@ -65,8 +65,6 @@ class ToolEnvelopeParseResult:
     commands: tuple[ToolCommand, ...] = ()
     error: str = ""
     workflow_stage: str | None = None
-    decision: ModelDecision | None = None
-    intent: str = ""
     pending_action: str = ""
     missing_inputs: tuple[str, ...] = ()
     message: str = ""
@@ -76,7 +74,6 @@ class ToolEnvelopeParseResult:
         cls,
         *,
         workflow_stage: str | None = None,
-        intent: str = "",
         missing_inputs: tuple[str, ...] = (),
         pending_action: str = "",
         message: str = "",
@@ -84,7 +81,6 @@ class ToolEnvelopeParseResult:
         return cls(
             ToolEnvelopeStatus.NO_TOOL,
             workflow_stage=workflow_stage,
-            intent=intent,
             pending_action=pending_action,
             missing_inputs=missing_inputs,
             message=message,
@@ -96,14 +92,11 @@ class ToolEnvelopeParseResult:
         command: ToolCommand,
         *,
         workflow_stage: str,
-        intent: str = "",
     ) -> ToolEnvelopeParseResult:
         return cls(
             ToolEnvelopeStatus.VALID,
             (command,),
             workflow_stage=workflow_stage,
-            decision="tool",
-            intent=intent,
         )
 
     @classmethod
@@ -321,7 +314,6 @@ class CommandParser:
 
         return ToolEnvelopeParseResult.no_tool(
             workflow_stage=workflow_stage,
-            intent="no_tool",
             pending_action=pending_action,
             missing_inputs=missing_inputs,
             message=message.strip(),

@@ -18,6 +18,9 @@ from typing import Any
 
 from PyQt6.QtCore import Qt, pyqtBoundSignal
 
+from XBrainLab.llm.agent.turn import AssistantGenerationRequest
+from XBrainLab.llm.core.generation import GenerationProfile
+
 
 def _plain(value: Any) -> Any:
     if isinstance(value, Enum):
@@ -25,9 +28,15 @@ def _plain(value: Any) -> Any:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if is_dataclass(value) and not isinstance(value, type):
-        return {
+        payload = {
             field.name: _plain(getattr(value, field.name)) for field in fields(value)
         }
+        if isinstance(value, AssistantGenerationRequest):
+            if value.generation_profile is not GenerationProfile.STRUCTURED_DECISION:
+                raise ValueError("Unsupported Assistant generation evidence profile")
+            # Preserve the persisted research contract, not a product request field.
+            payload["response_contract"] = "structured_action"
+        return payload
     if isinstance(value, dict) and all(isinstance(key, str) for key in value):
         return {key: _plain(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):

@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer
@@ -24,6 +25,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QPushButton,
+    QScrollArea,
     QStyle,
     QTableWidget,
     QTextBrowser,
@@ -33,6 +35,7 @@ from PyQt6.QtWidgets import (
 )
 
 import scripts.dev.capture_human_like_product_walkthrough as walkthrough_module
+import scripts.dev.human_like_walkthrough.capture as walkthrough_capture
 import scripts.dev.human_like_walkthrough.contract as walkthrough_contract
 from scripts.dev.capture_data_interpretation_replay import (
     pairing_rows,
@@ -103,7 +106,6 @@ from scripts.dev.human_like_walkthrough.contract import (
     ASSISTANT_CONFIRMED_TERMINAL_MESSAGE,
     ASSISTANT_EXISTING_UI_REQUEST,
     ASSISTANT_FINGERPRINT_PATHS,
-    ASSISTANT_HANDOFF_REQUEST_ID,
     ASSISTANT_REQUIRED_FULL_WINDOW_SCREENSHOTS,
     ASSISTANT_REQUIRED_SCREENSHOTS,
     ASSISTANT_STOPPED_MESSAGE,
@@ -118,6 +120,7 @@ from scripts.dev.human_like_walkthrough.evidence import (
     aggregate_info_readability_evidence,
     assistant_main_window_evidence,
     assistant_runtime_evidence,
+    evaluation_plot_readability_evidence,
 )
 from scripts.dev.human_like_walkthrough.validation import (
     build_assistant_claim_contract_review,
@@ -125,27 +128,21 @@ from scripts.dev.human_like_walkthrough.validation import (
     build_assistant_interaction_contract_review,
     build_assistant_settings_recovery_review,
 )
-from XBrainLab.backend.application.commands import CommandName
+from XBrainLab.backend.application import EvaluationRenderData
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.confirmation import (
     AgentConfirmationRequest,
     AgentConfirmationResolution,
     AgentConfirmationResolutionStatus,
 )
-from XBrainLab.llm.agent.interaction import (
-    AgentInteractionOutcome,
-    AgentInteractionStatus,
+from XBrainLab.llm.agent.response_presentation import (
+    AssistantPanelNavigationRequest,
+    AssistantPanelTarget,
+    AssistantResponsePresentation,
 )
-from XBrainLab.llm.agent.response_presentation import AssistantResponsePresentation
 from XBrainLab.llm.agent.turn import (
     AssistantTurnCorrelation,
     AssistantTurnRequest,
-)
-from XBrainLab.llm.agent.ui_handoff import (
-    WorkflowUiHandoffKind,
-    WorkflowUiHandoffRequest,
-    WorkflowUiHandoffResolution,
-    WorkflowUiHandoffResolutionStatus,
 )
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.model_catalog import PRIMARY_LOCAL_MODEL_ID
@@ -160,6 +157,19 @@ from XBrainLab.ui.components.info_panel import AggregateInfoPanel
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
 )
+from XBrainLab.ui.panels.evaluation.panel import EvaluationPanel
+
+
+@pytest.fixture
+def capture_cli_style(qapp):
+    """Use the real CLI's Fusion rendering without leaking into other tests."""
+    previous_style = qapp.style().objectName()
+    try:
+        qapp.setStyle("Fusion")
+        yield
+    finally:
+        assert qapp.setStyle(previous_style) is not None
+        assert qapp.style().objectName() == previous_style
 
 
 @pytest.fixture(scope="module")
@@ -182,8 +192,10 @@ def _admit_walkthrough_turn(
 
 @pytest.mark.parametrize("capture_fails", [False, True])
 def test_assistant_settings_isolation_builds_a_complete_pinned_model_snapshot(
-    monkeypatch, tmp_path, capture_fails
+    monkeypatch, tmp_path_factory, capture_fails
 ) -> None:
+    # Leave room for the real repository/revision cache hierarchy on Windows.
+    tmp_path = tmp_path_factory.mktemp("as")
     host_path = tmp_path / "host" / "settings.json"
     legacy_path = tmp_path / "legacy-settings.json"
     assert LLMConfig().save_to_file(str(host_path))
@@ -235,6 +247,50 @@ def test_assistant_settings_isolation_builds_a_complete_pinned_model_snapshot(
     )
     if not capture_fails:
         assert isolation.evidence["host_config_unchanged"] is True
+
+
+@pytest.mark.parametrize("class_count", [4, 20])
+def test_evaluation_readability_measures_visible_viewport(qtbot, class_count):
+    panel = EvaluationPanel()
+    qtbot.addWidget(panel)
+    panel.resize(1280, 920)
+    panel.plot_stack.setCurrentIndex(0)
+    panel.matrix_widget.update_plot(
+        EvaluationRenderData(
+            labels=np.arange(class_count),
+            outputs=np.eye(class_count),
+            metrics={},
+            class_labels={i: f"Class {i}" for i in range(class_count)},
+            summary_identity=None,
+            evaluation_split="test",
+        )
+    )
+    with qtbot.waitExposed(panel):
+        panel.show()
+    panel._update_responsive_layout()
+    qtbot.wait(50)
+    window = SimpleNamespace(evaluation_panel=panel)
+    evidence = evaluation_plot_readability_evidence(window)
+    scroll = panel.matrix_widget.findChild(QScrollArea)
+    if class_count == 20:
+        assert scroll.horizontalScrollBar().maximum() > 0
+        assert not evidence["fully_visible"]
+        assert evidence["content_readable"]
+        assert evidence["requires_scrolling"]
+        scroll.horizontalScrollBar().setValue(scroll.horizontalScrollBar().maximum())
+        scroll.verticalScrollBar().setValue(scroll.verticalScrollBar().maximum())
+        QApplication.processEvents()
+        assert scroll.widget().geometry().right() <= scroll.viewport().width()
+        assert scroll.widget().geometry().bottom() <= scroll.viewport().height()
+        assert not evaluation_plot_readability_evidence(window)["fully_visible"]
+    else:
+        assert scroll.horizontalScrollBar().maximum() == 0
+        assert scroll.verticalScrollBar().maximum() == 0
+        assert evidence["fully_visible"]
+        assert not evidence["requires_scrolling"]
+    panel.matrix_widget.hide()
+    QApplication.processEvents()
+    assert not evaluation_plot_readability_evidence(window)["fully_visible"]
 
 
 def test_rotated_x_tick_overlap_uses_anchor_spacing_not_axis_aligned_bounds() -> None:
@@ -933,7 +989,7 @@ def _valid_assistant_main_window_evidence(
         "assistant_runtime_ready": "ready",
         "assistant_blocked_command": "blocked",
         "assistant_narrow_panel": "ready",
-        "assistant_existing_ui_handoff": "opened",
+        "assistant_existing_ui_handoff": "ready",
     }[phase_name]
     return {
         "capture_target": "full_main_window",
@@ -1552,6 +1608,16 @@ def test_validate_walkthrough_payload_rejects_stale_source_fingerprint() -> None
     assert "stale" in reason.lower()
 
 
+def test_walkthrough_rejects_pre_navigation_contract_artifact() -> None:
+    payload = _base_payload()
+    payload["artifact_contract"]["version"] = 15
+
+    ok, reason = validate_walkthrough_payload(payload, require_files=False)
+
+    assert not ok
+    assert "stale evidence contract version" in reason
+
+
 def test_capture_source_stability_records_current_source() -> None:
     payload = {
         "status": "passed",
@@ -1669,6 +1735,43 @@ def test_assistant_notice_contract_tracks_runtime_failure_ownership() -> None:
 
     assert review["passed"] is False
     assert "recovery" in "; ".join(review["findings"]).lower()
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "A plain EEG explanation.",
+        "First explanation.\n\n```python\nx = 1\n```\n\nFinal explanation.",
+        "```python\nx = 1\n```",
+    ],
+)
+def test_assistant_overflow_checks_every_rendered_prose_block(qtbot, text) -> None:
+    from scripts.dev.human_like_walkthrough.evidence import _assistant_text_overflow
+    from XBrainLab.backend.controller.chat_controller import ChatController
+    from XBrainLab.ui.chat.panel import ChatPanel
+
+    with patch("XBrainLab.ui.chat.panel.ToolDebugMode", return_value=None):
+        panel = ChatPanel()
+    qtbot.addWidget(panel)
+    history = ChatController()
+    panel.connect_controller(history)
+    panel.resize(420, 780)
+    panel.show()
+    history.add_agent_message(text)
+    qtbot.wait(30)
+    bubble = panel.findChild(MessageBubble)
+    assert bubble is not None
+    assert bubble.isVisible()
+    assert not any(
+        name.startswith("message_bubble_") for name in _assistant_text_overflow(panel)
+    )
+
+    if bubble.content_view.text_views:
+        # A clipped later prose block must fail even when the first still fits.
+        bubble.content_view.text_views[-1].setFixedHeight(1)
+        assert "message_bubble_0" in _assistant_text_overflow(panel)
+    else:
+        assert len(bubble.code_blocks) == 1
 
 
 def test_inline_runtime_state_is_recorded_as_runtime_owned(qtbot) -> None:
@@ -1856,6 +1959,8 @@ def test_assistant_full_window_contract_accepts_required_product_states() -> Non
 def test_assistant_main_window_evidence_measures_visible_product_geometry(
     qtbot,
 ) -> None:
+    from XBrainLab.ui.chat.panel import ChatPanel
+
     window = QMainWindow()
     window.resize(900, 700)
     central = QWidget(window)
@@ -1875,20 +1980,8 @@ def test_assistant_main_window_evidence_measures_visible_product_geometry(
     title.setObjectName("AssistantDockTitle")
     title_layout.addWidget(title)
     dock.setTitleBarWidget(title_bar)
-    panel = QWidget(dock)
-    panel_layout = QVBoxLayout(panel)
-    panel_layout.addStretch(1)
-    composer = QWidget(panel)
-    composer_layout = QHBoxLayout(composer)
-    input_field = QLineEdit(composer)
-    send_button = QPushButton("Send", composer)
-    composer_layout.addWidget(input_field)
-    composer_layout.addWidget(send_button)
-    panel_layout.addWidget(composer)
-    panel_state = cast(Any, panel)
-    panel_state.input_widget = composer
-    panel_state.input_field = input_field
-    panel_state.send_btn = send_button
+    panel = ChatPanel()
+    panel.set_runtime_state("ready")
     dock.setWidget(panel)
     window.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
     qtbot.addWidget(window)
@@ -1898,7 +1991,7 @@ def test_assistant_main_window_evidence_measures_visible_product_geometry(
     evidence = assistant_main_window_evidence(
         window,
         dock,
-        panel_state,
+        panel,
         state="assistant_runtime_ready",
         workflow_status="ready",
     )
@@ -2046,6 +2139,7 @@ def test_assistant_source_fingerprint_covers_every_chat_presentation_source() ->
     }
 
     assert "XBrainLab/ui/chat/composer.py" in relative_paths
+    assert "XBrainLab/ui/chat/transcript_view.py" in relative_paths
     assert "scripts/dev/active_checkout.py" in relative_paths
     assert "pyproject.toml" in relative_paths
     assert "poetry.lock" in relative_paths
@@ -2056,6 +2150,10 @@ def test_assistant_source_fingerprint_covers_every_chat_presentation_source() ->
     assert "XBrainLab/ui/styles/stylesheets.py" in relative_paths
     assert "XBrainLab/ui/components/workflow_ui_handoff_host.py" in relative_paths
     assert "XBrainLab/ui/components/assistant_status_projection.py" in relative_paths
+    assert (
+        "XBrainLab/ui/components/assistant_application_publication_coordinator.py"
+        in relative_paths
+    )
     assert "XBrainLab/ui/components/assistant_runtime_coordinator.py" in relative_paths
     assert "XBrainLab/ui/panels/training/components.py" in relative_paths
     assert "XBrainLab/llm/agent/execution_policy.py" in relative_paths
@@ -2082,6 +2180,30 @@ def test_assistant_source_fingerprint_covers_every_chat_presentation_source() ->
     assert "XBrainLab/llm/agent/response_presentation.py" in relative_paths
     assert "XBrainLab/llm/agent/confirmation.py" in relative_paths
     assert "XBrainLab/llm/agent/tool_feedback.py" in relative_paths
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "XBrainLab/ui/chat/assistant_dock.py",
+        "XBrainLab/ui/chat/transcript_view.py",
+        "XBrainLab/ui/components/assistant_application_publication_coordinator.py",
+    ],
+)
+def test_assistant_fingerprint_changes_when_owner_source_changes(
+    monkeypatch, relative_path
+):
+    before = walkthrough_contract.walkthrough_source_fingerprint()
+    read_bytes = Path.read_bytes
+    dock = walkthrough_contract.ROOT / relative_path
+
+    def changed_dock(path):
+        content = read_bytes(path)
+        return content + b"\n# changed dock source\n" if path == dock else content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_dock)
+
+    assert walkthrough_contract.walkthrough_source_fingerprint() != before
 
 
 def test_assistant_source_fingerprint_covers_capture_evidence_lifecycle_sources(
@@ -2249,22 +2371,24 @@ def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
         {
             "phase": "assistant_confirmation_cancelled",
             "visible_text": [
-                "Session reset cancelled. Your current workflow is unchanged."
+                "Preprocessing reset cancelled. Your current workflow is unchanged."
             ],
             "notes": {
                 "assistant_interaction": {
                     "request_kind": "production_confirmation_card",
+                    "command_name": "reset_preprocessing",
+                    "execution_evidence": "scripted_presentation_only",
                     "decision": "cancelled",
                     "destructive": True,
                     "card_opened": True,
                     "card_title": "High-risk confirmation",
                     "card_request_id": "cancel-request",
                     "request_correlated": True,
-                    "primary_action": "Start a new session",
+                    "primary_action": "Reset preprocessing",
                     "secondary_action": "Cancel",
                     "waiting_surface": deepcopy(waiting_surface),
                     "terminal_messages": [
-                        "Session reset cancelled. Your current workflow is unchanged."
+                        "Preprocessing reset cancelled. Your current workflow is unchanged."
                     ],
                     "confirmed_execution_count": 0,
                     "duplicate_terminal_message": False,
@@ -2280,13 +2404,15 @@ def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
             "notes": {
                 "assistant_interaction": {
                     "request_kind": "production_confirmation_card",
+                    "command_name": "reset_preprocessing",
+                    "execution_evidence": "scripted_presentation_only",
                     "decision": "confirmed",
                     "destructive": True,
                     "card_opened": True,
                     "card_title": "High-risk confirmation",
                     "card_request_id": "confirm-request",
                     "request_correlated": True,
-                    "primary_action": "Start a new session",
+                    "primary_action": "Reset preprocessing",
                     "secondary_action": "Cancel",
                     "waiting_surface": deepcopy(waiting_surface),
                     "terminal_messages": [ASSISTANT_CONFIRMED_TERMINAL_MESSAGE],
@@ -2300,30 +2426,22 @@ def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
         },
         {
             "phase": "assistant_existing_ui_handoff",
-            "visible_text": [
-                "Evaluation is open in the main window. Review results there."
-            ],
+            "visible_text": ["Opened Evaluation panel."],
             "notes": {
                 "assistant_interaction": {
-                    "request_kind": "typed_workflow_ui_handoff",
-                    "decision": "opened_in_main_window",
-                    "handoff_kind": "decision_required",
-                    "command_name": "evaluate",
-                    "request_id": ASSISTANT_HANDOFF_REQUEST_ID,
-                    "decision_fields": ["evaluation_result"],
-                    "resolution_request_id": ASSISTANT_HANDOFF_REQUEST_ID,
-                    "resolution_command_name": "evaluate",
-                    "resolution_status": "deferred_to_ui",
-                    "resolution_decision_fields": ["evaluation_result"],
-                    "resolution_message": "The relevant XBrainLab panel is open.",
+                    "request_kind": "correlated_panel_navigation",
+                    "decision": "ready_in_main_window",
+                    "target": "evaluation",
+                    "correlation": {"generation": 0, "turn_id": 3},
+                    "resolution_target": "evaluation",
+                    "resolution_correlation": {"generation": 0, "turn_id": 3},
+                    "navigation_success": True,
                     "request_resolution_correlated": True,
-                    "terminal_messages": [
-                        "Evaluation is open in the main window. Review results there."
-                    ],
+                    "terminal_count": 1,
+                    "terminal_messages": ["Opened Evaluation panel."],
                     "confirmed_execution_count": 0,
                     "duplicate_terminal_message": False,
-                    "typed_handoff_emitted": True,
-                    "typed_resolution_accepted": True,
+                    "typed_navigation_emitted": True,
                     "scenario_start_message_count": 0,
                     "scenario_message_count": 2,
                     "scenario_isolated": True,
@@ -2336,8 +2454,6 @@ def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
                         "evaluation_nav_checked": True,
                         "active_page_visible": True,
                         "assistant_dock_visible": True,
-                        "workflow_status": "opened",
-                        "workflow_opened": True,
                         "evaluation_plot_readability": {
                             "available": True,
                             "fully_visible": True,
@@ -2351,17 +2467,6 @@ def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
                                 {"text": "Right hand", "clipped": False},
                             ],
                         },
-                    },
-                    "product_copy": {
-                        "cancelled": (
-                            "Evaluation review was cancelled. "
-                            "Your current workflow is unchanged."
-                        ),
-                        "completed": "Evaluation review is ready in XBrainLab.",
-                        "failed": (
-                            "XBrainLab could not open Evaluation. "
-                            "Try again from the main window."
-                        ),
                     },
                 }
             },
@@ -2438,15 +2543,25 @@ def test_assistant_interaction_review_hard_fails_clipped_evaluation_labels() -> 
     assert "Left hand, Right hand" in findings
 
 
-def test_assistant_interaction_review_requires_polished_handoff_outcome_copy() -> None:
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("request_kind", "typed_workflow_ui_handoff"),
+        ("navigation_success", False),
+        ("terminal_count", 2),
+        ("resolution_correlation", {"generation": 0, "turn_id": 4}),
+        ("correlation", {}),
+        ("resolution_target", "training"),
+    ],
+)
+def test_assistant_interaction_review_rejects_false_navigation_evidence(field, value):
     phases = _valid_assistant_interaction_phases()
-    product_copy = phases[2]["notes"]["assistant_interaction"]["product_copy"]
-    product_copy["cancelled"] = "Review results was cancelled."
+    phases[2]["notes"]["assistant_interaction"][field] = value
 
     review = build_assistant_interaction_contract_review(phases)
 
     assert review["passed"] is False
-    assert "unpolished cancelled product copy" in "; ".join(review["findings"])
+    assert "assistant_existing_ui_handoff" in "; ".join(review["findings"])
 
 
 def test_assistant_interaction_review_rejects_accumulated_scenarios() -> None:
@@ -2569,6 +2684,102 @@ def test_walkthrough_request_traverses_real_agent_manager_and_qt_signals(qtbot) 
         assert "response:ready" in controller.events
     finally:
         manager.close()
+        qtbot.waitUntil(lambda: manager.assistant_runtime.state.value == "closed")
+
+
+def test_walkthrough_navigation_reaches_real_main_window_once(qtbot, test_app):
+    test_app.init_agent()
+    manager = test_app.agent_manager
+    assert manager is not None
+    terminals = []
+    controller = install_walkthrough_assistant(manager)
+    controller.turn_finished.connect(terminals.append)
+    try:
+        controller.publish_runtime("ready")
+        test_app.show()
+        assert manager.chat_dock is not None
+        manager.chat_dock.show()
+        app = QApplication.instance()
+        assert isinstance(app, QApplication)
+        drive_assistant_request(app, manager, ASSISTANT_EXISTING_UI_REQUEST)
+        qtbot.waitUntil(lambda: len(terminals) == 1)
+
+        request = controller.last_panel_navigation
+        assert request is not None
+        assert test_app.stack.currentWidget() is test_app.evaluation_panel
+        assert test_app.evaluation_panel.isVisible()
+        assert controller.last_navigation_resolution == (request, True)
+        assert terminals[0].correlation == request.correlation
+        assert terminals[0].outcome == "completed"
+        assert (
+            manager.chat_controller.messages[-1]["content"]
+            == "Opened Evaluation panel."
+        )
+        assert not manager.assistant_runtime.resolve_panel_navigation(
+            request, success=True
+        ).accepted
+        app.processEvents()
+        assert len(terminals) == 1
+    finally:
+        manager.close()
+        qtbot.waitUntil(lambda: manager.assistant_runtime.state.value == "closed")
+
+
+def test_walkthrough_capture_records_actual_navigation_and_scripted_confirmation(
+    qtbot, test_app, monkeypatch, tmp_path
+):
+    test_app.init_agent()
+    manager = test_app.agent_manager
+    assert manager is not None
+    controller = install_walkthrough_assistant(manager)
+    captured = {}
+
+    def record_phase(name, _key, notes, **_kwargs):
+        captured[name] = notes["assistant_interaction"]
+
+    # Isolate artifact IO, not the real card, desktop, or terminal routing.
+    monkeypatch.setattr(walkthrough_capture, "_capture_phase", record_phase)
+    dependencies = SimpleNamespace(capture_named=lambda *_args: "card.png")
+    try:
+        controller.publish_runtime("ready")
+        assert manager.chat_dock is not None
+        manager.chat_dock.show()
+        app = QApplication.instance()
+        assert isinstance(app, QApplication)
+        walkthrough_capture._capture_confirmation_interactions(
+            app,
+            manager,
+            controller,
+            manager.chat_dock,
+            manager.chat_panel,
+            None,
+            {},
+            [],
+            tmp_path,
+            dependencies,
+        )
+
+        for name in (
+            "assistant_confirmation_cancelled",
+            "assistant_confirmation_confirmed",
+        ):
+            confirmation = captured[name]
+            assert confirmation["command_name"] == "reset_preprocessing"
+            assert confirmation["execution_evidence"] == "scripted_presentation_only"
+            assert len(confirmation["terminal_messages"]) == 1
+        navigation = captured["assistant_existing_ui_handoff"]
+        assert navigation["request_kind"] == "correlated_panel_navigation"
+        assert navigation["correlation"] == navigation["resolution_correlation"]
+        assert navigation["navigation_success"] is True
+        assert navigation["terminal_count"] == 1
+        assert navigation["request_resolution_correlated"] is True
+        assert navigation["main_window_handoff"]["active_panel"] == "Evaluation"
+        assert navigation["main_window_handoff"]["active_page_visible"] is True
+        assert navigation["terminal_messages"] == ["Opened Evaluation panel."]
+        assert "product_copy" not in navigation
+    finally:
+        manager.close()
+        qtbot.waitUntil(lambda: manager.assistant_runtime.state.value == "closed")
 
 
 def test_runtime_semantics_traverse_agent_manager_qt_signals(qtbot) -> None:
@@ -2620,6 +2831,7 @@ def test_runtime_semantics_traverse_agent_manager_qt_signals(qtbot) -> None:
         assert recovery["panel_processing"] is False
     finally:
         manager.close()
+        qtbot.waitUntil(lambda: manager.assistant_runtime.state.value == "closed")
 
 
 def test_walkthrough_processing_request_shows_workflow_feedback(qtbot) -> None:
@@ -2653,8 +2865,16 @@ def test_walkthrough_processing_request_shows_workflow_feedback(qtbot) -> None:
         )
         assert panel.workflow_run_status_label.isHidden()
         assert panel.send_btn.text() == "Stop"
+        qtbot.mouseClick(panel.send_btn, Qt.MouseButton.LeftButton)
+        qtbot.waitUntil(lambda: "processing:stop" in controller.events)
+        controller.complete_stop()
+        qtbot.waitUntil(lambda: not manager.chat_controller.is_processing)
+        assert (
+            manager.chat_controller.messages[-1]["content"] == ASSISTANT_STOPPED_MESSAGE
+        )
     finally:
         manager.close()
+        qtbot.waitUntil(lambda: manager.assistant_runtime.state.value == "closed")
 
 
 def test_capture_named_settles_layout_before_recording(qtbot, tmp_path) -> None:
@@ -2730,8 +2950,15 @@ def test_capture_frame_readiness_requires_stable_consecutive_frames(tmp_path) ->
 
 
 def test_docked_widget_capture_crops_composed_main_window_with_dpr(
-    qtbot, tmp_path
+    qtbot, tmp_path, monkeypatch
 ) -> None:
+    # Exercise the composed QWidget-grab path on every host. A native Windows
+    # screen grab would bypass the deliberately synthetic 2x-DPR pixmap below.
+    monkeypatch.setattr(
+        "scripts.dev.capture_human_like_product_walkthrough._use_native_window_capture",
+        lambda **_kwargs: False,
+    )
+
     class BlackBackingStoreDock(QDockWidget):
         def grab(self, rectangle: QRect | None = None) -> QPixmap:
             del rectangle
@@ -2790,8 +3017,14 @@ def test_docked_widget_capture_crops_composed_main_window_with_dpr(
 
 
 def test_docked_widget_capture_falls_back_when_composed_grab_is_null(
-    qtbot, tmp_path
+    qtbot, tmp_path, monkeypatch
 ) -> None:
+    # This fixture represents a failed QWidget grab, not a native screen grab.
+    monkeypatch.setattr(
+        "scripts.dev.capture_human_like_product_walkthrough._use_native_window_capture",
+        lambda **_kwargs: False,
+    )
+
     class NullComposedMainWindow(QMainWindow):
         def grab(self, rectangle: QRect | None = None) -> QPixmap:
             del rectangle
@@ -2824,23 +3057,6 @@ def test_docked_widget_capture_falls_back_when_composed_grab_is_null(
     assert center == QColor("#d34dba").getRgb()[:3]
 
 
-def test_walkthrough_direct_user_input_fails_closed_without_turn_activity() -> None:
-    controller = WalkthroughAssistantController()
-    presentations: list[object] = []
-    terminals: list[object] = []
-    controller.response_presentation_ready.connect(presentations.append)
-    controller.turn_finished.connect(terminals.append)
-
-    with pytest.raises(RuntimeError, match="AssistantTurnRequest"):
-        controller.handle_user_input(ASSISTANT_NORMAL_REQUEST)
-
-    assert controller.events == []
-    assert controller.is_processing is False
-    assert controller._active_turn is None
-    assert presentations == []
-    assert terminals == []
-
-
 def test_walkthrough_confirmation_publishes_a_terminal_result() -> None:
     controller = WalkthroughAssistantController()
     presentations: list[object] = []
@@ -2860,7 +3076,7 @@ def test_walkthrough_confirmation_publishes_a_terminal_result() -> None:
     presentation = presentations[0]
     assert isinstance(presentation, AssistantResponsePresentation)
     assert presentation.text == ASSISTANT_CONFIRMED_TERMINAL_MESSAGE
-    assert controller.session_generation == 1
+    assert controller.preprocessing_reset_count == 1
 
 
 def test_walkthrough_stop_publishes_a_terminal_cancellation() -> None:
@@ -2908,7 +3124,7 @@ def test_walkthrough_blocked_copy_does_not_attach_actions() -> None:
     assert not hasattr(presentation, "actions")
 
 
-def test_walkthrough_confirmation_marks_session_reset_as_destructive() -> None:
+def test_walkthrough_confirmation_marks_preprocessing_reset_as_destructive() -> None:
     controller = WalkthroughAssistantController()
     requests: list[object] = []
     controller.confirmation_requested.connect(requests.append)
@@ -2918,119 +3134,71 @@ def test_walkthrough_confirmation_marks_session_reset_as_destructive() -> None:
     assert len(requests) == 1
     request = requests[0]
     assert isinstance(request, AgentConfirmationRequest)
-    assert request.command_name == CommandName.NEW_SESSION.value
+    assert request.command_name == "reset_preprocessing"
     assert request.parameter_rows == ()
-    assert request.description == "Start a new session and clear the current one."
+    assert request.description == "Reset preprocessing to the loaded raw data."
     assert request.destructive is True
 
 
-def test_walkthrough_handoff_uses_typed_workflow_signal_only() -> None:
+def test_walkthrough_evaluation_uses_correlated_navigation_not_workflow_handoff() -> (
+    None
+):
     controller = WalkthroughAssistantController()
-    handoffs: list[object] = []
-    panel_requests: list[object] = []
+    handoffs = []
+    panel_requests = []
     controller.workflow_ui_handoff_requested.connect(handoffs.append)
     controller.panel_navigation_requested.connect(panel_requests.append)
 
     _admit_walkthrough_turn(controller, ASSISTANT_EXISTING_UI_REQUEST)
 
-    assert len(handoffs) == 1
-    handoff = cast(WorkflowUiHandoffRequest, handoffs[0])
-    assert handoff.kind is WorkflowUiHandoffKind.DECISION_REQUIRED
-    assert handoff.command is CommandName.EVALUATE
-    assert handoff.decision_fields == ("evaluation_result",)
-    assert handoff.request_id == ASSISTANT_HANDOFF_REQUEST_ID
-    assert panel_requests == []
+    assert handoffs == []
+    assert len(panel_requests) == 1
+    request = panel_requests[0]
+    assert isinstance(request, AssistantPanelNavigationRequest)
+    assert request.target is AssistantPanelTarget.EVALUATION
+    assert request.correlation == controller._active_turn
+    assert request.correlation is not None
+    assert controller.is_processing
 
 
-def test_walkthrough_handoff_only_accepts_correlated_typed_resolution() -> None:
+@pytest.mark.parametrize("success", [True, False])
+def test_walkthrough_navigation_accepts_one_current_terminal_only(success):
     controller = WalkthroughAssistantController()
-    outcomes: list[object] = []
-    controller.interaction_resolved.connect(outcomes.append)
+    presentations = []
+    terminals = []
+    controller.response_presentation_ready.connect(presentations.append)
+    controller.turn_finished.connect(terminals.append)
     _admit_walkthrough_turn(controller, ASSISTANT_EXISTING_UI_REQUEST)
-    request = controller.last_workflow_handoff
-    assert request is not None
-
-    controller.on_workflow_ui_handoff_resolved(
-        WorkflowUiHandoffResolution(
-            request_id="stale-request",
-            command=request.command,
-            status=WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI,
-            decision_fields=request.decision_fields,
-        )
+    request = controller.last_panel_navigation
+    assert request is not None and request.correlation is not None
+    stale = AssistantPanelNavigationRequest(
+        AssistantPanelTarget.EVALUATION,
+        correlation=AssistantTurnCorrelation(
+            generation=request.correlation.generation,
+            turn_id=request.correlation.turn_id + 1,
+        ),
     )
-    assert outcomes == []
-    assert controller.is_processing is True
+    controller.on_panel_navigation_resolved(stale, success)
+    assert presentations == []
+    assert terminals == []
+    assert controller.is_processing
 
-    resolution = WorkflowUiHandoffResolution.for_request(
-        request,
-        status=WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI,
-        message="The relevant XBrainLab panel is open.",
+    controller.on_panel_navigation_resolved(request, success)
+    controller.on_panel_navigation_resolved(request, success)
+
+    assert len(presentations) == len(terminals) == 1
+    assert presentations[0].text == (
+        "Opened Evaluation panel."
+        if success
+        else "The Evaluation view could not be opened."
     )
-    controller.on_workflow_ui_handoff_resolved(resolution)
-
-    assert len(outcomes) == 1
-    outcome = cast(AgentInteractionOutcome, outcomes[0])
-    assert outcome.status is AgentInteractionStatus.DEFERRED_TO_UI
-    assert outcome.request_id == ASSISTANT_HANDOFF_REQUEST_ID
-    assert outcome.decision_fields == ("evaluation_result",)
-    assert controller.last_workflow_resolution == resolution
-    assert controller.is_processing is False
-
-
-@pytest.mark.parametrize(
-    ("resolution_status", "interaction_status"),
-    [
-        (
-            WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI,
-            AgentInteractionStatus.DEFERRED_TO_UI,
-        ),
-        (
-            WorkflowUiHandoffResolutionStatus.COMPLETED,
-            AgentInteractionStatus.COMPLETED_IN_UI,
-        ),
-        (
-            WorkflowUiHandoffResolutionStatus.CANCELLED,
-            AgentInteractionStatus.CANCELLED,
-        ),
-        (
-            WorkflowUiHandoffResolutionStatus.BLOCKED,
-            AgentInteractionStatus.BLOCKED,
-        ),
-        (
-            WorkflowUiHandoffResolutionStatus.UNAVAILABLE,
-            AgentInteractionStatus.UNAVAILABLE,
-        ),
-        (
-            WorkflowUiHandoffResolutionStatus.FAILED,
-            AgentInteractionStatus.FAILED,
-        ),
-    ],
-)
-def test_walkthrough_handoff_preserves_every_typed_resolution_status(
-    resolution_status: WorkflowUiHandoffResolutionStatus,
-    interaction_status: AgentInteractionStatus,
-) -> None:
-    controller = WalkthroughAssistantController()
-    outcomes: list[object] = []
-    controller.interaction_resolved.connect(outcomes.append)
-    _admit_walkthrough_turn(controller, ASSISTANT_EXISTING_UI_REQUEST)
-    request = controller.last_workflow_handoff
-    assert request is not None
-
-    resolution = WorkflowUiHandoffResolution.for_request(
-        request,
-        status=resolution_status,
-        message="Correlated product-surface result.",
+    assert terminals[0].correlation == request.correlation
+    assert terminals[0].outcome == (
+        "completed" if success else "panel_navigation_failed"
     )
-    controller.on_workflow_ui_handoff_resolved(resolution)
-
-    assert len(outcomes) == 1
-    outcome = cast(AgentInteractionOutcome, outcomes[0])
-    assert outcome.status is interaction_status
-    assert outcome.command_name == CommandName.EVALUATE.value
-    assert outcome.request_id == ASSISTANT_HANDOFF_REQUEST_ID
-    assert outcome.decision_fields == ("evaluation_result",)
-    assert outcome.message == "Correlated product-surface result."
+    assert controller.last_navigation_resolution == (request, success)
+    assert controller.navigation_terminal_count == 1
+    assert not controller.is_processing
 
 
 def test_walkthrough_handoff_does_not_restore_legacy_callback_surface() -> None:
@@ -3392,6 +3560,7 @@ def test_text_paint_guard_honors_word_wrap_and_rejects_real_label_clipping(
         )
 
 
+@pytest.mark.usefixtures("capture_cli_style")
 def test_text_paint_guard_validates_icon_only_controls_by_icon_and_accessible_name(
     qtbot,
     tmp_path,
@@ -3594,6 +3763,7 @@ def test_assistant_loading_guard_requires_composer_and_send_to_be_painted(
         _assert_assistant_dock_rendered(root, complete)
 
 
+@pytest.mark.usefixtures("capture_cli_style")
 def test_assistant_processing_guard_rejects_send_for_non_cancelable_work(
     qtbot,
     tmp_path,
@@ -3657,6 +3827,7 @@ def test_assistant_processing_guard_accepts_typed_waiting_action(
     _assert_assistant_dock_rendered(root, screenshot)
 
 
+@pytest.mark.usefixtures("capture_cli_style")
 def test_assistant_empty_capture_requires_current_action_button(
     qtbot,
     tmp_path,
@@ -5835,7 +6006,7 @@ def test_chat_panel_geometry_reports_latest_bubble_clearance(qtbot) -> None:
     composer.setObjectName("ControlPanel")
     layout.addWidget(composer)
     chat_widget = cast(Any, widget)
-    chat_widget.scroll_area = type(
+    chat_widget.transcript_view = type(
         "ScrollAreaStub",
         (),
         {"verticalScrollBar": lambda self: None},

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, ClassVar
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import torch
@@ -11,25 +12,18 @@ import torch.utils.data as torch_data
 from captum.attr import NoiseTunnel, Saliency
 from sklearn.metrics import roc_auc_score
 
+from XBrainLab.backend.exceptions import StaleSaliencyUpdateError
+from XBrainLab.backend.saliency_methods import (
+    all_saliency_methods,
+    supported_saliency_methods,
+)
+
 from .record import EvalRecord, RecordKey
 from .saliency_artifact_integrity import normalize_saliency_method_parameters
 
 
 class Evaluator:
     """Helper class for model evaluation, testing, and metric computation."""
-
-    _ALL_SALIENCY_METHODS: ClassVar[tuple[str, ...]] = (
-        "Gradient",
-        "Gradient * Input",
-        "SmoothGrad",
-        "SmoothGrad_Squared",
-        "VarGrad",
-    )
-    _NOISE_TUNNEL_METHODS: ClassVar[tuple[str, ...]] = (
-        "SmoothGrad",
-        "SmoothGrad_Squared",
-        "VarGrad",
-    )
 
     @staticmethod
     def _model_device(model: torch.nn.Module) -> Any | None:
@@ -63,16 +57,6 @@ class Evaluator:
             raise ValueError(f"{context} contains NaN or infinite values.")
 
     @staticmethod
-    def _noise_tunnel_params(
-        saliency_params: dict,
-        method: str,
-    ) -> dict[str, Any]:
-        return normalize_saliency_method_parameters(
-            method,
-            saliency_params.get(method),
-        )
-
-    @staticmethod
     def _noise_seed(model: torch.nn.Module) -> int:
         """Capture the active generator seed before NoiseTunnel attribution."""
         device = Evaluator._model_device(model)
@@ -91,12 +75,12 @@ class Evaluator:
         elif isinstance(value, (list, tuple, set)):
             raw_methods = list(value)
         else:
-            return set(Evaluator._ALL_SALIENCY_METHODS)
+            return set(all_saliency_methods)
 
-        valid_methods = set(Evaluator._ALL_SALIENCY_METHODS)
+        valid_methods = set(all_saliency_methods)
         selected = {str(method).strip() for method in raw_methods}
         selected &= valid_methods
-        return selected or set(Evaluator._ALL_SALIENCY_METHODS)
+        return selected or valid_methods
 
     @staticmethod
     def _captum_output_to_numpy(value: Any) -> np.ndarray:
@@ -116,7 +100,8 @@ class Evaluator:
 
         Args:
             y_true: Ground truth labels as a tensor or numpy array.
-            y_pred: Predicted logits or probabilities as a tensor or numpy array.
+            y_pred: Tensor logits, or numpy class scores (probabilities for
+                multiclass). Only tensor inputs are normalized with softmax.
             multi_class: Multi-class strategy for AUC computation.
                 Defaults to ``'ovr'`` (one-vs-rest).
 
@@ -302,6 +287,7 @@ class Evaluator:
         saliency_params: dict,
         *,
         evaluation_split: str = "unknown",
+        should_cancel: Callable[[], bool] | None = None,
     ) -> EvalRecord:
         """Evaluate model and compute saliency maps using multiple attribution methods.
 
@@ -314,12 +300,23 @@ class Evaluator:
             saliency_params: Dictionary of parameters for each saliency method,
                 keyed by method name (e.g., ``'SmoothGrad'``,
                 ``'SmoothGrad_Squared'``, ``'VarGrad'``).
+            evaluation_split: Source split recorded with the result.
+            should_cancel: Existing job cancellation predicate, checked between
+                batches and methods; an in-flight Torch/Captum call completes.
 
         Returns:
             An :class:`EvalRecord` containing labels, outputs, and per-class
             saliency maps for all attribution methods.
 
         """
+
+        def check_cancelled() -> None:
+            # Reuse the holder/manager's cancellation authority. An in-flight
+            # Torch/Captum call is not preempted, but no later work is started.
+            if should_cancel is not None and should_cancel():
+                raise StaleSaliencyUpdateError
+
+        check_cancelled()
         model.eval()
 
         selected_methods = Evaluator._selected_saliency_methods(saliency_params)
@@ -330,10 +327,10 @@ class Evaluator:
         compute_vargrad = "VarGrad" in selected_methods
         compute_any_gradient = compute_gradient or compute_gradient_input
         compute_any_noise = any(
-            method in selected_methods for method in Evaluator._NOISE_TUNNEL_METHODS
+            method in selected_methods for method in supported_saliency_methods
         )
         compute_any_saliency = compute_any_gradient or compute_any_noise
-        effective_parameters = {
+        effective_parameters: dict[str, dict[str, Any]] = {
             method: normalize_saliency_method_parameters(
                 method,
                 saliency_params.get(method),
@@ -354,6 +351,7 @@ class Evaluator:
         noise_tunnel_inst = NoiseTunnel(Saliency(model)) if compute_any_noise else None
 
         for inputs, labels in data_loader:
+            check_cancelled()
             batch_inputs, batch_labels = Evaluator._move_batch_to_model_device(
                 model,
                 inputs,
@@ -367,6 +365,7 @@ class Evaluator:
                     outputs,
                     context="Saliency evaluation model output",
                 )
+                check_cancelled()
                 if compute_any_gradient:
                     # Reuse the logits graph for signed true-label attribution.
                     selected_outputs = outputs.gather(1, batch_labels[:, None]).sum()
@@ -390,6 +389,7 @@ class Evaluator:
                         np.multiply(batch_inputs_array, batch_gradient),
                     )
             if compute_smoothgrad and noise_tunnel_inst is not None:
+                check_cancelled()
                 smoothgrad_list.append(
                     Evaluator._captum_output_to_numpy(
                         noise_tunnel_inst.attribute(
@@ -397,14 +397,12 @@ class Evaluator:
                             target=target_labels,
                             nt_type="smoothgrad",
                             abs=False,
-                            **Evaluator._noise_tunnel_params(
-                                saliency_params,
-                                "SmoothGrad",
-                            ),
+                            **effective_parameters["SmoothGrad"],
                         )
                     ),
                 )
             if compute_smoothgrad_sq and noise_tunnel_inst is not None:
+                check_cancelled()
                 smoothgrad_sq_list.append(
                     Evaluator._captum_output_to_numpy(
                         noise_tunnel_inst.attribute(
@@ -412,14 +410,12 @@ class Evaluator:
                             target=target_labels,
                             nt_type="smoothgrad_sq",
                             abs=False,
-                            **Evaluator._noise_tunnel_params(
-                                saliency_params,
-                                "SmoothGrad_Squared",
-                            ),
+                            **effective_parameters["SmoothGrad_Squared"],
                         )
                     ),
                 )
             if compute_vargrad and noise_tunnel_inst is not None:
+                check_cancelled()
                 vargrad_list.append(
                     Evaluator._captum_output_to_numpy(
                         noise_tunnel_inst.attribute(
@@ -427,14 +423,12 @@ class Evaluator:
                             target=target_labels,
                             nt_type="vargrad",
                             abs=False,
-                            **Evaluator._noise_tunnel_params(
-                                saliency_params,
-                                "VarGrad",
-                            ),
+                            **effective_parameters["VarGrad"],
                         )
                     ),
                 )
 
+        check_cancelled()
         label_list = np.concatenate(label_list)
         output_list = np.concatenate(output_list)
 
@@ -470,8 +464,7 @@ class Evaluator:
                 {
                     method: noise_seed
                     for method in selected_methods
-                    if method in Evaluator._NOISE_TUNNEL_METHODS
-                    and noise_seed is not None
+                    if method in supported_saliency_methods and noise_seed is not None
                 }
             ),
         )

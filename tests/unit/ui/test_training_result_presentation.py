@@ -303,8 +303,9 @@ class TestVisualizationPanelIntegration:
             panel.last_application_query.diagnostics.get("exception_type")
             != "PreconditionError"
         )
-        assert panel.plan_combo.count() == 1
-        assert panel.plan_combo.itemText(0) == "Select a fold"
+        assert panel.plan_combo.count() == 0
+        assert panel.plan_combo.placeholderText() == "Select a fold"
+        assert not panel.plan_combo.isEnabled()
         assert panel.run_combo.count() == 0
         current_widget = cast(Any, panel.tabs.currentWidget())
         assert current_widget.error_label.isHidden() is False

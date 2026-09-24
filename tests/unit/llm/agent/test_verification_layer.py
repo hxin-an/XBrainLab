@@ -1,11 +1,12 @@
+import json
 import logging
 from typing import Any, cast
 
 import pytest
 
+from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 from XBrainLab.llm.agent.verifier import (
     FrequencyRangeValidator,
-    PlaceholderArgumentValidator,
     ToolSchemaValidator,
     ValidatorStrategy,
     VerificationLayer,
@@ -18,6 +19,104 @@ from XBrainLab.llm.agent.verifier import (
 def _error_message(result: VerificationResult) -> str:
     assert result.error_message is not None
     return result.error_message
+
+
+_CURRENT_TOOL_PARAMETERS = {
+    "import_eeg_data": {},
+    "select_channels": {},
+    "set_montage": {},
+    "create_epochs": {},
+    "configure_dataset_split": {},
+    "select_model": {},
+    "configure_training": {},
+    "compute_saliency": {},
+    "apply_bandpass_filter": {"low_freq": 4, "high_freq": 38},
+    "apply_notch_filter": {"freq": 50},
+    "resample_data": {"rate": 128},
+    "set_reference": {"method": "average"},
+    "normalize_data": {"method": "z-score"},
+    "start_training": {},
+    "stop_training": {},
+    "reset_preprocessing": {},
+    "clear_training_history": {},
+    "switch_panel": {"panel_name": "evaluation"},
+}
+_PARAMETERIZED_TOOLS = tuple(
+    name for name, params in _CURRENT_TOOL_PARAMETERS.items() if params
+)
+
+
+def _verify_product_envelope(tool_name: str, params: dict) -> VerificationResult:
+    from XBrainLab.llm.tools import get_all_tools
+
+    schemas = {tool.name: tool.parameters for tool in get_all_tools()}
+    assert set(schemas) == set(_CURRENT_TOOL_PARAMETERS)
+    response = json.dumps(
+        {"workflow_stage": "empty", "tool_name": tool_name, "parameters": params}
+    )
+    envelope = CommandParser.parse_product(response)
+    assert envelope.status is ToolEnvelopeStatus.VALID
+    assert len(envelope.commands) == 1
+    return VerificationLayer(tool_schemas=schemas).verify_tool_call(
+        envelope.commands[0],
+    )
+
+
+@pytest.mark.parametrize("tool_name", _CURRENT_TOOL_PARAMETERS)
+def test_current_tool_envelopes_pass_real_parser_and_schema(tool_name: str) -> None:
+    result = _verify_product_envelope(tool_name, _CURRENT_TOOL_PARAMETERS[tool_name])
+    assert result.is_valid, result.error_message
+
+
+@pytest.mark.parametrize("cutoffs", [(1, 40), (50, 10)])
+def test_retired_standard_preprocess_is_rejected_by_registered_schema(cutoffs) -> None:
+    result = _verify_product_envelope(
+        "apply_standard_preprocess", {"l_freq": cutoffs[0], "h_freq": cutoffs[1]}
+    )
+
+    assert not result.is_valid
+    assert _error_message(result) == "Tool is not registered: apply_standard_preprocess"
+
+
+@pytest.mark.parametrize("tool_name", _PARAMETERIZED_TOOLS)
+def test_current_parameterized_tools_reject_missing_parameters(tool_name: str) -> None:
+    result = _verify_product_envelope(tool_name, {})
+    assert not result.is_valid
+    assert "Missing required" in _error_message(result)
+
+
+@pytest.mark.parametrize("tool_name", _PARAMETERIZED_TOOLS)
+def test_current_parameterized_tools_reject_wrong_value_types(tool_name: str) -> None:
+    params = {name: [] for name in _CURRENT_TOOL_PARAMETERS[tool_name]}
+    result = _verify_product_envelope(tool_name, params)
+    assert not result.is_valid
+    assert "must be" in _error_message(result)
+
+
+@pytest.mark.parametrize("tool_name", _CURRENT_TOOL_PARAMETERS)
+def test_current_tools_reject_undeclared_parameters(tool_name: str) -> None:
+    params = {**_CURRENT_TOOL_PARAMETERS[tool_name], "invented": True}
+    result = _verify_product_envelope(tool_name, params)
+    assert not result.is_valid
+    assert "Unknown parameter" in _error_message(result)
+
+
+@pytest.mark.parametrize(
+    "wrapper", ["```json\n{}\n```", "I think {}", "[{}]", "{} {{}}"]
+)
+def test_schema_valid_tool_inside_non_product_envelope_is_rejected(
+    wrapper: str,
+) -> None:
+    response = json.dumps(
+        {
+            "workflow_stage": "empty",
+            "tool_name": "configure_training",
+            "parameters": {},
+        }
+    )
+    envelope = CommandParser.parse_product(wrapper.format(response))
+    assert envelope.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert envelope.commands == ()
 
 
 def test_missing_direct_preprocess_parameters_are_typed_schema_failures() -> None:
@@ -316,28 +415,6 @@ def test_bandpass_origin_question_names_only_the_unverified_cutoff(
     assert result == VerificationResult(False, expected_question)
 
 
-def test_verification_script_syntax(tmp_path):
-    """Test that Verifier catches basic syntax errors in tool calls."""
-    verifier = VerificationLayer()
-
-    # Valid call
-    source = tmp_path / "test.csv"
-    source.touch()
-    valid_call = ("scan_source", {"source_path": str(source)})
-    result = verifier.verify_tool_call(valid_call, confidence=0.9)
-    assert result.is_valid
-    assert result.error_message is None
-
-    # Invalid call (missing mandatory param - simulated by catching logic error if we had strict schema info,
-    # but for now we might just check structure)
-    # Actually, Verifier might simpler checks first.
-
-    # Let's test confidence first
-    result = verifier.verify_tool_call(valid_call, confidence=0.1)
-    assert not result.is_valid
-    assert "Confidence too low" in _error_message(result)
-
-
 def test_verification_result_structure():
     """Test the result object structure."""
     res = VerificationResult(is_valid=True, error_message=None)
@@ -356,11 +433,11 @@ def test_script_validation_logic():
 
     # Malformed tool call (not a tuple of (name, dict))
     # Should return invalid VerificationResult (not raise)
-    result = verifier.verify_tool_call(cast(Any, ("not a tuple",)), 0.9)
+    result = verifier.verify_tool_call(cast(Any, ("not a tuple",)))
     assert not result.is_valid
 
     # Valid structure
-    res = verifier.verify_tool_call(("tool", {}), 0.9)
+    res = verifier.verify_tool_call(("tool", {}))
     assert res.is_valid
 
 
@@ -397,11 +474,6 @@ class TestFrequencyRangeValidator:
         r = v.validate("apply_bandpass_filter", {"low_freq": "abc", "high_freq": 40})
         assert not r.is_valid
         assert "numeric" in _error_message(r)
-
-    def test_standard_preprocess_uses_l_h_freq(self):
-        v = FrequencyRangeValidator()
-        r = v.validate("apply_standard_preprocess", {"l_freq": 50, "h_freq": 10})
-        assert not r.is_valid
 
     def test_ignores_unrelated_tools(self):
         v = FrequencyRangeValidator()
@@ -557,52 +629,6 @@ class TestToolSchemaValidator:
 
 
 # ---------------------------------------------------------------------------
-# Training output paths
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "path",
-    [
-        "",
-        "path_to_eeg_dataset",
-        "/path/to/output",
-        "/path/with/output",
-        "Please provide the absolute path",
-        "your/recipe",
-        "replace_with/output",
-    ],
-)
-def test_training_output_rejects_placeholder_paths(path: str) -> None:
-    result = PlaceholderArgumentValidator().validate(
-        "configure_training", {"output_dir": path}
-    )
-    assert not result.is_valid
-    assert _error_message(result) == (
-        "Required training output directory must be an actual path "
-        f"provided by the user, got placeholder {path!r}."
-    )
-
-
-@pytest.mark.parametrize("path", ["relative/output", "output"])
-def test_training_output_requires_absolute_path(path: str) -> None:
-    result = PlaceholderArgumentValidator().validate(
-        "configure_training", {"output_dir": path}
-    )
-    assert not result.is_valid
-    assert "absolute path" in _error_message(result)
-
-
-@pytest.mark.parametrize("path", ["/new/output", r"C:\data\new output"])
-def test_training_output_does_not_require_existing_directory(path: str) -> None:
-    assert (
-        PlaceholderArgumentValidator()
-        .validate("configure_training", {"output_dir": path})
-        .is_valid
-    )
-
-
-# ---------------------------------------------------------------------------
 # VerificationLayer integration with validators
 # ---------------------------------------------------------------------------
 
@@ -643,13 +669,17 @@ class TestVerificationLayerWithValidators:
         assert not r.is_valid
         assert "Missing required" in _error_message(r)
 
-    def test_default_validators_reject_placeholder_paths(self):
-        v = VerificationLayer()
+    def test_published_training_wizard_schema_rejects_placeholder_paths(self):
+        from XBrainLab.llm.tools import get_all_tools
+
+        v = VerificationLayer(
+            tool_schemas={tool.name: tool.parameters for tool in get_all_tools()}
+        )
         r = v.verify_tool_call(
             ("configure_training", {"output_dir": "/path/to/output"})
         )
         assert not r.is_valid
-        assert "actual path" in _error_message(r)
+        assert "Unknown parameter" in _error_message(r)
 
 
 class _PrivateFailureValidator(ValidatorStrategy):
@@ -674,7 +704,7 @@ def test_verification_boundary_redacts_public_error_and_validator_log(
         logging.WARNING,
         logger_name="XBrainLab.llm.agent.verifier",
     ):
-        result = verifier.verify_tool_call(("query_state", {}), confidence=1.0)
+        result = verifier.verify_tool_call(("query_state", {}))
 
     assert result.is_valid is False
     public_error = _error_message(result)

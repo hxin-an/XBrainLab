@@ -12,8 +12,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from matplotlib.figure import Figure
-from PyQt6.QtCore import QRunnable, QThreadPool
-from PyQt6.QtWidgets import QLabel, QWidget
+from PyQt6.QtCore import QRunnable, Qt, QThreadPool
+from PyQt6.QtWidgets import QApplication, QLabel, QWidget
 
 from XBrainLab.backend.application import (
     ApplicationViewPublication,
@@ -131,12 +131,12 @@ def _select_run(panel, run_identity: SaliencyRunIdentity) -> None:
     plan_index = next(
         (
             index
-            for index in range(1, panel.plan_combo.count())
+            for index in range(panel.plan_combo.count())
             if panel.plan_combo.itemData(index) == run_identity.plan
         ),
         -1,
     )
-    assert plan_index >= 1
+    assert plan_index >= 0
     panel.plan_combo.blockSignals(True)
     panel.plan_combo.setCurrentIndex(plan_index)
     panel.plan_combo.blockSignals(False)
@@ -255,7 +255,6 @@ def _make_panel(
         widget.show_error = MagicMock()
         widget.show_message = MagicMock()
         widget.set_saliency_coverage = MagicMock()
-        widget.set_post_training_saliency_status = MagicMock()
         widget.update_plot = MagicMock()
         widget.invalidate_render_publication = MagicMock()
         widget.begin_render_shutdown = MagicMock()
@@ -342,6 +341,63 @@ def visualization_panel(qtbot):
     return _make_panel(qtbot)
 
 
+@pytest.mark.parametrize(
+    "selector_name", ("plan_combo", "run_combo", "method_combo", "saliency_combo")
+)
+@pytest.mark.parametrize("item_count", (2, 50))
+def test_visualization_popup_has_no_white_bands_and_keeps_keyboard_selection(
+    visualization_panel, qtbot, qapp, tmp_path, selector_name, item_count
+):
+    """Inspect the popup frame, not only the already-dark list viewport."""
+    previous_style = qapp.style().objectName()
+    qapp.setStyle("Fusion")  # Same style as the native application entry point.
+    panel = visualization_panel
+    combo = getattr(panel, selector_name)
+    combo.blockSignals(True)  # Isolate presentation from render/GPU work.
+    combo.clear()
+    combo.addItems([f"Result {index + 1}" for index in range(item_count)])
+    combo.setMaxVisibleItems(8)
+    combo.setEnabled(True)
+    panel.resize(1000, 600)
+    panel.show()
+    try:
+        combo.showPopup()
+        popup = combo.view().window()
+        qtbot.waitUntil(popup.isVisible)
+        QApplication.processEvents()
+        pixmap = popup.grab()
+        image = pixmap.toImage()
+        pixmap.save(str(tmp_path / f"{selector_name}-popup.png"))
+        for y in (2, image.height() - 3):
+            colors = [image.pixelColor(x, y) for x in range(3, image.width() - 3)]
+            near_white = sum(
+                min(color.red(), color.green(), color.blue()) >= 220 for color in colors
+            )
+            assert near_white / len(colors) < 0.1, (
+                f"White popup band at y={y}; capture: {tmp_path}"
+            )
+        qtbot.keyClick(combo.view(), Qt.Key.Key_Down)
+        expected_index = 1
+        if item_count > 8:
+            qtbot.keyClick(combo.view(), Qt.Key.Key_End)
+            expected_index = item_count - 1
+            last_row = combo.view().currentIndex()
+            assert last_row.row() == expected_index
+            assert (
+                combo.view()
+                .viewport()
+                .rect()
+                .contains(combo.view().visualRect(last_row).center())
+            )
+        qtbot.keyClick(combo.view(), Qt.Key.Key_Return)
+        assert combo.currentIndex() == expected_index
+        assert not popup.isVisible()
+    finally:
+        combo.hidePopup()
+        combo.blockSignals(False)
+        qapp.setStyle(previous_style)
+
+
 def _current_widget(panel) -> Any:
     widget = panel.tabs.currentWidget()
     assert widget is not None
@@ -420,7 +476,6 @@ def test_overview_class_activation_invalidates_existing_native_binding(qtbot):
         return True
 
     with (
-        patch.object(panel, "_saliency_render_is_cached", return_value=True),
         patch.object(
             panel,
             "_saliency_render_publication",
@@ -1225,7 +1280,142 @@ def test_cancelled_shutdown_resubmits_3d_publication_to_true_worker(
     assert all(thread_id != threading.get_ident() for thread_id in worker_threads)
 
 
+def test_shared_saliency_selector_drives_real_3d_worker(qtbot, monkeypatch):
+    from XBrainLab.ui.panels.visualization.saliency_views import plot_3d_view
+
+    panel = _make_real_saliency_panel(qtbot)
+    coverage = SaliencyMethodCoverageSnapshot(
+        method="Gradient",
+        available=True,
+        complete=True,
+        classes=[
+            SaliencyClassCoverageSnapshot(
+                class_index=index,
+                display_name=name,
+                event_code=index + 1,
+                store_key=str(index),
+                available=True,
+            )
+            for index, name in enumerate(("left", "right"))
+        ],
+    )
+    publication = _publish_panel_state(
+        panel,
+        _visualization_result(
+            _run_coverage(
+                plan_index=0,
+                run_index=0,
+                model_name="EEGNet",
+                methods=(coverage,),
+            )
+        ),
+    )
+    data = replace(
+        _render_data(),
+        saliency_by_class={"0": np.ones((1, 2, 3)), "1": np.full((1, 2, 3), 2.0)},
+        class_map=((1, "left"), (2, "right")),
+        event_ids={"left": 1, "right": 2},
+    )
+    rendered_keys = []
+
+    class Interactor(QWidget):
+        def __init__(self, parent):
+            super().__init__(parent)
+            self.interactor = self
+
+        def Initialize(self):
+            pass
+
+    def prepare_engine(render_data, key, **_kwargs):
+        rendered_keys.append((key, threading.get_ident()))
+        assert render_data.class_map == data.class_map
+        return object(), 2
+
+    monkeypatch.setattr(
+        plot_3d_view.Saliency3D, "prepare_engine", staticmethod(prepare_engine)
+    )
+    monkeypatch.setattr(
+        plot_3d_view.Saliency3DPlotWidget,
+        "_interactive_3d_runtime_available",
+        staticmethod(lambda: (True, "")),
+    )
+    monkeypatch.setattr(plot_3d_view.pyvistaqt, "QtInteractor", Interactor)
+    monkeypatch.setattr(panel.tab_3d, "_do_3d_plot", MagicMock())
+    with patch.object(panel, "on_update"):
+        panel.tabs.setCurrentIndex(3)
+
+    def render(_panel, request, **_kwargs):
+        return SaliencyRenderPublication(
+            request=request,
+            generation=publication.generation,
+            training_generation=1,
+            data=data,
+        )
+
+    with patch(
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+        side_effect=_prepare_variants_from(render),
+    ):
+        panel.on_update()
+        qtbot.waitUntil(
+            lambda: bool(rendered_keys) and panel.native_render_work_idle(),
+            timeout=3000,
+        )
+        assert panel.saliency_combo.currentData() == "0"
+        index = panel.saliency_combo.findData("1")
+        assert index >= 0
+        panel.saliency_combo.setCurrentIndex(index)
+        qtbot.waitUntil(
+            lambda: len(rendered_keys) == 2 and panel.native_render_work_idle(),
+            timeout=3000,
+        )
+
+    assert [key for key, _thread in rendered_keys] == ["0", "1"]
+    assert all(worker != threading.get_ident() for _key, worker in rendered_keys)
+
+
 class TestRefreshCombos:
+    @pytest.mark.parametrize(
+        "busy_field", ("_saliency_command_busy", "_saliency_compute_in_progress")
+    )
+    def test_refresh_keeps_fold_fenced_until_idle(
+        self, visualization_panel, busy_field
+    ):
+        panel = visualization_panel
+        result = _visualization_result(
+            _run_coverage(plan_index=0, run_index=0, model_name="EEGNet"),
+        )
+        _publish_panel_state(panel, result)
+        assert panel.plan_combo.isEnabled()
+        setattr(panel, busy_field, True)
+        panel._active_saliency_operation_id = "saliency-operation-1"
+        panel._sync_saliency_busy_controls()
+        # A navigation refresh of the same publication must not release the
+        # owned-operation fence; replacing the trainer is a different scenario.
+        with patch.object(panel, "on_update"):
+            panel.refresh_combos()
+        assert not panel.plan_combo.isEnabled()
+        setattr(panel, busy_field, False)
+        panel._active_saliency_operation_id = None
+        panel._sync_saliency_busy_controls()
+        assert panel.plan_combo.isEnabled()
+
+    def test_idle_after_cleared_busy_selection_does_not_enable_empty_fold(
+        self, visualization_panel
+    ):
+        panel = visualization_panel
+        _publish_panel_state(
+            panel,
+            _visualization_result(
+                _run_coverage(plan_index=0, run_index=0, model_name="EEGNet"),
+            ),
+        )
+        panel.set_busy(True)
+        panel._clear_plan_controls()
+        panel.set_busy(False)
+        assert panel.plan_combo.count() == 0
+        assert not panel.plan_combo.isEnabled()
+
     def test_partial_method_is_selectable_only_in_the_3d_tab(
         self,
         visualization_panel,
@@ -1270,15 +1460,16 @@ class TestRefreshCombos:
 
         assert panel.method_combo.findText("Gradient") == 0
 
-    def test_empty_publication_keeps_only_placeholder(self, visualization_panel):
+    def test_empty_publication_has_no_selectable_fold(self, visualization_panel):
         panel = visualization_panel
 
         publication = _publish_panel_state(panel, _visualization_result())
 
         assert publication.usable is True
-        assert panel.plan_combo.count() == 1
-        assert panel.plan_combo.itemText(0) == "Select a fold"
-        assert panel.plan_combo.itemData(0) is None
+        assert panel.plan_combo.count() == 0
+        assert panel.plan_combo.placeholderText() == "Select a fold"
+        assert panel.plan_combo.currentIndex() == -1
+        assert not panel.plan_combo.isEnabled()
         assert panel.run_combo.count() == 0
         assert panel._runs_by_plan == {}
 
@@ -1321,10 +1512,12 @@ class TestRefreshCombos:
         assert [
             panel.plan_combo.itemText(index)
             for index in range(panel.plan_combo.count())
-        ] == ["Select a fold", "Fold 1", "Fold 2"]
-        assert panel.plan_combo.itemData(1) == plan_zero
-        assert panel.plan_combo.itemData(2) == plan_one
-        assert isinstance(panel.plan_combo.itemData(1), SaliencyPlanIdentity)
+        ] == ["Fold 1", "Fold 2"]
+        assert panel.plan_combo.isEnabled()
+        assert panel.plan_combo.currentData() == plan_zero
+        assert panel.plan_combo.itemData(0) == plan_zero
+        assert panel.plan_combo.itemData(1) == plan_one
+        assert isinstance(panel.plan_combo.itemData(0), SaliencyPlanIdentity)
         assert [
             panel.run_combo.itemData(index) for index in range(panel.run_combo.count())
         ] == [
@@ -1756,8 +1949,9 @@ class TestRefreshCombos:
             panel.refresh_combos()
 
         assert panel._application_view_publication is None
-        assert panel.plan_combo.count() == 1
-        assert panel.plan_combo.itemText(0) == "Select a fold"
+        assert panel.plan_combo.count() == 0
+        assert panel.plan_combo.placeholderText() == "Select a fold"
+        assert not panel.plan_combo.isEnabled()
         assert panel.run_combo.count() == 0
         assert panel._runs_by_plan == {}
         for view in (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d):
@@ -1820,7 +2014,7 @@ class TestOnPlanChanged:
             SaliencyRunIdentity(plan=plan, run_index=1),
         ]
 
-    def test_placeholder_identity_clears_run_selection(
+    def test_cleared_identity_clears_run_selection(
         self,
         visualization_panel,
     ):
@@ -1836,7 +2030,7 @@ class TestOnPlanChanged:
             ),
         )
         panel.plan_combo.blockSignals(True)
-        panel.plan_combo.setCurrentIndex(0)
+        panel.plan_combo.setCurrentIndex(-1)
         panel.plan_combo.blockSignals(False)
 
         with patch.object(panel, "on_update"):
@@ -2301,12 +2495,11 @@ class TestUpdatePanel:
         update_info.assert_called_once_with()
         on_update.assert_called_once_with()
 
-    def test_update_info_refreshes_sidebar_and_combos(self, visualization_panel):
+    def test_update_info_refreshes_combos(self, visualization_panel):
         panel = visualization_panel
         panel.last_saliency_query = MagicMock()
         panel._saliency_summary_dirty = False
         with patch.object(panel, "refresh_combos") as refresh_combos:
             panel.update_info()
 
-        panel.sidebar.update_info.assert_called_once_with()
         refresh_combos.assert_called_once_with()

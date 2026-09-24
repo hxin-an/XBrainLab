@@ -22,10 +22,8 @@ from PyQt6.QtCore import (
     QTimer,
     pyqtSignal,
 )
-from PyQt6.QtGui import QStandardItemModel
 from PyQt6.QtWidgets import (
     QApplication,
-    QComboBox,
     QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
@@ -43,13 +41,8 @@ from XBrainLab.backend.application.state import (
     SaliencyClassCoverageSnapshot,
     SaliencyMethodCoverageSnapshot,
 )
-from XBrainLab.backend.training_state_contract import (
-    PostTrainingSaliencyPhase,
-    PostTrainingSaliencyStatus,
-)
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.ui.core.worker import Worker
-from XBrainLab.ui.styles.stylesheets import Stylesheets
 from XBrainLab.ui.styles.theme import Theme
 
 from .base_saliency_view import (
@@ -57,7 +50,6 @@ from .base_saliency_view import (
     SALIENCY_RENDER_FAILED_TEXT,
     _start_worker_atomically,
     _worker_start_failure_message,
-    safe_saliency_detail,
 )
 from .plot_3d_head import Saliency3D
 
@@ -208,7 +200,7 @@ class Saliency3DPlotWidget(QWidget):
     _MAX_PREPARED_ENGINE_CACHE_ENTRIES = 8
     scene_controls_changed = pyqtSignal()
     render_terminal = pyqtSignal(int, int, str)
-    _cached_engine_ready = pyqtSignal(int, object, object, object, str, bool, int)
+    _cached_engine_ready = pyqtSignal(int, object, int)
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -233,16 +225,12 @@ class Saliency3DPlotWidget(QWidget):
             self._show_prepared_engine, Qt.ConnectionType.QueuedConnection
         )
         self._current_publication_generation: int | None = None
-        self._current_plot_request: tuple[SaliencyRenderPublication, bool] | None = None
         self._prepared_engine_cache: OrderedDict[
             tuple[object, ...],
             _PreparedEngineCacheEntry,
         ] = OrderedDict()
-        self._class_coverage: dict[str, SaliencyClassCoverageSnapshot] = {}
         self._requested_class_key: object | None = None
         self._saliency_coverage: SaliencyMethodCoverageSnapshot | None = None
-        self._post_training_saliency_status = PostTrainingSaliencyStatus.idle()
-        self._selector_syncing = False
         self._saliency_scene: Saliency3D | None = None
         self._orientation_refresh_timer = QTimer(self)
         self._orientation_refresh_timer.setSingleShot(True)
@@ -251,17 +239,6 @@ class Saliency3DPlotWidget(QWidget):
         )
         self._active_scene_key: tuple[object, ...] | None = None
         self.init_ui()
-
-    def set_post_training_saliency_status(
-        self,
-        status: PostTrainingSaliencyStatus,
-    ) -> None:
-        """Receive the lifecycle published by the parent Application state."""
-        self._post_training_saliency_status = (
-            status
-            if isinstance(status, PostTrainingSaliencyStatus)
-            else PostTrainingSaliencyStatus.idle()
-        )
 
     def set_saliency_coverage(
         self,
@@ -279,35 +256,6 @@ class Saliency3DPlotWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
-
-        self.class_controls = QWidget(self)
-        self.class_controls.setStyleSheet("background: transparent;")
-        class_layout = QHBoxLayout(self.class_controls)
-        class_layout.setContentsMargins(8, 6, 8, 0)
-        class_layout.setSpacing(8)
-        class_label = QLabel("True class:", self.class_controls)
-        class_label.setStyleSheet(
-            f"color: {Theme.TEXT_SECONDARY}; background: transparent;"
-        )
-        self.class_combo = QComboBox(self.class_controls)
-        self.class_combo.setMinimumWidth(140)
-        self.class_combo.setMaximumWidth(240)
-        self.class_combo.setStyleSheet(Stylesheets.COMBO_BOX)
-        self.class_combo.currentIndexChanged.connect(self._on_class_changed)
-        class_layout.addWidget(class_label)
-        class_layout.addWidget(self.class_combo)
-        self.class_semantics = QLabel(self.class_controls)
-        self.class_semantics.setWordWrap(True)
-        self.class_semantics.setStyleSheet(
-            f"color: {Theme.TEXT_MUTED}; background: transparent;"
-        )
-        self.class_semantics.setToolTip(
-            "Colour shows mean attribution for the selected true class at the "
-            "chosen epoch-relative time. It is not source localisation."
-        )
-        class_layout.addWidget(self.class_semantics, stretch=1)
-        class_layout.addStretch(1)
-        self.class_controls.hide()
 
         self.scene_controls = QWidget(self)
         self.scene_controls.setObjectName("Saliency3DEpochTimeControls")
@@ -637,34 +585,21 @@ class Saliency3DPlotWidget(QWidget):
                 self._current_publication_generation = publication.generation
             elif not self._is_current_request(request_id, publication.generation):
                 return
-            self._current_plot_request = (publication, absolute)
             data = publication.data
             method = data.method
             method_coverage = self._saliency_coverage
             if method_coverage is None or method_coverage.method != method:
-                self._sync_class_selector([], method=method)
+                self._sync_class_coverage([])
                 self.show_message(
                     f"{method} saliency coverage has not been published for this run. "
                     "Compute saliency to continue."
                 )
                 return
-            self._sync_class_selector(method_coverage.classes, method=method)
-            if not method_coverage.available:
-                self.show_message(
-                    self._unavailable_class_message(method),
-                )
-                return
-            selected_event = self.class_combo.currentData()
+            selected_event = self._sync_class_coverage(method_coverage.classes)
             if selected_event is None:
                 self.show_message(
                     f"No renderable class has {method} saliency. "
                     "Recompute saliency to continue.",
-                )
-                return
-            selected_coverage = self._class_coverage.get(repr(selected_event))
-            if selected_coverage is None or not selected_coverage.available:
-                self.show_message(
-                    self._unavailable_class_message(method, selected_coverage),
                 )
                 return
 
@@ -687,7 +622,7 @@ class Saliency3DPlotWidget(QWidget):
 
             events = list(data.event_ids)
             if not events:
-                self._sync_class_selector([], method=method)
+                self._sync_class_coverage([])
                 self.show_error("No events found in dataset.")
                 return
 
@@ -714,10 +649,6 @@ class Saliency3DPlotWidget(QWidget):
                 self._cached_engine_ready.emit(
                     request_id,
                     prepared,
-                    data,
-                    selected_event,
-                    method,
-                    absolute,
                     publication.generation,
                 )
                 return
@@ -740,144 +671,29 @@ class Saliency3DPlotWidget(QWidget):
             if not self._qt_object_deleted(self):
                 self.show_error(SALIENCY_PREPARATION_FAILED_TEXT)
 
-    def _sync_class_selector(
+    def _sync_class_coverage(
         self,
         classes: list[SaliencyClassCoverageSnapshot],
-        *,
-        method: str,
-    ) -> None:
+    ) -> object | None:
+        """Resolve the shared selector's key against current backend coverage."""
         class_keys = [
             item.store_key if item.store_key is not None else item.class_index
             for item in classes
         ]
-        self._class_coverage = {
-            repr(key): item for key, item in zip(class_keys, classes, strict=True)
-        }
         if not class_keys:
-            self.class_controls.hide()
-            self.class_combo.clear()
-            return
-
-        existing = [
-            str(self.class_combo.itemData(index))
-            for index in range(self.class_combo.count())
+            return None
+        available_keys = [
+            key
+            for key, coverage in zip(class_keys, classes, strict=True)
+            if coverage.available
         ]
-        previous = (
-            self._requested_class_key
-            if self._requested_class_key is not None
-            else self.class_combo.currentData()
-        )
-        self._selector_syncing = True
-        self.class_combo.blockSignals(True)
-        if existing != [str(key) for key in class_keys]:
-            self.class_combo.clear()
-            for coverage, class_key in zip(classes, class_keys, strict=True):
-                self.class_combo.addItem(coverage.display_name, class_key)
-        model = cast(QStandardItemModel, self.class_combo.model())
-        for index, coverage in enumerate(classes):
-            item = model.item(index)
-            if item is not None:
-                item.setEnabled(coverage.available)
-                item.setToolTip(
-                    "Saliency is ready for this class."
-                    if coverage.available
-                    else self._unavailable_class_message(method, coverage)
-                )
-        selected_index = self.class_combo.findData(previous)
-        if selected_index < 0 or not classes[selected_index].available:
-            selected_index = next(
-                (index for index, coverage in enumerate(classes) if coverage.available),
-                -1,
-            )
-        self.class_combo.setCurrentIndex(selected_index)
-        self.class_combo.blockSignals(False)
-        self._selector_syncing = False
-        selected_coverage = classes[selected_index] if selected_index >= 0 else None
-        if selected_coverage is None:
-            self._requested_class_key = None
-            self.class_semantics.clear()
-        else:
-            self._requested_class_key = self.class_combo.itemData(selected_index)
-            event = selected_coverage.event_code
-            self.class_semantics.setText(
-                f"Event code: {event}" if event is not None else ""
-            )
-        self.class_controls.hide()
+        if self._requested_class_key not in available_keys:
+            self._requested_class_key = next(iter(available_keys), None)
+        return self._requested_class_key
 
     def select_class_key(self, class_key: object) -> None:
         """Select a backend-admitted class key from the shared 2D controls."""
         self._requested_class_key = class_key
-        coverage = next(
-            (
-                item
-                for item in self._class_coverage.values()
-                if (item.store_key if item.store_key is not None else item.class_index)
-                == class_key
-            ),
-            None,
-        )
-        if coverage is not None:
-            key = (
-                coverage.store_key
-                if coverage.store_key is not None
-                else coverage.class_index
-            )
-            index = self.class_combo.findData(key)
-            if index >= 0:
-                with QSignalBlocker(self.class_combo):
-                    self.class_combo.setCurrentIndex(index)
-
-    def _on_class_changed(self, index: int) -> None:
-        if self._selector_syncing or index < 0 or self._current_plot_request is None:
-            return
-        selected = self.class_combo.itemData(index)
-        self._requested_class_key = selected
-        coverage = self._class_coverage.get(repr(selected))
-        if coverage is None or not coverage.available:
-            self.show_message(
-                self._unavailable_class_message(
-                    self._current_plot_request[0].data.method,
-                    coverage,
-                ),
-            )
-            return
-        publication = self._current_plot_request[0]
-        self.update_plot(publication, self._current_plot_request[1])
-
-    def _unavailable_class_message(
-        self,
-        method: str,
-        coverage: SaliencyClassCoverageSnapshot | None = None,
-    ) -> str:
-        status = self._post_training_saliency_status
-        if method in status.methods:
-            if status.phase is PostTrainingSaliencyPhase.PENDING:
-                return f"{method} saliency is waiting to start in the background."
-            if status.phase is PostTrainingSaliencyPhase.RUNNING:
-                return f"{method} saliency is being computed in the background."
-            if status.phase is PostTrainingSaliencyPhase.FAILED:
-                if status.message:
-                    logger.error("Saliency computation failed: %s", status.message)
-                return (
-                    "Saliency computation could not be completed. "
-                    "Recompute saliency to try again."
-                )
-            if status.phase is PostTrainingSaliencyPhase.CANCELLED:
-                return (
-                    "Saliency computation was cancelled. "
-                    "Recompute saliency to try again."
-                )
-            if status.phase is PostTrainingSaliencyPhase.SUCCEEDED:
-                return (
-                    f"Saliency computation finished without renderable {method} output "
-                    "for this class. Recompute saliency to try again."
-                )
-        if coverage is not None and coverage.reason:
-            return coverage.reason
-        return (
-            f"No {method} saliency is available for the selected class. "
-            "Recompute saliency to continue."
-        )
 
     def _start_3d_engine_worker(
         self,
@@ -922,10 +738,6 @@ class Saliency3DPlotWidget(QWidget):
             configure_worker=lambda worker: self._configure_3d_engine_worker(
                 worker,
                 request_id,
-                render_data,
-                selected_event,
-                method=method,
-                absolute=absolute,
                 publication_generation=publication_generation,
                 publication=publication,
                 prepared_cache_key=prepared_cache_key,
@@ -951,11 +763,7 @@ class Saliency3DPlotWidget(QWidget):
         self,
         worker: Worker,
         request_id: int,
-        render_data: SaliencyRenderData,
-        selected_event,
         *,
-        method: str,
-        absolute: bool,
         publication_generation: int | None,
         publication: SaliencyRenderPublication | None,
         prepared_cache_key: tuple[object, ...] | None,
@@ -971,10 +779,6 @@ class Saliency3DPlotWidget(QWidget):
                 owned_worker,
                 rid,
                 result,
-                render_data,
-                selected_event,
-                method=method,
-                absolute=absolute,
                 publication_generation=publication_generation,
                 publication=publication,
                 prepared_cache_key=prepared_cache_key,
@@ -1021,11 +825,7 @@ class Saliency3DPlotWidget(QWidget):
         worker: Worker,
         request_id,
         result,
-        render_data: SaliencyRenderData,
-        selected_event,
         *,
-        method="Gradient",
-        absolute=False,
         publication_generation: int | None = None,
         publication: SaliencyRenderPublication | None = None,
         prepared_cache_key: tuple[object, ...] | None = None,
@@ -1037,10 +837,6 @@ class Saliency3DPlotWidget(QWidget):
         self._show_prepared_engine(
             request_id,
             result,
-            render_data,
-            selected_event,
-            method=method,
-            absolute=absolute,
             publication_generation=publication_generation,
             publication=publication,
             prepared_cache_key=prepared_cache_key,
@@ -1050,10 +846,6 @@ class Saliency3DPlotWidget(QWidget):
         self,
         request_id: int,
         result: tuple[object, int],
-        render_data: SaliencyRenderData,
-        selected_event: object,
-        method: str,
-        absolute: bool,
         publication_generation: int | None,
         *,
         publication: SaliencyRenderPublication | None = None,
@@ -1096,10 +888,6 @@ class Saliency3DPlotWidget(QWidget):
             self._do_3d_plot_if_alive(
                 request_id,
                 plotter_widget,
-                render_data,
-                selected_event,
-                method=method,
-                absolute=absolute,
                 prepared_engine=prepared_engine,
                 prepared_channel_count=prepared_channel_count,
                 publication_generation=publication_generation,
@@ -1148,13 +936,9 @@ class Saliency3DPlotWidget(QWidget):
         self,
         request_id,
         plotter_widget,
-        render_data: SaliencyRenderData,
-        selected_event,
         *,
-        method="Gradient",
-        absolute=False,
-        prepared_engine=None,
-        prepared_channel_count=None,
+        prepared_engine,
+        prepared_channel_count,
         publication_generation: int | None = None,
     ) -> None:
         """Render only for the exact current request and plotter identity."""
@@ -1165,10 +949,6 @@ class Saliency3DPlotWidget(QWidget):
         ):
             return
         self._do_3d_plot(
-            render_data,
-            selected_event,
-            method=method,
-            absolute=absolute,
             prepared_engine=prepared_engine,
             prepared_channel_count=prepared_channel_count,
             request_id=request_id,
@@ -1177,13 +957,9 @@ class Saliency3DPlotWidget(QWidget):
 
     def _do_3d_plot(
         self,
-        render_data: SaliencyRenderData,
-        selected_event,
         *,
-        method="Gradient",
-        absolute=False,
-        prepared_engine=None,
-        prepared_channel_count=None,
+        prepared_engine,
+        prepared_channel_count,
         request_id: int | None = None,
         publication_generation: int | None = None,
     ):
@@ -1196,30 +972,10 @@ class Saliency3DPlotWidget(QWidget):
                 return
 
             saliency = Saliency3D(
-                render_data,
-                selected_event,
-                method=method,
-                absolute=absolute,
                 plotter=self.plotter_widget,
                 prepared_engine=prepared_engine,
                 prepared_channel_count=prepared_channel_count,
             )
-            init_error = getattr(saliency, "init_error", "")
-            if init_error:
-                logger.error("3D saliency engine initialization failed: %s", init_error)
-                self._clear_active_scene_key_for_current_render(
-                    request_id,
-                    publication_generation,
-                )
-                self.show_error(safe_saliency_detail(init_error))
-                return
-            if getattr(saliency, "engine", None) is None:
-                self._clear_active_scene_key_for_current_render(
-                    request_id,
-                    publication_generation,
-                )
-                self.show_error("3D saliency engine could not initialize.")
-                return
             saliency.get_3d_head_plot()
             self._saliency_scene = saliency
             self._configure_epoch_time_controls()
@@ -1297,13 +1053,13 @@ class Saliency3DPlotWidget(QWidget):
     def _toggle_electrodes(self, checked: bool) -> None:
         scene = self._saliency_scene
         if scene is not None:
-            scene.channelBox.ctrl = checked
+            scene.show_electrodes = checked
             scene.update()
 
     def _toggle_head(self, checked: bool) -> None:
         scene = self._saliency_scene
         if scene is not None:
-            scene.headBox.ctrl = checked
+            scene.show_head = checked
             scene.update()
 
     def _reset_camera(self) -> None:
@@ -1619,7 +1375,6 @@ class Saliency3DPlotWidget(QWidget):
         self._closed = True
         self._shutdown_requested = True
         self._invalidate_async_requests()
-        self._current_plot_request = None
         self._clear_prepared_engine_cache()
         self._worker_pool_owner.request_shutdown()
         if not self._clear_plot_widgets():

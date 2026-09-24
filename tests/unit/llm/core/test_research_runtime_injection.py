@@ -266,7 +266,8 @@ def test_worker_injection_spawns_real_process_and_closes(qtbot):
         qtbot.waitUntil(lambda: worker.runtime_load_thread is None, timeout=60_000)
         assert snapshots[-1].phase is AssistantRuntimePhase.READY
         assert worker.engine is not None
-        assert worker.engine.uses_owned_process
+        assert worker.engine.pid is not None
+        assert worker.engine.active_backend is worker.engine
         assert list(
             worker.engine.generate_stream(
                 [{"role": "user", "content": "probe"}],
@@ -276,6 +277,8 @@ def test_worker_injection_spawns_real_process_and_closes(qtbot):
     finally:
         if worker.engine is not None:
             assert worker.engine.close(wait_timeout=2)
+            assert worker.engine.is_alive is False
+            assert worker.engine.active_backend is None
         worker.deleteLater()
         qtbot.wait(0)
 

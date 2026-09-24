@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-09-22`
+最後更新：`2026-09-24`
 
 ## 一句話
 
@@ -48,7 +48,7 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 | Saliency | 桌面Compute／Recompute只執行Settings選定的方法，一次涵蓋目前訓練結果中所有subject的已完成fold／run，排除未完成者；Fold／Run／Method選單只控制顯示。未選的相容既有方法直接保留，不加入重算；所選方法僅保留最新成功結果，整批成功才發布。沿用exact Fold／Evaluation-admitted Fold Set publication；尚未計算者顯示Compute要求，舊結果可刻意回看；單一class selector可切all-class比較與single-class細看，3D控制使用epoch-relative time並在重複render維持單一orientation widget。 | 不代表attribution具科學有效性或腦內source localisation，不把epoch time冒充已審查event marker，也不保證所有模型梯度相容。 |
 | Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；per-user settings保留上次確認的supported model，已退役selection會靜默正規化為recommended model。Strict envelope、18-action stage surface、parameter provenance、typed pending receipt infrastructure、capability、confirmation、GUI handoff與model-free walkthrough存在。 | PR #71 的exact 3B bounded baseline為36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product no-action與6/7 clarification execution boundary；`desktop-source` release profile可重跑其frozen 81-case no-regression evidence，但artifact明示它不是24/24、7/7 Stable promotion或安全零容忍。 |
 | MCP | Executable package、transport、CLI、capture、schema projection與tests已退役；provenance只留在Git history。 | 不是release能力；未來若要恢復，必須另開public contract、security與validation decision。 |
-| Packaging | Windows launcher與source啟動方式存在。 | 沒有signed installer。 |
+| Packaging | Windows source bootstrap 經確認後準備生成模型與固定版本 RAG embedding，離線檢索驗證通過才完成／啟動；重跑重用完整 cache。入口與路徑見[本機環境](developer/local-setup.md)。 | 沒有 signed installer；流程回歸與既有 cache 離線驗證不代表全新 Windows 整機安裝已實測。 |
 
 ## Evidence truth
 
@@ -65,6 +65,40 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 - Repo-root `settings.json`是本機設定，不屬於release tree。
 
 ## Assistant research baseline
+
+### 共同工程基線：本機整合完成（2026-09-24） { #assistant-integration-baseline }
+
+使用者已授權在 `integration/agent-baseline` 合成研究 clean `293f1890` 與產品 checkpoint
+`8c50bee9`，保留原兩線及既有結果。產品 checkpoint 已修復最新真人要求被 `System:`／
+`Tool Output:` 前綴誤當內部feedback的缺陷：history producer明確標示 `internal`，
+模型context與參數來源仍使用真正最新user；331案直接回歸、22案runner回歸及獨立review通過。
+這是model-free工程證據，不是模型accuracy或正式研究成績。
+
+共用source與文件內容衝突已合成並通過獨立工程覆核；精確版本由本節所在整合分支的Git
+commit擁有，不把main或原兩線當作同一版本。Typed observer以真request的generation
+profile重建既有artifact欄位，未恢復產品dead欄位或更改scorer；GUI研究driver沿正式
+decision fields接合既有dialog，不恢復suggestions路徑。
+
+本輪model-free工程證據分組如下，組間可能重疊，不加總成coverage或全專案通過：
+
+- Controller直接整合438通過；core227通過，另4案重疊量化回歸通過；observer122通過。
+- Research廣組初次356通過、1失敗、9錯誤、12跳過；修理上述真dialog observer及以短
+  臨時路徑排除Windows MAX_PATH測試限制後，受影響RAG／UI組33通過。不把初次廣組改標全綠。
+- Linux package19通過；background11通過、1跳過，該Windows子程序案例另以明確環境
+  補驗1案通過。Source-diverse4案通過；不是native GUI人工接受或CI結果。
+- Architecture258通過；真MainWindow送出 → runtime／dispatcher／Controller → 實際64Hz
+  Command → trace → 未修改scorer的補測通過，同檔lifecycle17案通過。驗證完整輸入、
+  生成事件、恰一次command結果、資料副作用及相關聯terminal；模型程序、RAG與設定資源
+  使用受控測試邊界，不冒充真模型執行。
+- Windows XML保存於 `build/agent-baseline/`，包括controller、core、research初次／修復後
+  與 `source-diverse-integration.xml`；這些是當前工程candidate的直接證據，不是正式模型量測。
+  最後lifecycle補測位於 `build/assistant-cleanup/integration-observer-runtime-final.xml`。
+
+上述接合及證據經獨立覆核，沒有剩餘blocking finding；本輪共同工程整合scope完成，
+不是release handoff-ready。這不表示六個Agent部件的設計／內容已打磨完成或正式研究起始條件
+已驗收。下方B0、d0及Linux量測保持原來源／模型／配置身分，不覆寫、不換標；兩線之後
+從共同精確版本接續，施工與剩餘驗證由[Now](planning/now.md)擁有。本輪沒有新模型量測、
+正式DEV／VALID／TEST、CI或人工產品驗收，也未改公開工具、UI或scorer政策。
 
 後續正式非 TEST 題庫已在來源移除 `ground_truth.review_status`；runner 維持原樣複製與
 原始位元組指紋核對，不含匯出轉換。歷史 d0 不變，沒有重跑模型或更改判分。

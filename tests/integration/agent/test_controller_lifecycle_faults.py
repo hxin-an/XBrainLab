@@ -120,9 +120,11 @@ class _InMemoryEngine:
 
     def __init__(self, config: LLMConfig) -> None:
         self.config = config
+        self.active_backend: object | None = None
+        self.restart_required = False
 
     def load_model(self) -> None:
-        return None
+        self.active_backend = self
 
     def generate_stream(self, _messages: list[dict[str, Any]], *, profile: Any):
         del profile
@@ -135,8 +137,10 @@ class _InMemoryEngine:
         del wait_timeout
         return True
 
-    def close(self) -> None:
-        return None
+    def close(self, *, wait_timeout: float = 0.0) -> bool:
+        del wait_timeout
+        self.active_backend = None
+        return True
 
 
 def _launch_spec() -> AssistantRuntimeLaunchSpec:
@@ -158,7 +162,7 @@ def lifecycle_harness(
     qtbot, monkeypatch
 ) -> Iterator[tuple[AssistantRuntimeLifecycle, LLMController]]:
     monkeypatch.setattr(
-        "XBrainLab.llm.agent.worker.LLMEngine",
+        "XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner",
         _InMemoryEngine,
     )
     controllers: list[LLMController] = []
@@ -203,7 +207,7 @@ def lifecycle_harness(
 @pytest.fixture
 def manager_lifecycle_harness(qtbot, monkeypatch):
     monkeypatch.setattr(
-        "XBrainLab.llm.agent.worker.LLMEngine",
+        "XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner",
         _InMemoryEngine,
     )
     controllers: list[LLMController] = []
@@ -915,7 +919,7 @@ def test_post_rag_context_failure_releases_full_topology_leases_and_next_turn(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        "XBrainLab.llm.agent.worker.LLMEngine",
+        "XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner",
         _InMemoryEngine,
     )
     controllers: list[LLMController] = []
@@ -1039,7 +1043,7 @@ def test_worker_dispatch_setup_and_model_faults_release_manager_turns(
 
     monkeypatch.setattr(
         worker_module,
-        "LLMEngine",
+        "LocalRuntimeProcessOwner",
         _InMemoryEngine,
     )
     controllers: list[LLMController] = []

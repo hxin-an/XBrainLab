@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import heapq
+from itertools import count
 from types import SimpleNamespace
 
 import pytest
 from PIL import Image
+from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtWidgets import QMainWindow, QPushButton
 
+from scripts.dev import capture_chatpanel_local_workflow_walkthrough as workflow
 from scripts.dev.capture_chatpanel_local_walkthrough import (
+    VisibleMessage,
     _assistant_setup_required,
 )
 from scripts.dev.capture_chatpanel_local_workflow_walkthrough import (
@@ -22,7 +28,225 @@ from scripts.dev.capture_chatpanel_local_workflow_walkthrough import (
     render_markdown,
 )
 from XBrainLab.llm.agent.metrics import AgentMetricsTracker
+from XBrainLab.llm.agent.response_presentation import (
+    AssistantResponseKind,
+    AssistantResponsePresentation,
+)
+from XBrainLab.llm.agent.turn import (
+    AssistantTurnCorrelation,
+    AssistantTurnRequest,
+    AssistantTurnTerminal,
+)
 from XBrainLab.llm.core.config import LLMConfig
+from XBrainLab.ui.chat.panel import ChatPanel
+
+
+@pytest.fixture
+def run_observed_workflow(monkeypatch, qtbot, tmp_path):
+    """Run both real composer clicks while isolating model, clock and capture IO."""
+
+    def run(*, fault=None, affected_turn=1, terminal_delay=0, response_delay=0):
+        clock = [0.0]
+        pending = []
+        sequence = count()
+        sent = []
+        messages = []
+        screenshots = []
+        panel = ChatPanel()
+        panel.set_runtime_state("ready")
+
+        class Controller(QObject):
+            response_presentation_ready = pyqtSignal(object)
+            is_processing = False
+
+            def __init__(self):
+                super().__init__()
+                self.metrics = AgentMetricsTracker()
+
+            def runtime_snapshot(self):
+                return SimpleNamespace(model_id="fixture-model")
+
+        class Dispatcher(QObject):
+            input_requested = pyqtSignal(object)
+            state = "ready"
+
+        class Runtime(QObject):
+            turn_finished = pyqtSignal(object)
+            cleanup_finished = pyqtSignal(bool, str)
+            state = "ready"
+
+        controller = Controller()
+        runtime = Runtime()
+        runtime.dispatcher = Dispatcher()
+        manager = SimpleNamespace(
+            chat_panel=panel,
+            chat_dock=panel,
+            agent_controller=controller,
+            chat_controller=SimpleNamespace(is_processing=False),
+            assistant_runtime=runtime,
+        )
+
+        class Window(QMainWindow):
+            def init_agent(self):
+                return None
+
+            def closeEvent(self, event):
+                runtime.state = "closed"
+                runtime.dispatcher.state = "closed"
+                manager.agent_controller = None
+                runtime.cleanup_finished.emit(True, "")
+                super().closeEvent(event)
+
+        window = Window()
+        window.setCentralWidget(panel)
+        window.ai_btn = QPushButton(window)
+        window.agent_manager = manager
+        qtbot.addWidget(window)
+
+        def schedule(milliseconds, callback):
+            heapq.heappush(
+                pending, (clock[0] + milliseconds / 1000, next(sequence), callback)
+            )
+
+        def respond(prompt):
+            index = len(sent)
+            sent.append((clock[0], prompt))
+            panel.accept_composer_submission(prompt)
+            current = AssistantTurnCorrelation(generation=index + 1, turn_id=index + 1)
+            previous = AssistantTurnCorrelation(generation=1, turn_id=1)
+            active_fault = fault if index == affected_turn else None
+            runtime.dispatcher.input_requested.emit(
+                AssistantTurnRequest(text=prompt, correlation=current)
+            )
+            text = (
+                "The dataset is empty, so import EEG data first."
+                if index == 0
+                else "EEG preprocessing cleans signals before analysis."
+            )
+            messages.extend(
+                [VisibleMessage("user", prompt), VisibleMessage("assistant", text)]
+            )
+            response = AssistantResponsePresentation(
+                text=text,
+                correlation=previous if active_fault == "stale_response" else current,
+                kind=(
+                    AssistantResponseKind.ERROR
+                    if active_fault == "error_response"
+                    else AssistantResponseKind.MESSAGE
+                ),
+            )
+            schedule(
+                (response_delay if index == affected_turn else 0) * 1000,
+                lambda: controller.response_presentation_ready.emit(response),
+            )
+            if active_fault == "missing_terminal":
+                return
+            terminal = AssistantTurnTerminal(
+                correlation=previous if active_fault == "stale_terminal" else current,
+                outcome="failed" if active_fault == "failed_terminal" else "completed",
+            )
+
+            def finish_turn():
+                runtime.turn_finished.emit(terminal)
+                if active_fault == "duplicate_terminal":
+                    runtime.turn_finished.emit(terminal)
+
+            schedule(
+                (terminal_delay if index == affected_turn else 0) * 1000, finish_turn
+            )
+
+        panel.send_message.connect(respond)
+
+        def execute():
+            while pending and window.isVisible():
+                due, _sequence, callback = heapq.heappop(pending)
+                assert due <= 13, "Workflow capture did not respect its deadline."
+                clock[0] = due
+                qtbot.wait(1)
+                callback()
+
+        def screenshot(_window, path):
+            screenshots.append((clock[0], path.name))
+            return 0
+
+        monkeypatch.setattr(workflow, "QTimer", SimpleNamespace(singleShot=schedule))
+        monkeypatch.setattr(
+            workflow, "time", SimpleNamespace(monotonic=lambda: clock[0])
+        )
+        monkeypatch.setattr("XBrainLab.backend.study.Study", lambda: object())
+        monkeypatch.setattr(
+            "XBrainLab.ui.main_window.MainWindow", lambda _study: window
+        )
+        monkeypatch.setattr(workflow, "_capture_current_window", screenshot)
+        monkeypatch.setattr(
+            workflow, "_has_unpainted_main_surface", lambda _path: False
+        )
+        monkeypatch.setattr(
+            workflow, "collect_visible_messages", lambda _panel: messages
+        )
+        monkeypatch.setattr(workflow.LLMConfig, "load_from_file", lambda: None)
+        app = SimpleNamespace(exec=execute, processEvents=lambda: qtbot.wait(1))
+        payload = workflow.run_workflow(
+            app, tmp_path, 12, runtime_inspection={"current_model_id": "fixture-model"}
+        )
+        return payload, sent, screenshots
+
+    return run
+
+
+def test_workflow_observes_both_real_composer_submissions(run_observed_workflow):
+    payload, sent, _screenshots = run_observed_workflow()
+    assert payload["status"] == "passed", payload["failure_reason"]
+    assert [text for _time, text in sent] == DEFAULT_PROMPTS
+    assert len(payload["turns"]) == 2
+    assert payload["post_close"]["passed"] is True
+
+
+def test_workflow_stops_before_second_submission_if_first_turn_failed(
+    run_observed_workflow,
+):
+    payload, sent, screenshots = run_observed_workflow(
+        fault="failed_terminal", affected_turn=0
+    )
+    assert payload["status"] == "failed"
+    assert [text for _time, text in sent] == DEFAULT_PROMPTS[:1]
+    assert payload["turns"] == []
+    assert not any("turn-" in name for _time, name in screenshots)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing_terminal",
+        "failed_terminal",
+        "duplicate_terminal",
+        "stale_terminal",
+        "stale_response",
+        "error_response",
+    ],
+)
+def test_workflow_never_credits_uncorrelated_or_unsuccessful_second_turn(
+    run_observed_workflow, fault
+):
+    payload, sent, screenshots = run_observed_workflow(fault=fault)
+    assert payload["status"] == "failed"
+    assert len(sent) == 2
+    assert len(payload["turns"]) == 1
+    assert not any(
+        name == "chatpanel-workflow-turn-2.png" for _time, name in screenshots
+    )
+
+
+@pytest.mark.parametrize("delayed_field", ["terminal_delay", "response_delay"])
+def test_workflow_waits_for_typed_evidence_after_visible_text_and_idle(
+    run_observed_workflow, delayed_field
+):
+    payload, sent, screenshots = run_observed_workflow(**{delayed_field: 3})
+    assert payload["status"] == "passed", payload["failure_reason"]
+    captured_at = next(
+        time for time, name in screenshots if name == "chatpanel-workflow-turn-2.png"
+    )
+    assert captured_at >= sent[1][0] + 3
 
 
 def test_default_output_uses_dev_artifact_namespace() -> None:

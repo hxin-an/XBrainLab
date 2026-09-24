@@ -273,6 +273,25 @@ def test_malformed_tool_envelopes_stop_after_one_repair_without_execution(
         close_controller_and_wait(controller, qtbot)
 
 
+def test_multiple_objects_never_reach_execution_or_create_input_receipt(qtbot):
+    action = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    controller, worker, coordinator = _controller_with_script([f"{action}\n{action}"])
+
+    try:
+        _submit_user_turn(controller, "Import EEG data.")
+        qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
+
+        assert worker.generation_count == 1
+        assert controller._tool_attempt_session.retry_count == 0
+        assert controller._tool_attempt_session.execution_count == 0
+        assert coordinator.commands == []
+        assert controller.pending_interactions.tool_input is None
+        assert controller.pending_interactions.active_tool_input is None
+        assert controller.pending_interactions.workflow_handoff is None
+    finally:
+        close_controller_and_wait(controller, qtbot)
+
+
 def test_recovered_valid_envelope_reaches_real_execution_coordinator(
     qtbot,
 ):

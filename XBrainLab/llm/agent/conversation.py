@@ -12,8 +12,11 @@ from typing import Any
 class ConversationHistory:
     """Manages a bounded conversation history with sliding-window truncation.
 
-    Maintains a list of ``{"role": str, "content": str}`` message dicts
-    and automatically prunes to the most recent *max_size* entries when
+    Maintains a list of ``{"role": str, "content": str}`` message dicts.
+    Producers mark host feedback and raw action proposals as ``internal``;
+    only human requests use ``user`` and visible replies use ``assistant``.
+    Internal rows are trace data, never model chat-template roles. The history
+    automatically prunes to the most recent *max_size* entries when
     the limit is exceeded.
 
     Attributes:
@@ -30,7 +33,7 @@ class ConversationHistory:
         """Append a message and prune if over the sliding window limit.
 
         Args:
-            role: Message role (``'user'``, ``'assistant'``, or ``'system'``).
+            role: Source role (``'user'``, ``'assistant'``, or ``'internal'``).
             content: The message text.
 
         """
@@ -45,8 +48,6 @@ class ConversationHistory:
                 continue
             content = str(message.get("content", "")).strip()
             if not content:
-                continue
-            if content.startswith(("System:", "Tool Output:")):
                 continue
             return content
         return ""

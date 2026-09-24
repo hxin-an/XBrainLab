@@ -32,7 +32,6 @@ class AssistantDecisionOwner(str, Enum):
 
     CONFIRMATION_CARD = "confirmation_card"
     GUI_DIALOG = "gui_dialog"
-    PANEL_HANDOFF = "panel_handoff"
 
 
 @dataclass(frozen=True, slots=True)

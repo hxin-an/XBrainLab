@@ -13,12 +13,14 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptCoordinator,
     ToolAttemptRequest,
 )
-from XBrainLab.llm.agent.verifier import PathProvenanceVerifier, VerificationLayer
+from XBrainLab.llm.agent.verifier import (
+    VerificationLayer,
+    add_start_training_confirmation_details,
+)
 from XBrainLab.llm.tools import get_all_tools
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
     ToolAvailabilityContext,
-    UserProvidedTrainingOutputDir,
 )
 from XBrainLab.llm.tools.definitions.training_def import BaseStartTrainingTool
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
@@ -76,7 +78,6 @@ def _attempt(state: dict[str, Any]):
                 "output_directory": "/model/invented-output",
                 "checkpoint_policy": "Model-selected policy",
             },
-            confidence=0.9,
             publication=PromptToolPublication(
                 tool_names=frozenset({"start_training"}),
                 backend_generation=17,
@@ -94,16 +95,7 @@ def test_start_training_confirmation_uses_authoritative_backend_values() -> None
         "checkpoint_policy": "Model-selected policy",
     }
 
-    assert (
-        PathProvenanceVerifier()
-        .validate(
-            "start_training",
-            params,
-            latest_user_text="Start training.",
-            state=state,
-        )
-        .is_valid
-    )
+    add_start_training_confirmation_details(params, state=state)
     decision = _attempt(state)
     assert decision.action is ToolAttemptAction.CONFIRMATION_REQUIRED
     params = decision.params
@@ -136,16 +128,7 @@ def test_start_training_confirmation_reports_disabled_checkpoints() -> None:
     params: dict[str, Any] = {}
     state = _training_state(output_dir="./output", checkpoint_epoch=0)
 
-    assert (
-        PathProvenanceVerifier()
-        .validate(
-            "start_training",
-            params,
-            latest_user_text="Start training.",
-            state=state,
-        )
-        .is_valid
-    )
+    add_start_training_confirmation_details(params, state=state)
     request = AgentConfirmationRequest.for_action(
         command_name="start_training",
         params=params,
@@ -162,34 +145,30 @@ def test_start_training_confirmation_reports_disabled_checkpoints() -> None:
 
 
 @pytest.mark.parametrize(
-    ("path", "text", "expected"),
+    ("path", "text"),
     [
         (
             "/approved/new output",
             "Use /approved/new output now",
-            ToolAttemptAction.CONFIRMATION_REQUIRED,
         ),
         (
             r"C:\Data\New Output",
             r"Use `C:\DATA\New Output`",
-            ToolAttemptAction.CONFIRMATION_REQUIRED,
         ),
-        ("/approved", "Use /approved-extra", ToolAttemptAction.PROVENANCE_BLOCKED),
-        ("/invented", "Use the selected dataset", ToolAttemptAction.PROVENANCE_BLOCKED),
+        ("/approved", "Use /approved-extra"),
+        ("/invented", "Use the selected dataset"),
         (
             "relative/output",
             "Use relative/output",
-            ToolAttemptAction.PROVENANCE_BLOCKED,
         ),
         (
             "/path/to/output",
             "Use /path/to/output",
-            ToolAttemptAction.VERIFICATION_BLOCKED,
         ),
-        ("", "Configure training", ToolAttemptAction.VERIFICATION_BLOCKED),
+        ("", "Configure training"),
     ],
 )
-def test_current_training_host_path_protection(path, text, expected) -> None:
+def test_training_wizard_rejects_supplied_output_directory(path, text) -> None:
     registry = ToolRegistry()
     for tool in get_all_tools():
         registry.register(tool)
@@ -212,17 +191,53 @@ def test_current_training_host_path_protection(path, text, expected) -> None:
         ToolAttemptRequest(
             command_name="configure_training",
             params={"output_dir": path},
-            confidence=0.9,
             publication=PromptToolPublication(
                 tool_names=frozenset({"configure_training"}), backend_generation=17
             ),
             latest_user_text=text,
         )
     )
-    assert decision.action is expected
-    if expected is ToolAttemptAction.CONFIRMATION_REQUIRED:
-        assert isinstance(decision.params["output_dir"], UserProvidedTrainingOutputDir)
-        assert decision.params["output_dir"] == path
+    assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
+    assert decision.result is not None
+    assert "Unknown parameter" in decision.result.message
+    assert decision.confirmation_kind is None
+
+
+def test_training_wizard_rejects_even_an_exact_user_provided_output_path() -> None:
+    registry = ToolRegistry()
+    for tool in get_all_tools():
+        registry.register(tool)
+    source = _ContextSource({})
+    source.context = ToolAvailabilityContext(
+        availability=ToolAvailability(tool_name="configure_training", enabled=True),
+        state={},
+        generation=17,
+    )
+    coordinator = ToolAttemptCoordinator(
+        registry=registry,
+        verifier=VerificationLayer(
+            tool_schemas={
+                tool.name: tool.parameters for tool in registry.get_all_tools()
+            }
+        ),
+        context_source=source,
+    )
+
+    decision = coordinator.evaluate(
+        ToolAttemptRequest(
+            command_name="configure_training",
+            params={"output_dir": "/approved/training-output"},
+            publication=PromptToolPublication(
+                tool_names=frozenset({"configure_training"}), backend_generation=17
+            ),
+            latest_user_text="Use /approved/training-output for training.",
+        )
+    )
+
+    assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
+    assert decision.result is not None
+    assert "Unknown parameter" in decision.result.message
+    assert decision.confirmation_kind is None
 
 
 def test_retired_file_tools_fail_at_current_prompt_admission() -> None:
@@ -253,7 +268,6 @@ def test_retired_file_tools_fail_at_current_prompt_admission() -> None:
                     "source_path": "/private",
                     "recipe_path": "/private",
                 },
-                confidence=0.9,
                 publication=assembler.latest_tool_publication,
                 latest_user_text="Use /private",
             )

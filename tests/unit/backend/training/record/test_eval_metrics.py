@@ -99,6 +99,29 @@ class TestEvalMetrics(unittest.TestCase):
             },
         )
 
+    def test_asymmetric_errors_have_distinct_precision_recall_and_f1(self):
+        # Confusion rows: [2, 1, 1], [0, 1, 1], [0, 1, 0].
+        # This separates precision, recall, F1 and macro from weighted averages.
+        labels = np.array([0, 0, 0, 0, 1, 1, 2])
+        outputs = np.eye(3)[[0, 0, 1, 2, 1, 2, 1]]
+        record = EvalRecord(labels, outputs, {}, {}, {}, {}, {})
+
+        metrics = record.get_per_class_metrics()
+
+        expected = {
+            0: (1.0, 1 / 2, 2 / 3, 4),
+            1: (1 / 3, 1 / 2, 2 / 5, 2),
+            2: (0.0, 0.0, 0.0, 1),
+            "macro_avg": (4 / 9, 1 / 3, 16 / 45, 7),
+        }
+        self.assertEqual(set(metrics), set(expected))
+        for key, (precision, recall, f1, support) in expected.items():
+            with self.subTest(key=key):
+                self.assertAlmostEqual(metrics[key]["precision"], precision)
+                self.assertAlmostEqual(metrics[key]["recall"], recall)
+                self.assertAlmostEqual(metrics[key]["f1-score"], f1)
+                self.assertEqual(metrics[key]["support"], support)
+
     def test_missing_classes_keep_fixed_class_metrics_at_zero(self):
         labels = np.array([0, 0])
         outputs = np.array(

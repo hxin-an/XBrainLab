@@ -28,8 +28,6 @@ class AssistantTurnOrchestrator:
     rag_sequence: int = 0
     active_rag_turn_id: int | None = None
     waiting_for_rag: bool = False
-    admitted_command_name: str | None = None
-    admitted_publication_generation: int | None = None
     active_publication: PromptToolPublication = field(
         default_factory=PromptToolPublication.empty
     )
@@ -96,14 +94,6 @@ class AssistantTurnOrchestrator:
         self.active_rag_turn_id = None
         self.waiting_for_rag = False
         return True
-
-    def record_admission(
-        self,
-        command_name: str | None,
-        publication_generation: int | None,
-    ) -> None:
-        self.admitted_command_name = command_name
-        self.admitted_publication_generation = publication_generation
 
     def set_active_publication(self, publication: PromptToolPublication) -> None:
         self.active_publication = publication
@@ -204,8 +194,6 @@ class AssistantTurnOrchestrator:
     def reset_for_user_turn(self) -> None:
         """Reset mutable state that cannot cross a user-authored turn."""
         self.stopping_generation_id = None
-        self.admitted_command_name = None
-        self.admitted_publication_generation = None
         self.active_publication = PromptToolPublication.empty()
         self.cancelled = False
         self.cancellation_response_sent = False
@@ -216,8 +204,6 @@ class AssistantTurnOrchestrator:
         self.dispatch_phase = None
         self.dispatch_in_progress = False
         self.stopping_generation_id = None
-        self.admitted_command_name = None
-        self.admitted_publication_generation = None
         self.active_publication = PromptToolPublication.empty()
         self.cancelled = False
         self.cancellation_response_sent = False
@@ -239,8 +225,6 @@ class AssistantToolAttemptSession:
     """Own counters and visible feedback scoped to one assistant request."""
 
     retry_count: int = 0
-    tool_failure_count: int = 0
-    successful_tool_count: int = 0
     execution_count: int = 0
     visible_response_sent: bool = False
     last_tool_summary: str | None = None
@@ -279,15 +263,6 @@ class AssistantToolAttemptSession:
         self.execution_count += 1
         return self.execution_count
 
-    def record_failure(self) -> int:
-        self.tool_failure_count += 1
-        return self.tool_failure_count
-
-    def record_success(self) -> int:
-        self.tool_failure_count = 0
-        self.successful_tool_count += 1
-        return self.successful_tool_count
-
     def arbitrate_terminal_response(
         self,
         default_summary: str,
@@ -307,7 +282,6 @@ class AssistantToolAttemptSession:
         """Commit one terminal decision only after presentation publication succeeds."""
         if not isinstance(decision, AssistantToolTerminalResponseDecision):
             raise TypeError("Terminal response decision is invalid.")
-        self.successful_tool_count = 0
         if decision.text is None:
             return False
         if self.visible_response_sent:
@@ -317,8 +291,6 @@ class AssistantToolAttemptSession:
 
     def reset_for_user_turn(self) -> None:
         self.retry_count = 0
-        self.tool_failure_count = 0
-        self.successful_tool_count = 0
         self.execution_count = 0
         self.visible_response_sent = False
         self.last_tool_summary = None

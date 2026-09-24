@@ -143,17 +143,6 @@ class TestDefaults:
         assert cfg.cache_dir == str(explicit)
 
 
-class TestToDict:
-    def test_returns_dict(self):
-        cfg = LLMConfig()
-        d = cfg.to_dict()
-        assert isinstance(d, dict)
-        assert "model_name" in d
-        assert "device" in d
-        assert "gemini_enabled" not in d
-        assert "active_mode" in d
-
-
 class TestSaveAndLoad:
     def test_default_user_settings_repairs_retired_model_and_persists_default(
         self,

@@ -15,7 +15,7 @@ from XBrainLab.llm.tools.application_surface import (
     ToolAvailabilityContext,
 )
 from XBrainLab.llm.tools.base import BaseTool
-from XBrainLab.llm.tools.result_contract import ToolExecutionResult
+from XBrainLab.llm.tools.result_contract import ToolCommandResult, UiRequest
 
 
 class _Tool(BaseTool):
@@ -31,7 +31,7 @@ class _Tool(BaseTool):
     def parameters(self) -> dict[str, Any]:
         return {"type": "object", "properties": {}}
 
-    def execute(self, study: Any, **kwargs: Any) -> ToolExecutionResult:
+    def execute(self, study: Any, **kwargs: Any) -> ToolCommandResult | UiRequest:
         del study, kwargs
         raise AssertionError("Confirmation request tests do not execute tools.")
 
@@ -90,29 +90,14 @@ def test_start_training_confirmation_preserves_policy_risk_and_impact() -> None:
     assert request.destructive is False
 
 
-def test_setting_confirmation_has_typed_high_impact_decision_boundary() -> None:
-    request = _request_for(
-        "configure_training",
-        ToolAvailability(
-            tool_name="configure_training",
-            enabled=True,
-            command_name="configure_training",
-        ),
-        confirmation_kind="setting_change",
-    )
-
-    assert request.risk.high_impact is True
-    assert request.risk.decision_boundary == "high_impact_setting_change"
-    assert request.risk.impact_text is not None
-
-
 def test_backend_high_impact_boundary_survives_without_confirmation_kind() -> None:
+    # A policy probe, not a registered settings tool or a settings-card fixture.
     request = _request_for(
-        "set_model",
+        "high_impact_probe",
         ToolAvailability(
-            tool_name="set_model",
+            tool_name="high_impact_probe",
             enabled=True,
-            command_name="configure_training",
+            command_name="high_impact_probe",
             confirmation_required=True,
             can_auto_execute=False,
             requires_confirmation=True,
@@ -122,6 +107,7 @@ def test_backend_high_impact_boundary_survives_without_confirmation_kind() -> No
 
     assert request.risk.high_impact is True
     assert request.risk.decision_boundary == "high_impact_setting_change"
+    assert request.risk.impact_text is None
 
 
 def test_destructive_risk_is_not_collapsed_into_generic_confirmation() -> None:

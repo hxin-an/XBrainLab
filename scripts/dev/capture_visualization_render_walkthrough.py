@@ -178,10 +178,12 @@ def _artifact_metadata_for_runtime(contract: dict[str, Any]) -> dict[str, str]:
 
 def _claim_boundary_for_runtime(contract: dict[str, Any]) -> dict[str, list[str]]:
     if contract.get("expected_outcome") == "rendered":
+        platform = str(contract.get("qt_platform") or "unknown")
         return {
             "supports": [
                 "true MainWindow VisualizationPanel Matplotlib saliency renders",
-                "interactive 3D rendering with visible framebuffer evidence in the current XCB/OpenGL runtime",
+                "interactive 3D rendering with visible framebuffer evidence "
+                f"in the current Qt {platform}/OpenGL runtime",
             ],
             "does_not_support": ["Windows human click-through"],
         }
@@ -1653,24 +1655,25 @@ def validate_visualization_render_payload(
         detail = overlaps or hidden or distant or "unknown layout issue"
         return False, f"Visualization controls are not cleanly laid out: {detail}."
 
-    final_state = payload.get("final_state") or {}
-    if final_state:
-        dataset = _section(final_state, "dataset")
-        final_training = _section(final_state, "training")
-        evaluation = _section(final_state, "evaluation")
-        visualization = _section(final_state, "visualization")
-        if not dataset.get("available"):
-            return False, "Final state does not have a generated dataset."
-        if final_training.get("is_running"):
-            return False, "Training was still running at render capture."
-        if int(final_training.get("finished_run_count") or 0) < 1:
-            return False, "Final state does not have a completed training run."
-        if not evaluation.get("metrics_available"):
-            return False, "Final state does not have evaluation metrics."
-        if not visualization.get("saliency_available"):
-            return False, "Final state does not have saliency available."
-        if not visualization.get("montage_available"):
-            return False, "Final state does not have montage for topographic render."
+    final_state = payload.get("final_state")
+    if not isinstance(final_state, dict) or not final_state:
+        return False, "Final application state is missing or invalid."
+    dataset = _section(final_state, "dataset")
+    final_training = _section(final_state, "training")
+    evaluation = _section(final_state, "evaluation")
+    visualization = _section(final_state, "visualization")
+    if not dataset.get("available"):
+        return False, "Final state does not have a generated dataset."
+    if final_training.get("is_running"):
+        return False, "Training was still running at render capture."
+    if int(final_training.get("finished_run_count") or 0) < 1:
+        return False, "Final state does not have a completed training run."
+    if not evaluation.get("metrics_available"):
+        return False, "Final state does not have evaluation metrics."
+    if not visualization.get("saliency_available"):
+        return False, "Final state does not have saliency available."
+    if not visualization.get("montage_available"):
+        return False, "Final state does not have montage for topographic render."
 
     renders = {item.get("tab"): item for item in payload.get("renders", [])}
     transform_ok, transform_reason = _validate_transform_control_evidence(renders)

@@ -5,6 +5,7 @@ from typing import Any, cast
 import pytest
 from PIL import Image, ImageDraw
 from PyQt6.QtCore import QPoint
+from PyQt6.QtGui import QColor, QPixmap
 from PyQt6.QtWidgets import QAbstractButton, QApplication, QLabel, QTableWidget
 
 from scripts.dev.app_polish_capture_contract import (
@@ -37,6 +38,7 @@ from scripts.dev.capture_ui_polish_surfaces import (
     _epoching_internal_events_dialog,
     _evaluation_controls_panel,
     _model_selection_dialog,
+    _pixmap_image,
     _publish_capture,
     _settle_capture_widget,
     _surface_contract,
@@ -55,6 +57,38 @@ from scripts.dev.human_like_walkthrough.readiness import (
     assert_consecutive_complete_frames,
 )
 from XBrainLab.ui.styles.stylesheets import Stylesheets
+
+
+@pytest.fixture
+def capture_application_theme(qapp):
+    """Install the capture's real theme only for tests of its rendered pixels."""
+    previous_style = qapp.style().objectName()
+    previous_stylesheet = qapp.styleSheet()
+    previous_capture_style = qapp.property("xbrainlab_capture_qt_style")
+    try:
+        _apply_capture_application_theme(qapp)
+        yield
+    finally:
+        qapp.setStyleSheet(previous_stylesheet)
+        assert qapp.setStyle(previous_style) is not None
+        assert qapp.style().objectName() == previous_style
+        qapp.setProperty("xbrainlab_capture_qt_style", previous_capture_style)
+
+
+def test_pixmap_image_preserves_rgb_pixels_and_dimensions(qapp):
+    pixmap = QPixmap(7, 5)
+    pixmap.fill(QColor(12, 34, 56))
+
+    image = _pixmap_image(pixmap)
+
+    assert image.mode == "RGB"
+    assert image.size == (7, 5)
+    assert image.getextrema() == ((12, 12), (34, 34), (56, 56))
+
+
+def test_pixmap_image_rejects_null_reference(qapp):
+    with pytest.raises(RuntimeError, match="settled live widget reference"):
+        _pixmap_image(QPixmap())
 
 
 @pytest.mark.parametrize(
@@ -116,6 +150,36 @@ def test_data_splitting_capture_rejects_core_control_beyond_horizontal_viewport(
 
     with pytest.raises(RuntimeError, match="horizontally"):
         _assert_capture_geometry("data-splitting-dialog.png", dialog)
+
+
+@pytest.mark.parametrize("unused_height", [12, 13])
+def test_split_preview_capture_counts_pixels_after_inclusive_last_row(
+    qtbot,
+    unused_height,
+) -> None:
+    dialog = _data_splitting_preview_dialog()
+    qtbot.addWidget(dialog)
+    dialog.show()
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    _settle_capture_widget(app, dialog)
+    tree = dialog.tree
+    assert tree is not None
+    last = tree.topLevelItem(tree.topLevelItemCount() - 1)
+    assert last is not None
+    viewport = tree.viewport()
+    assert viewport is not None
+    rows_end = tree.visualItemRect(last).y() + tree.visualItemRect(last).height()
+    current_unused = viewport.height() - rows_end
+    tree.setFixedHeight(tree.height() + unused_height - current_unused)
+    app.processEvents()
+    rows_end = tree.visualItemRect(last).y() + tree.visualItemRect(last).height()
+    assert viewport.height() - rows_end == unused_height
+    if unused_height == 12:
+        _assert_capture_geometry("data-splitting-preview-dialog.png", dialog)
+    else:
+        with pytest.raises(RuntimeError, match="empty results viewport"):
+            _assert_capture_geometry("data-splitting-preview-dialog.png", dialog)
 
 
 def test_data_splitting_preview_capture_uses_current_worker_lifecycle(qtbot) -> None:
@@ -295,8 +359,8 @@ def test_assistant_active_turn_capture_is_ready_before_processing(qtbot) -> None
     assert panel.send_btn.isEnabled() is True
     assert panel.input_field.isEnabled() is False
     assert panel.setup_btn.isHidden()
-    assert panel.scroll_area is not None
-    scrollbar = panel.scroll_area.horizontalScrollBar()
+    assert panel.transcript_view is not None
+    scrollbar = panel.transcript_view.horizontalScrollBar()
     assert scrollbar is not None
     assert scrollbar.maximum() == 0
     placeholder = assistant_composer_placeholder_evidence(panel)
@@ -668,6 +732,7 @@ def test_app_polish_validator_requires_many_row_cell_pixel_evidence(
     assert "cell evidence is incomplete" in reason
 
 
+@pytest.mark.usefixtures("capture_application_theme")
 def test_app_polish_validator_accepts_cells_hidden_by_horizontal_scroll(
     qtbot,
     tmp_path,
@@ -784,6 +849,7 @@ def test_capture_publish_replaces_manifest_only_after_screenshot_and_readme(
 
 def test_capture_application_theme_matches_formal_main_window_theme(qapp) -> None:
     app = qapp
+    previous_style = app.style().objectName()
     previous_stylesheet = app.styleSheet()
     previous_capture_style = app.property("xbrainlab_capture_qt_style")
     try:
@@ -793,7 +859,8 @@ def test_capture_application_theme_matches_formal_main_window_theme(qapp) -> Non
         assert app.styleSheet() == Stylesheets.MAIN_WINDOW
     finally:
         app.setStyleSheet(previous_stylesheet)
-        app.setStyle("Fusion")
+        assert app.setStyle(previous_style) is not None
+        assert app.style().objectName() == previous_style
         app.setProperty("xbrainlab_capture_qt_style", previous_capture_style)
 
 

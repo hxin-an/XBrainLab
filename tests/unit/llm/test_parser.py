@@ -168,7 +168,6 @@ def test_product_parser_accepts_message_only_response_contract():
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.workflow_stage == "data_loaded"
     assert result.message == "Load EEG data before training."
-    assert result.decision is None
     assert result.missing_inputs == ()
 
 
@@ -219,7 +218,6 @@ def test_product_parser_rejects_wrapped_respond_to_user_envelope():
 
     assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
     assert result.commands == ()
-    assert result.decision is None
     assert result.missing_inputs == ()
 
 
@@ -242,8 +240,6 @@ def test_product_parser_preserves_model_owned_blocked_message():
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.commands == ()
     assert result.workflow_stage == "empty"
-    assert result.decision is None
-    assert result.intent == "no_tool"
     assert result.missing_inputs == ()
     assert result.message == "Load EEG data before training."
 
@@ -259,8 +255,6 @@ def test_product_parser_preserves_model_owned_clarification_message():
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.commands == ()
     assert result.workflow_stage == "empty"
-    assert result.decision is None
-    assert result.intent == "no_tool"
     assert result.missing_inputs == ()
     assert result.message == "Please provide the EEG source path."
 
@@ -277,8 +271,6 @@ def test_product_parser_preserves_model_owned_answer_message():
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.commands == ()
     assert result.workflow_stage == "preprocessed"
-    assert result.decision is None
-    assert result.intent == "no_tool"
     assert result.missing_inputs == ()
     assert result.message == "An epoch is a window around an event."
 
@@ -293,8 +285,6 @@ def test_product_parser_keeps_direct_tool_decision_compact():
 
     assert result.status is ToolEnvelopeStatus.VALID
     assert result.commands == (("scan_source", {"source_path": "/data/A.gdf"}),)
-    assert result.decision == "tool"
-    assert result.intent == ""
     assert result.missing_inputs == ()
     assert result.message == ""
 

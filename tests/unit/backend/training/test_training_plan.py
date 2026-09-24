@@ -1487,13 +1487,14 @@ def test_train_one_repeat_keeps_saliency_out_of_training_thread_when_configured(
     base_holder,
 ):
     base_holder.option.evaluation_option = TrainingEvaluation.LAST_EPOCH
-    base_holder.set_saliency_params(
+    prepared = base_holder.prepare_saliency_update(
         {
             "SmoothGrad": {"nt_samples": 1},
             "SmoothGrad_Squared": {"nt_samples": 1},
             "VarGrad": {"nt_samples": 1},
         }
     )
+    publish_prepared_saliency_updates([prepared])
     record = base_holder.get_plans()[0]
     record.epoch = base_holder.option.epoch
     _mark_process_local_evaluation_pause(record)
@@ -1557,7 +1558,7 @@ def test_safe_move_to_cpu_releases_model_and_optimizer_gpu_state(base_holder):
     )
 
 
-def test_set_saliency_params_recomputes_finished_metric_only_record(base_holder):
+def test_saliency_update_recomputes_finished_metric_only_record(base_holder):
     base_holder.option.repeat_num = 1
     record = base_holder.get_plans()[0]
     record.epoch = base_holder.option.epoch
@@ -1575,13 +1576,14 @@ def test_set_saliency_params_recomputes_finished_metric_only_record(base_holder)
             return_value=sentinel,
         ) as mock_saliency,
     ):
-        base_holder.set_saliency_params(
+        prepared = base_holder.prepare_saliency_update(
             {
                 "SmoothGrad": {"nt_samples": 1},
                 "SmoothGrad_Squared": {"nt_samples": 1},
                 "VarGrad": {"nt_samples": 1},
             }
         )
+        publish_prepared_saliency_updates([prepared])
 
     mock_evaluate.assert_not_called()
     mock_saliency.assert_called_once_with(
@@ -2066,7 +2068,7 @@ def test_noncooperative_saliency_cancel_is_bounded_and_never_publishes(
     assert manager.saliency_params is old_params
 
 
-def test_set_saliency_params_atomically_recomputes_multiple_finished_records(
+def test_saliency_update_atomically_recomputes_multiple_finished_records(
     base_holder,
 ):
     records = base_holder.get_plans()[:2]
@@ -2114,7 +2116,8 @@ def test_set_saliency_params_atomically_recomputes_multiple_finished_records(
             wraps=fingerprint_saliency_epoch_data,
         ) as hash_epoch_data,
     ):
-        base_holder.set_saliency_params(params)
+        prepared = base_holder.prepare_saliency_update(params)
+        publish_prepared_saliency_updates([prepared])
 
     assert hash_epoch_data.call_count == 1
     assert all(token.stable for token in observed_tokens)
@@ -2135,7 +2138,7 @@ def test_set_saliency_params_atomically_recomputes_multiple_finished_records(
         assert producer_identity.model_fingerprint
 
 
-def test_set_saliency_params_second_record_failure_preserves_previous_state(
+def test_saliency_update_second_record_failure_preserves_previous_state(
     base_holder,
 ):
     records = base_holder.get_plans()[:2]
@@ -2158,7 +2161,10 @@ def test_set_saliency_params_second_record_failure_preserves_previous_state(
         ),
         pytest.raises(RuntimeError, match="second record failed"),
     ):
-        base_holder.set_saliency_params({"SmoothGrad": {"nt_samples": 1}})
+        prepared = base_holder.prepare_saliency_update(
+            {"SmoothGrad": {"nt_samples": 1}}
+        )
+        publish_prepared_saliency_updates([prepared])
 
     assert base_holder.saliency_params is old_params
     assert [record.eval_record for record in records] == old_eval_records
@@ -2325,7 +2331,7 @@ def test_training_manager_saliency_second_holder_failure_preserves_all_state(
     assert [holder.get_plans()[0].eval_record for holder in holders] == old_eval_records
 
 
-def test_set_empty_saliency_params_atomically_recomputes_metric_only(base_holder):
+def test_empty_saliency_update_atomically_recomputes_metric_only(base_holder):
     records = base_holder.get_plans()[:2]
     old_params = {"SmoothGrad": {"nt_samples": 1}}
     old_eval_records = [object(), object()]
@@ -2351,7 +2357,8 @@ def test_set_empty_saliency_params_atomically_recomputes_metric_only(base_holder
         ) as evaluate,
         patch.object(Evaluator, "evaluate_with_saliency") as evaluate_with_saliency,
     ):
-        base_holder.set_saliency_params({})
+        prepared = base_holder.prepare_saliency_update({})
+        publish_prepared_saliency_updates([prepared])
 
     assert base_holder.saliency_params == {}
     assert [record.eval_record for record in records] == new_eval_records
@@ -2362,7 +2369,7 @@ def test_set_empty_saliency_params_atomically_recomputes_metric_only(base_holder
     evaluate_with_saliency.assert_not_called()
 
 
-def test_set_empty_saliency_params_propagates_oom_and_preserves_previous_state(
+def test_empty_saliency_update_propagates_oom_and_preserves_previous_state(
     base_holder,
 ):
     records = base_holder.get_plans()[:2]
@@ -2380,14 +2387,15 @@ def test_set_empty_saliency_params_propagates_oom_and_preserves_previous_state(
         patch.object(Evaluator, "evaluate", side_effect=[object(), oom]),
         pytest.raises(torch.cuda.OutOfMemoryError) as raised,
     ):
-        base_holder.set_saliency_params({})
+        prepared = base_holder.prepare_saliency_update({})
+        publish_prepared_saliency_updates([prepared])
 
     assert raised.value is oom
     assert base_holder.saliency_params is old_params
     assert [record.eval_record for record in records] == old_eval_records
 
 
-def test_set_saliency_params_does_not_open_test_split_before_training_finishes(
+def test_saliency_update_does_not_open_test_split_before_training_finishes(
     base_holder,
 ):
     record = base_holder.get_plans()[0]
@@ -2399,7 +2407,10 @@ def test_set_saliency_params_does_not_open_test_split_before_training_finishes(
         patch.object(Evaluator, "evaluate") as evaluate,
         patch.object(Evaluator, "evaluate_with_saliency") as evaluate_with_saliency,
     ):
-        base_holder.set_saliency_params({"SmoothGrad": {"nt_samples": 1}})
+        prepared = base_holder.prepare_saliency_update(
+            {"SmoothGrad": {"nt_samples": 1}}
+        )
+        publish_prepared_saliency_updates([prepared])
 
     assert base_holder.saliency_params == {"SmoothGrad": {"nt_samples": 1}}
     get_loader.assert_not_called()

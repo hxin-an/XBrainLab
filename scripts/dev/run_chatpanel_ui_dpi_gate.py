@@ -38,7 +38,6 @@ FULL_WINDOW_DOCK_SCREENSHOTS = (
 NARROW_CROP_SCREENSHOTS = (
     "responsive-320-idle.png",
     "narrow-message-content-boundaries.png",
-    "narrow-setting-change-confirmation-max-content.png",
 )
 DPI_CONTENT_SCREENSHOTS = (
     "dpi-320-message-error-confirmation.png",

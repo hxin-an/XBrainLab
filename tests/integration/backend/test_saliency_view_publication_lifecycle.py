@@ -50,7 +50,10 @@ from XBrainLab.backend.training.record import eval as eval_module
 from XBrainLab.backend.training.record.eval import EvalRecord
 from XBrainLab.backend.training.record.train import TrainRecord
 from XBrainLab.backend.training.saliency_provenance import SaliencyContextError
-from XBrainLab.backend.training.training_plan import PreparedSaliencyUpdate
+from XBrainLab.backend.training.training_plan import (
+    PreparedSaliencyUpdate,
+    publish_prepared_saliency_updates,
+)
 from XBrainLab.backend.training_manager import (
     PostTrainingSaliencyTarget,
     post_training_saliency_target,
@@ -2475,7 +2478,8 @@ def test_sealed_saliency_renders_after_complete_montage_apply(tmp_path: Path) ->
     assert holder.error is None
     record = holder.get_plans()[0]
     assert record.is_finished()
-    holder.set_saliency_params({"_methods": ["Gradient"]})
+    prepared = holder.prepare_saliency_update({"_methods": ["Gradient"]})
+    publish_prepared_saliency_updates([prepared])
     sealed = record.get_saliency_eval_record()
     assert sealed is not None
     assert sealed.has_saliency_data()

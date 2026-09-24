@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from transformers import StoppingCriteria, StoppingCriteriaList
 
 from XBrainLab.llm.core.backends.local import LocalBackend
 from XBrainLab.llm.core.generation import ResolvedGenerationOptions
@@ -90,7 +91,9 @@ def test_enabled_capture_persists_exact_fitted_prompt_raw_output_and_metadata(
             "sys.modules",
             {
                 "transformers": MagicMock(
-                    TextIteratorStreamer=MagicMock(return_value=_Streamer())
+                    StoppingCriteria=StoppingCriteria,
+                    StoppingCriteriaList=StoppingCriteriaList,
+                    TextIteratorStreamer=MagicMock(return_value=_Streamer()),
                 )
             },
         ),
@@ -136,7 +139,9 @@ def _generate(backend: LocalBackend, options: ResolvedGenerationOptions) -> list
             "sys.modules",
             {
                 "transformers": MagicMock(
-                    TextIteratorStreamer=MagicMock(return_value=_Streamer())
+                    StoppingCriteria=StoppingCriteria,
+                    StoppingCriteriaList=StoppingCriteriaList,
+                    TextIteratorStreamer=MagicMock(return_value=_Streamer()),
                 )
             },
         ),
@@ -206,7 +211,9 @@ def test_capture_marks_consumer_close_cancelled_and_keeps_yielded_raw_output(
             "sys.modules",
             {
                 "transformers": MagicMock(
-                    TextIteratorStreamer=MagicMock(return_value=_Streamer())
+                    StoppingCriteria=StoppingCriteria,
+                    StoppingCriteriaList=StoppingCriteriaList,
+                    TextIteratorStreamer=MagicMock(return_value=_Streamer()),
                 )
             },
         ),

@@ -1257,7 +1257,7 @@ def build_evaluation_cross_fold_choices(
                 EvaluationCrossFoldChoice(
                     identity=EvaluationCrossFoldIdentity(members=members),
                     display_name=display_name,
-                    run_label=f"Run {run_index + 1} (Summary)",
+                    run_label=f"Run {run_index + 1}",
                     evaluation_splits=("test",),
                     fold_count=len(members),
                     sample_count=sample_count,

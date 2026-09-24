@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from langchain_core.documents import Document
@@ -82,19 +82,10 @@ def _configure_verified_mock_index(
 
 @pytest.fixture
 def mock_indexer():
-    with (
-        patch("XBrainLab.llm.rag.indexer.HuggingFaceEmbeddings"),
-        patch("XBrainLab.llm.rag.indexer.QdrantClient"),
-        patch(
-            "XBrainLab.llm.rag.indexer.RAGConfig.embedding_cache_ready",
-            return_value=True,
-        ),
-    ):
-        indexer = RAGIndexer()
-        return indexer
+    return RAGIndexer(client=MagicMock(), embeddings=MagicMock())
 
 
-def test_load_gold_set(mock_indexer):
+def test_load_gold_set(mock_indexer, tmp_path: Path):
     """Test parsing of gold set JSON."""
     fake_json = [
         {
@@ -105,8 +96,9 @@ def test_load_gold_set(mock_indexer):
         }
     ]
 
-    with patch("builtins.open", mock_open(read_data=json.dumps(fake_json))):
-        docs = mock_indexer.load_gold_set("dummy.json")
+    corpus = tmp_path / "gold-set.json"
+    corpus.write_text(json.dumps(fake_json), encoding="utf-8")
+    docs = mock_indexer.load_gold_set(str(corpus))
 
     assert len(docs) == 1
     assert docs[0].page_content == "User Input"
@@ -126,27 +118,17 @@ def test_load_gold_set_missing_file_raises_without_mutating_index(
     assert mock_indexer.client.mock_calls == []
 
 
-def test_close_releases_only_an_internally_owned_client() -> None:
-    owned_client = MagicMock()
-    external_client = MagicMock()
-
-    with (
-        patch(
-            "XBrainLab.llm.rag.indexer.RAGConfig.embedding_cache_ready",
-            return_value=True,
-        ),
-        patch("XBrainLab.llm.rag.indexer.HuggingFaceEmbeddings"),
-        patch("XBrainLab.llm.rag.indexer.QdrantClient", return_value=owned_client),
-    ):
-        owned_indexer = RAGIndexer()
-
-    external_indexer = RAGIndexer(client=external_client, embeddings=object())
-
-    owned_indexer.close()
-    external_indexer.close()
-
-    owned_client.close.assert_called_once_with()
-    external_client.close.assert_not_called()
+def test_indexing_keeps_borrowed_client_available_to_its_owner(
+    in_memory_indexer: RAGIndexer,
+    identity_docs: list[Document],
+) -> None:
+    client = in_memory_indexer.client
+    with patch.object(client, "close", wraps=client.close) as close:
+        assert in_memory_indexer.index_data(identity_docs) is True
+        close.assert_not_called()
+        assert client.count(
+            collection_name=RAGConfig.COLLECTION_NAME, exact=True
+        ).count == len(identity_docs)
 
 
 def test_index_data_rebuilds_with_deterministic_ids(mock_indexer, tmp_path: Path):

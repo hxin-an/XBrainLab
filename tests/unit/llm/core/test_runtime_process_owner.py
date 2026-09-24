@@ -110,6 +110,70 @@ def _messages() -> list[dict[str, str]]:
     return [{"role": "user", "content": "bounded runtime probe"}]
 
 
+def test_failed_command_send_releases_turn_and_requires_restart() -> None:
+    class _LiveProcess:
+        def is_alive(self) -> bool:
+            return True
+
+    class _BrokenConnection:
+        def send(self, _command) -> None:
+            raise BrokenPipeError("child command channel closed")
+
+    owner = LocalRuntimeProcessOwner(LLMConfig(device="cpu"))
+    owner._process = _LiveProcess()
+    owner._command_connection = _BrokenConnection()
+    owner._transport_ready.set()
+    owner._initialized = True
+
+    with pytest.raises(LocalRuntimeRestartRequiredError):
+        list(
+            owner.generate_stream(
+                _messages(), profile=GenerationProfile.STRUCTURED_DECISION
+            )
+        )
+
+    assert owner._active_generation_id is None
+    assert owner._generation_done.is_set()
+    assert owner.restart_required is True
+    with pytest.raises(LocalRuntimeRestartRequiredError):
+        list(
+            owner.generate_stream(
+                _messages(), profile=GenerationProfile.STRUCTURED_DECISION
+            )
+        )
+
+
+def test_failed_close_retires_readiness_but_retains_process_for_retry() -> None:
+    class _UnstoppedProcess:
+        stopped = False
+
+        def is_alive(self):
+            return not self.stopped
+
+        def join(self, timeout):
+            raise OSError("process join failed")
+
+    owner = LocalRuntimeProcessOwner(_config())
+    process = _UnstoppedProcess()
+    owner._process = process
+    owner._transport_ready.set()
+    owner._initialized = True
+    assert owner.active_backend is owner
+
+    with pytest.raises(OSError, match="process join failed"):
+        owner.close(wait_timeout=0)
+
+    assert owner._process is process
+    assert owner.active_backend is None
+    # A late load event cannot restore readiness after close admission.
+    owner._initialized = True
+    assert owner.active_backend is None
+    with pytest.raises(LocalRuntimeRestartRequiredError):
+        owner._begin_generation()
+    process.stopped = True
+    assert owner.close(wait_timeout=0) is True
+
+
 def _start_generation(
     owner: LocalRuntimeProcessOwner,
 ) -> tuple[threading.Thread, list[str], list[BaseException]]:

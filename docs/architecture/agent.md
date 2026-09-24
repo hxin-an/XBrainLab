@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-09-21`
+最後更新：`2026-09-24`
 
 ## 範圍
 
@@ -24,14 +24,13 @@ AgentManager (Qt composition / presentation adapter)
   +--> AssistantRuntimeLifecycle / RuntimeCoordinator
   +--> AssistantCommandDispatcher / AssistantCommandThread
   +--> AssistantApplicationPublicationCoordinator
-           |
-           v
-       LLMController
+  |
+  +--> LLMController (via queued command dispatcher)
            |
            +--> AssistantTurnOrchestrator
            +--> AssistantToolAttemptSession
            +--> ProcessRAGRetrieverLifecycle
-           +--> AgentWorker / LLMEngine
+           +--> AgentWorker / LocalRuntimeProcessOwner --> LLMEngine (child process)
            +--> Parser / VerificationLayer / ToolAttemptCoordinator
            +--> ToolExecutionCoordinator
   |
@@ -84,6 +83,13 @@ Study / managers / domain state
 
 它不應該直接懂 backend workflow。
 
+`ChatController` 擁有唯一 typed conversation history；`ChatPanel` 負責 runtime／turn／composer
+與 confirmation 呈現。`ChatTranscriptView` 是完整的 Qt viewport owner，擁有訊息 widgets、
+layout、分批 replacement、六個 timers、reader anchor 與 follow-tail；不保存另一份可變 history
+或 runtime policy。四個既有 transient surfaces 共用 viewport，內容仍由 Panel 負責；三個窄
+signals 協調 surface fitting、content presence 與先捕捉 anchor 再清卡的 replacement 順序。
+Capture scripts 讀取同一 viewport 的可見訊息，不經舊 Panel append／layout 相容入口。
+
 ### 2. AgentManager
 
 `AgentManager` 是 UI 和 agent runtime 的 composition/presentation adapter。
@@ -94,8 +100,16 @@ Study / managers / domain state
 - 將 chat panel 的 typed turn 交給 dispatcher，並將 assistant presentation、activity 與錯誤狀態送回 UI。
 - 透過既有 UI handoff host 處理 switch panel、montage、設定與 confirmation，不在 chat 裡建立第二套 workflow form。
 - 由 runtime lifecycle 將選定模型解析為 immutable `AssistantRuntimeLaunchSpec`，不以 UI label 判斷 runtime identity。
-- 以 `ApplicationViewPublication.revision` 確認 GUI 已套用哪一份 backend state；只有 matching
-  revision acknowledgement 後，才接收該 publication 保留的 terminal lifecycle event。
+- 組合既有 `AssistantApplicationPublicationCoordinator`，由它持有 Assistant 的 rendered
+  revision、observer bridge、retry timers 與相關聯的 training terminal notice；Manager
+  僅提供 status／terminal rendering 和 turn idle 查詢。Assistant 不替 Desktop acknowledge
+  publication delivery；Desktop 的 revision acknowledgement 仍由原 Desktop renderer 擁有。
+
+使用者與 diagnostic turn 都先預約 generation，再取得 runtime 的 exact correlation，最後才
+改 transcript。正式 transport 的 accepted 回覆透過 Qt queue，在提交返回後才由 GUI 接收；
+UI 不另建 synchronous event FIFO。generation／lease／stale／Stop fences 仍由同一 turn-state
+owner 管理。保留兩個 presentation 入口是因為 composer 與 debug rejection／copy 不同，
+不是兩套 admission 或 application policy。
 
 UI side effect 仍由 structured tool result 的 UI request 交給 `AgentManager`，但會沿用既有 dialog；
 request 打開後 workflow 會停止並顯示 waiting state，不會繼續猜測使用者選擇。
@@ -108,6 +122,8 @@ Desktop dispatcher 將 controller 搬至 `AssistantCommandThread`；在 construc
 RAG／worker 回呼必須宣告為 Qt slots，讓 chunk、terminal、runtime 與 stop acknowledgement
 跟隨 controller affinity。模型完成後的同步工具計算留在該 command thread，不占用 GUI；
 GUI 透過既有 typed activity／result signals 顯示狀態，並在真正結果返回後完成 turn。
+產品與 capture 的 QObject controller 都走同一 queued transport；dispatcher 不要求
+controller 另有 generation worker，也不提供給非 QObject 假物件的同步執行分支。
 
 工具 handoff 的名稱／command／decision fields 驗證與 request 建構由既有 `ui_handoff` 模組
 依 canonical registry 完成；controller 只發送有效的 typed request。`ToolAttemptCoordinator`
@@ -127,7 +143,7 @@ Qt processing／closing admission。這些內部責任移交不新增工具或�
 - 初次生成最多加一次既有格式修復；同一修復仍失敗即停止，不重送第二次相同策略。
   多個完整物件維持 choose-one terminal，已交付操作、確認取消與執行失敗不由格式重試重送。
 - 用 `VerificationLayer` 檢查 registered tool schema、required parameter、JSON-like type、
-  enum、confidence 和部分資料範圍；五個direct preprocess另由同一verification boundary驗證required
+  enum 和部分資料範圍；五個direct preprocess另由同一verification boundary驗證required
   value確實來自latest user request，無法驗證時回一般Assistant追問且不進executor。
 - 套用 ApplicationService capability gate，避免 assistant 在錯誤 backend state 呼叫不該開放的工具。
 - 將已驗證的單一 tool 交給 `ToolExecutionCoordinator`；mapped workflow tool 透過
@@ -142,7 +158,7 @@ Qt processing／closing admission。這些內部責任移交不新增工具或�
 
 Controller 不再透過 `_active_generation_id`、`_retry_count` 等 writable compatibility alias 保存
 第二份狀態。Host/RAG/generation/cancellation correlation 只在 `AssistantTurnOrchestrator`；format
-retry、tool failure/execution 與 visible response 只在
+retry、tool execution count 與 visible response 只在
 `AssistantToolAttemptSession`。Architecture gate 會以 AST 同時掃 production controller 與測試
 fixture，避免測試寫入無效 instance attribute 後產生假通過。
 
@@ -152,12 +168,36 @@ Controller 保留 missing-generation 拒絕與 Qt delivery。有效 proposal 只
 結束回合；format retry 發生在有效 proposal 之前，因此舊 repeated-proposal history／loop-break
 分支已移除，不影響 strict-envelope retry 或 one-action admission。
 
+「重試」有三個不同邊界，不能統稱 Agent 自動修復：
+
+- 模型輸出格式錯誤：預設最多額外生成一次（加上首次共兩次），只修正 strict JSON envelope；
+  多個 action 直接要求使用者選一個，不執行或重試其中任何一個。
+- 工具／backend 執行失敗：回報結果並結束 turn，不把錯誤再交模型重新規劃或自動執行。
+  既有確認／GUI handoff 是等待使用者的相關聯回覆；確認後仍重查 publication，不是模型重試。
+- 停止／關閉失敗：既有 lifecycle 保留 runtime ownership 並重試資源清理，不代表重跑工具。
+
+`AssistantGenerationRequest` 一律使用 structured-decision decoding；普通說明也由 strict
+`respond_to_user` envelope 呈現，沒有 bypass parser 的 natural-language selector。Core 的
+`INFORMATIONAL_TEXT` 仍供獨立 runtime inspection 使用，不是 Assistant turn 的第二條路徑。
+Parser 保留 status、commands、stage、error 與 clarification 的 message／pending_action／
+missing_inputs，不另保存未使用的 intent／decision metadata。Recovery artifact 仍使用七個
+現行 taxonomy 字串；其中 `first_attempt_plain_text`／`recovered_plain_text` 指合法 structured
+回覆，不表示接受任意裸文字。已無 producer 的 blocked／missing-input／answer 六種舊分類已移除。
+
+舊 heuristic confidence 已移除：它不是模型校準機率，而且 strict parser 接受的合法 current
+tool proposal 都能通過唯一產品門檻。Schema、value origin、capability、confirmation 與
+publication 檢查仍各自保留，沒有用另一個估分層取代它。
+
 Controller shutdown 只使用實際 `AgentWorker`／`QThread` 的 acknowledgement、timeout/retry 與
 native-exit probe；不再提供專供非 QObject／QThread 測試替身使用的成功路徑。Worker 已釋放／
 刪除、RAG cleanup 未完成與晚到的 Stop acknowledgement 仍由原有 lifecycle fence 處理。
+RuntimeLifecycle 只消費 dispatcher 的 cleanup 結果，不再同時旁聽 controller shutdown 重送
+close。真 walkthrough controller 允許同步 close、沒有 shutdown signal；正常 Controller 的
+非同步 shutdown 仍先釋放 worker、還原 affinity、關閉 command thread 後才完成。
 
-UI 不可直接讀 `AgentWorker.engine` 或 generation thread。worker 只發出 model id、backend mode
-與 initialized 狀態的 snapshot；`AgentManager`、VRAM conflict check 和 model deletion preflight
+UI 不可直接讀 `AgentWorker.engine` 或 generation thread。worker 發出 model id、backend mode、
+initialized 與 cleanup_pending 的 snapshot；後者是已不 ready 但仍持有待清理 runtime 的投影，
+不是另一份 process owner。`AgentManager`、VRAM conflict check 和 model deletion preflight
 都讀 `LLMController.runtime_snapshot()`。architecture guard 會阻擋 UI 回到 worker internals。
 
 這一層目前同時包含 agent orchestration 和一部分 workflow policy。所有 mapped workflow
@@ -171,10 +211,14 @@ Assistant 已移除曾經重複保存這些資訊的 `decision_context`／turn-a
 card，再依`STAGE_CONFIG`發布該stage的approved target schemas。模型只在這個集合中選一個tool，
 或使用`respond_to_user`；Host不替模型選前置步驟或自動接續下一個mutation。
 
-Prompt history只保留最新user訊息與最多一則Assistant-visible訊息，並排除`Tool Output:`、structured
-envelope與內部system payload。bundled gold set目前有72個英文正例（18個approved tools各4筆），維持
+Prompt history只保留最新user訊息與最多一則Assistant-visible訊息。Host feedback、raw action
+proposal與diagnostic trace由producer標記為history的`internal` role，不進模型訊息；來源不由
+`System:`／`Tool Output:`前綴或JSON形狀推論，真人與可見Assistant內容仍保留為資料。
+該內部role不輸出給chat template；既有untrusted-context隔離與redaction保持。
+bundled gold set目前有72個英文正例（18個approved tools各4筆），維持
 coverage；RAG example也只能在同一stage的approved tool集合中檢索，不能授予capability、confirmation
-或continuation權限。目前retriever仍以semantic ranking取`TOP_K = 3`；target所述canonical／top-2
+或continuation權限。目前retriever先用 cosine threshold 篩候選，再以 cosine／normalized BM25
+加權排序取`TOP_K = 3`；target所述canonical／top-2
 selection尚未實作，不能把兩者混為同一policy。
 
 `scripts/dev/verify_rag.py` 以固定的 36 正例／12 邊界工程探針驗證真離線檢索，沿用產品
@@ -182,6 +226,9 @@ assembler 的七個 stage tool publications，不以預期工具單獨過濾候�
 每工具至少一題；另檢查 context bounds、未授權工具、索引身分與重用。`--baseline-report`
 可比對同一探針／設定的舊報告，並核對逐題資料與摘要一致。這些探針已用於開發修訂，
 不是 holdout／正式 Validation 或 Test；檢索命中也不等於模型判斷或工具執行成功。
+Retriever 擁有 Qdrant client 與 embedding；`RAGIndexer` 只借用這兩個資源建索引，
+不自行配置或關閉。索引 manifest、point identity 與 payload digest 仍驗證持久化內容，
+不是可省略的記憶體快取標記。
 
 Data Import對模型是單一零參數`import_eeg_data` GUI completion tool。內部scan、preview、validate、
 apply與recipe lifecycle仍由既有Data Interpretation/ApplicationService owner負責，不作為模型工具，
@@ -202,7 +249,16 @@ apply與recipe lifecycle仍由既有Data Interpretation/ApplicationService owner
 
 ### 4. Worker / Engine / Backend
 
-`AgentWorker` 和 `LLMEngine` 負責 LLM runtime。
+`AgentWorker` 透過 `LocalRuntimeProcessOwner` 管理獨立子程序中的 `LLMEngine`。
+初始化與模型替換共用既有 `RuntimeLoadThread`，不在 worker 的 Qt event loop 同步等待載入；
+失敗不把已關閉的舊模型恢復成 READY。Close／cancel 若未能退出，仍保留原 process handle，
+後續可重試清理；cleanup_pending 期間禁止把使用中的模型當成可刪除。
+設定保存回傳失敗與 runtime 是否已就緒分開處理，不把儲存失敗冒稱成已保存的模型選擇。
+
+子程序內的 `LLMEngine` 只擁有一個 backend，不再維護單 mode 的字典 cache、原地切換或
+舊模型 rollback。載入失敗後若 cleanup 未完成，或 unload 失敗，仍保留該 backend 供再次
+清理，但不允許生成；真正釋放後才回報 close 成功。子程序循序處理 generate／close，並行的取消監視器只送取消要求，
+不是另開一套可同時 load／generate／close 的 engine API。
 
 目前產品 runtime 是 local-only assistant：
 
@@ -237,14 +293,26 @@ Runtime policy：
 
 - `XBrainLab/llm/core/model_catalog.py` 是 local model allow-list / block-list / size policy 的單一來源。
 - 下載前必須通過 `plan_model_download()`，限制單模型 10GB、總 cache 20GB。
+- Download catalog 另含固定 MiniLM embedding asset，不把它加入 selectable LLM catalog。
+  Windows source setup 使用同一 download lifecycle／安全檢查，揭露並確認下載，再做 CPU
+  離線 model/index/retrieval readiness smoke；generation 與 RAG 分開的 cache 另作合計容量
+  檢查。來源、路徑、重跑／清理與安裝證據界線見[本機環境](../developer/local-setup.md)。
+  Runtime 僅讀既有 pinned embedding，不在 Assistant turn 自動下載；missing cache 可使
+  產品 RAG 停用，但不能替要求 RAG 的論文條件提供有效證據。
 - `AgentManager` 首次啟用 local runtime 時只在 Assistant Dock 顯示 inline setup：exact selected model
   label、estimated VRAM、cached model的`Enable Assistant`，或missing cache的`Set up model`與唯一
   `Assistant Settings`入口；不再建立first-run modal，app startup也不會自動載入大型local model。
 - runtime resolver 只啟動設定中明確選定且可用的 exact model；若不可用就回 typed unavailable，
   不靜默改用另一個 catalog model。
-- `LocalBackend` 會阻擋未列入 product catalog 或被中國模型 policy 擋下的 repo id。
-- `LocalBackend` 的 `trust_remote_code`、CUDA dtype、system-role 與 runtime context budget 都來自
-  immutable catalog spec；本機 settings 不能放寬 remote-code trust。
+- 產品 `LocalBackend` 預設只接受 product catalog 的repo id；研究runner可明確注入固定
+  `LocalModelSpec`，經同一backend驗精確model identity，不擴張Settings產品清單或silent fallback。
+- `LocalBackend` 固定 `trust_remote_code=False`；CUDA dtype 與 runtime context budget 來自
+  immutable spec，本機 settings不能放寬remote-code trust。現行產品與固定研究模型皆支援
+  system role，不再有 `supports_system_role` 欄位或system→user legacy merge。
+  Pinned template接受連續user時保留untrusted context與request分訊息；研究Gemma template
+  不接受時由既有backend合併相鄰user內容，保留context delimiters與原文順序，不偽造assistant回覆。
+  每次 generation 都使用實際 HuggingFace stopping criterion 連到取消
+  event；未結束的 generation lease 不因停止 streamer 或 UI turn 結束就釋放。
 - `LLMConfig` 會把舊 `INFERENCE_MODE=api` 或 settings 裡的 Gemini/API mode 讀成 `local`。
 - `LLMEngine` 只會 instantiate `LocalBackend`；product package 已移除 remote backend modules。
 - `AgentWorker.reinitialize_agent(...)` 只接受 lifecycle 已解析的 `AssistantRuntimeLaunchSpec`；
@@ -257,7 +325,7 @@ Runtime policy：
 目前仍要保留在架構判讀中的 runtime 行為包括：
 
 - runtime config reload。
-- model / backend switch。
+- local model replacement（整個 process 替換）。
 - generation timeout。
 
 `LLMConfig` 和 `AssistantRuntimeSelection` 是 runtime truth。UI 顯示文字不能當成真實 backend 狀態。
@@ -275,16 +343,29 @@ fixture，必須放在明確 optional legacy path，不能被 product code impor
 普通回覆、空回覆、worker failure、blocked action 與 successful tool 都必須有 typed visible
 terminal；diagnostic detail 不洩漏到 transcript。Confirmation card 保留 exact request identity，
 不從顯示文字重建參數；Stop／New Chat／Close 不得沿用過期批准。
+卡片只呈現action details與既有確認／取消操作，不再投影training snapshot建立舊式
+Current／Proposed比較，也沒有該比較專用的Apply／Keep或未驗證提示。Presentation仍以
+可用且可靠的publication generation判斷過期警示；真正執行前的admission與重新驗證不由卡片決定。
 Workflow panels 只 render revisioned `ApplicationViewPublication`，command-result signal 只管理
 Assistant activity／terminal ownership，不以 `changed_state` 另建 repaint 路徑。
 Chat 的 widget、scroll、輸入與 inline setup 契約見[UI 架構](ui.md#chat-product-contract)；
 真模型、native capture 與人工驗收要求見[驗證契約](../validation/README.md)。
 
+`ChatController`以typed history作為唯一可變transcript；`messages`只是供evidence讀取的
+role/content複本，不能反向修改正式歷史。UI只訂閱typed record／history replacement與
+processing signals；prune、restore、clear後的reentrant notifications仍依FIFO發布。
+逐筆事件只新增已提交的訊息；還原同 ID 的內容由完整 history replacement 更新既有 widget，
+沒有另一條產品不使用的 record-update signal。
+每個bubble只建立實際prose與code widgets，不保留隱藏的第二份Markdown renderer；
+capture檢查全部prose區塊，而非只檢查第一段。Suggestion外觀與固定prompt不隨此內部清理改變。
+
 ### 5. Tools
 
 `XBrainLab/llm/tools/definitions/` 定義工具名稱、參數 schema、描述和是否需要 confirmation。
 
-`XBrainLab/llm/tools/real/` 是目前真的操作 app 的工具。
+`llm/tools/__init__.py:get_all_tools()`從現有definitions建立工具並驗證完整membership；
+實際command執行由`application_surface.py`接到ApplicationService，UI工具產生typed request。
+沒有另一個`tools/real/`實作目錄。
 
 `XBrainLab/llm/action_contracts.py`是目前model-facing contract的唯一source；product、debug、evaluator與
 prompt 共用同一份工具定義，registry必須精確等於下列18個工具。模擬工具與其獨立 workflow state
@@ -342,7 +423,12 @@ result / command query 為準。
 `ToolExecutionCoordinator`在execution前重讀同generation publication、schema、capability與
 confirmation。
 
-`ToolCommandResult` 是目前 agent-facing typed result adapter：
+`ToolCommandResult` 與純結果遮罩／轉換位於 `llm/tools/result_contract.py`；
+`application_surface.py` 保留能力適配、應用層結果正規化、command 對映與執行，結果 DTO 不反向依賴它。
+正式 tools 只回傳 `ToolCommandResult` 或 typed `UiRequest`；舊 `ToolResult`、結果別名及 raw
+`CommandResult` 正規化 fallback 已移除。Command adapter 必須先完成 typed 轉換，其他回傳型別
+在執行邊界 fail closed；public projection／compact feedback 仍負責完整公開欄位的遮罩與界限。
+這是目前 agent-facing typed result adapter：
 
 - ApplicationService blocked command 會回傳 structured failed result，包含 `command_name`、
   `blocked_reason`、capability 和 state snapshot。
@@ -351,27 +437,31 @@ confirmation。
 - 七個GUI completion tool共用一個thin handoff adapter；trusted action contract固定route與decision
   fields，模型參數永遠是`{}`。只有dialog的completed/cancelled/blocked/unavailable/failed outcome
   能結束turn。
+  舊 interpretation／standalone import／train／evaluate／visualize Agent routes 與其 suggestions、
+  interpretation identity 傳遞已刪除；通用 backend／GUI 的同名能力不受影響。Model 與 training
+  options 各走其正式 dialog，不再提供沒有工具 producer 的 combined／empty settings 分支。
+  Lazy panel materialization 的 `NAVIGATED` 與 command-pending progress 保留，但不作成功 terminal。
 - `switch_panel`等待MainWindow/subview materialization callback，不把UiRequest emission當成功。
 - `compute_saliency`不讓模型填run/method/settings；它等待相同operation的completed/cancelled/failed
   terminal，不把command schedule receipt當成功。
 - Data Interpretation、analysis與query services仍供產品GUI/backend使用，但沒有Assistant wrapper。
 - 缺少direct tool必要參數時，strict model branch使用`respond_to_user`；adapter不套default、不走
   legacy fallback。
-- `CommandResult` 可直接轉成 agent payload；conversation history 中的 `Tool Output` 已保留
-  `ok`、`tool_name`、`command_name`、
-  `message`、`error_type`、`recoverable`、`state`、`capability`、`diagnostics`、
-  `raw_result` JSON payload。
+- `CommandResult` 轉成 typed result 後，history 的 `Tool Output` 只保留 redacted compact feedback：
+  `ok`、`tool_name`、`command_name`、`message`、`error_type`、`recoverable`、`blocked_reason`，
+  加上有值時的 capability 白名單、`state_summary` 與 diagnostics 白名單；不保存完整
+  `raw_result`／state。這是內部 trace，不是下一輪模型的 tool observation；`ContextAssembler`
+  依明確 `internal` role排除host feedback，以新publication建構當輪state，不排除同前綴的真人要求。
 - `set_montage`保留既有 public tool identifier，但 handoff 走 Dataset panel 的 `Electrode Layout`
   entry；Cancel不產生 montage mutation。Evaluation與Visualization 由`switch_panel`導向既有panel；
   Compute Saliency只觸發既有panel action，不重建readiness或render owner。
 
 ## Workflow State Gate
 
-`XBrainLab/llm/pipeline_state.py` 會把 real `Study` 的 workflow stage 導向
-`ApplicationService.get_state().pipeline_stage`，讓 prompt narrative、capability policy
-和 command execution 共用 backend snapshot truth。mock / legacy non-product callers 才保留
-direct Study-shaped reads；真正可用工具與 blocked reason 仍由 ApplicationService capability
-policy 產生。
+`XBrainLab/llm/pipeline_state.py` 重用 backend 的 `PipelineStage`，提供 prompt stage-to-tool
+mapping；不另推斷 Study 狀態，也沒有 mock／legacy direct Study fallback。Prompt、capability
+policy 和 command execution 共用 ApplicationService publication truth；真正可用工具與
+blocked reason 仍由 backend capability policy 產生。
 
 `ContextAssembler`以backend `pipeline_stage`選擇`STAGE_CONFIG`中的approved target schemas；這是prompt
 publication。ApplicationService capability不是另一個prompt router，而是在proposal後再次做authoritative
@@ -383,6 +473,11 @@ RAG examples也受同一條18-tool與stage publication邊界約束：
 `XBrainLab/llm/rag/example_policy.py` 排除所有未發布 tool examples，包括舊 dataset-info、direct
 load / attach 與 granular preprocess names。這同時處理新建 index 和使用者機器上已存在的舊 Qdrant
 collection，避免 legacy few-shot examples 被重新注入 local LLM prompt。
+
+`llm/agent/intent.py` 只提供 RAG action-example suppression 與其語句判斷；
+它不再分類或選擇下一個 tool，也不抽取 training options。這個 boolean 保留說明性／
+未解歷史指涉／歧義問題的既有處理順序，以及 state、browse、preview 的既有例外，
+不取代模型決策或 backend admission。
 
 目前stage包括：
 

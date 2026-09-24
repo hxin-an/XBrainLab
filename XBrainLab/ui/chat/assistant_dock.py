@@ -5,7 +5,6 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QDockWidget,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -27,9 +26,6 @@ class AssistantDockTitleBar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.title_label: QLabel | None = None
-        self.status_indicator: QWidget | None = None
-        self.status_dot: QFrame | None = None
-        self.status_badge: QLabel | None = None
 
     def set_assistant_status(self, text: str) -> None:
         """Expose runtime status without adding a competing header badge."""

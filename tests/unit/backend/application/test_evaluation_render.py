@@ -643,7 +643,12 @@ def test_plan_publication_rejects_class_mapping_drift_between_runs() -> None:
 def test_plan_publication_pools_only_finished_evaluation_arrays() -> None:
     first = _Run(np.array([0]), np.array([[0.8, 0.2]]))
     second = _Run(np.array([1]), np.array([[0.1, 0.9]]))
-    publisher = _publisher(_Runtime([_Plan([first, second])]))
+    unfinished = _Run(
+        np.array([0, 0, 0]),
+        np.array([[0.0, 1.0]] * 3),
+        finished=False,
+    )
+    publisher = _publisher(_Runtime([_Plan([first, unfinished, second])]))
     plan_identity = EvaluationPlanIdentity(plan_index=0)
 
     publication = publisher.publish(
@@ -662,6 +667,7 @@ def test_plan_publication_pools_only_finished_evaluation_arrays() -> None:
     assert publication.data.labels.tolist() == [0, 1]
     assert publication.data.outputs.tolist() == [[0.8, 0.2], [0.1, 0.9]]
     assert publication.data.metrics["macro_avg"]["support"] == 2
+    assert publication.data.metrics["macro_avg"]["f1-score"] == 1.0
 
 
 def test_cross_fold_publication_pools_predictions_and_recomputes_metrics() -> None:
@@ -670,25 +676,31 @@ def test_cross_fold_publication_pools_predictions_and_recomputes_metrics() -> No
     first_dataset = _Dataset(
         epoch_data=epoch_data,
         config=config,
-        test_mask=np.array([True, True, False]),
+        test_mask=np.array([True, True, False, False, False, False]),
     )
     second_dataset = _Dataset(
         epoch_data=epoch_data,
         config=config,
-        test_mask=np.array([False, False, True]),
+        test_mask=np.array([False, False, True, True, True, True]),
     )
     first_fold = _Plan(
         [
             _Run(
-                np.array([0, 1]),
-                np.array([[0.8, 0.2], [0.4, 0.6]]),
+                np.array([0, 0]),
+                np.array([[0.8, 0.2], [0.6, 0.4]]),
                 dataset=first_dataset,
             )
         ],
         dataset=first_dataset,
     )
     second_fold = _Plan(
-        [_Run(np.array([1]), np.array([[0.1, 0.9]]), dataset=second_dataset)],
+        [
+            _Run(
+                np.array([0, 0, 1, 1]),
+                np.array([[0.1, 0.9]] * 4),
+                dataset=second_dataset,
+            )
+        ],
         dataset=second_dataset,
     )
     plans = [first_fold, second_fold]
@@ -697,8 +709,8 @@ def test_cross_fold_publication_pools_predictions_and_recomputes_metrics() -> No
 
     assert len(choices) == 1
     assert choices[0].display_name == "All Folds"
-    assert choices[0].run_label == "Run 1 (Summary)"
-    assert choices[0].sample_count == 3
+    assert choices[0].run_label == "Run 1"
+    assert choices[0].sample_count == 6
 
     publication = publisher.publish(
         EvaluationRenderRequest(
@@ -711,13 +723,26 @@ def test_cross_fold_publication_pools_predictions_and_recomputes_metrics() -> No
     )
 
     assert publication.data.summary_identity is None
-    assert publication.data.labels.tolist() == [0, 1, 1]
+    assert publication.data.labels.tolist() == [0, 0, 0, 0, 1, 1]
     assert publication.data.outputs.tolist() == [
         [0.8, 0.2],
-        [0.4, 0.6],
+        [0.6, 0.4],
+        [0.1, 0.9],
+        [0.1, 0.9],
+        [0.1, 0.9],
         [0.1, 0.9],
     ]
-    assert publication.data.metrics["macro_avg"]["support"] == 3
+    # Pooled confusion is [[2, 2], [0, 2]]. Its F1 is 2/3 for both
+    # classes, unlike the fold macro-F1 mean (1/2 + 1/3) / 2 = 5/12.
+    assert publication.data.metrics[0] == pytest.approx(
+        {"precision": 1.0, "recall": 0.5, "f1-score": 2 / 3, "support": 4}
+    )
+    assert publication.data.metrics[1] == pytest.approx(
+        {"precision": 0.5, "recall": 1.0, "f1-score": 2 / 3, "support": 2}
+    )
+    assert publication.data.metrics["macro_avg"] == pytest.approx(
+        {"precision": 0.75, "recall": 0.75, "f1-score": 2 / 3, "support": 6}
+    )
 
     publisher = _publisher(_Runtime(plans))
     with pytest.raises(PreconditionError, match="only for saved test predictions"):
@@ -783,8 +808,8 @@ def test_cross_fold_choices_keep_repeats_as_distinct_summaries() -> None:
 
     assert [choice.identity.run_index for choice in choices] == [0, 1]
     assert [choice.run_label for choice in choices] == [
-        "Run 1 (Summary)",
-        "Run 2 (Summary)",
+        "Run 1",
+        "Run 2",
     ]
 
 

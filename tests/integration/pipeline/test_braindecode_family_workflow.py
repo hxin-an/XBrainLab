@@ -25,6 +25,7 @@ from XBrainLab.backend.training import (
 from XBrainLab.backend.training.evaluator import Evaluator
 from XBrainLab.backend.training.record import EvalRecord, RecordKey
 from XBrainLab.backend.training.record.artifact_store import load_model_state_dict
+from XBrainLab.backend.training.training_plan import publish_prepared_saliency_updates
 
 _HEALTHY_PROVIDER = BraindecodeProviderStatus(
     available=True,
@@ -201,7 +202,8 @@ def test_braindecode_family_real_workflow(
     assert persisted_evaluation.evaluation_split == "test"
     assert np.isfinite(persisted_evaluation.output).all()
 
-    plan.set_saliency_params({"_methods": ["Gradient"]})
+    prepared = plan.prepare_saliency_update({"_methods": ["Gradient"]})
+    publish_prepared_saliency_updates([prepared])
     saliency_record = record.get_saliency_eval_record()
     assert saliency_record is not None
     assert saliency_record.has_saliency_data()

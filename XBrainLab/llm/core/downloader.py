@@ -17,15 +17,16 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any, Protocol, cast
 
+from PyQt6 import sip
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.core.model_catalog import (
     format_bytes,
     inspect_model_download_consumption,
-    local_model_spec,
     model_cache_candidates,
     model_cache_complete,
+    model_download_spec,
     model_snapshot_path,
     plan_model_download,
     validate_downloaded_model_cache,
@@ -227,7 +228,7 @@ def run_download_task(repo_id, cache_dir, result_queue: _DownloadQueue):
         if not preflight.ok:
             result_queue.put(("error", preflight.message))
             return
-        spec = local_model_spec(repo_id)
+        spec = model_download_spec(repo_id)
         if spec is None:
             result_queue.put(("error", f"Unsupported local model: {repo_id}."))
             return
@@ -245,6 +246,7 @@ def run_download_task(repo_id, cache_dir, result_queue: _DownloadQueue):
             repo_id=repo_id,
             cache_dir=cache_dir,
             revision=spec.revision,
+            allow_patterns=spec.allow_patterns,
         )
 
         validation = validate_downloaded_model_cache(
@@ -317,7 +319,7 @@ class DownloadWorker(QObject):
         self._next_consumption_check_at = 0.0
         self._last_consumption_bytes: int | None = None
         self._last_consumption_growth_at = 0.0
-        spec = local_model_spec(str(repo_id))
+        spec = model_download_spec(str(repo_id))
         self._estimated_download_bytes = (
             int(spec.estimated_download_gb * 1_000_000_000) if spec is not None else 0
         )
@@ -907,10 +909,11 @@ class ModelDownloader(QObject):
         )
         with contextlib.suppress(RuntimeError, TypeError):
             self.cleanup_retry_requested.disconnect(worker.retry_cleanup)
-        with contextlib.suppress(RuntimeError):
-            worker.deleteLater()
-        with contextlib.suppress(RuntimeError):
-            thread.deleteLater()
+        # No event loop ever started to consume deferred QObject deletion.
+        for unstarted in (worker, thread):
+            with contextlib.suppress(RuntimeError):
+                if not sip.isdeleted(unstarted):
+                    sip.delete(unstarted)
 
         self._thread = None
         self.worker = None

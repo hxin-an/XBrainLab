@@ -28,6 +28,17 @@ from scripts.dev.human_like_walkthrough import evidence as human_evidence
 from XBrainLab.ui.chat.panel import ChatPanel
 
 
+@pytest.fixture
+def restore_capture_application_style(qapp):
+    """Keep the capture CLI's Fusion choice out of neighboring widget tests."""
+    previous_style = qapp.style().objectName()
+    try:
+        yield
+    finally:
+        assert qapp.setStyle(previous_style) is not None
+        assert qapp.style().objectName() == previous_style
+
+
 def test_scenario_contract_covers_required_surfaces_once() -> None:
     assert tuple(spec.filename for spec in SCENARIOS) == EXPECTED_SCREEN_FILES[:-4]
     assert EXPECTED_SCREEN_FILES[-4:] == (
@@ -100,13 +111,6 @@ def test_scenario_contract_covers_required_surfaces_once() -> None:
         and spec.review_state == "long_clarification_action"
         for spec in SCENARIOS
     )
-    assert any(
-        spec.logical_width == 320
-        and spec.confirmation_visible
-        and spec.scroll_to_bottom
-        and spec.filename == "narrow-setting-change-confirmation-max-content.png"
-        for spec in SCENARIOS
-    )
     message_boundaries = next(
         spec for spec in SCENARIOS if spec.review_state == "message_content_boundaries"
     )
@@ -162,10 +166,12 @@ def test_source_fingerprint_manifest_covers_every_runtime_capture_owner() -> Non
         "XBrainLab/ui/chat/composer.py",
         "XBrainLab/ui/chat/message_bubble.py",
         "XBrainLab/ui/chat/panel.py",
+        "XBrainLab/ui/chat/transcript_view.py",
         "XBrainLab/ui/chat/styles.py",
         "XBrainLab/ui/chat/turn_state.py",
         "XBrainLab/ui/components/agent_manager.py",
         "XBrainLab/ui/components/agent_presentation_service.py",
+        "XBrainLab/ui/components/assistant_application_publication_coordinator.py",
         "XBrainLab/ui/components/assistant_command_dispatcher.py",
         "XBrainLab/ui/components/assistant_runtime_coordinator.py",
         "XBrainLab/ui/components/assistant_status_projection.py",
@@ -175,6 +181,31 @@ def test_source_fingerprint_manifest_covers_every_runtime_capture_owner() -> Non
     }.issubset(set(FINGERPRINT_RELATIVE_PATHS))
 
 
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "XBrainLab/ui/chat/assistant_dock.py",
+        "XBrainLab/ui/chat/transcript_view.py",
+        "XBrainLab/ui/components/assistant_application_publication_coordinator.py",
+    ],
+)
+def test_source_fingerprint_changes_when_owner_source_changes(
+    monkeypatch, relative_path
+) -> None:
+    before = source_fingerprint()
+    read_bytes = Path.read_bytes
+    dock = walkthrough_module.ROOT / relative_path
+
+    def changed_dock(path):
+        content = read_bytes(path)
+        return content + b"\n# changed dock source\n" if path == dock else content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_dock)
+
+    assert source_fingerprint() != before
+
+
+@pytest.mark.usefixtures("restore_capture_application_style")
 def test_capture_walkthrough_replays_real_widget_and_writes_gate(
     qapp, tmp_path
 ) -> None:
@@ -369,6 +400,7 @@ def test_capture_walkthrough_replays_real_widget_and_writes_gate(
     assert "does not demonstrate windows native dpi" in readme.lower()
 
 
+@pytest.mark.usefixtures("restore_capture_application_style")
 def test_capture_report_links_match_actual_settings_images(qapp, tmp_path) -> None:
     payload = capture_walkthrough(qapp, tmp_path)
     readme = (tmp_path / README_ARTIFACT).read_text(encoding="utf-8")
@@ -383,6 +415,7 @@ def test_capture_report_links_match_actual_settings_images(qapp, tmp_path) -> No
         assert f"- {state} frame: `{filename}`" in readme
 
 
+@pytest.mark.usefixtures("restore_capture_application_style")
 def test_validate_payload_rejects_one_failed_geometry_check(qapp, tmp_path) -> None:
     payload = capture_walkthrough(qapp, tmp_path)
     broken = copy.deepcopy(payload)
@@ -614,7 +647,7 @@ def test_first_paint_contract_requires_runtime_surface_containment(qapp) -> None
         assert evidence["checks"]["runtime_surface_inside_panel"] is True
         assert runtime_geometry["inside_panel_on_all_sides"] is True
 
-        horizontal = panel.scroll_area.horizontalScrollBar()
+        horizontal = panel.transcript_view.horizontalScrollBar()
         assert horizontal.maximum() == 0
         panel.runtime_state_widget.move(panel.width() + 1, 12)
 
@@ -785,14 +818,13 @@ def test_confirmation_card_labels_participate_in_overflow_evidence(qapp) -> None
     panel.set_runtime_state("ready")
     panel.show_confirmation_request(
         AgentConfirmationRequest.for_action(
-            command_name="configure_training",
+            command_name="compute_saliency",
             params={"batch_size": 16},
             action_label="Apply change",
             description="Reduce GPU memory pressure before training.",
             destructive=False,
             publication_generation=7,
         ),
-        current_values={"Batch size": "32"},
     )
     panel.show()
     qapp.processEvents()

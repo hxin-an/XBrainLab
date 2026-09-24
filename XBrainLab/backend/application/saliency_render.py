@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
+from XBrainLab.backend.saliency_methods import SALIENCY_METHOD_STORE_NAMES
 from XBrainLab.backend.training_state_contract import TrainingReadBoundary
 
 if TYPE_CHECKING:
@@ -33,14 +34,6 @@ def _saliency_producer_identity_class() -> type[SaliencyProducerIdentity]:
 
     return SaliencyProducerIdentity
 
-
-SALIENCY_METHOD_ATTRIBUTES = {
-    "Gradient": "gradient",
-    "Gradient * Input": "gradient_input",
-    "SmoothGrad": "smoothgrad",
-    "SmoothGrad_Squared": "smoothgrad_sq",
-    "VarGrad": "vargrad",
-}
 
 _DETACHED_SALIENCY_ARRAYS = object()
 
@@ -527,7 +520,7 @@ def _validated_method_shape(
     method: str,
     class_map: tuple[tuple[object, str], ...],
 ) -> tuple[tuple[object, ...], tuple[int, int]] | None:
-    attribute = SALIENCY_METHOD_ATTRIBUTES[method]
+    attribute = SALIENCY_METHOD_STORE_NAMES[method]
     expected_keys: tuple[object, ...] | None = None
     trailing_shape: tuple[int, int] | None = None
     expected_parameters: object | None = None
@@ -645,7 +638,7 @@ def _validate_saliency_cross_fold_choice(
         raise ValueError("cross-fold class map is unavailable")
     methods: list[str] = []
     class_store_keys: tuple[object, ...] | None = None
-    for method in SALIENCY_METHOD_ATTRIBUTES:
+    for method in SALIENCY_METHOD_STORE_NAMES:
         method_shape = _validated_method_shape(records, method, class_map)
         if method_shape is None:
             continue
@@ -1327,7 +1320,7 @@ class SaliencyRenderPublisher:
 
     @staticmethod
     def _saliency_store(eval_record: Any, method: str) -> Mapping[object, Any]:
-        attribute = SALIENCY_METHOD_ATTRIBUTES.get(method)
+        attribute = SALIENCY_METHOD_STORE_NAMES.get(method)
         if attribute is None:
             raise PreconditionError(
                 f"Unknown saliency method: {method}",
