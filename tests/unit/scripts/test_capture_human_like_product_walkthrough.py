@@ -17,6 +17,7 @@ from PIL import Image, ImageDraw
 from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QTimer
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import (
+    QAbstractSlider,
     QApplication,
     QComboBox,
     QDockWidget,
@@ -269,6 +270,49 @@ def _show_evaluation_readability_panel(qtbot, class_count):
     panel._update_responsive_layout()
     qtbot.wait(50)
     return panel
+
+
+def test_narrow_evaluation_scroll_endpoint_survives_queued_control_reflow(qtbot):
+    panel = _show_evaluation_readability_panel(qtbot, 2)
+    panel.matrix_widget.update_plot(
+        EvaluationRenderData(
+            labels=np.array([0, 1]),
+            outputs=np.eye(2),
+            metrics={},
+            class_labels={0: "Left hand", 1: "Right hand"},
+            summary_identity=None,
+            evaluation_split="test",
+        )
+    )
+    # The plot allocation left by the 760x520 window and its Assistant dock.
+    panel.resize(440, 448)
+    for _ in range(10):
+        QApplication.processEvents()
+    canvas = panel.matrix_widget.canvas
+    scroll = panel.matrix_widget.findChild(QScrollArea)
+    bars = (scroll.horizontalScrollBar(), scroll.verticalScrollBar())
+    assert all(bar.maximum() > 0 for bar in bars)
+    assert panel._charts_are_tabbed
+    assert panel._details_in_chart_tabs
+
+    # A user reaching the bottom must remain there after deferred layout work,
+    # not be clamped by a transiently taller viewport on every event-loop turn.
+    for _ in range(3):
+        for bar in bars:
+            bar.triggerAction(QAbstractSlider.SliderAction.SliderToMaximum)
+        QApplication.processEvents()
+        assert all(bar.value() == bar.maximum() for bar in bars)
+        assert canvas.visibleRegion().contains(
+            QPoint(canvas.width() - 1, canvas.height() - 1)
+        )
+
+    original = tuple(bar.value() for bar in bars)
+    evidence = evaluation_plot_readability_evidence(
+        SimpleNamespace(evaluation_panel=panel)
+    )
+    assert evidence["readable_reachable"]
+    assert evidence["scroll_reachability"]["reachable"]
+    assert tuple(bar.value() for bar in bars) == original
 
 
 @pytest.mark.parametrize("class_count", [4, 20])
