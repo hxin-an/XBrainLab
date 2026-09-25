@@ -1591,6 +1591,7 @@ def test_saliency_update_recomputes_finished_metric_only_record(base_holder):
         "loader",
         base_holder.saliency_params,
         evaluation_split="test",
+        should_cancel=None,
     )
     assert record.eval_record is sentinel
 
@@ -1662,6 +1663,7 @@ def test_saliency_uses_validation_when_test_split_misses_a_model_class(
         validation_loader,
         {"_methods": ["Gradient"]},
         evaluation_split="validation",
+        should_cancel=None,
     )
     publish_prepared_saliency_updates([update])
     assert record.eval_record.evaluation_split == "test"

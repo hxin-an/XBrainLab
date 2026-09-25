@@ -102,7 +102,7 @@ def test_current_tools_reject_undeclared_parameters(tool_name: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "wrapper", ["```json\n{}\n```", "I think {}", "[{}]", "{} {{}}"]
+    "wrapper", ["Prose before\n```json\n{}\n```", "I think {}", "[{}]", "{} {{}}"]
 )
 def test_schema_valid_tool_inside_non_product_envelope_is_rejected(
     wrapper: str,
