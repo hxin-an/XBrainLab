@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-09-25`
+最後更新：`2026-09-26`
 
 ## Active — 共同版本功能與實驗量測驗收，做到 Windows 集中手測
 
@@ -108,10 +108,27 @@ fold／run／class／method切換、2D／3D及warning偏好、視窗縮放與結
   Torch／Transformers匯入約1.45／2.75秒，未載入權重。資源完整性仍待正式prepare核對。
   E既有量測正反例361案及新真Command計時直接組14案通過（重疊不加總）；新增test-only
   clock oracle區分生成開始、Command admission、terminal及晚輪詢，獨立覆核通過。
-  C的Evaluation／Saliency／training局部原生流程通過，但連續GUI主流程缺口仍待補；
-  在既有training-refresh測試重用真wizard／dialogs補一案，不新增產品owner或UI。
-  正在固定候選並建立驗證PR，再安排同版本模型／import catalog；尚未標記B–G通過。
-  GPU工作由主代理協調，不互相爭用。
+  C的Evaluation／Saliency／training局部原生流程通過，連續GUI流程亦已補齊：真wizard／
+  dialogs、三subject、真鍵盤輸入1 epoch／batch 2、三個實際training jobs及結果重開；
+  native相鄰兩案通過且獨立覆核，未新增產品owner或UI。仍須對最終source補齊C–E。
+  驗證PR #147 的首輪 `1eaf618f` CI發現直接整合缺口，先修復再凍結重型驗證：
+  Python 3.11 audit不支援 `Path.is_junction`；研究warmup仍直接讀worker；部分測試仍預期
+  舊parser／run文案／saliency呼叫或繞過LocalBackend初始化；另有型別診斷、human-like
+  walkthrough失敗及visualization baseline drift待依實際artifact判讀。逐項核對已核准契約，
+  保留原失敗，禁止放寬gate或只更新snapshot求綠；以原失敗案及直接相鄰測試驗修理，
+  async／量測邊界獨立覆核。若發現需要新UI／工具／判分取捨則停止該項提出決策。
+  只做這些阻礙本輪驗收的相容修理，不重開模組清理。修完再跑同版本模型／import catalog；
+  尚未標記B–G通過。
+  2026-09-26追加診斷：短路徑Windows offscreen human-like run有完整failed JSON，
+  Evaluation checker仍要求整個canvas同時可見，與已接受的局部scroll行為衝突；先以真Qt
+  正反例驗「完整可讀且每一端實際可達」，保留遮擋／缺scroll／label overlap拒絕，
+  不直接改成true或降低尺寸／字體。navigation與關閉thread findings保留待環境／owner核對，
+  不用此offscreen run替代native handoff。CI上傳補保留failed -runs目錄，下一輪取真CI JSON。
+  scroll修理已經真Qt正反例及247項直接測試通過、主代理核對實際diff；保留原fully_visible
+  事實，另驗四端可達、遮擋／壞scroll拒絕及原位置恢復。研究warmup／junction直接118案
+  通過；接續凍結修理、push同head CI，執行完整catalog、本機真模型與134工程包。
+  134最新預檢已有非本代理GPU工作，先準備隔離包，不終止或爭用其他程序；真正執行前重查。
+  GPU工作由主代理協調，不互相爭用；尚未宣稱C–G或最終CI通過。
 
 ### 目標、基線與文件分工
 
