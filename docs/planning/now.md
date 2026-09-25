@@ -1,15 +1,15 @@
 # XBrainLab Now
 
-最後更新：`2026-09-24`
+最後更新：`2026-09-25`
 
-## Active — 統一產品／研究工程基線，再打磨 Agent 部件
+## Active — 共同版本功能與實驗量測驗收，做到 Windows 集中手測
 
 2026-09-24 使用者希望在第一版實驗前，逐一討論與打磨整個 Agent 部件，而非再次只按
 程式檔案清理。範圍包含用途、內容、方法、操作體驗、實作、測試、腳本及研究可觀測性；
 RAG 作法與庫內數量等基本合理性也須查證，不能把目前做法或工程測試通過當成設計合理。
 最初僅制定計畫與唯讀審查；2026-09-24 使用者追加授權由本代理統一整合產品／實驗兩線，
 先建立可靠共同基線，再分回產品部件與研究推進。允許本機checkpoint、整合候選及直接必要
-的相容修理／補測；不自行發布PR、merge main、下載模型或啟動正式實驗，不更改公開工具、
+的相容修理／補測；當時未授權發布PR，2026-09-25啟動本計畫後依下節建立驗證PR；仍不merge main、下載模型或啟動正式實驗，不更改公開工具、
 可見UI、研究題庫／判分政策。下面各部件先討論，再依已確認的方案授權施工；計畫不是
 把所有候選技術都批准實作。前輪內部清理的結果與限制保留在下節，不重做或改標研究證據。
 
@@ -17,6 +17,94 @@ RAG 作法與庫內數量等基本合理性也須查證，不能把目前做法�
 不能把必要的 RAG／tool call／prompt 內容與方法打磨提前算成 Development，也不能
 以「這應留給實驗」為由，讓已知基礎缺口進入 Development。部件小驗證是準備的證據，
 不是正式 Development 成績；正式研究仍須有明確的起始版本與資料使用界線。
+
+### 優先施工計畫 — 功能與量測驗收 { #integrated-functional-acceptance }
+
+2026-09-25 使用者要求：分線继续改善前，先由代理實機跑過整合產品與另一線實驗腳本，
+涵蓋已迭代的 Evaluation／Saliency，準備到一次集中 Windows 手測；實驗部署在工作站134。
+計畫已固化並經獨立覆核，使用者現已明確要求開始執行，做到集中手測。
+下方六部件打磨是後續工作，
+不能跳過本節驗收直接接續。這不是重開無限全盤清理或重新定義研究方法。
+
+#### 起點、已知事實與授權
+
+- 起點為 clean `d4963adc3101741f3ba1f07779ee7c1e90a6157d`，worktree
+  `D:\workspace_v2\projects\lab\XBrainLab-agent-baseline`；本次計畫文件修改須另記，
+  不把 dirty source 當成已凍結版本。既有整合證據及限制見
+  [Current](../current.md#assistant-integration-baseline)。本輪產品與研究須驗同一最終source，
+  Windows／Linux runtime及模型配置各自記錄，不混用速度或判分成績。
+- 已以 `hxin` 成功登入 `140.113.193.134`，既有主機金鑰核對通過；只執行身分查詢。
+  今日GPU／程序、容量、環境、模型cache完整性與新source可執行性尚未預檢。
+  舊 `b42cd81e` 工作站smoke是歷史證據，不替本輪背書。
+- 保持已接受的UI／功能／資料語意、公開tools及研究判分政策。必要的相容修理和直接補測
+  在已授權準備範圍內；新可見行為、contract或研究方法取捨集中提出，不偷偷改成容易通過。
+- 原兩線、main的使用者 `settings.json`、原始資料、共用環境／模型與B0／d0結果不動。
+  不讀sealed VALID／TEST，不跑新正式DEV／VALID／TEST，不下載／重複備份模型。
+- **本輪授權**：使用者在確認計畫及PR用途後要求開始，允許push整合分支／建立一個驗證PR
+  取得同head CI，不包含merge。這是一個階段整合PR，帶入既有已審查模組與研究改動，
+  不因累積diff強迫逐slice手測；新增修理仍逐片複雜度審查與驗證。
+  登入授權不等於可覆寫工作站既有source／env／結果；實作本計畫時僅使用
+  預檢確認的既有資源及新隔離工程輸出，若需安裝、替換資源或新增下載，先列明再確認。
+
+#### 執行順序與各段出口
+
+| 階段 | 工作 | 出口／不可以冒稱的事 |
+| --- | --- | --- |
+| A. 版本與環境預檢 | 核对原兩線有無新修改、最終候選及適用gate；核對Windows共享環境與本機cache。134先查實際GPU負載、自有／他人程序、Python／lock／CUDA、既有五模型與embedding身分和容量。核對研究交接，不能假裝已聯絡不可見的獨立fork agent。 | 明確可用的執行環境與輸出位置；GPU空閒不等於已預約。不關閉別人的程序，不用silent fallback。缺資源先報具體缺項，不把登入成功當環境通過。 |
+| B. 完整工程回歸 | 依現有CI／runner執行產品、tests、scripts整體回歸、全專案typing、架構、docs與適用跨平台／視覺gates；完整Linux aggregate沿用既有coverage verifier。補同版本canonical source-diverse與本次階段驗收要求的完整代表性import catalog，使用現存資料、不重下載。 | 同head全部適用non-skipped checks成功，原失敗與skip理由保留。不同SHA不換標，同版本等價CI證據不在本機重跑。完整catalog以registry required membership為準，不把少數資料流程當全catalog。 |
+| C. Windows實際產品流程 | 原生Windows走Import／class／channel／montage → preprocess → epoch → split → training → Evaluation → Saliency；資料輸入與測試產物隔離，核對真資料副作用和結果，不只開視窗。涵蓋正常、取消、停止／重跑、重開結果及前輪已修路徑。 | 當前source的真操作／截圖及相鄰failure證據；Windows gate與必要100／125／150% DPI通過。Linux offscreen不代替Windows，代理操作不代替使用者最終手測。 |
+| D. 真模型Assistant | 使用現有精確產品模型及RAG，跑適用既有bounded model gate與正常ChatPanel真操作；涵蓋開窗、填參數、實際操作、缺資訊、不可執行、確認／取消、停止與錯誤回報。 | 完整模型輸入／原始輸出與實際結果可追查；既有模型限制如實保留，不調prompt／題目或反覆重抽來取得綠燈。GUI成功與raw model正確分開，既有bounded限制不冒稱Stable。 |
+| E. 實驗量測驗收 | 先完成下面的量測正反例，再於134從新封存的同source工程包實跑；沿用 `package → dev → pilot → condition` 及包內 `run.sh`，不是另寫簡化runner。 | 五模型固定20筆工程smoke、capture／判分／報告／cleanup可核對；可從包內啟動及離線重建／audit。不把「有報表」或「20題全對」當量測正確的替代證據。 |
+| F. 修復與獨立覆核 | 真defect先重現、補測、最小修理，再驗受影響及必要相鄰流程；高風險owner／publication／async與量測邊界由非作者覆核。主代理核實實際diff及產物，不只收摘要。 | 無未處置的功能／量測blocking finding；已知模型錯答與產品bug分開。source變動後更新相依證據及最終CI，不因單組通過就提前交付。 |
+| G. 固定版本、集中手測 | 將Windows與134產物綁到最終clean／明確解釋的source；提供範圍清單、修正／限制、實驗報告入口及重跑命令。直接開Windows完整程式與一個PowerShell即時log，確認有回應後交回使用者。 | 使用者測的是代理已實機驗過的候選；附一行重啟命令。沒有額外Windows Live Log視窗，不自動merge、不持續監控手測，也不開始另一輪部件改善。 |
+
+**C的必驗重點**：Split含subject模式與實際預期工作數，不只看第一個run啟動；training含停止
+與重跑。Evaluation核對fold／run／Summary、長標籤／圖表與scroll、實際結果及結果重開。
+Saliency核對真Compute／Recompute、SmoothGrad有界完成、背景時其他panel仍可用、游標恢復、
+fold／run／class／method切換、2D／3D及warning偏好、視窗縮放與結果重開；不把只顯示
+「背景計算」當成功。若契約明示某模型／方法不支援，驗正確blocked行為，不要求偷偷fallback。
+
+#### E的量測正確性：不只是腳本單元測試
+
+- **身分與選擇**：核對單模型／核准子集／全部選擇、實際case／condition集合、source與
+  模型revision／量化／template／prompt／RAG／生成設定；錯source、缺資源與設定漂移須拒絕，
+  選擇不能只驗prepare清單而不驗實際啟動。沿用既有協定，不新增第二套manifest owner。
+- **Capture與實際操作**：核對最終送模輸入、每次原始輸出、格式修復、Host admission、
+  GUI／Command結果與terminal；對已知實際副作用核對，而非只信status字串。
+- **Scorer正反例**：使用公開／合成且有獨立預期的正確與錯誤tool／參數、缺資訊、blocked、
+  GUI取消、工具失敗及量測缺失案例；核對raw first、post-recovery、Host安全及最終結果不混算。
+  對false positive／false negative及case分類作人工核對；必要補測不讀sealed題庫除錯。
+- **計時與彙總**：以可控制時間的工程case與真run事件序列核對時段界線；載入／暖機另計，
+  決策、格式重試、工具／人工等待按[研究規格](../validation/thesis_protocol.md)計算。
+  分母、成功／失敗／逾時／無效量測、分位數與逐題輸出一致；不能遺漏失敗或用重試灌分。
+- **中斷與重播**：使用獨立工程case驗背景啟動／SSH端退出、自有child逾時或可控中斷、
+  同source/runtime續跑、跨source拒絕、不重覆計分／覆寫；不強殺共享GPU工作。
+  從封存包另開新run，執行report-only及原scorer audit，核對原inputs/raw不變；
+  既有協定不支援搬移未完成run後無縫resume，不將其列作本輪新功能。
+- **134真跑邊界**：沿用protocol固定五模型各四題、共20筆 `engineering-smoke`，執行累積
+  60分鐘预算（不含資源複製），不是完成時間保證。真RAG／終態／capture／cleanup缺項不能算通過；
+  有效模型錯答保留，不因分數重跑，不當正式DEV成績或模型排名。額外故障注入用隔離工程
+  case／fixture，不污染這20筆，也不重跑整套正式題庫。需要超出預算先報原因，不暗中加碼。
+
+#### 分工、驗收與接續
+
+- 主代理擁有候選、計畫、版本凍結及最終證據驗收；可獨立的產品／量測審查並行、寫入責任
+  不重疊。CPU／文件工作可在模型執行時進行；同一GPU重型工作循序、一次一模型，
+  不因平行化產生資源爭用。使用既有runner與ignored證據位置，不建新驗證平台或重複環境。
+- 驗證命令、timeout與artifact政策由現有[驗證契約](../validation/README.md)、
+  `scripts/dev/handoff_gate_spec.py`、CI及研究protocol擁有。本輪是完整功能驗收範圍，
+  不是任意宣稱完整release dossier或Stable promotion；若宣稱full dossier須跑原完整manifest。
+- **交付門檻**：適用同版本CI成功、Windows產品／Assistant實機證據齊全、134量測正反例及
+  真smoke／封存audit完成、獨立覆核無blocker、來源一致。Pending／stale／missing gate
+  不算通過。使用者不需逐slice手測；修理後只重验受影響及必要相鄰範圍，最後一次集中交付。
+- **停止條件**：達到上述門檻且Windows程式已開啟有回應，交給使用者手測即停止主動操作。
+  Compaction、單slice／commit完成或CI pending不是停止理由；缺新授權／必要資源才回報
+  具體blocker。手測／merge另依明確批准，不自動把本計畫當merge授權。
+- **可達效果**：證明指定版本在Windows代表流程與134指定工程量測範圍可運作，量測輸入、
+  判分及計時可追查；留下雙線後續的共同起點。不能證明所有資料／硬體組合無bug、
+  Saliency科學有效性、模型高準確率、研究統計效力或六部件設計／內容已全部打磨完成。
+- **目前next**：A進行中：重新核對Git/main與134資源，再提交計畫並建立驗證PR。Windows
+  流程盤點與量測oracle審查並行；尚未標記B–G通過。GPU工作由主代理協調，不互相爭用。
 
 ### 目標、基線與文件分工
 
@@ -31,7 +119,7 @@ RAG 作法與庫內數量等基本合理性也須查證，不能把目前做法�
   該版本與既有研究 B0 的命名／比較關係，在啟動研究前核對；舊 B0 與其證據不覆寫，
   不只記 HEAD 而漏掉 dirty diff。新授權允許必要本機checkpoint／整合worktree，
   不備份權重、不覆寫原實驗產物；兩線原始來源保持可恢復。
-- **接續順序**：**共同工程基線整合／固定版本 → 兩線接續部件準備與研究流程核對 →
+- **接續順序**：**共同工程基線整合／固定版本 → 本節功能與量測驗收／集中手測 → 兩線接續部件準備與研究流程核對 →
   確認研究起始條件 → 依授權執行研究**。後續Development／Validation／凍結／Test
   的題庫與測量門檻以
   [研究規格](../validation/thesis_protocol.md)為準；下方M0–M6只保留歷史，不重新派工。
@@ -52,13 +140,14 @@ RAG 作法與庫內數量等基本合理性也須查證，不能把目前做法�
 不更改scorer／題庫、不恢復失效產品欄位或另建owner。這是本機工程scope完成，不是main發布、
 release handoff-ready或六部件全部通過。
 
-接續以此整合分支的精確clean commit為共同起點，而不是繼續各自舊HEAD：產品線按下方順序
+先完成上方功能與量測驗收及集中手測，再以最終整合分支的精確clean commit為共同起點，
+而不是繼續各自舊HEAD：產品線按下方順序
 先討論Tool call／操作能力，再逐塊打磨；研究線先核對封存入口與起始配置，不自動重跑歷史
 pilot／d0或開始新DEV／VALID／TEST。任何改變研究條件的後續部件改動另立candidate，
 舊結果不換標。公開工具、可見UI、模型／RAG／prompt政策改變仍須先確認；原worktree、
-使用者settings及資料不刪除，也沒有push／PR／merge授權。
+使用者settings及資料不刪除；本輪push／驗證PR依上方新授權執行，仍不merge。
 
-### 第一步：先確認目前架構與品質
+### 後續部件打磨第一步：先確認目前架構與品質
 
 使用者再次明定：更進一步前須先確認現況。這是逐部件討論的共同起點，不直接啟動新一轮
 大改或假定每塊都有問題。前輪已核實的責任分析與仍適用證據沿用；只補本次產品部件視角
