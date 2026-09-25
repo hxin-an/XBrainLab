@@ -52,6 +52,8 @@ class _ResponsiveFigureCanvas(FigureCanvas):
                 (parent.horizontalScrollBar(), pixels.x()),
                 (parent.verticalScrollBar(), pixels.y()),
             ):
+                if bar is None:
+                    continue
                 previous = bar.value()
                 bar.setValue(previous - delta)
                 moved = moved or bar.value() != previous
@@ -116,17 +118,17 @@ class _ResponsiveFigureCanvas(FigureCanvas):
             bottom += (available_height - side) / 2
             available_width = available_height = side
         axis.set_position(
-            [
+            (
                 left / width,
                 bottom / height,
                 available_width / width,
                 available_height / height,
-            ]
+            )
         )
         if matrix and len(self.figure.axes) > 1:
             bounds = axis.get_position()
             self.figure.axes[1].set_position(
-                [bounds.x1 + 18 / width, bounds.y0, 16 / width, bounds.height]
+                (bounds.x1 + 18 / width, bounds.y0, 16 / width, bounds.height)
             )
         if hasattr(self, "_draw_pending"):
             self._draw_pending = False

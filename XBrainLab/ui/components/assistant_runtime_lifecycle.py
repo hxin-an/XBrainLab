@@ -277,11 +277,14 @@ class AssistantRuntimeLifecycle(QObject):
         super().__init__(parent)
         self._study = study
         self._controller_factory = controller_factory
-        self._dispatcher_factory = dispatcher_factory
+        self._dispatcher_factory: Callable[[], _RuntimeDispatcher] | None = (
+            dispatcher_factory
+        )
         self._dispatcher: _RuntimeDispatcher
         if dispatcher is None:
             self._dispatcher_factory = dispatcher_factory or (
-                lambda: AssistantCommandDispatcher(self)
+                # PyQt's stubs expose class signals, not their bound descriptors.
+                lambda: cast(_RuntimeDispatcher, AssistantCommandDispatcher(self))
             )
             self._dispatcher = self._dispatcher_factory()
         else:

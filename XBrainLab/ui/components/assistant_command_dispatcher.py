@@ -147,7 +147,8 @@ class _ControllerShutdownBridge(QObject):
         if self._shutdown_pending or self._shutdown_finished:
             return
         try:
-            result = self._controller.close()
+            # bind() already validates this controller-specific QObject method.
+            result = cast(Any, self._controller).close()
         except Exception:
             logger.exception("Assistant controller shutdown failed")
             self._finish(False, _CONTROLLER_SHUTDOWN_FAILURE_MESSAGE)
