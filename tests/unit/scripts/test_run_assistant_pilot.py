@@ -405,6 +405,79 @@ def test_configured_valid_runs_real_children_per_repeat_and_never_resends_wrong_
     } == original
 
 
+def test_configured_subset_spawns_only_selected_two_model_conditions(
+    run_inputs, tmp_path, monkeypatch
+):
+    from tests.unit.scripts.test_assistant_pilot_bank import _workbook
+    from tests.unit.scripts.test_run_assistant_dev import experiment_config
+
+    manifest, _bank, output = run_inputs
+    config = experiment_config(tmp_path, "DEV")
+    config.update(purpose="engineering-smoke", case_ids=["DEV-A01-01-V0"])
+    bank = runner.load_bank(_workbook(tmp_path))  # Public synthetic fixture only.
+    selection = runner.experiment_config.build_selection(bank, config)
+    manifest.update(
+        config=config,
+        experiment=runner.experiment_config.experiment_identity(config),
+        selection=selection,
+        jobs=runner.experiment_config.build_jobs(selection, config),
+        budget_seconds=config["budget_seconds"],
+        embedding_sha256="fixture",
+        runtime_config={
+            "model_caches": {
+                runner._MODELS[item["alias"]]: str(tmp_path)
+                for item in config["models"]
+            },
+            "embedding_cache": str(tmp_path),
+            "sources": {item["alias"]: item["source"] for item in config["models"]},
+        },
+    )
+    decisions = {case["case_id"]: case["decision"] for case in bank["cases"]}
+    for job in manifest["jobs"]:
+        job["decision"] = decisions[job["case_id"]]
+    # Isolate external source/cache/model work, not scheduling or child spawning.
+    monkeypatch.setattr(runner, "_verify_candidate_source", lambda *_: None)
+    monkeypatch.setattr(
+        runner,
+        "prepare_rag_cache",
+        lambda *_a, **_k: {"cache_root": str(tmp_path), "embedding_sha256": "fixture"},
+    )
+    _child_result(tmp_path, monkeypatch, {"status": "recorded", "cleanup_ok": True})
+    processes = []
+    popen = runner.subprocess.Popen
+
+    def observe_spawn(*args, **kwargs):
+        process = popen(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    monkeypatch.setattr(runner.subprocess, "Popen", observe_spawn)
+    assert runner.execute(manifest, bank, output) == 0
+    assert len(processes) == 2
+    assert all(process.poll() == 0 for process in processes)
+    requests = [runner._json(runner.Path(process.args[2])) for process in processes]
+    # This oracle is independent of build_jobs/manifest: no third model or RAG-off.
+    assert sorted(
+        (request["condition"], request["jobs"][0]["payload"]["model_id"])
+        for request in requests
+    ) == [
+        ("granite4-rag-on", "ibm-granite/granite-4.0-micro"),
+        ("phi4-rag-on", "microsoft/Phi-4-mini-instruct"),
+    ]
+    assert all(
+        len(request["jobs"]) == 1
+        and request["jobs"][0]["payload"]["case"]["case_id"] == "DEV-A01-01-V0"
+        and request["jobs"][0]["payload"]["rag_enabled"] is True
+        and request["repeat"] == 0
+        for request in requests
+    )
+    records = runner.read_journal(output)
+    assert [row["pid"] for row in records if row["event"] == "child_started"] == [
+        process.pid for process in processes
+    ]
+    assert len(list((output / "cases").glob("*/result.json"))) == 2
+
+
 @pytest.mark.parametrize("valid", [True, False])
 def test_dev_attempt_limit_and_changed_original_evidence(run_inputs, valid):
     manifest, _bank, output = run_inputs

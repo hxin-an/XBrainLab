@@ -103,32 +103,32 @@ fold／run／class／method切換、2D／3D及warning偏好、視窗縮放與結
 - **可達效果**：證明指定版本在Windows代表流程與134指定工程量測範圍可運作，量測輸入、
   判分及計時可追查；留下雙線後續的共同起點。不能證明所有資料／硬體組合無bug、
   Saliency科學有效性、模型高準確率、研究統計效力或六部件設計／內容已全部打磨完成。
-- **目前next**：A已確認main仍為 `94328196`；134既有Python／Torch／CUDA可用、查詢時GPU
-  無compute程序，lock未變，不重建環境。首次20秒import預檢逾時保留，分段診斷後實測
-  Torch／Transformers匯入約1.45／2.75秒，未載入權重。資源完整性仍待正式prepare核對。
-  E既有量測正反例361案及新真Command計時直接組14案通過（重疊不加總）；新增test-only
-  clock oracle區分生成開始、Command admission、terminal及晚輪詢，獨立覆核通過。
-  C的Evaluation／Saliency／training局部原生流程通過，連續GUI流程亦已補齊：真wizard／
-  dialogs、三subject、真鍵盤輸入1 epoch／batch 2、三個實際training jobs及結果重開；
-  native相鄰兩案通過且獨立覆核，未新增產品owner或UI。仍須對最終source補齊C–E。
-  驗證PR #147 的首輪 `1eaf618f` CI發現直接整合缺口，先修復再凍結重型驗證：
-  Python 3.11 audit不支援 `Path.is_junction`；研究warmup仍直接讀worker；部分測試仍預期
-  舊parser／run文案／saliency呼叫或繞過LocalBackend初始化；另有型別診斷、human-like
-  walkthrough失敗及visualization baseline drift待依實際artifact判讀。逐項核對已核准契約，
-  保留原失敗，禁止放寬gate或只更新snapshot求綠；以原失敗案及直接相鄰測試驗修理，
-  async／量測邊界獨立覆核。若發現需要新UI／工具／判分取捨則停止該項提出決策。
-  只做這些阻礙本輪驗收的相容修理，不重開模組清理。修完再跑同版本模型／import catalog；
-  尚未標記B–G通過。
-  2026-09-26追加診斷：短路徑Windows offscreen human-like run有完整failed JSON，
-  Evaluation checker仍要求整個canvas同時可見，與已接受的局部scroll行為衝突；先以真Qt
-  正反例驗「完整可讀且每一端實際可達」，保留遮擋／缺scroll／label overlap拒絕，
-  不直接改成true或降低尺寸／字體。navigation與關閉thread findings保留待環境／owner核對，
-  不用此offscreen run替代native handoff。CI上傳補保留failed -runs目錄，下一輪取真CI JSON。
-  scroll修理已經真Qt正反例及247項直接測試通過、主代理核對實際diff；保留原fully_visible
-  事實，另驗四端可達、遮擋／壞scroll拒絕及原位置恢復。研究warmup／junction直接118案
-  通過；接續凍結修理、push同head CI，執行完整catalog、本機真模型與134工程包。
-  134最新預檢已有非本代理GPU工作，先準備隔離包，不終止或爭用其他程序；真正執行前重查。
-  GPU工作由主代理協調，不互相爭用；尚未宣稱C–G或最終CI通過。
+- **目前next（2026-09-26）**：整合PR #147仍未merge；main為 `94328196`。先凍結下列
+  直接修理並取得新head CI，再執行同source完整catalog、D真模型及E134實跑。B–G尚未
+  完成；原失敗、環境失敗與部分結果均保留，不重標為最終source證據。
+  - 已修理研究warmup的舊worker存取、Python3.11 junction相容、Qt型別與過時契約測試；
+    已接受的visualization換行baseline已核實。Human-like evidence保留fully_visible真值，
+    另以真scroll驗四端可達、遮擋／壞scroll／label clipping拒絕，並保留失敗CI產物。
+  - `b09431f6` CI其餘適用檢查通過，仍有human-like窄圖表與三個意外platform skip，
+    aggregate依規則被擋。窄圖表已於native Windows重現：控制列height resize再排強制
+    重建，viewport振盪，把到底的vertical value110夾回73；不是僅量測時機。最小修理
+    只讓寬度變化排延後重排，維持UI設計；原生RED→直接13案GREEN、寬度／顯隱／文字
+    變動baseline及獨立覆核通過，原scroll反例不放寬。
+  - 三個Windows／WSL專屬案補平台標記，兩個Windows案納入既有platform shard，
+    不是只豁免skip。Windows兩案、真WSL→Windows child及runner routing直接組通過。
+    WSL interop是本機跨OS證據，不冒稱現有GitHub matrix已執行。
+  - C在clean `b09431f6`已有連續真wizard→三subject／三training jobs→結果重開、
+    真鍵盤1epoch／batch2、SmoothGrad／3D、四圖及12+2週期native stress；canonical
+    source-diverse四案無skip通過。完整catalog僅53／134通過後由主代理中止自有程序，
+    以免修source時繼續舊批次；保留原summary及中止說明，新source重跑不跨SHA resume。
+  - E既有361量測正反例、真Command clock直接14案及研究相容118案通過（重疊不加總）；
+    另補兩模型subset實際僅dispatch指定兩個真child的獨立oracle，受影響檔29案通過。
+    外部模型／source/cache仍隔離，不能取代134真模型證據。
+  - 134既有env／CUDA可用、不重建；b094隔離包prepare已完整校驗6資源77檔SHA，
+    未複製權重。其他使用者兩個GPU工作持續占用，禁止干擾；已向使用者詢問可用時段，
+    同時繼續未受阻工作。下一SHA建立新包，舊包不覆寫。
+    E仍缺最終20筆、SSH退出後真run存活／隔離中斷resume、真結果report-only／audit及
+    inputs/raw不變核對；D亦未啟動，不提前宣稱模型或量測驗收完成。
 
 ### 目標、基線與文件分工
 
