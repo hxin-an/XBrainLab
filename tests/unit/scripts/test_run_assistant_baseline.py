@@ -195,6 +195,7 @@ def test_missing_or_changed_model_fails_content_check(tmp_path):
         entry.verify_resources(resources, manifest)
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows entry contract")
 def test_second_entry_rejected_before_reading_archive(tmp_path, monkeypatch):
     from filelock import FileLock, Timeout

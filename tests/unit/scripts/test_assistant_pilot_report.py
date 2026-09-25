@@ -687,6 +687,7 @@ def test_relocated_raw_evidence_uses_relative_links(tmp_path):
     assert "../../raw/conditions/phi4-rag-off/prompts/session-1/2/prompt.txt" in page
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows drive-root behavior")
 def test_cross_drive_evidence_links_remain_openable():
     link = _link(

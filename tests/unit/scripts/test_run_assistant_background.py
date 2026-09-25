@@ -12,6 +12,8 @@ import time
 import unittest
 from pathlib import Path
 
+import pytest
+
 from scripts.dev import run_assistant_background as background
 
 
@@ -294,6 +296,7 @@ class BackgroundTests(unittest.TestCase):
         background.arm(self.state)
         self.wait_status("wake_queued")
 
+    @pytest.mark.platform_contract
     @unittest.skipUnless(
         os.environ.get("XBRAINLAB_TEST_WINDOWS_PYTHON"),
         "Explicit native Windows interop smoke",

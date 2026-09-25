@@ -143,7 +143,11 @@ PLATFORM_SHARDS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "tests/unit/scripts/test_test_runtime_paths.py",
             "tests/unit/scripts/test_wsl_launcher_privacy.py",
             *(
-                ("tests/unit/scripts/test_windows_daily_launcher.py",)
+                (
+                    "tests/unit/scripts/test_windows_daily_launcher.py",
+                    "tests/unit/scripts/test_assistant_pilot_report.py::test_cross_drive_evidence_links_remain_openable",
+                    "tests/unit/scripts/test_run_assistant_baseline.py::test_second_entry_rejected_before_reading_archive",
+                )
                 if sys.platform == "win32"
                 else ()
             ),
