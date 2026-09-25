@@ -43,6 +43,40 @@ def test_history_replacement_rejects_duplicate_message_ids() -> None:
         )
 
 
+def test_reentrant_additions_publish_after_snapshot_in_fifo_order() -> None:
+    controller = ChatController()
+    record = controller.add_user_message("Restored row.")
+    events: list[tuple[str, tuple[str, ...]]] = []
+
+    def append_during_replacement(_replacement: ChatHistoryReplacement) -> None:
+        controller.add_agent_message("A")
+
+    def observe_snapshot(replacement: ChatHistoryReplacement) -> None:
+        events.append(("snapshot", tuple(row.content for row in replacement.records)))
+
+    def observe_added(added: ChatMessageRecord) -> None:
+        events.append(("added", (added.content,)))
+        if added.content == "A":
+            controller.add_agent_message("B")
+
+    controller.history_replaced.connect(append_during_replacement)
+    controller.history_replaced.connect(observe_snapshot)
+    controller.message_record_added.connect(observe_added)
+
+    assert controller.restore_history([record.to_history_dict()]) == 1
+
+    assert events == [
+        ("snapshot", ("Restored row.",)),
+        ("added", ("A",)),
+        ("added", ("B",)),
+    ]
+    assert [row.content for row in controller.get_typed_history()] == [
+        "Restored row.",
+        "A",
+        "B",
+    ]
+
+
 def test_typed_history_round_trip_keeps_only_transcript_fields() -> None:
     controller = ChatController()
     controller.add_user_message("Inspect the current workflow.")
@@ -207,20 +241,17 @@ def test_prepared_turn_allows_only_bounded_assistant_rows() -> None:
         controller.add_agent_message("Third assistant row.")
 
 
-def test_clear_publishes_typed_empty_replacement_and_legacy_signal(qtbot) -> None:
+def test_clear_publishes_typed_empty_replacement(qtbot) -> None:
     controller = ChatController()
     controller.add_user_message("Clear me.")
     replacements: list[ChatHistoryReplacement] = []
-    clears: list[bool] = []
     controller.history_replaced.connect(replacements.append)
-    controller.conversation_cleared.connect(lambda: clears.append(True))
 
     controller.clear_conversation()
 
     assert replacements == [
         ChatHistoryReplacement(kind=ChatHistoryReplacementKind.CLEAR, records=())
     ]
-    assert clears == [True]
     assert controller.get_history() == []
 
 
@@ -233,3 +264,42 @@ def test_processing_state_remains_a_typed_ui_signal() -> None:
     controller.set_processing(False)
 
     assert states == [True, False]
+
+
+def test_rejected_append_preserves_history_and_reserved_turn_capacity(monkeypatch):
+    from types import SimpleNamespace
+
+    controller = ChatController()
+    controller.prepare_for_turn()
+    user = controller.add_user_message("Keep this admitted turn.")
+    added = []
+    controller.message_record_added.connect(added.append)
+    before = controller.get_history()
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            "XBrainLab.backend.controller.chat_controller.uuid4",
+            lambda: SimpleNamespace(hex=user.message_id),
+        )
+        with pytest.raises(ValueError, match="message ids must be unique"):
+            controller.add_agent_message("Must not appear.")
+    assert controller.get_history() == before
+    assert controller.messages == [{"role": "user", "content": user.content}]
+    assert added == []
+    controller.add_agent_message("First valid response.")
+    controller.add_agent_message("Second valid response.")
+    with pytest.raises(ValueError, match="at most"):
+        controller.add_agent_message("Exceeds the turn allowance.")
+    assert [record.content for record in added] == [
+        "First valid response.",
+        "Second valid response.",
+    ]
+
+
+def test_message_projection_cannot_mutate_canonical_history():
+    controller = ChatController()
+    record = controller.add_user_message("Original content.")
+    messages = controller.messages
+    messages[0]["content"] = "Changed outside the history owner."
+    messages.clear()
+    assert controller.get_typed_history() == (record,)
+    assert controller.messages == [{"role": "user", "content": record.content}]

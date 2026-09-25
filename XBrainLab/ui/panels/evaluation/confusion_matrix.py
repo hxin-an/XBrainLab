@@ -1,16 +1,24 @@
 """Confusion matrix widget for displaying classification results."""
 
-import warnings
 from contextlib import suppress
-from typing import Any, Literal, cast
+from math import ceil
+from textwrap import fill
+from typing import Any, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from matplotlib.text import Text
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QWheelEvent
+from PyQt6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QLabel,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
+)
 
 from XBrainLab.backend.application import EvaluationRenderData
 from XBrainLab.backend.utils.logger import logger
@@ -22,30 +30,48 @@ CONFUSION_MATRIX_LOAD_FAILED_TEXT = (
 )
 
 
-def _balanced_two_line_label(text: str) -> str:
-    """Wrap a class name once without dropping its user-reviewed meaning."""
-    words = text.split()
-    if len(words) < 2:
-        return text
-    split_at = min(
-        range(1, len(words)),
-        key=lambda index: abs(
-            len(" ".join(words[:index])) - len(" ".join(words[index:]))
-        ),
-    )
-    return f"{' '.join(words[:split_at])}\n{' '.join(words[split_at:])}"
-
-
 class _ResponsiveFigureCanvas(FigureCanvas):
-    """Reflow figure margins after Qt assigns a narrower canvas geometry."""
+    """Keep full-sized text readable; the containing viewport handles overflow."""
 
-    def __init__(self, figure: Figure) -> None:
-        super().__init__(figure)
-        self._responsive_tick_state: dict[
-            Text,
-            tuple[float, Literal["left", "center", "right"], float, str],
-        ] = {}
-        self._responsive_text_size_state: dict[Text, float] = {}
+    def wheelEvent(self, event):  # noqa: N802
+        # Evaluation has no wheel zoom. The chart is nested inside a container;
+        # Reuse its existing scroll area rather than Matplotlib's wheel handler.
+        parent = self.parentWidget()
+        while parent is not None and not isinstance(parent, QScrollArea):
+            parent = parent.parentWidget()
+        viewport = parent.viewport() if parent is not None else None
+        if parent is None or viewport is None:
+            event.ignore()
+            return
+        pixels = event.pixelDelta()
+        if not pixels.isNull():
+            # Qt's scrollbar wheel path may ignore pixel-only touchpad events.
+            # Deltas already include the platform's natural-scroll direction.
+            moved = False
+            for bar, delta in (
+                (parent.horizontalScrollBar(), pixels.x()),
+                (parent.verticalScrollBar(), pixels.y()),
+            ):
+                if bar is None:
+                    continue
+                previous = bar.value()
+                bar.setValue(previous - delta)
+                moved = moved or bar.value() != previous
+            event.setAccepted(moved)
+            return
+        forwarded = QWheelEvent(
+            QPointF(viewport.mapFromGlobal(event.globalPosition().toPoint())),
+            event.globalPosition(),
+            event.pixelDelta(),
+            event.angleDelta(),
+            event.buttons(),
+            event.modifiers(),
+            event.phase(),
+            event.inverted(),
+            device=event.pointingDevice(),
+        )
+        QApplication.sendEvent(viewport, forwarded)
+        event.setAccepted(forwarded.isAccepted())
 
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)
@@ -54,112 +80,55 @@ class _ResponsiveFigureCanvas(FigureCanvas):
         self.fit_layout()
 
     def fit_layout(self) -> None:
-        """Fit labels and margins to the current canvas without losing wide layout."""
-        primary_axis = next(
-            (axis for axis in self.figure.axes if axis.axison),
-            None,
+        """Measure rendered labels instead of reducing fonts at fixed widths."""
+        axis = next((axis for axis in self.figure.axes if axis.axison), None)
+        if axis is None:
+            self.setMinimumSize(0, 0)
+            with suppress(RuntimeError):
+                self.draw()
+            return
+        renderer = self.get_renderer()
+        scale = self.device_pixel_ratio
+        x_boxes = [
+            label.get_window_extent(renderer) for label in axis.get_xticklabels()
+        ]
+        y_boxes = [
+            label.get_window_extent(renderer) for label in axis.get_yticklabels()
+        ]
+        left = max((box.width / scale for box in y_boxes), default=0) + 40
+        bottom = max((box.height / scale for box in x_boxes), default=0) + 35
+        matrix = bool(axis.images)
+        cell_width = max((box.width / scale for box in x_boxes), default=0) + 8
+        cell_height = max((box.height / scale for box in y_boxes), default=0) + 8
+        right = 65 if matrix else 20
+        plot_width = max(160, len(x_boxes) * cell_width)
+        plot_height = max(120, len(y_boxes) * cell_height) if matrix else 180
+        if matrix:
+            left = right = max(left, right)
+            plot_width = plot_height = max(280, plot_width, plot_height)
+        self.setMinimumSize(
+            ceil(left + plot_width + right), ceil(bottom + plot_height + 35)
         )
-        if primary_axis is not None:
-            x_labels = [
-                label for label in primary_axis.get_xticklabels() if label.get_text()
-            ]
-            y_labels = [
-                label for label in primary_axis.get_yticklabels() if label.get_text()
-            ]
-            if self.width() < 480:
-                if self.width() < 240:
-                    rotation = 90
-                elif self.width() < 320:
-                    rotation = 70
-                else:
-                    rotation = 45
-                for label in x_labels:
-                    if label not in self._responsive_tick_state:
-                        self._responsive_tick_state[label] = (
-                            float(label.get_rotation()),
-                            cast(
-                                Literal["left", "center", "right"],
-                                label.get_horizontalalignment(),
-                            ),
-                            float(label.get_fontsize()),
-                            str(label.get_text()),
-                        )
-                    label.set_rotation(rotation)
-                    label.set_horizontalalignment("right")
-                    label.set_rotation_mode("anchor")
-                    label.set_fontsize(7 if self.width() < 240 else 8)
-            else:
-                for label in x_labels:
-                    original = self._responsive_tick_state.pop(label, None)
-                    if original is not None:
-                        original_rotation, alignment, font_size, text = original
-                        label.set_text(text)
-                        label.set_rotation(original_rotation)
-                        label.set_horizontalalignment(alignment)
-                        label.set_rotation_mode("default")
-                        label.set_fontsize(font_size)
-            if self.width() < 240:
-                for label in y_labels:
-                    if label not in self._responsive_tick_state:
-                        self._responsive_tick_state[label] = (
-                            float(label.get_rotation()),
-                            cast(
-                                Literal["left", "center", "right"],
-                                label.get_horizontalalignment(),
-                            ),
-                            float(label.get_fontsize()),
-                            str(label.get_text()),
-                        )
-                    original_text = self._responsive_tick_state[label][3]
-                    label.set_text(_balanced_two_line_label(original_text))
-                    label.set_fontsize(7)
-            else:
-                for label in y_labels:
-                    original = self._responsive_tick_state.pop(label, None)
-                    if original is not None:
-                        original_rotation, alignment, font_size, text = original
-                        label.set_text(text)
-                        label.set_rotation(original_rotation)
-                        label.set_horizontalalignment(alignment)
-                        label.set_rotation_mode("default")
-                        label.set_fontsize(font_size)
-            decorated_text = (
-                primary_axis.title,
-                primary_axis.xaxis.label,
-                primary_axis.yaxis.label,
+        width, height = self.width(), self.height()
+        available_width = max(1, width - left - right)
+        available_height = max(1, height - bottom - 35)
+        if matrix:
+            side = min(available_width, available_height)
+            left += (available_width - side) / 2
+            bottom += (available_height - side) / 2
+            available_width = available_height = side
+        axis.set_position(
+            (
+                left / width,
+                bottom / height,
+                available_width / width,
+                available_height / height,
             )
-            if self.width() < 240:
-                compact_sizes = (9.0, 8.0, 8.0)
-                for text, compact_size in zip(
-                    decorated_text,
-                    compact_sizes,
-                    strict=True,
-                ):
-                    self._responsive_text_size_state.setdefault(
-                        text,
-                        float(text.get_fontsize()),
-                    )
-                    text.set_fontsize(compact_size)
-            else:
-                for text in decorated_text:
-                    original_size = self._responsive_text_size_state.pop(text, None)
-                    if original_size is not None:
-                        text.set_fontsize(original_size)
-        try:
-            # Qt can briefly assign a canvas geometry too small for Matplotlib's
-            # solver while docks are opening or closing. The previous valid
-            # layout remains usable, so contain only that known transient warning.
-            with warnings.catch_warnings():
-                warnings.filterwarnings(
-                    "ignore",
-                    message=r"Tight layout not applied\..*",
-                    category=UserWarning,
-                )
-                self.figure.tight_layout(pad=1.0)
-        except Exception as layout_error:
-            logger.warning(
-                "Skipping confusion matrix responsive layout: %s",
-                layout_error,
+        )
+        if matrix and len(self.figure.axes) > 1:
+            bounds = axis.get_position()
+            self.figure.axes[1].set_position(
+                (bounds.x1 + 18 / width, bounds.y0, 16 / width, bounds.height)
             )
         if hasattr(self, "_draw_pending"):
             self._draw_pending = False
@@ -174,7 +143,6 @@ class ConfusionMatrixWidget(QWidget):
     matrix. Supports optional percentage display.
 
     Attributes:
-        plot_type: ``PlotType.CONFUSION`` identifier for the plot kind.
         fig: Current ``matplotlib.figure.Figure`` instance.
         canvas: ``FigureCanvas`` embedding the figure into Qt.
         ax: The matplotlib ``Axes`` used for the initial placeholder.
@@ -221,7 +189,11 @@ class ConfusionMatrixWidget(QWidget):
         self.ax.axis("off")
 
         self.plot_layout.addWidget(canvas)
-        layout.addWidget(self.plot_container)
+        scroll = QScrollArea()
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self.plot_container)
+        layout.addWidget(scroll)
 
     def update_plot(
         self,
@@ -302,10 +274,12 @@ class ConfusionMatrixWidget(QWidget):
 
         figure = Figure(figsize=(6.4, 4.8), dpi=100)
         axis = figure.add_subplot(111)
-        axis.set_title("Confusion matrix", color="#cccccc", pad=20)
-        axis.set_xlabel("Predicted Label", labelpad=10, color="#cccccc")
-        axis.set_ylabel("True Label", labelpad=10, color="#cccccc")
-        image = axis.imshow(plot_data, cmap="magma", interpolation="nearest")
+        axis.set_title("Confusion matrix", color="#cccccc", pad=10)
+        axis.set_xlabel("Predicted Label", labelpad=6, color="#cccccc")
+        axis.set_ylabel("True Label", labelpad=6, color="#cccccc")
+        image = axis.imshow(
+            plot_data, cmap="magma", interpolation="nearest", aspect="auto"
+        )
         threshold = (float(plot_data.max()) + float(plot_data.min())) / 2
         for row in range(class_count):
             for column in range(class_count):
@@ -324,13 +298,21 @@ class ConfusionMatrixWidget(QWidget):
             data.class_labels.get(index, f"Class {index}")
             for index in range(class_count)
         ]
-        axis.set_xticks(range(class_count), class_names, rotation=0, ha="center")
-        axis.set_yticks(range(class_count), class_names, va="center")
+        axis.set_xticks(
+            range(class_count),
+            [fill(name, width=10, break_long_words=False) for name in class_names],
+            rotation=0,
+            ha="center",
+        )
+        axis.set_yticks(
+            range(class_count),
+            [fill(name, width=18, break_long_words=False) for name in class_names],
+            va="center",
+        )
         axis.tick_params(axis="x", colors="#cccccc")
         axis.tick_params(axis="y", colors="#cccccc")
         for spine in axis.spines.values():
             spine.set_edgecolor("#444444")
-        figure.tight_layout()
         return figure
 
     def _show_message(self, message, color=Theme.TEXT_MUTED):

@@ -6,7 +6,6 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationRequest,
     AssistantGenerationStopAcknowledgement,
     AssistantGenerationStopRequest,
-    AssistantResponseContract,
 )
 from XBrainLab.llm.core.generation import GenerationProfile
 
@@ -14,27 +13,16 @@ from XBrainLab.llm.core.generation import GenerationProfile
 def test_structured_action_request_uses_deterministic_generation():
     request = AssistantGenerationRequest.from_messages(
         [{"role": "user", "content": "Scan /data"}],
-        response_contract=AssistantResponseContract.STRUCTURED_ACTION,
     )
 
     assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
     assert request.to_model_messages() == [{"role": "user", "content": "Scan /data"}]
 
 
-def test_natural_language_request_preserves_configured_generation():
-    request = AssistantGenerationRequest.from_messages(
-        [{"role": "user", "content": "What is an epoch?"}],
-        response_contract=AssistantResponseContract.NATURAL_LANGUAGE,
-    )
-
-    assert request.generation_profile is GenerationProfile.INFORMATIONAL_TEXT
-
-
 def test_generation_request_copies_mutable_input_messages():
     messages = [{"role": "user", "content": "Explain EEGNet"}]
     request = AssistantGenerationRequest.from_messages(
         messages,
-        response_contract=AssistantResponseContract.NATURAL_LANGUAGE,
     )
 
     messages[0]["content"] = "mutated"
@@ -45,7 +33,6 @@ def test_generation_request_copies_mutable_input_messages():
 def test_generation_request_requires_positive_id_when_correlated() -> None:
     request = AssistantGenerationRequest.from_messages(
         [{"role": "user", "content": "Explain EEGNet"}],
-        response_contract=AssistantResponseContract.NATURAL_LANGUAGE,
     )
 
     with pytest.raises(ValueError, match="positive"):

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.llm.agent.intent import should_suppress_action_examples
 from XBrainLab.llm.rag.config import RAGConfig
 from XBrainLab.llm.rag.retriever import RAGRetriever
 
@@ -226,22 +227,101 @@ def test_retriever_filters_examples_to_request_scoped_tools(mock_retriever):
 
 
 @pytest.mark.parametrize(
-    "query",
+    ("query", "suppressed"),
     (
-        "Explain what an EEG epoch is.",
-        "Help me process the data.",
+        ("Explain what an EEG epoch is.", True),
+        ("Help me process the data.", True),
+        ("Use the option you mentioned earlier.", True),
+        ("Apply it.", True),
+        ("This.", True),
+        ("Use the previous row in the current dialog.", False),
+        ("Use the first option in the Data Import dialog.", False),
+        ("Use the option in the Data Import dialog mentioned earlier.", True),
+        ("Apply the previous filter at 40 Hz.", False),
+        ("Continue the workflow.", False),
+        ("Why is the current workflow blocked?", True),
+        ("Why can\u2019t XBrainLab continue?", True),
+        ("Why can't I train?", True),
+        ("Why is training blocked?", True),
+        ("Explain why brain waves cannot all be visualized.", True),
+        ("Explain the current workflow state.", False),
+        ("Explain the files in this folder.", False),
+        ("Show how XBrainLab understands this recording before importing.", False),
+        ("Either evaluate or train and ask me which.", True),
+        ("Start training; otherwise ask me.", False),
+        ("Train EEGNet with 20 epochs.", False),
+        ("What is saliency?", True),
+        ("Stop training.", False),
+        ("Reset preprocessing.", False),
+        ("使用它", True),
+        ("用前面提到的第一個選項", True),
+        ("使用目前對話框上面的選項", False),
+        ("繼續流程", False),
+        ("為什麼目前流程不能繼續\uff1f", True),
+        ("解釋目前狀態", False),
+        ("請幫我了解腦波", True),
+        ("幫我處理資料", True),
+        ("顯示檔案", False),
+        ("選擇模型", False),
+        ("什麼是前處理", True),
+        ("", False),
+        ("Maybe", False),
     ),
 )
-def test_non_action_requests_do_not_retrieve_action_examples(query):
-    retriever = RAGRetriever()
-    retriever.embeddings = MagicMock()
-    retriever.client = MagicMock()
+def test_query_suppression_precedes_initialized_retrieval(
+    mock_retriever, query, suppressed
+):
+    retriever = mock_retriever
+    assert retriever.is_initialized
+    retriever.client.query_points.return_value.points = [
+        SimpleNamespace(
+            id="import-example",
+            score=0.95,
+            payload={
+                "page_content": "Import an EEG dataset.",
+                "metadata": {
+                    "tool_calls": [{"tool_name": "import_eeg_data", "parameters": {}}]
+                },
+            },
+        )
+    ]
 
-    result = retriever.get_similar_examples(query)
+    result = retriever.get_similar_examples(
+        query, allowed_tool_names=frozenset({"import_eeg_data"})
+    )
 
-    assert result == ""
-    retriever.embeddings.embed_query.assert_not_called()
-    retriever.client.query_points.assert_not_called()
+    if suppressed:
+        assert result == ""
+        retriever.embeddings.embed_query.assert_not_called()
+        retriever.client.query_points.assert_not_called()
+    else:
+        retriever.embeddings.embed_query.assert_called_once_with(query)
+        retriever.client.query_points.assert_called_once()
+        payload = json.loads(result)
+        assert len(payload["items"]) == 1
+        assert payload["items"][0]["data"]["expected_action"] == {
+            "tool_name": "import_eeg_data",
+            "parameters": {},
+        }
+
+
+def test_bundled_goldset_suppression_characterization() -> None:
+    rows = json.loads(RAGConfig.get_gold_set_path().read_text(encoding="utf-8"))
+    assert len(rows) == 72
+    assert not [
+        row["id"] for row in rows if should_suppress_action_examples(row["input"])
+    ]
+
+
+def test_public_engineering_probe_suppression_characterization() -> None:
+    from scripts.dev.verify_rag import load_probes
+
+    probes = load_probes()
+    rows = probes["positive_cases"] + probes["boundary_cases"]
+    assert len(rows) == 48
+    assert {
+        row["id"] for row in rows if should_suppress_action_examples(row["query"])
+    } == {"information_01", "information_02"}
 
 
 def test_initialize_failure_remains_unavailable_and_closes_created_client(

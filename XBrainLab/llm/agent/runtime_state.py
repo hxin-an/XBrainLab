@@ -32,6 +32,8 @@ class AssistantRuntimeSnapshot:
     device_fallback_reason: str = ""
     error: str = ""
     activation_id: int = 0
+    # Readiness can be false while failed cleanup still owns a model process.
+    cleanup_pending: bool = False
 
     def validation_error(self) -> str:
         """Return why this snapshot cannot represent a runtime lifecycle state."""

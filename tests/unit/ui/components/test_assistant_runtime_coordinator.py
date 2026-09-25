@@ -226,7 +226,7 @@ def test_runtime_coordinator_rejects_stale_same_model_activation_outcome() -> No
     assert coordinator.expected_activation_id is None
 
 
-def test_failed_switch_retains_the_last_ready_runtime_identity() -> None:
+def test_failed_switch_retires_runtime_when_worker_reports_it_unloaded() -> None:
     published: list[AssistantRuntimeSnapshot] = []
     coordinator = AssistantRuntimeCoordinator(published.append)
     active = _launch_spec(TEST_ACTIVE_MODEL_ID)
@@ -254,15 +254,17 @@ def test_failed_switch_retains_the_last_ready_runtime_identity() -> None:
 
     assert accepted is True
     assert coordinator.current.phase is AssistantRuntimePhase.FAILED
-    assert coordinator.current.initialized is True
-    assert coordinator.current.backend_mode == active.backend_mode
-    assert coordinator.current.model_id == active.model_id
+    assert coordinator.current.initialized is False
+    assert coordinator.current.backend_mode == target.backend_mode
+    assert coordinator.current.model_id == target.model_id
     assert coordinator.current.requested_model_id == target.requested_model_id
     assert coordinator.current.selection_outcome is target.outcome
     assert coordinator.current.selection_detail == target.selection_detail
     assert coordinator.current.activation_id == 73
     assert coordinator.current.error == "model switch failed"
     assert coordinator.expected_activation_id is None
+    assert coordinator.restore_active_runtime() is False
+    assert coordinator.owns_local_runtime is False
 
 
 def test_runtime_coordinator_rejects_untagged_terminal_during_tagged_activation() -> (

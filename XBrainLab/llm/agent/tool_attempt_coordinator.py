@@ -1,7 +1,7 @@
 """Deterministic policy boundary for model-proposed assistant tools.
 
 The controller owns turn orchestration and UI signals.  This module owns the
-policy decision for a proposal: prompt publication, path provenance, schema
+policy decision for a proposal: prompt publication, parameter origin, schema
 verification, backend capability, confirmation, and one-action admission.
 """
 
@@ -10,32 +10,25 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Generic, Protocol, TypeVar
+from typing import Any, Protocol
 
 from XBrainLab.backend.application.resource_preflight import (
     ResourceConfirmationChallenge,
     ResourcePreflightContractError,
     ResourcePreflightView,
 )
-from XBrainLab.backend.application.training_recommendation import (
-    TrainingRecommendationField,
-)
 from XBrainLab.llm.tools.application_surface import (
     READ_ONLY_TOOLS,
-    SETTING_CHANGE_CONFIRMATION_KIND,
     TOOL_TO_COMMAND,
     CapabilityPolicyUnavailableError,
     ToolAvailability,
     ToolAvailabilityContext,
-    ToolCommandResult,
-    assistant_edited_recommendation_fields,
-    assistant_setting_change_requires_confirmation,
-    authorize_assistant_setting_change,
+    blocked_tool_result,
     get_application_context,
-    setting_confirmation_params,
 )
 from XBrainLab.llm.tools.base import BaseTool
 from XBrainLab.llm.tools.result_contract import (
+    ToolCommandResult,
     redact_public_text,
     safe_unexpected_failure,
 )
@@ -44,54 +37,27 @@ from XBrainLab.product_language import tool_action_label
 from .assembler import PromptToolPublication
 from .confirmation import AgentConfirmationRequest, AgentConfirmationRisk
 from .execution_policy import HostExecutionPolicy
+from .parser import ToolCommand
 from .turn import AssistantToolInputReceipt
 from .verifier import (
     DIRECT_PARAMETER_TOOLS,
-    PathProvenanceVerifier,
     VerificationResult,
+    add_start_training_confirmation_details,
     verified_direct_parameter_origin_values,
     verify_direct_parameter_origins,
 )
 
 logger = logging.getLogger(__name__)
 
-_Command = TypeVar("_Command")
-
-_RECEIPT_BOUND_RESOURCE_COMMANDS = frozenset(
-    {
-        "apply_interpretation",
-        "preview_interpretation",
-        "reload_interpretation_recipe",
-        "saliency",
-        "start_training",
-    }
-)
-
-_FINGERPRINT_BOUND_RESOURCE_COMMANDS = frozenset(
-    {
-        "preview_interpretation",
-        "reload_interpretation_recipe",
-        "saliency",
-        "start_training",
-    }
-)
-
 
 def _resource_receipt_contract_error(
     command_name: str,
     receipt: ResourceConfirmationChallenge,
 ) -> str | None:
+    """Check the command-bound training receipt after resource-tool admission."""
     if receipt.command_name != command_name:
         return "Resource receipt command does not match the pending action."
-    if command_name == "apply_interpretation" and not receipt.candidate_id:
-        return "Interpretation resource receipt is missing its candidate."
-    if command_name == "preview_interpretation" and not receipt.candidate_id:
-        return "Preview resource receipt is missing its scan identity."
-    if command_name == "reload_interpretation_recipe" and not receipt.candidate_id:
-        return "Recipe reload resource receipt is missing its recipe identity."
-    if command_name in _FINGERPRINT_BOUND_RESOURCE_COMMANDS and (
-        not receipt.configuration_fingerprint or not receipt.preflight_fingerprint
-    ):
+    if not receipt.configuration_fingerprint or not receipt.preflight_fingerprint:
         return "Resource receipt is missing its configuration or preflight fingerprint."
     return None
 
@@ -101,7 +67,6 @@ class ToolAttemptAction(str, Enum):
 
     RESPOND = "respond"
     PUBLICATION_BLOCKED = "publication_blocked"
-    PROVENANCE_BLOCKED = "provenance_blocked"
     VERIFICATION_BLOCKED = "verification_blocked"
     CAPABILITY_BLOCKED = "capability_blocked"
     RESOURCE_CONFIRMATION_BLOCKED = "resource_confirmation_blocked"
@@ -122,12 +87,10 @@ class ToolAttemptRequest:
 
     command_name: str
     params: dict[str, Any]
-    confidence: float
     publication: PromptToolPublication
     latest_user_text: str
     enforce_direct_parameter_origins: bool = True
     tool_input_receipt: AssistantToolInputReceipt | None = None
-    single_proposal: bool = True
 
 
 @dataclass(frozen=True)
@@ -143,18 +106,8 @@ class ToolAttemptDecision:
     tool: BaseTool | None = None
     confirmation_kind: str | None = None
     resource_preflight_receipt: ResourceConfirmationChallenge | None = None
-    edited_recommendation_fields: tuple[TrainingRecommendationField, ...] | None = None
     feedback: ToolAttemptFeedback = ToolAttemptFeedback.SYSTEM_REJECTION
     tool_input_receipt: AssistantToolInputReceipt | None = None
-
-
-@dataclass(frozen=True)
-class ToolProposalDecision(Generic[_Command]):
-    """Host-policy result for a normalized batch of model proposals."""
-
-    command: _Command | None
-    reason: str
-    discarded_count: int = 0
 
 
 class ToolContextSource(Protocol):
@@ -185,21 +138,6 @@ class ToolCallVerifier(Protocol):
     def verify_tool_call(
         self,
         tool_call: tuple[str, dict[str, Any]],
-        *,
-        confidence: float,
-    ) -> VerificationResult: ...
-
-
-class PathPolicyVerifier(Protocol):
-    """Path-provenance verifier surface used by the policy boundary."""
-
-    def validate(
-        self,
-        name: str,
-        params: dict[str, Any],
-        *,
-        latest_user_text: str,
-        state: dict[str, Any] | None,
     ) -> VerificationResult: ...
 
 
@@ -218,13 +156,11 @@ class ToolAttemptCoordinator:
         verifier: ToolCallVerifier,
         context_source: ToolContextSource,
         execution_policy: HostExecutionPolicy | None = None,
-        path_verifier: PathPolicyVerifier | None = None,
     ) -> None:
         self._registry = registry
         self._verifier = verifier
         self._context_source = context_source
         self._execution_policy = execution_policy or HostExecutionPolicy()
-        self._path_verifier = path_verifier or PathProvenanceVerifier()
 
     def admit_typed_clarification(
         self,
@@ -278,28 +214,26 @@ class ToolAttemptCoordinator:
             verified_parameters=verified_parameters,
         )
 
-    def select_proposal(
+    def admit_proposal(
         self,
-        commands: list[_Command],
+        command: ToolCommand,
         *,
         execution_count: int,
         cancelled: bool,
-    ) -> ToolProposalDecision[_Command]:
-        """Select at most one proposal and enforce the per-turn host cap."""
-        command = self._execution_policy.first_command(commands)
-        if command is None:
-            return ToolProposalDecision(None, "no_command")
+    ) -> ToolCommand | None:
+        """Admit the parser's single proposal under cancellation and turn limits."""
         start = self._execution_policy.before_command(
             execution_count=execution_count,
             cancelled=cancelled,
         )
         if not start.continue_workflow:
-            return ToolProposalDecision(None, start.reason)
-        return ToolProposalDecision(
-            command,
-            start.reason,
-            discarded_count=max(len(commands) - 1, 0),
-        )
+            logger.info(
+                "Host policy rejected tool proposal: %s",
+                redact_public_text(start.reason),
+            )
+            return None
+        tool_name, params = command
+        return tool_name, dict(params)
 
     @staticmethod
     def build_confirmation_request(
@@ -318,11 +252,10 @@ class ToolAttemptCoordinator:
             tool_context = decision.context
         label = tool_action_label(cmd)
         availability = tool_context.availability if tool_context is not None else None
-        high_impact = decision.confirmation_kind == "setting_change"
         risk = AgentConfirmationRisk.from_policy(
             command_name=cmd,
             destructive=bool(availability and availability.destructive),
-            high_impact=high_impact,
+            high_impact=False,
             long_running=bool(availability and availability.long_running),
             decision_boundary=(
                 availability.decision_boundary if availability is not None else None
@@ -420,15 +353,8 @@ class ToolAttemptCoordinator:
                     ),
                 )
             params = dict(receipt.verified_parameters)
-        provenance_result = self._provenance_result(request, context)
-        if provenance_result is not None:
-            return ToolAttemptDecision(
-                ToolAttemptAction.PROVENANCE_BLOCKED,
-                command_name,
-                params,
-                context=context,
-                result=provenance_result,
-            )
+        if command_name == "start_training":
+            add_start_training_confirmation_details(params, state=context.state)
 
         origin_validation = (
             VerificationResult(True)
@@ -456,7 +382,6 @@ class ToolAttemptCoordinator:
 
         validation = self._verifier.verify_tool_call(
             (command_name, params),
-            confidence=request.confidence,
         )
         if not validation.is_valid:
             message = validation.error_message or "Tool call did not pass validation."
@@ -495,38 +420,24 @@ class ToolAttemptCoordinator:
             )
 
         tool = self._registry.get_tool(command_name)
-        edited_recommendation_fields = assistant_edited_recommendation_fields(
-            command_name,
-            params,
-        )
-        evaluated_params = setting_confirmation_params(command_name, params)
-        setting_confirmation = assistant_setting_change_requires_confirmation(
-            command_name,
-            evaluated_params,
-            context.state,
-        )
-        if setting_confirmation or self._execution_policy.needs_confirmation(
+        params = dict(params)
+        if self._execution_policy.needs_confirmation(
             context.availability,
             tool_requires_confirmation=bool(tool and tool.requires_confirmation),
         ):
             return ToolAttemptDecision(
                 ToolAttemptAction.CONFIRMATION_REQUIRED,
                 command_name,
-                evaluated_params,
+                params,
                 context=context,
                 tool=tool,
-                confirmation_kind=(
-                    SETTING_CHANGE_CONFIRMATION_KIND if setting_confirmation else None
-                ),
-                edited_recommendation_fields=edited_recommendation_fields,
             )
         return ToolAttemptDecision(
             ToolAttemptAction.EXECUTE,
             command_name,
-            evaluated_params,
+            params,
             context=context,
             tool=tool,
-            edited_recommendation_fields=edited_recommendation_fields,
         )
 
     def _origin_receipt(
@@ -536,11 +447,7 @@ class ToolAttemptCoordinator:
         origin: VerificationResult,
     ) -> AssistantToolInputReceipt | None:
         """Turn one safe direct-parameter rejection into bounded follow-up state."""
-        if (
-            request.tool_input_receipt is not None
-            or not request.single_proposal
-            or not context.availability.enabled
-        ):
+        if request.tool_input_receipt is not None or not context.availability.enabled:
             return None
         return self.admit_typed_clarification(
             command_name=request.command_name,
@@ -618,7 +525,7 @@ class ToolAttemptCoordinator:
         """Convert a capability block or context failure to a typed result."""
         diagnostics = {"publication_generation": context.generation}
         if context.policy_error is None:
-            return ToolCommandResult.blocked(
+            return blocked_tool_result(
                 command_name,
                 context.availability,
                 state=context.state,
@@ -641,33 +548,18 @@ class ToolAttemptCoordinator:
         params: dict[str, Any],
         *,
         requires_command_confirmation: bool = True,
-        publication_generation: int | None = None,
         confirmation_kind: str | None = None,
         resource_preflight_receipt: ResourceConfirmationChallenge | None = None,
-        edited_recommendation_fields: tuple[TrainingRecommendationField, ...]
-        | None = None,
     ) -> dict[str, Any]:
         """Inject backend confirmation fields after explicit user approval."""
         confirmed = dict(params)
         if requires_command_confirmation:
             confirmed["confirmed"] = True
-        if confirmation_kind == SETTING_CHANGE_CONFIRMATION_KIND:
-            if type(publication_generation) is not int or publication_generation < 0:
-                raise ValueError(
-                    "Setting confirmation requires an authoritative publication "
-                    "generation."
-                )
-            confirmed = authorize_assistant_setting_change(
-                command_name,
-                confirmed,
-                publication_generation=publication_generation,
-                edited_recommendation_fields=edited_recommendation_fields,
-            )
         if confirmation_kind != "resource_preflight":
             return confirmed
         if resource_preflight_receipt is None:
             raise ValueError("Resource confirmation requires an authoritative receipt.")
-        if command_name not in _RECEIPT_BOUND_RESOURCE_COMMANDS:
+        if command_name != "start_training":
             raise ValueError(
                 f"Tool '{command_name}' does not support receipt-bound resource "
                 "confirmation."
@@ -679,21 +571,6 @@ class ToolAttemptCoordinator:
         if contract_error is not None:
             raise ValueError(contract_error)
 
-        receipt_candidate = str(resource_preflight_receipt.candidate_id or "").strip()
-        if command_name == "apply_interpretation":
-            requested_candidate = str(confirmed.get("candidate_id") or "").strip()
-            if requested_candidate and requested_candidate != receipt_candidate:
-                raise ValueError(
-                    "Resource receipt candidate does not match the pending action."
-                )
-            confirmed["candidate_id"] = receipt_candidate
-        elif command_name == "preview_interpretation":
-            requested_scan = str(confirmed.get("scan_id") or "").strip()
-            if requested_scan and requested_scan != receipt_candidate:
-                raise ValueError(
-                    "Resource receipt scan does not match the pending action."
-                )
-            confirmed["scan_id"] = receipt_candidate
         confirmed["resource_preflight_confirmed"] = True
         confirmed["resource_preflight_token"] = resource_preflight_receipt.challenge_id
         return confirmed
@@ -721,12 +598,8 @@ class ToolAttemptCoordinator:
             decision.command_name,
             decision.params,
             requires_command_confirmation=requires_command_confirmation,
-            publication_generation=(
-                context.generation if context is not None else None
-            ),
             confirmation_kind=decision.confirmation_kind,
             resource_preflight_receipt=receipt,
-            edited_recommendation_fields=decision.edited_recommendation_fields,
         )
 
     @staticmethod
@@ -739,7 +612,7 @@ class ToolAttemptCoordinator:
             return None
         if result.error_type != "confirmation_required":
             return None
-        if decision.command_name not in _RECEIPT_BOUND_RESOURCE_COMMANDS:
+        if decision.command_name != "start_training":
             return ToolAttemptCoordinator._resource_confirmation_blocked(
                 decision,
                 result,
@@ -867,37 +740,6 @@ class ToolAttemptCoordinator:
             diagnostics=diagnostics,
         )
 
-    def _provenance_result(
-        self,
-        request: ToolAttemptRequest,
-        context: ToolAvailabilityContext,
-    ) -> ToolCommandResult | None:
-        verification = self._path_verifier.validate(
-            request.command_name,
-            request.params,
-            latest_user_text=request.latest_user_text,
-            state=context.state,
-        )
-        if verification.is_valid:
-            return None
-        message = verification.error_message or (
-            "Choose a file or folder in the app, or paste the exact path."
-        )
-        mapped_command = TOOL_TO_COMMAND.get(request.command_name)
-        return ToolCommandResult.failure(
-            request.command_name,
-            message,
-            command_name=(mapped_command.value if mapped_command is not None else None),
-            state=context.state,
-            capability=context.availability.to_dict(),
-            error_type="input",
-            recoverable=True,
-            diagnostics={
-                "policy": "path_provenance",
-                "publication_generation": context.generation,
-            },
-        )
-
     @staticmethod
     def _verification_result(
         request: ToolAttemptRequest,
@@ -908,8 +750,6 @@ class ToolAttemptCoordinator:
         return ToolCommandResult.failure(
             request.command_name,
             ToolAttemptCoordinator._verification_failure_message(
-                request.command_name,
-                request.latest_user_text,
                 message,
             ),
             command_name=(mapped_command.value if mapped_command is not None else None),
@@ -923,11 +763,8 @@ class ToolAttemptCoordinator:
 
     @staticmethod
     def _verification_failure_message(
-        command_name: str,
-        latest_user_text: str,
         message: str,
     ) -> str:
-        del latest_user_text
         lower = message.lower()
         if "missing required parameter" in lower:
             return message.replace("Missing required parameter(s)", "Required input")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import itertools
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -108,7 +109,7 @@ def _load_memory_contract_function() -> Callable[..., list[str]]:
 
 def _load_native_qt_platform_function() -> Callable[[str], str]:
     function = _named_function("_native_qt_platform")
-    namespace: dict[str, object] = {}
+    namespace: dict[str, object] = {"os": os}
     module = ast.Module(body=[function], type_ignores=[])
     ast.fix_missing_locations(module)
     exec(compile(module, str(SCRIPT_PATH), "exec"), namespace)  # noqa: S102
@@ -329,12 +330,28 @@ def test_supported_parent_stops_before_native_imports_when_core_guard_fails():
     assert any(isinstance(node, ast.Raise) for node in ast.walk(guard))
 
 
-def test_native_stress_uses_cocoa_on_darwin_and_offscreen_elsewhere() -> None:
+def test_native_stress_defaults_to_cocoa_on_darwin_and_offscreen_elsewhere(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
     native_qt_platform = _load_native_qt_platform_function()
 
     assert native_qt_platform("darwin") == "cocoa"
     assert native_qt_platform("linux") == "offscreen"
     assert native_qt_platform("win32") == "offscreen"
+
+
+def test_native_stress_preserves_explicit_windows_desktop(monkeypatch) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "windows")
+    native_qt_platform = _load_native_qt_platform_function()
+    assert native_qt_platform("win32") == "windows"
+    assert native_qt_platform("linux") == "offscreen"
+    assert native_qt_platform("darwin") == "cocoa"
+
+
+def test_native_stress_preserves_explicit_headless_windows_ci(monkeypatch) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    assert _load_native_qt_platform_function()("win32") == "offscreen"
 
 
 def test_native_render_scope_only_bounds_headless_macos_ci() -> None:
@@ -405,11 +422,6 @@ def test_product_tab_stress_uses_public_panel_publication_path():
     assert "refresh_combos" in called_attributes
     assert "_render_figure_async" not in called_attributes
     assert "_replace_figure" not in called_attributes
-
-    source = SCRIPT_PATH.read_text(encoding="utf-8")
-    assert "actual_saliency_tab" not in source
-    assert "_build_tab_stress_figure" not in source
-    assert '"product_3d_tab_updates": 1' not in source
 
 
 def test_visualization_stress_constructs_panel_with_narrow_runtime_ports():

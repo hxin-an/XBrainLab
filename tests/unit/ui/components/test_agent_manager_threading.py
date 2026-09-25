@@ -13,9 +13,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6 import sip
-from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal, pyqtSlot
 from PyQt6.QtWidgets import QApplication, QMainWindow
 
+from XBrainLab.llm.agent.assistant_activity import (
+    AssistantTurnActivity,
+    AssistantTurnActivityPhase,
+)
 from XBrainLab.llm.agent.confirmation import (
     AgentConfirmationRequest,
     AgentConfirmationResolution,
@@ -31,6 +35,7 @@ from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimeSnapshot,
 )
 from XBrainLab.llm.agent.turn import (
+    AssistantDebugToolRequest,
     AssistantTurnCorrelation,
     AssistantTurnRequest,
     AssistantTurnTerminal,
@@ -143,9 +148,53 @@ class _ThreadedAgentController(QObject):
         self.handoff_resolution_thread = QThread.currentThread()
         self.handoff_resolution = resolution
 
+    def on_panel_navigation_resolved(self, _request, _success):
+        return None
+
     def close(self):
         self.worker_thread.quit()
         self.worker_thread.wait(1000)
+
+
+class _ImmediateOutcomeController(_ThreadedAgentController):
+    """Finish on the real command thread before the GUI consumes any event."""
+
+    def __init__(self):
+        super().__init__()
+        self.outcome_emitted = Event()
+
+    def handle_user_turn(self, request: AssistantTurnRequest):
+        self._publish_outcome(request.correlation)
+
+    def execute_debug_tool(self, request: AssistantDebugToolRequest):
+        self._publish_outcome(request.correlation)
+
+    def _publish_outcome(self, correlation: AssistantTurnCorrelation):
+        self.input_thread = QThread.currentThread()
+        self.activity_changed.emit(
+            AssistantTurnActivity(
+                AssistantTurnActivityPhase.PREPARING,
+                turn_id=correlation.turn_id,
+                generation=correlation.generation,
+            )
+        )
+        self.response_presentation_ready.emit(
+            AssistantResponsePresentation(correlation=correlation, text="Checked.")
+        )
+        self.turn_finished.emit(AssistantTurnTerminal(correlation=correlation))
+        self.outcome_emitted.set()
+
+
+class _GuiAdmissionEvents(QObject):
+    """Observe the actual Qt delivery, independently of Manager's event buffer."""
+
+    def __init__(self):
+        super().__init__()
+        self.events: list[object] = []
+
+    @pyqtSlot(object)
+    def receive(self, payload: object):
+        self.events.append(payload)
 
 
 class _RetryShutdownController(_ThreadedAgentController):
@@ -298,7 +347,7 @@ def test_controller_commands_run_off_gui_thread(qtbot):
     with _ready_manager_runtime(controller):
         manager = cast(Any, AgentManager(main_window, Study()))
         manager.init_ui()
-        manager.start_system()
+        manager.toggle()
         command_thread = manager.assistant_runtime.dispatcher.command_thread
         assert isinstance(command_thread, QThread)
         qtbot.waitUntil(
@@ -318,6 +367,101 @@ def test_controller_commands_run_off_gui_thread(qtbot):
     assert controller.thread() is app.thread()
 
 
+@pytest.mark.parametrize("command", ["submit", "debug"])
+def test_real_admission_returns_before_queued_outcome_delivery(qtbot, command):
+    from XBrainLab.backend.study import Study
+    from XBrainLab.ui.components.agent_manager import AgentManager
+
+    main_window = cast(Any, QMainWindow())
+    main_window.ai_btn = MagicMock()
+    qtbot.addWidget(main_window)
+    controller = _ImmediateOutcomeController()
+    observed = _GuiAdmissionEvents()
+    for signal in (
+        controller.activity_changed,
+        controller.response_presentation_ready,
+        controller.turn_finished,
+    ):
+        signal.connect(observed.receive)
+
+    with _ready_manager_runtime(controller):
+        manager = cast(Any, AgentManager(main_window, Study()))
+        manager.init_ui()
+        manager.toggle()
+        qtbot.waitUntil(lambda: manager.assistant_runtime.accepts_commands)
+        dispatcher = manager.assistant_runtime.dispatcher
+        dispatch = getattr(dispatcher, command)
+
+        def dispatch_until_outcome(request):
+            accepted = dispatch(request)
+            # Force the command thread to finish before submit/debug returns,
+            # without pumping GUI events or replacing the real transport.
+            assert controller.outcome_emitted.wait(timeout=2.0)
+            assert observed.events == []
+            return accepted
+
+        try:
+            with patch.object(dispatcher, command, side_effect=dispatch_until_outcome):
+                if command == "submit":
+                    assert manager.handle_user_input("check data").accepted
+                else:
+                    manager._handle_debug_tool_requested("get_pipeline_state", {})
+            assert observed.events == []
+            expected = [("user", "check data")] if command == "submit" else []
+            assert [
+                (message["role"], message["content"])
+                for message in manager.chat_controller.messages
+            ] == expected
+            assert manager.assistant_runtime.turn_in_flight
+
+            qtbot.waitUntil(lambda: not manager.assistant_runtime.turn_in_flight)
+            qtbot.waitUntil(lambda: len(observed.events) == 3)
+            assert controller.input_thread is dispatcher.command_thread
+            assert [
+                (message["role"], message["content"])
+                for message in manager.chat_controller.messages
+            ] == [*expected, ("assistant", "Checked.")]
+            assert isinstance(observed.events[0], AssistantTurnActivity)
+            assert isinstance(observed.events[1], AssistantResponsePresentation)
+            assert isinstance(observed.events[2], AssistantTurnTerminal)
+        finally:
+            _finish_manager_close(qtbot, manager)
+
+
+@pytest.mark.parametrize("command", ["submit", "debug"])
+def test_rejected_real_transport_does_not_admit_transcript(qtbot, command):
+    from XBrainLab.backend.study import Study
+    from XBrainLab.ui.components.agent_manager import AgentManager
+
+    main_window = cast(Any, QMainWindow())
+    main_window.ai_btn = MagicMock()
+    qtbot.addWidget(main_window)
+    controller = _ImmediateOutcomeController()
+    with _ready_manager_runtime(controller):
+        manager = cast(Any, AgentManager(main_window, Study()))
+        manager.init_ui()
+        manager.toggle()
+        qtbot.waitUntil(lambda: manager.assistant_runtime.accepts_commands)
+        dispatcher = manager.assistant_runtime.dispatcher
+        signal = (
+            dispatcher.input_requested
+            if command == "submit"
+            else dispatcher.debug_requested
+        )
+        signal.disconnect()
+        try:
+            if command == "submit":
+                assert not manager.handle_user_input("check data").accepted
+            else:
+                manager._handle_debug_tool_requested("get_pipeline_state", {})
+            assert not manager.assistant_runtime.turn_in_flight
+            assert not controller.outcome_emitted.is_set()
+            assert manager.chat_controller.messages == []
+            assert manager._assistant_turn_state.lease is None
+        finally:
+            _finish_manager_close(qtbot, manager)
+
+
 def test_stop_is_not_queued_behind_an_uncancellable_application_command(qtbot):
     from XBrainLab.backend.study import Study
     from XBrainLab.ui.components.agent_manager import AgentManager
@@ -330,7 +474,7 @@ def test_stop_is_not_queued_behind_an_uncancellable_application_command(qtbot):
     with _ready_manager_runtime(controller):
         manager = cast(Any, AgentManager(main_window, Study()))
         manager.init_ui()
-        manager.start_system()
+        manager.toggle()
         qtbot.waitUntil(
             lambda: manager.assistant_runtime.current.phase
             is AssistantRuntimePhase.READY,
@@ -382,14 +526,14 @@ def test_typed_response_signal_reaches_chat_without_raw_text_classification(qtbo
     with _ready_manager_runtime(controller):
         manager = cast(Any, AgentManager(main_window, Study()))
         manager.init_ui()
-        manager.start_system()
+        manager.toggle()
         submission = manager._assistant_turn_state.begin_submission()
         assert (
             manager._assistant_turn_state.complete_admission(
                 submission,
                 correlation,
             )
-            is not None
+            is True
         )
         manager.assistant_runtime._active_turn = correlation
         controller.response_presentation_ready.emit(presentation)
@@ -422,7 +566,7 @@ def test_typed_panel_navigation_signal_reaches_existing_main_window(qtbot):
     with _ready_manager_runtime(controller):
         manager = cast(Any, AgentManager(main_window, Study()))
         manager.init_ui()
-        manager.start_system()
+        manager.toggle()
         controller.panel_navigation_requested.emit(
             AssistantPanelNavigationRequest(AssistantPanelTarget.TRAINING)
         )
@@ -448,7 +592,7 @@ def test_typed_ui_handoff_resolution_runs_on_controller_command_thread(qtbot):
     request = WorkflowUiHandoffRequest.for_decision("create_epoch")
     resolution = WorkflowUiHandoffResolution.for_request(
         request,
-        status=WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI,
+        status=WorkflowUiHandoffResolutionStatus.COMPLETED,
     )
     dispatcher.resolve_ui_handoff(resolution)
 
@@ -510,7 +654,7 @@ def test_close_is_idempotent_after_queued_shutdown(qtbot):
     with _ready_manager_runtime(controller):
         manager = cast(Any, AgentManager(main_window, Study()))
         manager.init_ui()
-        manager.start_system()
+        manager.toggle()
 
     _finish_manager_close(qtbot, manager)
     assert manager.close() is True

@@ -832,15 +832,6 @@ class ApplicationService(Observable):
         self._ensure_open()
         return self.saliency_render_work.begin(request)
 
-    def prepare_saliency_render(
-        self,
-        operation_id: str,
-        request: SaliencyRenderRequest,
-    ) -> SaliencyRenderPublication:
-        """Prepare detached data while retaining ownership through canvas commit."""
-        self._ensure_open()
-        return self.saliency_render_work.prepare(operation_id, request)
-
     def prepare_saliency_render_variants(
         self,
         operation_id: str,

@@ -624,6 +624,434 @@ def _open_runtime_panels(
     return window
 
 
+def test_gui_import_to_subject_training_and_reopened_results(
+    qtbot,
+    tmp_path: Path,
+    monkeypatch,
+    allow_real_modals,
+    runtime_lifecycle,
+    record_property,
+) -> None:
+    """Author the complete CPU workflow in real dialogs, without Command stubs.
+
+    Three synthetic recordings test GUI routing and persisted-result identity,
+    not EEG scientific validity or a fresh application's saved-result import.
+    """
+    from time import monotonic
+
+    from PyQt6.QtWidgets import QFileDialog, QMessageBox
+
+    from scripts.dev.chatpanel_training_fixture import write_training_ready_raw_fif
+    from tests.integration.ui.data_import_wizard_harness import (
+        SuggestedLabelWizardDriver,
+        replace_line_edit_text,
+    )
+    from tests.integration.ui.modal_helpers import visible_modal_dialog
+    from tests.integration.ui.test_saliency_compute_entrypoints import (
+        _wait_for_visible_finite_saliency,
+    )
+    from XBrainLab.backend.training.record import EvalRecord
+    from XBrainLab.ui.components.modal_presentation import ModalAlertDialog
+    from XBrainLab.ui.dialogs.dataset.channel_selection_dialog import (
+        ChannelSelectionDialog,
+    )
+    from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DataSplittingDialog
+    from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
+        PREVIEW_STATUS_SUCCEEDED,
+        DataSplittingPreviewDialog,
+    )
+    from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
+    from XBrainLab.ui.dialogs.preprocess.resampling_dialog import ResampleDialog
+    from XBrainLab.ui.dialogs.training.device_setting_dialog import DeviceSettingDialog
+    from XBrainLab.ui.dialogs.training.model_selection_dialog import (
+        ModelSelectionDialog,
+    )
+    from XBrainLab.ui.dialogs.visualization.montage_picker_dialog import (
+        PickMontageDialog,
+    )
+
+    record_property("qt_platform", QApplication.platformName())
+    sources = [write_training_ready_raw_fif(tmp_path / "subject-1_raw.fif")]
+    template = mne.io.read_raw_fif(sources[0], preload=True, verbose=False)
+    for subject in (2, 3):
+        # Distinct recordings, not renamed byte-identical copies: the genuine
+        # leakage guard intentionally recognizes the latter as one recording.
+        raw = mne.io.RawArray(
+            np.random.default_rng(43 + subject).normal(size=template.get_data().shape),
+            template.info.copy(),
+            verbose=False,
+        )
+        raw.set_annotations(template.annotations.copy())
+        source = tmp_path / f"subject-{subject}_raw.fif"
+        raw.save(source, overwrite=True, verbose=False)
+        sources.append(source)
+    output_dir = tmp_path / "gui-training"
+    output_dir.mkdir()
+    # Only the OS file pickers are substituted; each real dialog still reviews
+    # and submits its own choices through the actual application boundary.
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileNames",
+        lambda *_a, **_k: ([str(p) for p in sources], ""),
+    )
+    monkeypatch.setattr(
+        QFileDialog, "getExistingDirectory", lambda *_a, **_k: str(output_dir)
+    )
+    study = Study()
+    service = get_application_service(study)
+    window = cast(Any, MainWindow(study))
+    qtbot.addWidget(window)
+    runtime_lifecycle(window, service)
+    window.resize(1280, 920)
+    window.show()
+    qtbot.waitExposed(window)
+
+    wizard = SuggestedLabelWizardDriver(visible_modal_dialog)
+    wizard_watchdog = QTimer(window)
+    wizard_watchdog.setSingleShot(True)
+
+    def expire_wizard() -> None:
+        modal = visible_modal_dialog()
+        wizard.errors.append(
+            f"Wizard timed out at phase {wizard.phase}: {type(modal).__name__}"
+        )
+        wizard.stop()
+        if modal is not None:
+            modal.reject()
+
+    wizard_watchdog.timeout.connect(expire_wizard)
+    wizard_watchdog.start(30_000)
+    wizard.start()
+    try:
+        qtbot.mouseClick(
+            window.dataset_panel.sidebar.import_btn, Qt.MouseButton.LeftButton
+        )
+        qtbot.waitUntil(
+            lambda: bool(wizard.errors)
+            or service.get_state().interpretation.has_applied_interpretation,
+            timeout=20_000,
+        )
+        assert not wizard.errors
+        assert wizard.phase == 5
+        assert service.get_state().raw.count == 3
+    finally:
+        wizard.stop()
+        wizard_watchdog.stop()
+    qtbot.waitUntil(
+        lambda: window.dataset_panel.sidebar.chan_select_btn.isEnabled(), timeout=10_000
+    )
+    assert len({item["subject"] for item in service.get_state().raw.metadata}) == 3
+
+    # One bounded driver handles the real nested modal event loops. Unexpected
+    # warning/error dialogs fail the test instead of being silently accepted.
+    pending: list[tuple[type, Any, Any]] = []
+    visited: list[str] = []
+    failures: list[str] = []
+    deadline = monotonic() + 10
+    timer = QTimer(window)
+
+    def poll_dialogs() -> None:
+        nonlocal deadline
+        dialog = visible_modal_dialog()
+        try:
+            assert not isinstance(dialog, ModalAlertDialog), (
+                f"{dialog.windowTitle()}: {dialog.message_label.text()}"
+            )
+            assert not isinstance(dialog, QMessageBox), (
+                f"{dialog.windowTitle()}: {dialog.text()}"
+            )
+            if pending:
+                # The parent split dialog can remain active according to Qt
+                # while its child preview is visibly open. Follow that exact
+                # expected surface, as the existing two-step split test does.
+                dialog = next(
+                    (
+                        widget
+                        for widget in QApplication.allWidgets()
+                        if isinstance(widget, pending[0][0]) and widget.isVisible()
+                    ),
+                    dialog,
+                )
+            if pending:
+                assert monotonic() <= deadline, (
+                    f"Modal timed out: {pending[0][0].__name__}; visible={type(dialog).__name__}; visited={visited}; preview={getattr(dialog, '_preview_status', None)!r}; error={getattr(dialog, '_preview_error', None)!r}"
+                )
+            if pending and isinstance(dialog, pending[0][0]) and pending[0][1](dialog):
+                _, _, complete = pending.pop(0)
+                deadline = monotonic() + 10
+                visited.append(type(dialog).__name__)
+                # A callback can open the next nested modal. Rearm before it
+                # enters that loop, just like the existing split-dialog driver.
+                timer.stop()
+                timer.start(10)
+                complete(dialog)
+        except Exception as exc:
+            failures.append(f"{type(exc).__name__}: {exc}")
+            timer.stop()
+            if dialog is not None:
+                dialog.reject()
+
+    def ok(dialog) -> None:
+        button = dialog.findChild(QDialogButtonBox).button(
+            QDialogButtonBox.StandardButton.Ok
+        )
+        assert button is not None and button.isEnabled()
+        qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
+
+    def click(button) -> None:
+        assert button.isEnabled()
+        qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
+        assert not failures, failures
+
+    def open_page(index: int) -> None:
+        click(window.nav_btns[index])
+        qtbot.waitUntil(
+            lambda: index in window._loaded_panel_indices
+            and window.stack.currentIndex() == index,
+            timeout=10_000,
+        )
+
+    timer.timeout.connect(poll_dialogs)
+    timer.start(10)
+    try:
+
+        def select_channels(dialog) -> None:
+            assert dialog.list_widget.count() == 4
+            dialog.list_widget.item(3).setCheckState(Qt.CheckState.Unchecked)
+            ok(dialog)
+
+        pending.append((ChannelSelectionDialog, lambda _d: True, select_channels))
+        click(window.dataset_panel.sidebar.chan_select_btn)
+        qtbot.waitUntil(
+            lambda: service.get_state().preprocessed.channel_names
+            == ["C3", "C4", "Cz"],
+            timeout=10_000,
+        )
+
+        def choose_montage(dialog) -> None:
+            dialog.montage_combo.setCurrentText("standard_1020")
+            assert dialog.apply_button.isEnabled()
+            click(dialog.apply_button)
+
+        pending.append((PickMontageDialog, lambda _d: True, choose_montage))
+        click(window.dataset_panel.sidebar.electrode_layout_btn)
+        qtbot.waitUntil(
+            lambda: service.get_state().electrode_layout.positioned_channel_count == 3,
+            timeout=10_000,
+        )
+        open_page(1)
+
+        def resample(dialog) -> None:
+            dialog.sfreq_spin.setValue(64)
+            ok(dialog)
+
+        pending.append((ResampleDialog, lambda _d: True, resample))
+        click(window.preprocess_panel.sidebar.btn_resample)
+        qtbot.waitUntil(
+            lambda: all(
+                raw.get_mne().info["sfreq"] == 64
+                for raw in study.preprocessed_data_list
+            ),
+            timeout=10_000,
+        )
+        qtbot.waitUntil(
+            lambda: window.preprocess_panel.sidebar.btn_epoch.isEnabled(),
+            timeout=10_000,
+        )
+
+        def epoch(dialog) -> None:
+            dialog.tmin_spin.setValue(0)
+            dialog.tmax_spin.setValue(1.5)
+            dialog.baseline_check.setChecked(False)
+            if dialog.confirmation_check.isVisible():
+                dialog.confirmation_check.setChecked(True)
+            click(dialog.create_button)
+
+        pending.append((EpochingDialog, lambda _d: True, epoch))
+        click(window.preprocess_panel.sidebar.btn_epoch)
+        qtbot.waitUntil(
+            lambda: bool(failures) or service.get_state().preprocessed.is_epoched,
+            timeout=10_000,
+        )
+        assert not failures, failures
+        assert all(
+            isinstance(raw.get_mne(), mne.BaseEpochs)
+            for raw in study.preprocessed_data_list
+        )
+        assert sum(len(raw.get_mne()) for raw in study.preprocessed_data_list) == 36
+        open_page(2)
+        sidebar = window.training_panel.sidebar
+
+        def split_strategy(dialog) -> None:
+            dialog.train_type_combo.setCurrentText("Full Data")
+            dialog.test_combo.setCurrentText("By Subject")
+            dialog.val_combo.setCurrentText("Disable")
+            dialog.cv_check.setChecked(True)
+            click(dialog.btn_confirm)
+
+        def split_preview(dialog) -> None:
+            combo, entry = dialog.test_widgets[0][:2]
+            assert combo.currentText() == "K Fold"
+            entry.setText("3")
+            # Editing the real field invalidates the prior preview. Wait for
+            # the newly generated receipt before clicking Save.
+            pending.insert(
+                0,
+                (
+                    DataSplittingPreviewDialog,
+                    preview_ready,
+                    lambda d: click(d.btn_confirm),
+                ),
+            )
+
+        def preview_ready(dialog) -> bool:
+            assert dialog._preview_status != "failed", dialog._preview_error
+            return (
+                dialog._preview_status == PREVIEW_STATUS_SUCCEEDED
+                and dialog.btn_confirm.isEnabled()
+            )
+
+        pending.extend(
+            [
+                (DataSplittingDialog, lambda _d: True, split_strategy),
+                (
+                    DataSplittingPreviewDialog,
+                    lambda d: bool(d.test_widgets),
+                    split_preview,
+                ),
+            ]
+        )
+        click(sidebar.btn_split)
+        qtbot.waitUntil(
+            lambda: service.get_state().dataset.split_spec_saved, timeout=10_000
+        )
+        specification = service.get_state().dataset.split_specification
+        assert service.get_state().dataset.split_preview_summary["total_count"] == 3
+        assert specification["test_splitters"][0] == {
+            "split_type": "By Subject",
+            "split_unit": "K Fold",
+            "value": "3",
+            "is_option": True,
+        }
+
+        def model(dialog) -> None:
+            item = next(
+                dialog.model_results.item(i)
+                for i in range(dialog.model_results.count())
+                if dialog.model_results.item(i).data(Qt.ItemDataRole.UserRole)
+                == "braindecode.eegnet"
+            )
+            dialog.model_results.setCurrentItem(item)
+            click(dialog.confirm_btn)
+
+        pending.append(
+            (ModelSelectionDialog, lambda d: not d._provider_check_pending, model)
+        )
+        click(sidebar.btn_model)
+
+        def device(dialog) -> None:
+            dialog.device_list.setCurrentRow(0)
+            ok(dialog)
+
+        def settings(dialog) -> None:
+            for editor, value in (
+                (dialog.epoch_entry, "1"),
+                (dialog.bs_entry, "2"),
+                (dialog.repeat_entry, "1"),
+                (dialog.checkpoint_entry, "0"),
+            ):
+                dialog.content_scroll.ensureWidgetVisible(editor)
+                replace_line_edit_text(editor, value)
+            dialog.content_scroll.ensureWidgetVisible(dialog.evaluation_combo)
+            qtbot.mouseClick(dialog.evaluation_combo, Qt.MouseButton.LeftButton)
+            qtbot.keyClick(dialog.evaluation_combo, Qt.Key.Key_End)
+            qtbot.keyClick(dialog.evaluation_combo, Qt.Key.Key_Return)
+            assert dialog.evaluation_combo.currentText() == "Last epoch"
+            assert (dialog.epoch_entry.text(), dialog.bs_entry.text()) == ("1", "2")
+            dialog.content_scroll.ensureWidgetVisible(dialog.dev_btn)
+            click(dialog.dev_btn)
+            assert dialog.device == "cpu"
+            assert (dialog.epoch_entry.text(), dialog.bs_entry.text()) == ("1", "2")
+            dialog.content_scroll.ensureWidgetVisible(dialog.out_btn)
+            click(dialog.out_btn)
+            assert (dialog.epoch_entry.text(), dialog.bs_entry.text()) == ("1", "2")
+            ok(dialog)
+
+        pending.extend(
+            [
+                (TrainingSettingDialog, lambda _d: True, settings),
+                (DeviceSettingDialog, lambda _d: True, device),
+            ]
+        )
+        click(sidebar.btn_setting)
+        qtbot.waitUntil(
+            lambda: bool(failures) or sidebar.btn_start.isEnabled(), timeout=10_000
+        )
+        assert not failures, failures
+        options = service.get_state().training.training_option
+        assert options["epoch"] == 1
+        assert options["batch_size"] == 2
+        assert options["device"] == "cpu"
+        click(sidebar.btn_start)
+        qtbot.waitUntil(
+            lambda: bool(failures)
+            or service.get_state().training.terminal_outcome.is_terminal,
+            timeout=60_000,
+        )
+        assert not failures, failures
+        state = service.get_state().training
+        assert state.terminal_outcome.state is TrainingOutcomeState.COMPLETED
+        assert state.finished_run_count == 3
+        plans = service.training_runtime.training_plan_holders()
+        assert len(plans) == 3
+        saved = [EvalRecord.load(plan.get_plans()[0].target_path) for plan in plans]
+        assert all(
+            record is not None and np.isfinite(record.output).all() for record in saved
+        )
+        open_page(3)
+        evaluation = window.evaluation_panel
+        qtbot.waitUntil(
+            lambda: evaluation._evaluation_render is not None
+            and evaluation.evaluation_background_work_idle(),
+            timeout=10_000,
+        )
+        np.testing.assert_array_equal(
+            evaluation._evaluation_render.data.labels, saved[0].label
+        )
+        np.testing.assert_array_equal(
+            evaluation._evaluation_render.data.outputs, saved[0].output
+        )
+        assert evaluation.matrix_widget.fig.axes[0].images
+        open_page(4)
+        panel = window.visualization_panel
+        panel.tabs.setCurrentWidget(panel.tab_map)
+        qtbot.waitUntil(lambda: panel.compute_saliency_btn.isEnabled(), timeout=10_000)
+        click(panel.compute_saliency_btn)
+        _wait_for_visible_finite_saliency(qtbot, panel)
+        selection = evaluation._evaluation_render.request.selection
+        open_page(3)
+        qtbot.waitUntil(
+            lambda: evaluation.evaluation_background_work_idle(), timeout=10_000
+        )
+        assert evaluation._evaluation_render.request.selection == selection
+        np.testing.assert_array_equal(
+            evaluation._evaluation_render.data.outputs, saved[0].output
+        )
+        open_page(4)
+        _wait_for_visible_finite_saliency(qtbot, panel)
+        assert not pending and not failures, (pending, failures)
+        assert visited.count("DataSplittingPreviewDialog") == 2
+        assert {
+            "ChannelSelectionDialog",
+            "PickMontageDialog",
+            "EpochingDialog",
+            "TrainingSettingDialog",
+            "DeviceSettingDialog",
+        } <= set(visited)
+    finally:
+        timer.stop()
+
+
 def _cached_gradient_coverage(window: Any):
     publication = window.visualization_panel._application_view_publication
     if publication is None:

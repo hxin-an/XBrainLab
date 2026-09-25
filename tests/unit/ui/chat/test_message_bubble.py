@@ -59,7 +59,7 @@ class TestMessageBubble:
         bubble.adjust_width(width)
         qtbot.wait(20)
 
-        text_view = bubble.text_edit
+        text_view = bubble.content_view.text_views[0]
         document = text_view.document()
         document_layout = document.documentLayout() if document is not None else None
         assert document_layout is not None
@@ -101,7 +101,7 @@ class TestMessageBubble:
         bubble.adjust_width(width)
         qtbot.wait(20)
 
-        text_view = bubble.text_edit
+        text_view = bubble.content_view.text_views[0]
         document = text_view.document()
         document_layout = document.documentLayout() if document is not None else None
         assert document_layout is not None
@@ -139,13 +139,13 @@ class TestMessageBubble:
             bubble.adjust_width(420)
         qtbot.wait(20)
 
-        assert assistant.text_edit.viewport().y() > 0
-        assert attention.text_edit.viewport().y() == 0
-        assert user.text_edit.viewport().y() > 0
+        assert assistant.content_view.text_views[0].viewport().y() > 0
+        assert attention.content_view.text_views[0].viewport().y() == 0
+        assert user.content_view.text_views[0].viewport().y() > 0
 
         assistant.set_presentation_kind(MessagePresentationKind.ATTENTION)
         qtbot.wait(20)
-        assert assistant.text_edit.viewport().y() == 0
+        assert assistant.content_view.text_views[0].viewport().y() == 0
 
     def test_initialization(self, qtbot):
         text = "Hello **World**"
@@ -155,7 +155,7 @@ class TestMessageBubble:
         # Check raw text
         assert bubble.get_text() == text
         # Check rendered markdown (rough check)
-        text_edit = bubble.text_edit
+        text_edit = bubble.content_view.text_views[0]
         assert text_edit is not None
         assert text_edit.toPlainText() == "Hello World"
 
@@ -176,7 +176,7 @@ class TestMessageBubble:
         bubble.adjust_width(container_width)
 
         bubble_frame = bubble.bubble_frame
-        text_edit = bubble.text_edit
+        text_edit = bubble.content_view.text_views[0]
         assert bubble_frame is not None
         assert text_edit is not None
 
@@ -349,11 +349,14 @@ class TestMessageBubble:
         assert not bubble.kind_label.isHidden()
         assert bubble.bubble_frame.width() <= ceil(width * 0.84)
         assert bubble.kind_label.width() >= bubble.kind_label.sizeHint().width()
-        document = bubble.text_edit.document()
+        document = bubble.content_view.text_views[0].document()
         layout = document.documentLayout() if document is not None else None
         assert layout is not None
-        assert bubble.text_edit.horizontalScrollBar().maximum() == 0
-        assert bubble.text_edit.height() >= ceil(layout.documentSize().height()) + 8
+        assert bubble.content_view.text_views[0].horizontalScrollBar().maximum() == 0
+        assert (
+            bubble.content_view.text_views[0].height()
+            >= ceil(layout.documentSize().height()) + 8
+        )
 
     def test_resize_contains_code_and_reuses_rendered_widgets(
         self,
@@ -408,10 +411,7 @@ class TestMessageBubble:
         qtbot.wait(20)
 
         assert bubble.bubble_frame.width() <= int(container.width() * 0.84) + 1
-        assert bubble.text_edit.horizontalScrollBarPolicy() == (
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        assert bubble.text_edit.horizontalScrollBar().maximum() == 0
+        assert bubble.content_view.text_views == []
         assert len(bubble.code_blocks) == 1
         code_block = bubble.code_blocks[0]
         assert code_block.horizontalScrollBarPolicy() == (
@@ -633,13 +633,16 @@ class TestMessageBubble:
         bubble.adjust_width(280)
 
         assert bubble.bubble_frame.width() <= int(280 * 0.84) + 1
-        assert bubble.text_edit.horizontalScrollBar().maximum() == 0
+        assert bubble.content_view.text_views[0].horizontalScrollBar().maximum() == 0
         assert bubble.height() >= wide_height
-        document = bubble.text_edit.document()
+        document = bubble.content_view.text_views[0].document()
         assert document is not None
         layout = document.documentLayout()
         assert layout is not None
-        assert bubble.text_edit.height() >= ceil(layout.documentSize().height()) + 8
+        assert (
+            bubble.content_view.text_views[0].height()
+            >= ceil(layout.documentSize().height()) + 8
+        )
 
     @pytest.mark.parametrize("text", ["hi", "hello"])
     def test_short_user_message_fits_content_without_trailing_void(
@@ -656,7 +659,7 @@ class TestMessageBubble:
         bubble.adjust_width(380)
 
         bubble_frame = bubble.bubble_frame
-        text_edit = bubble.text_edit
+        text_edit = bubble.content_view.text_views[0]
         assert bubble_frame is not None
         assert text_edit is not None
 
@@ -683,8 +686,8 @@ class TestMessageBubble:
         natural_text_width = bubble.content_view.natural_content_width()
         bubble.adjust_width(380)
 
-        assert bubble.text_edit is not None
-        assert bubble.text_edit.width() - ceil(natural_text_width) <= 2
+        assert bubble.content_view.text_views[0] is not None
+        assert bubble.content_view.text_views[0].width() - ceil(natural_text_width) <= 2
 
     def test_short_two_word_message_stays_on_one_visual_line(self, qtbot) -> None:
         bubble = MessageBubble("EEG ready", is_user=False)
@@ -692,11 +695,11 @@ class TestMessageBubble:
 
         bubble.adjust_width(380)
 
-        document = bubble.text_edit.document()
+        document = bubble.content_view.text_views[0].document()
         layout = document.documentLayout() if document is not None else None
         assert layout is not None
         assert layout.documentSize().height() <= (
-            bubble.text_edit.fontMetrics().lineSpacing() + 3
+            bubble.content_view.text_views[0].fontMetrics().lineSpacing() + 3
         )
 
     def test_streaming_suffix_reuses_existing_code_widget_and_scroll(self, qtbot):
@@ -780,7 +783,7 @@ class TestMessageBubble:
 
         bubble.adjust_width(260)
 
-        text_edit = bubble.text_edit
+        text_edit = bubble.content_view.text_views[0]
         assert text_edit is not None
         document = text_edit.document()
         assert document is not None
@@ -808,10 +811,13 @@ class TestMessageBubble:
         qtbot.wait(30)
 
         assert bubble.height() > initial_height
-        assert bubble.text_edit is not None
-        document = bubble.text_edit.document()
+        assert bubble.content_view.text_views[0] is not None
+        document = bubble.content_view.text_views[0].document()
         assert document is not None
-        assert bubble.text_edit.height() >= ceil(document.size().height()) + 8
+        assert (
+            bubble.content_view.text_views[0].height()
+            >= ceil(document.size().height()) + 8
+        )
 
     def test_deferred_reflow_is_owned_by_the_bubble(self, qapp):
         bubble = MessageBubble("Starting.", is_user=False)

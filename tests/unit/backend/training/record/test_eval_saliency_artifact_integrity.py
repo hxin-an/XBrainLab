@@ -152,6 +152,75 @@ def _saved_artifact(tmp_path: Path) -> _SavedArtifact:
     return _read_artifact(tmp_path)
 
 
+@pytest.mark.parametrize(
+    "malformation",
+    [
+        "missing_store",
+        "non_mapping",
+        "non_list",
+        "non_entry",
+        "duplicate_class",
+        "missing_array",
+    ],
+)
+def test_load_rejects_malformed_store_index_before_constructing_record(
+    tmp_path: Path,
+    malformation: str,
+) -> None:
+    artifact = _saved_artifact(tmp_path)
+    stores = artifact.payload["saliency_stores"]
+    if malformation == "missing_store":
+        del stores["gradient"]
+    elif malformation == "non_mapping":
+        artifact.payload["saliency_stores"] = []
+    elif malformation == "non_list":
+        stores["gradient"] = {}
+    elif malformation == "non_entry":
+        stores["gradient"] = [None]
+    elif malformation == "duplicate_class":
+        stores["gradient"].append(dict(stores["gradient"][0]))
+    else:
+        stores["gradient"][0]["array"] = "not-present"
+    artifact.write()
+
+    assert EvalRecord.load(str(tmp_path)) is None
+
+
+def test_unsealed_constructor_detaches_nested_metadata_and_round_trips(
+    tmp_path: Path,
+) -> None:
+    parameters = {"SmoothGrad": {"nt_samples": 5, "stdevs": 0.25}}
+    seeds = {"SmoothGrad": 7}
+    manifest = {"nested": {"value": [1, 2]}}
+    record = EvalRecord(
+        label=np.array([0, 1]),
+        output=np.array([[0.9, 0.1], [0.1, 0.9]]),
+        gradient={},
+        gradient_input={},
+        smoothgrad={},
+        smoothgrad_sq={},
+        vargrad={},
+        saliency_method_parameters=parameters,
+        saliency_noise_seeds=seeds,
+        saliency_integrity_manifest=manifest,
+    )
+    parameters["SmoothGrad"]["nt_samples"] = 100
+    seeds["SmoothGrad"] = 99
+    manifest["nested"]["value"].append(3)
+
+    assert record.saliency_method_parameters == {
+        "SmoothGrad": {"nt_samples": 5, "stdevs": 0.25}
+    }
+    assert record.saliency_noise_seeds == {"SmoothGrad": 7}
+    assert record.saliency_integrity_manifest == {"nested": {"value": [1, 2]}}
+    record.export(str(tmp_path))
+    loaded = EvalRecord.load(str(tmp_path))
+    assert loaded is not None
+    assert loaded.saliency_method_parameters == record.saliency_method_parameters
+    assert loaded.saliency_noise_seeds == record.saliency_noise_seeds
+    assert loaded.saliency_integrity_manifest == record.saliency_integrity_manifest
+
+
 def test_load_rejects_attribution_mutation_outside_old_sentinels(
     tmp_path: Path,
 ) -> None:

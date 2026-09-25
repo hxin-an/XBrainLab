@@ -68,8 +68,6 @@ class SaliencySettingDialog(BaseDialog):
 
     def __init__(self, parent, saliency_params=None):
         self.saliency_params = saliency_params
-        self.algo_map: dict[str, list[str] | None] = {}
-        self.params_tables: dict[str, QWidget] = {}
         self.method_checks: dict[str, QCheckBox] = {}
         self.method_param_pages: dict[str, QWidget] = {}
         self.param_editors: dict[str, dict[str, QSpinBox | QDoubleSpinBox]] = {}
@@ -78,24 +76,12 @@ class SaliencySettingDialog(BaseDialog):
         self.setMinimumWidth(440)
         self.setStyleSheet(dark_dialog_stylesheet() + self._dialog_style())
 
-        self.check_init_data()
-        if self.algo_map:
-            self.display_data()
-
-    def check_init_data(self):
-        """Populate the algorithm map from backend saliency method definitions."""
-        for method in supported_saliency_methods:
-            self.algo_map[method] = list(DEFAULT_ADVANCED_SALIENCY_PARAMS)
-
     def init_ui(self):
         """Initialize method checkboxes and dynamic parameter tabs."""
         layout = QVBoxLayout(self)
         layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         layout.setContentsMargins(18, 16, 18, 14)
         layout.setSpacing(12)
-
-        if not self.algo_map:
-            self.check_init_data()
 
         methods_title = QLabel("Compute methods")
         methods_title.setObjectName("SaliencySectionTitle")
@@ -118,7 +104,7 @@ class SaliencySettingDialog(BaseDialog):
         )
         if not selected_methods:
             selected_methods = set(ADVANCED_SALIENCY_METHODS)
-        for method in self.algo_map:
+        for method in supported_saliency_methods:
             check = QCheckBox(self._display_method_name(method))
             check.setObjectName(f"SaliencyMethodCheck_{method}")
             check.setChecked(method in selected_methods)
@@ -196,10 +182,9 @@ class SaliencySettingDialog(BaseDialog):
             alignment=Qt.AlignmentFlag.AlignLeft,
         )
 
-        for method in self.algo_map:
+        for method in supported_saliency_methods:
             page = self._build_method_param_page(method)
             self.method_param_pages[method] = page
-            self.params_tables[method] = page
 
         layout.addWidget(params_group)
 
@@ -211,18 +196,6 @@ class SaliencySettingDialog(BaseDialog):
         self.button_box.rejected.connect(self.reject)
         layout.addWidget(self.button_box)
         self._sync_method_tabs()
-
-    def display_data(self):
-        """Populate parameter widgets with default or previously saved values."""
-        for algo, params_list in self.algo_map.items():
-            editors = self.param_editors.get(algo)
-            if not editors:
-                continue
-            for param in params_list or []:
-                editor = editors.get(param)
-                if editor is None:
-                    continue
-                self._set_editor_value(editor, self._initial_param_value(algo, param))
 
     def accept(self):
         """Parse and validate all parameter values, then accept the dialog."""
@@ -277,7 +250,7 @@ class SaliencySettingDialog(BaseDialog):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.param_editors[method] = {}
-        for row, param in enumerate(self.algo_map.get(method) or []):
+        for row, param in enumerate(DEFAULT_ADVANCED_SALIENCY_PARAMS):
             label_text, tooltip = _PARAMETER_PRESENTATION.get(
                 param,
                 (param.replace("_", " ").capitalize(), param),

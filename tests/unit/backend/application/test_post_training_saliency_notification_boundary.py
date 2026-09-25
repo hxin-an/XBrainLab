@@ -84,15 +84,17 @@ def test_capture_exit_queue_failure_keeps_nested_generation_retryable(
         boundary.capture(),
         boundary.capture(),
     ):
-        assert boundary.defer(notification) is True
+        assert boundary.reserve(notification) is True
+        assert boundary.publish_reserved(notification) is True
 
     assert delivered == []
 
     with boundary.capture():
-        assert boundary.defer(notification) is True
+        assert boundary.reserve(notification) is True
+        assert boundary.publish_reserved(notification) is True
 
     assert delivered == [notification]
-    assert boundary.defer(notification) is False
+    assert boundary.reserve(notification) is False
     assert enqueue_attempts == 2
     assert boundary._reservations == {}
 
@@ -115,7 +117,8 @@ def test_concurrent_capture_retry_after_handoff_failure_delivers_once(
         pytest.raises(RuntimeError, match="transient queue handoff failure"),
         boundary.capture(),
     ):
-        assert boundary.defer(notification) is True
+        assert boundary.reserve(notification) is True
+        assert boundary.publish_reserved(notification) is True
     monkeypatch.setattr(boundary, "_enqueue_deliveries", original_enqueue)
 
     barrier = Barrier(9)
@@ -127,7 +130,9 @@ def test_concurrent_capture_retry_after_handoff_failure_delivers_once(
         barrier.wait()
         try:
             with boundary.capture():
-                result = boundary.defer(notification)
+                result = boundary.reserve(notification)
+                if result:
+                    boundary.publish_reserved(notification)
             with result_lock:
                 results.append(result)
         except BaseException as exc:
@@ -174,19 +179,21 @@ def test_reentrant_delivery_and_callback_failure_do_not_stall_newer_event() -> N
     def deliver(notification: SaliencyTerminalNotification) -> None:
         attempts.append(notification)
         if notification == first and attempts.count(first) == 1:
-            assert boundary.defer(second) is True
+            assert boundary.reserve(second) is True
+            assert boundary.publish_reserved(second) is True
             raise RuntimeError("observer failure")
         delivered.append(notification)
 
     boundary = PostCommandSaliencyNotificationBoundary(deliver)
 
-    assert boundary.defer(first) is True
+    assert boundary.reserve(first) is True
+    assert boundary.publish_reserved(first) is True
     assert boundary.wait_for_idle(timeout=2.0)
 
     assert delivered == [first, second]
     assert attempts == [first, first, second]
-    assert boundary.defer(first) is False
-    assert boundary.defer(second) is False
+    assert boundary.reserve(first) is False
+    assert boundary.reserve(second) is False
     assert boundary._reservations == {}
 
 
@@ -214,7 +221,8 @@ def test_timer_constructor_failure_uses_autonomous_thread_fallback(
         _TimerConstructorFailure,
     )
 
-    assert boundary.defer(notification) is True
+    assert boundary.reserve(notification) is True
+    assert boundary.publish_reserved(notification) is True
     assert delivered.wait(timeout=2.0)
     assert boundary.wait_for_idle(timeout=0.1)
     assert attempts == [notification, notification]
@@ -263,7 +271,8 @@ def test_retry_owner_constructor_matrix_fails_closed_without_losing_queue(
             _ThreadFailure,
         )
 
-        assert boundary.defer(notification) is True
+        assert boundary.reserve(notification) is True
+        assert boundary.publish_reserved(notification) is True
 
         state = boundary.delivery_state()
         assert state.pending_generations == (notification.status.generation,)
@@ -307,6 +316,7 @@ def test_concurrent_reservation_has_one_owner_and_remains_retryable() -> None:
 
     assert sorted(results) == [False] * 7 + [True]
     assert boundary.release(notification) is True
-    assert boundary.defer(notification) is True
+    assert boundary.reserve(notification) is True
+    assert boundary.publish_reserved(notification) is True
     assert delivered == [notification]
     assert boundary._reservations == {}

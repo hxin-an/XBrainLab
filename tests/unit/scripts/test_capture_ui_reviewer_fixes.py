@@ -98,17 +98,37 @@ def test_surface_capture_can_skip_scroll_clipped_child_references(
         _dispose(qapp, surface)
 
 
-def test_surface_inventory_preserves_existing_artifacts_and_adds_review_states() -> (
-    None
-):
-    assert len(capture_script.LEGACY_REVIEWER_FIX_SURFACES) == 29
-    assert "preprocess-filtering-toggled.png" in (
-        capture_script.LEGACY_REVIEWER_FIX_SURFACES
-    )
-    assert capture_script.REVIEWER_FIX_SURFACES[:29] == (
-        capture_script.LEGACY_REVIEWER_FIX_SURFACES
-    )
-    assert capture_script.REVIEWER_FIX_SURFACES[29:] == (
+def test_surface_inventory_preserves_capture_artifacts_in_order() -> None:
+    assert capture_script.REVIEWER_FIX_SURFACES == (
+        "preprocess-no-data.png",
+        "preprocess-loaded.png",
+        "preprocess-loaded-psd.png",
+        "preprocess-locked.png",
+        "preprocess-unavailable.png",
+        "preprocessing-history-no-data.png",
+        "preprocessing-history-locked.png",
+        "preprocess-filtering-dialog.png",
+        "preprocess-filtering-toggled.png",
+        "preprocess-filtering-invalid.png",
+        "preprocess-rereference-average.png",
+        "preprocess-rereference-selected.png",
+        "preprocess-rereference-selection-required.png",
+        "preprocess-normalize-dialog.png",
+        "preprocess-resample-dialog.png",
+        "training-history-empty.png",
+        "training-setting-100-percent.png",
+        "training-setting-125-percent.png",
+        "training-setting-150-percent.png",
+        "training-setting-100-percent-resource-preview.png",
+        "training-setting-125-percent-resource-preview.png",
+        "training-setting-150-percent-resource-preview.png",
+        "smart-parser-simple.png",
+        "smart-parser-regex.png",
+        "smart-parser-folder.png",
+        "smart-parser-fixed.png",
+        "import-report-ready.png",
+        "import-review-will-save.png",
+        "import-review-loaded-recipe.png",
         "saliency-setting-empty.png",
         "saliency-setting-single-method.png",
         "saliency-setting-multi-method.png",
@@ -213,8 +233,14 @@ def test_extended_review_capture_writes_all_full_content_frames(qapp, tmp_path) 
     finally:
         qapp.setStyleSheet(original_stylesheet)
 
-    for filename in capture_script.EXTENDED_REVIEW_SURFACES:
-        screenshot = tmp_path / filename
+    assert {path.name for path in tmp_path.glob("*.png")} == {
+        "saliency-setting-empty.png",
+        "saliency-setting-single-method.png",
+        "saliency-setting-multi-method.png",
+        "data-splitting-step-2-ratio.png",
+        "data-splitting-step-2-cross-validation.png",
+    }
+    for screenshot in tmp_path.glob("*.png"):
         assert screenshot.is_file()
         with Image.open(screenshot) as image:
             assert image.width >= 400

@@ -1,15 +1,17 @@
 """Bar chart widget for per-class precision, recall, and F1-score visualization."""
 
 from contextlib import suppress
+from textwrap import fill
 from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from PyQt6.QtWidgets import QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFrame, QScrollArea, QVBoxLayout, QWidget
 
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.ui.panels.evaluation.confusion_matrix import _ResponsiveFigureCanvas
 from XBrainLab.ui.styles.theme import Theme
 
 
@@ -48,7 +50,7 @@ class MetricsBarChartWidget(QWidget):
 
         # Initial Placeholder
         figure = Figure(figsize=(5, 4), dpi=100)
-        canvas = FigureCanvas(figure)
+        canvas = _ResponsiveFigureCanvas(figure)
         self.fig: Figure | None = figure
         self.canvas: FigureCanvas | None = canvas
         self.ax: Any = figure.add_subplot(111)
@@ -66,7 +68,11 @@ class MetricsBarChartWidget(QWidget):
         self.ax.axis("off")
 
         self.plot_layout.addWidget(canvas)
-        layout.addWidget(self.plot_container)
+        scroll = QScrollArea()
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self.plot_container)
+        layout.addWidget(scroll)
 
     def update_plot(self, metrics, *, class_names: dict[int, str] | None = None):
         """Update the bar chart with metrics data.
@@ -145,7 +151,11 @@ class MetricsBarChartWidget(QWidget):
             self.ax.set_title("Per-Class Metrics")
             self.ax.set_xticks(x)
             labels = [
-                (class_names or {}).get(class_index, f"Class {class_index}")
+                fill(
+                    (class_names or {}).get(class_index, f"Class {class_index}"),
+                    width=12,
+                    break_long_words=False,
+                )
                 for class_index in classes
             ]
             self.ax.set_xticklabels(labels)
@@ -174,13 +184,6 @@ class MetricsBarChartWidget(QWidget):
                 color=Theme.TEXT_MUTED,
             )
 
-            try:
-                self.fig.tight_layout()
-            except Exception as layout_error:
-                logger.warning(
-                    "Skipping metrics bar chart tight_layout: %s",
-                    layout_error,
-                )
             self._draw_canvas_now()
 
         except Exception as e:
@@ -191,7 +194,10 @@ class MetricsBarChartWidget(QWidget):
         if self.canvas is None:
             return
         with suppress(RuntimeError):
-            self.canvas.draw()
+            if isinstance(self.canvas, _ResponsiveFigureCanvas):
+                self.canvas.fit_layout()
+            else:
+                self.canvas.draw()
 
     def _release_canvas(self) -> None:
         if self.canvas is None:

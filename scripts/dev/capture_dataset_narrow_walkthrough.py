@@ -708,7 +708,7 @@ def _scenario_evidence(
             Qt.Orientation.Horizontal,
         ),
         "assistant": _scroll_maximum(
-            chat_panel.scroll_area,
+            chat_panel.transcript_view,
             Qt.Orientation.Horizontal,
         ),
     }

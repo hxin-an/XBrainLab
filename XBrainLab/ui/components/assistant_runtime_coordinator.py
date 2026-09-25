@@ -27,7 +27,6 @@ class AssistantRuntimeCoordinator:
         self._expected_launch_spec: AssistantRuntimeLaunchSpec | None = None
         self._expected_activation_id: int | None = None
         self._active_runtime: AssistantRuntimeSnapshot | None = None
-        self._last_rejection_reason = ""
 
     @property
     def current(self) -> AssistantRuntimeSnapshot:
@@ -39,11 +38,6 @@ class AssistantRuntimeCoordinator:
         return self._expected_activation_id
 
     @property
-    def last_rejection_reason(self) -> str:
-        """Return the most recent rejected worker-transition reason."""
-        return self._last_rejection_reason
-
-    @property
     def owns_local_runtime(self) -> bool:
         """Return whether active or in-flight state still owns a local model."""
         active = self._active_runtime
@@ -51,6 +45,10 @@ class AssistantRuntimeCoordinator:
         return bool(
             (active is not None and active.backend_mode == "local")
             or (expected is not None and expected.backend_mode == "local")
+            or (
+                self._snapshot.cleanup_pending
+                and self._snapshot.backend_mode == "local"
+            )
         )
 
     def begin_loading(
@@ -116,14 +114,10 @@ class AssistantRuntimeCoordinator:
         it, even when the backend/model pair happens to match.
         """
         if not isinstance(payload, AssistantRuntimeSnapshot):
-            self._last_rejection_reason = "runtime transition is not typed"
             return False
         snapshot = payload
-        validation_error = snapshot.validation_error()
-        if validation_error:
-            self._last_rejection_reason = validation_error
+        if snapshot.validation_error():
             return False
-        self._last_rejection_reason = ""
         expected = self._expected_launch_spec
         expected_id = self._expected_activation_id
         payload_id = self._activation_id(payload)
@@ -162,6 +156,8 @@ class AssistantRuntimeCoordinator:
         }
         if snapshot.phase is AssistantRuntimePhase.READY:
             self._active_runtime = snapshot
+        elif not snapshot.initialized:
+            self._active_runtime = None
         elif (
             snapshot.phase is AssistantRuntimePhase.FAILED
             and expected is not None
@@ -237,6 +233,14 @@ class AssistantRuntimeCoordinator:
         request_context: AssistantRuntimeSnapshot | None = None,
     ) -> AssistantRuntimeSnapshot:
         normalized_message = " ".join(str(message or "").split())
+        # A presentation failure cannot release worker-owned process resources.
+        if self._snapshot.cleanup_pending:
+            return replace(
+                self._snapshot,
+                phase=AssistantRuntimePhase.FAILED,
+                error=normalized_message,
+                activation_id=activation_id,
+            )
         if preserve_active_runtime and self._active_runtime is not None:
             failed = replace(
                 self._active_runtime,

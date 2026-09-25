@@ -1,6 +1,6 @@
 # XBrainLab Agent 目標
 
-最後更新：`2026-08-30`
+最後更新：`2026-09-21`
 
 這份文件是 XBrainLab Assistant 產品目標的唯一權威。Runtime inventory、目前測試集合與歷史
 artifact 只能描述 current implementation，不能反推本文件的產品契約。
@@ -208,7 +208,7 @@ publication產生。若 publication generation 在生成、repair、confirmation
 
 ## Strict model output contract
 
-Granite 每次只能輸出一個 JSON object，且 top level 恰有三個欄位：
+每個受支援模型每次只能提出一個 JSON object，且 top level 恰有三個欄位：
 
 ```json
 {
@@ -218,7 +218,11 @@ Granite 每次只能輸出一個 JSON object，且 top level 恰有三個欄位�
 }
 ```
 
-禁止 Markdown fence、前後 prose、array、多個 calls、額外欄位、寬鬆抽取與 legacy fallback。
+2026-09-21 使用者批准正式研究基線前的共用格式相容性：接受裸 JSON，或整份回答恰為
+一層 `json`／無語言 Markdown code fence 包住的 JSON。只能解除整份回答的該層外框，
+不能從 prose、任意 code block 或多個候選中抽取指令；raw output 仍原樣保留。
+禁止前後 prose、array、多個 calls／code blocks、額外欄位、重複 key、非標準數值、
+寬鬆抽取與 legacy fallback。工具／參數仍受原 schema、publication、confirmation 約束。
 `workflow_stage` 是對 backend stage 的 acknowledgement，不是 authority。
 
 只有 parser 能證明 raw output 含兩個以上相鄰、各自完整的 top-level JSON objects 時，它才是獨立的
@@ -251,7 +255,8 @@ exact action。
 parameter reply budget；不得保存或授權模型臆測的參數。它不是新的 model output branch，也不改變三欄
 envelope。
 
-Repair budget 是 initial generation 加最多兩次 repair：
+2026-09-21 正式基線準備採 initial generation 加最多一次 format repair；同一修復指示
+失敗後停止，不再送出第二次相同策略的生成。先前兩次 repair 的 Pilot 快照保持歷史身分。
 
 - 可 repair malformed JSON、wrong stage、unpublished tool、extra／invalid parameter。
 - 只有 user text 已含完整值時才能 repair parameter；不得發明缺少的科學或訓練值。
@@ -357,7 +362,8 @@ Engineering candidate的active suite固定為81個英文cases：36個positive ca
 
 Evaluator v11 保留第一次未受 Host collection／recovery 影響的 raw score，另將 post-recovery score 只作
 diagnostic；candidate raw-model gate 只讀第一次 generation。candidate 判定仍必須走與產品相同的
-structured-decision token resolver、strict parser 及最多兩次一般 format recovery；proven
+structured-decision token resolver、strict parser 及最多一次一般 format recovery（2026-09-21
+共同預算；舊兩次上限的 evidence 保留原身分）；proven
 adjacent-complete-object multiple proposal 是直接 Host choose-one terminal，不屬於可修成 action 的 recovery。
 每次 response／taxonomy 都留在 artifact，最後一個 accepted、blocked、choose-one 或 exhausted presentation
 outcome 才是 product score。format

@@ -44,7 +44,7 @@ from .artifact_store import (
     save_model_state_dict,
     write_json_npz_artifact,
 )
-from .eval import EvalRecord, calculate_confusion
+from .eval import EvalRecord
 from .key import RecordKey, TrainRecordKey
 
 if TYPE_CHECKING:
@@ -1332,127 +1332,6 @@ class TrainRecord:
         ax.set_xlabel("Training epochs")
         ax.set_ylabel("lr")
         return figure
-
-    def get_confusion_figure(
-        self,
-        fig: Figure | None = None,
-        figsize: tuple = (6.4, 4.8),
-        dpi: int = 100,
-        show_percentage: bool = False,
-    ) -> Figure | None:
-        """Generate a confusion matrix heatmap from the evaluation record.
-
-        Args:
-            fig: Existing figure to plot on. If ``None``, a new figure is created.
-            figsize: Width and height of the figure in inches.
-            dpi: Dots per inch for the figure.
-            show_percentage: If ``True``, show row-normalized percentages
-                instead of raw counts.
-
-        Returns:
-            The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
-            if no evaluation record is available.
-
-        """
-        figure, created_figure = _prepare_figure(fig, figsize, dpi)
-        if not self.eval_record:
-            if created_figure:
-                plt.close(figure)
-            return None
-        output = self.eval_record.output
-        label = self.eval_record.label
-        confusion = calculate_confusion(output, label)
-        class_num = confusion.shape[0]
-
-        if show_percentage:
-            # Normalize by row (Ground Truth)
-            row_sums = confusion.sum(axis=1, keepdims=True)
-            row_sums[row_sums == 0] = 1  # Avoid division by zero
-            plot_data = confusion / row_sums
-        else:
-            plot_data = confusion
-
-        ax = figure.add_subplot(111)
-        ax.set_title("Confusion matrix", color="#cccccc", pad=20)
-
-        # Improved Labels
-        ax.set_xlabel("Predicted Label", labelpad=10, color="#cccccc")
-        ax.set_ylabel("True Label", labelpad=10, color="#cccccc")
-
-        res = ax.imshow(plot_data, cmap="magma", interpolation="nearest")
-
-        # Threshold for text color
-        threshold = (plot_data.max() + plot_data.min()) / 2
-
-        for x in range(class_num):
-            for y in range(class_num):
-                val = plot_data[x][y]
-                annot_color = "k" if val > threshold else "w"
-
-                text = f"{val:.1%}" if show_percentage else str(int(val))
-
-                ax.annotate(
-                    text,
-                    xy=(y, x),
-                    horizontalalignment="center",
-                    verticalalignment="center",
-                    color=annot_color,
-                )
-
-        # Colorbar
-        cbar = figure.colorbar(res)
-        cbar.ax.yaxis.set_tick_params(color="#cccccc")
-        plt.setp(cbar.ax.get_yticklabels(), color="#cccccc")
-
-        # Ticks
-        labels = [self.dataset.get_epoch_data().label_map[i] for i in range(class_num)]
-        ax.set_xticks(range(class_num), labels, rotation=0, ha="center")
-        ax.set_yticks(range(class_num), labels, va="center")
-
-        # Styling
-        ax.tick_params(axis="x", colors="#cccccc")
-        ax.tick_params(axis="y", colors="#cccccc")
-        for spine in ax.spines.values():
-            spine.set_edgecolor("#444444")
-
-        # Ensure tight layout handles labels correctly
-        figure.tight_layout()
-
-        return figure
-
-    # get evaluate
-    def get_acc(self) -> float | None:
-        """Return the evaluation accuracy, or ``None`` if not yet evaluated.
-
-        Returns:
-            Accuracy as a float, or ``None``.
-
-        """
-        if not self.eval_record:
-            return None
-        return self.eval_record.get_acc()
-
-    def get_auc(self) -> float | None:
-        """Return the evaluation AUC, or ``None`` if not yet evaluated.
-
-        Returns:
-            AUC score as a float, or ``None``.
-
-        """
-        if not self.eval_record:
-            return None
-        return self.eval_record.get_auc()
-
-    def get_kappa(self) -> float | None:
-        """Return the evaluation Cohen's Kappa, or ``None`` if not yet evaluated.
-
-        Returns:
-            Kappa coefficient as a float, or ``None``.
-
-        """
-        if not self.eval_record:
-            return None
-        return self.eval_record.get_kappa()
 
     def get_eval_record(self) -> EvalRecord | None:
         """Return the evaluation record, or ``None`` if training is not complete.

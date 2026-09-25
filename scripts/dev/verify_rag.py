@@ -336,11 +336,8 @@ def run_verification() -> dict[str, Any]:
             client=retriever.client,
             embeddings=retriever.embeddings,
         )
-        try:
-            indexed_docs = indexer.load_gold_set(str(RAGConfig.get_gold_set_path()))
-            expected_point_ids = indexer.document_ids(indexed_docs)
-        finally:
-            indexer.close()
+        indexed_docs = indexer.load_gold_set(str(RAGConfig.get_gold_set_path()))
+        expected_point_ids = indexer.document_ids(indexed_docs)
         expected_manifest = RAGConfig.expected_index_manifest(
             expected_document_count,
             point_ids=expected_point_ids,

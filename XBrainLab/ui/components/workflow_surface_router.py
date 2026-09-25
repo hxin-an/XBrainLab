@@ -76,12 +76,7 @@ class WorkflowSurfaceRequest:
 
     command_name: str
     decision_fields: tuple[str, ...] = ()
-    suggested_values: tuple[tuple[str, str], ...] = ()
     request_id: str = ""
-
-    @property
-    def suggestions(self) -> dict[str, str]:
-        return dict(self.suggested_values)
 
 
 WorkflowSurfaceCallback = Callable[[WorkflowSurfaceRequest], WorkflowSurfaceResult]
@@ -93,7 +88,7 @@ class WorkflowSurfaceRoute:
     """Typed route injected by the host instead of reflected attribute names."""
 
     panel: WorkflowPanel
-    open_surface: WorkflowSurfaceCallback | None = None
+    open_surface: WorkflowSurfaceCallback
 
 
 @dataclass(frozen=True)
@@ -142,7 +137,6 @@ class WorkflowSurfaceRouter:
         *,
         request_id: str = "",
         decision_fields: Iterable[str] = (),
-        suggested_values: Mapping[str, object] | None = None,
     ) -> WorkflowSurfaceOutcome:
         """Open the registered panel or dialog for ``command_name``."""
         normalized = self._normalize_command_name(command_name)
@@ -164,18 +158,6 @@ class WorkflowSurfaceRouter:
                 request_id=request_id,
             )
 
-        if route.open_surface is None:
-            return self._outcome(
-                WorkflowSurfaceStatus.NAVIGATED,
-                normalized,
-                request_id=request_id,
-            )
-
-        suggestions = {
-            str(key): " ".join(str(value).split())
-            for key, value in (suggested_values or {}).items()
-            if str(key).strip() and str(value).strip()
-        }
         fields = tuple(
             dict.fromkeys(
                 field
@@ -186,7 +168,6 @@ class WorkflowSurfaceRouter:
         request = WorkflowSurfaceRequest(
             command_name=normalized,
             decision_fields=fields,
-            suggested_values=tuple(suggestions.items()),
             request_id=str(request_id or "").strip(),
         )
         try:

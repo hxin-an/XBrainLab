@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH
 from XBrainLab.llm.agent.interaction import (
     AgentInteractionOutcome,
@@ -16,11 +17,105 @@ from XBrainLab.llm.agent.response_presentation import (
     AssistantResponsePresentation,
     interaction_outcome_kind,
     interaction_outcome_message,
+    terminal_outcome_for_interaction,
+    terminal_outcome_for_result,
+    tool_result_response_kind,
     user_facing_generation_error,
 )
 from XBrainLab.llm.agent.turn import AssistantTurnCorrelation
+from XBrainLab.llm.tools.result_contract import (
+    ToolCommandResult,
+    UiRequest,
+    UiRequestKind,
+)
 
 _CORRELATION = AssistantTurnCorrelation(generation=1, turn_id=1)
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_kind", "expected_terminal"),
+    [
+        (AgentInteractionStatus.CONFIRMED, AssistantResponseKind.MESSAGE, "completed"),
+        (
+            AgentInteractionStatus.COMPLETED_IN_UI,
+            AssistantResponseKind.TOOL_RESULT,
+            "completed",
+        ),
+        (
+            AgentInteractionStatus.CANCELLED,
+            AssistantResponseKind.CANCELLED,
+            "cancelled",
+        ),
+        (AgentInteractionStatus.BLOCKED, AssistantResponseKind.BLOCKED, "blocked"),
+        (
+            AgentInteractionStatus.UNAVAILABLE,
+            AssistantResponseKind.BLOCKED,
+            "unavailable",
+        ),
+        (AgentInteractionStatus.FAILED, AssistantResponseKind.ERROR, "failed"),
+    ],
+)
+def test_interaction_status_preserves_display_and_terminal_meanings(
+    status, expected_kind, expected_terminal
+) -> None:
+    outcome = AgentInteractionOutcome(status=status, command_name="configure_training")
+    assert interaction_outcome_kind(outcome) is expected_kind
+    assert terminal_outcome_for_interaction(outcome) == expected_terminal
+
+
+@pytest.mark.parametrize(
+    ("error_type", "expected_kind", "expected_terminal"),
+    [
+        ("precondition", AssistantResponseKind.BLOCKED, "blocked"),
+        ("confirmation_required", AssistantResponseKind.BLOCKED, "blocked"),
+        ("stale_confirmation", AssistantResponseKind.BLOCKED, "blocked"),
+        ("input", AssistantResponseKind.BLOCKED, "blocked"),
+        ("stale_publication", AssistantResponseKind.BLOCKED, "blocked"),
+        ("tool_not_published", AssistantResponseKind.BLOCKED, "blocked"),
+        ("runtime", AssistantResponseKind.ERROR, "failed"),
+        ("contract", AssistantResponseKind.ERROR, "failed"),
+        (None, AssistantResponseKind.ERROR, "failed"),
+    ],
+)
+def test_command_failure_preserves_display_and_terminal_meanings(
+    error_type, expected_kind, expected_terminal
+) -> None:
+    result = ToolCommandResult.failure(
+        "configure_training",
+        "Review the current workflow before continuing.",
+        error_type=error_type,
+    )
+    assert tool_result_response_kind(False, result) is expected_kind
+    assert terminal_outcome_for_result(False, result) == expected_terminal
+
+
+@pytest.mark.parametrize(
+    "changed_state", [{}, {"training_changed": False}, {"training_changed": True}]
+)
+def test_completed_command_is_completed_regardless_of_mutation(changed_state) -> None:
+    result = ToolCommandResult(
+        ok=True,
+        tool_name="start_training",
+        command_name="train",
+        message="Training completed.",
+        changed_state=changed_state,
+    )
+    assert tool_result_response_kind(True, result) is AssistantResponseKind.TOOL_RESULT
+    assert terminal_outcome_for_result(True, result) == "completed"
+
+
+def test_pending_ui_request_is_not_presented_as_completed() -> None:
+    request = UiRequest(
+        UiRequestKind.WORKFLOW_HANDOFF,
+        {
+            "tool_name": "import_eeg_data",
+            "command": CommandName.SCAN_SOURCE.value,
+            "decision_fields": (),
+        },
+    )
+    assert tool_result_response_kind(True, request) is AssistantResponseKind.MESSAGE
+    assert tool_result_response_kind(False, request) is AssistantResponseKind.ERROR
+    assert terminal_outcome_for_result(False, request) == "failed"
 
 
 def test_panel_navigation_request_is_typed_and_bounded() -> None:
@@ -45,7 +140,6 @@ def test_panel_navigation_request_is_typed_and_bounded() -> None:
     [
         (AgentInteractionStatus.CANCELLED, "workflow is unchanged"),
         (AgentInteractionStatus.CONFIRMED, "Approved"),
-        (AgentInteractionStatus.DEFERRED_TO_UI, "open in the main window"),
         (AgentInteractionStatus.BLOCKED, "blocked"),
         (AgentInteractionStatus.UNAVAILABLE, "not available"),
         (AgentInteractionStatus.FAILED, "could not be opened"),
@@ -54,16 +148,6 @@ def test_panel_navigation_request_is_typed_and_bounded() -> None:
 def test_interaction_copy_is_derived_from_structured_outcome(status, expected) -> None:
     outcome = AgentInteractionOutcome(status=status, command_name="reset_preprocess")
     assert expected in interaction_outcome_message(outcome)
-
-
-def test_cancelled_data_import_uses_product_language() -> None:
-    outcome = AgentInteractionOutcome(
-        status=AgentInteractionStatus.CANCELLED,
-        command_name="apply_interpretation",
-    )
-    assert interaction_outcome_message(outcome) == (
-        "Data import was cancelled. No data was added."
-    )
 
 
 def test_completed_model_selection_names_the_model_selected_in_the_ui() -> None:

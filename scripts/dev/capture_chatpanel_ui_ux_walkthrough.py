@@ -142,8 +142,6 @@ EXPECTED_SCREEN_FILES = (
     "narrow-stopping-progress.png",
     "narrow-command-progress.png",
     "narrow-error-action.png",
-    "narrow-setting-change-confirmation.png",
-    "narrow-setting-change-confirmation-max-content.png",
     "pixmap-scaled-narrow.png",
     "dpi-320-message-error-confirmation.png",
     "dpi-420-message-error-confirmation.png",
@@ -216,8 +214,10 @@ FINGERPRINT_RELATIVE_PATHS = (
     "XBrainLab/product_language.py",
     "XBrainLab/ui/chat/composer.py",
     "XBrainLab/ui/chat/action_card.py",
+    "XBrainLab/ui/chat/assistant_dock.py",
     "XBrainLab/ui/chat/message_bubble.py",
     "XBrainLab/ui/chat/panel.py",
+    "XBrainLab/ui/chat/transcript_view.py",
     "XBrainLab/ui/chat/presentation.py",
     "XBrainLab/ui/chat/segmented_control.py",
     "XBrainLab/ui/chat/status_presenter.py",
@@ -226,6 +226,7 @@ FINGERPRINT_RELATIVE_PATHS = (
     "XBrainLab/ui/chat/turn_state.py",
     "XBrainLab/ui/components/agent_manager.py",
     "XBrainLab/ui/components/agent_presentation_service.py",
+    "XBrainLab/ui/components/assistant_application_publication_coordinator.py",
     "XBrainLab/ui/components/assistant_command_dispatcher.py",
     "XBrainLab/ui/components/assistant_runtime_coordinator.py",
     "XBrainLab/ui/components/assistant_runtime_lifecycle.py",
@@ -321,6 +322,10 @@ class _TeardownProbeController(QObject):
 
     @pyqtSlot(object)
     def on_workflow_ui_handoff_resolved(self, _payload: object) -> None:
+        return None
+
+    @pyqtSlot(object, bool)
+    def on_panel_navigation_resolved(self, _request: object, _success: bool) -> None:
         return None
 
     @pyqtSlot(str, object)
@@ -640,47 +645,6 @@ def _prepare_error_action(panel: ChatPanel) -> None:
     )
 
 
-def _prepare_setting_change_confirmation(panel: ChatPanel) -> None:
-    panel.set_runtime_state("ready")
-    _controller(panel).add_user_message(
-        "Reduce the batch size if the current configuration is too large."
-    )
-    request = AgentConfirmationRequest.for_action(
-        command_name="configure_training",
-        params={"batch_size": 16},
-        action_label="Apply change",
-        description="The current configuration may exceed available VRAM.",
-        destructive=False,
-        publication_generation=1,
-        request_id="walkthrough-batch-size-change",
-    )
-    panel.show_confirmation_request(
-        request,
-        current_values={"Batch size": "32"},
-    )
-
-
-def _prepare_max_setting_change_confirmation(panel: ChatPanel) -> None:
-    panel.set_runtime_state("ready")
-    _controller(panel).add_user_message(
-        "Review every proposed training setting before applying the change."
-    )
-    request = AgentConfirmationRequest.for_action(
-        command_name="configure_training",
-        params={
-            f"parameter_{index:02d}": f"{index}-" + ("W" * 190) for index in range(14)
-        },
-        action_label="Apply reviewed settings",
-        description=(
-            "Review every proposed setting before applying this configuration."
-        ),
-        destructive=False,
-        publication_generation=1,
-        request_id="walkthrough-max-setting-change",
-    )
-    panel.show_confirmation_request(request)
-
-
 def _prepare_scaled_pixmap(panel: ChatPanel) -> None:
     panel.set_runtime_state("ready")
     controller = _controller(panel)
@@ -943,36 +907,6 @@ SCENARIOS = (
         1.0,
         _prepare_error_action,
         required_kinds=("user", "error"),
-    ),
-    ScenarioSpec(
-        "narrow_setting_change_confirmation",
-        "narrow-setting-change-confirmation.png",
-        320,
-        680,
-        1.0,
-        _prepare_setting_change_confirmation,
-        required_kinds=("user",),
-        confirmation_visible=True,
-        expected_confirmation_title="Suggested change",
-        expected_confirmation_values=("Batch size", "32  ->  16"),
-        expected_confirmation_actions=("Keep current value", "Apply change"),
-    ),
-    ScenarioSpec(
-        "narrow_setting_change_confirmation_max_content",
-        "narrow-setting-change-confirmation-max-content.png",
-        320,
-        680,
-        1.0,
-        _prepare_max_setting_change_confirmation,
-        required_kinds=("user",),
-        confirmation_visible=True,
-        expected_confirmation_title="Suggested change",
-        expected_confirmation_values=("Parameter 00", "Parameter 13"),
-        expected_confirmation_actions=(
-            "Keep current",
-            "Apply changes",
-        ),
-        scroll_to_bottom=True,
     ),
     ScenarioSpec(
         "pixmap_scaled_narrow",
@@ -1303,8 +1237,8 @@ def _settle_layout(app: QApplication, widget: QWidget) -> None:
 def _layout_bubbles(panel: ChatPanel) -> list[MessageBubble]:
     return [
         cast(MessageBubble, item.widget())
-        for index in range(panel.chat_layout.count())
-        if (item := panel.chat_layout.itemAt(index)) is not None
+        for index in range(panel.transcript_view.content_layout.count())
+        if (item := panel.transcript_view.content_layout.itemAt(index)) is not None
         and isinstance(item.widget(), MessageBubble)
         and cast(MessageBubble, item.widget()).isVisible()
     ]
@@ -1318,9 +1252,9 @@ def _button_evidence(panel: ChatPanel) -> tuple[list[dict[str, Any]], list[str]]
             continue
         name = button.objectName() or f"{type(button).__name__}_{index}"
         origin = button.mapTo(panel, QPoint(0, 0))
-        inside_scroll_content = panel.scroll_area.isAncestorOf(button)
+        inside_scroll_content = panel.transcript_view.isAncestorOf(button)
         if inside_scroll_content:
-            viewport = panel.scroll_area.viewport()
+            viewport = panel.transcript_view.viewport()
             if viewport is None:
                 inside = False
             else:
@@ -1404,7 +1338,7 @@ def _panel_surface_geometry_checks(
     panel: ChatPanel,
 ) -> tuple[dict[str, Any], dict[str, bool]]:
     """Return the observable bounds shared by first-paint and grab evidence."""
-    horizontal = panel.scroll_area.horizontalScrollBar()
+    horizontal = panel.transcript_view.horizontalScrollBar()
     geometry = _panel_relative_geometry(panel)
     return geometry, {
         "no_horizontal_scroll": bool(
@@ -1442,9 +1376,9 @@ def _dpi_content_widgets(
 
 
 def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
-    horizontal = panel.scroll_area.horizontalScrollBar()
-    viewport = panel.scroll_area.viewport()
-    vertical = panel.scroll_area.verticalScrollBar()
+    horizontal = panel.transcript_view.horizontalScrollBar()
+    viewport = panel.transcript_view.viewport()
+    vertical = panel.transcript_view.verticalScrollBar()
     if horizontal is None or viewport is None or vertical is None:
         raise RuntimeError("ChatPanel scroll-area geometry is unavailable.")
     bubbles = _layout_bubbles(panel)
@@ -1498,12 +1432,7 @@ def _screen_evidence(panel: ChatPanel, spec: ScenarioSpec) -> dict[str, Any]:
             part
             for part in (
                 row.label.text(),
-                (
-                    f"{row.current_value.accessibleDescription()}  ->  "
-                    f"{row.proposed_value.accessibleDescription()}"
-                    if row.current_value.isVisible()
-                    else row.proposed_value.accessibleDescription()
-                ),
+                row.proposed_value.accessibleDescription(),
             )
             if part
         )
@@ -2526,7 +2455,7 @@ def _capture_main_window_dock_walkthrough(
             live_submission,
             live_correlation,
         )
-        is None
+        is False
     ):
         raise RuntimeError("Could not admit the live response capture turn.")
     manager._handle_response_presentation(
@@ -2589,7 +2518,7 @@ def _capture_main_window_dock_walkthrough(
             stopping_submission,
             stopping_correlation,
         )
-        is None
+        is False
     ):
         raise RuntimeError("Could not admit the stopping capture turn.")
     manager.on_assistant_activity_changed(
@@ -2671,7 +2600,7 @@ def _capture_main_window_dock_walkthrough(
             command_submission,
             command_correlation,
         )
-        is None
+        is False
     ):
         raise RuntimeError("Could not admit the command capture turn.")
     manager.on_assistant_activity_changed(
@@ -2709,7 +2638,7 @@ def _capture_main_window_dock_walkthrough(
         panel,
         MainWindow.ASSISTANT_DOCK_STANDARD_WIDTH,
     )
-    assistant_viewport = panel.scroll_area.viewport()
+    assistant_viewport = panel.transcript_view.viewport()
     if assistant_viewport is None:
         raise RuntimeError("Real assistant dock viewport is unavailable.")
     walkthrough = {
@@ -3448,7 +3377,7 @@ def capture_walkthrough(
         panel.show()
         _settle_layout(app, panel)
         if spec.scroll_to_bottom:
-            scrollbar = panel.scroll_area.verticalScrollBar()
+            scrollbar = panel.transcript_view.verticalScrollBar()
             if scrollbar is not None:
                 scrollbar.setValue(scrollbar.maximum())
                 app.processEvents()

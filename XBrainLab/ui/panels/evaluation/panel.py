@@ -109,7 +109,6 @@ EVALUATION_SPLIT_OPTIONS = (
 @dataclass(frozen=True, slots=True)
 class _EvaluationRunChoice:
     identity: EvaluationRunIdentity
-    name: str
     finished: bool
     splits: tuple[str, ...]
 
@@ -127,8 +126,6 @@ class _EvaluationCrossFoldChoice:
     display_name: str
     run_label: str
     splits: tuple[str, ...]
-    fold_count: int
-    sample_count: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,7 +275,6 @@ class EvaluationPanel(BasePanel):
         signature = self._evaluation_publication_signature(typed_publication)
         if signature == self._last_evaluation_publication_signature:
             self._application_generation = typed_publication.generation
-            self._evaluation_render = None
             return self._application_render_ledger.record_rendered(typed_publication)
         self.mark_refresh_dirty()
         return self._application_render_ledger.queue(typed_publication)
@@ -298,7 +294,6 @@ class EvaluationPanel(BasePanel):
             == self._last_evaluation_publication_signature
         ):
             self._application_generation = publication.generation
-            self._evaluation_render = None
             return True
         self.update_panel()
         return True
@@ -739,8 +734,6 @@ class EvaluationPanel(BasePanel):
                 if not isinstance(finished, bool):
                     raise TypeError("Evaluation run completion must be boolean")
                 raw_splits = raw_run.get("evaluation_splits")
-                if raw_splits is None:
-                    raw_splits = [raw_run.get("evaluation_split")]
                 if not isinstance(raw_splits, list):
                     raise TypeError("Evaluation run splits must be a list")
                 splits = tuple(
@@ -756,7 +749,6 @@ class EvaluationPanel(BasePanel):
                 runs.append(
                     _EvaluationRunChoice(
                         identity=run_identity,
-                        name=run_name.strip(),
                         finished=finished,
                         splits=splits,
                     )
@@ -853,8 +845,6 @@ class EvaluationPanel(BasePanel):
                     display_name=display_name.strip(),
                     run_label=run_label.strip(),
                     splits=splits,
-                    fold_count=fold_count,
-                    sample_count=sample_count,
                 )
             )
         return tuple(choices)
@@ -989,9 +979,9 @@ class EvaluationPanel(BasePanel):
                 run_display_label(run_choice.identity.run_index),
                 run_choice.identity,
             )
-        if any(run_choice.finished for run_choice in plan_choice.runs):
+        if self.run_combo.count() > 1:
             self.run_combo.addItem(
-                "Summary (Finished Runs)",
+                "Summary",
                 plan_choice.identity,
             )
 
@@ -1232,6 +1222,7 @@ class EvaluationPanel(BasePanel):
         self.metrics_table.setProperty("selectionType", selection_type)
         self.metrics_table.setProperty("evaluationSplit", split)
         self.bar_chart.update_plot(metrics, class_names=class_names)
+        self._update_responsive_layout()
         self._update_summary_if_visible(render_data.summary_identity)
 
     def _render_for_selection(
@@ -1359,14 +1350,10 @@ class EvaluationPanel(BasePanel):
 
     def _on_evaluation_render_ready(
         self,
-        worker: PythonThreadWorker | object,
-        operation_id: str | None = None,
-        result: object | None = None,
+        worker: PythonThreadWorker,
+        operation_id: str,
+        result: object,
     ) -> None:
-        if result is None and operation_id is None:
-            result = worker
-            worker = self._evaluation_render_worker
-            operation_id = self._evaluation_render_active_operation_id
         if (
             worker is not self._evaluation_render_worker
             or operation_id != self._evaluation_render_active_operation_id
@@ -1384,7 +1371,7 @@ class EvaluationPanel(BasePanel):
         ):
             error = result[1]
             self._on_evaluation_render_error(
-                cast(PythonThreadWorker | None, worker),
+                worker,
                 operation_id,
                 (type(error), error, ""),
             )
@@ -1414,20 +1401,14 @@ class EvaluationPanel(BasePanel):
 
     def _on_evaluation_render_error(
         self,
-        worker: PythonThreadWorker | tuple | None,
-        operation_id: str | None = None,
-        error: tuple | None = None,
+        worker: PythonThreadWorker,
+        operation_id: str,
+        error: tuple,
     ) -> None:
-        if error is None and operation_id is None and isinstance(worker, tuple):
-            error = worker
-            worker = self._evaluation_render_worker
-            operation_id = self._evaluation_render_active_operation_id
         if (
             worker is not self._evaluation_render_worker
             or operation_id != self._evaluation_render_active_operation_id
         ):
-            return
-        if error is None:
             return
         request = self._evaluation_render_active_request
         if self._evaluation_render_shutdown_requested or request is None:
@@ -1470,11 +1451,9 @@ class EvaluationPanel(BasePanel):
 
     def _on_evaluation_render_finished(
         self,
-        worker: PythonThreadWorker | None = None,
-        operation_id: str | None = None,
+        worker: PythonThreadWorker,
+        operation_id: str,
     ) -> None:
-        worker = worker or self._evaluation_render_worker
-        operation_id = operation_id or self._evaluation_render_active_operation_id
         if (
             worker is not self._evaluation_render_worker
             or operation_id != self._evaluation_render_active_operation_id
@@ -1646,14 +1625,6 @@ class EvaluationPanel(BasePanel):
     def evaluation_background_work_idle(self) -> bool:
         """Return true only after the worker's terminal Qt callback releases it."""
         return self._evaluation_render_worker is None
-
-    def wait_for_evaluation_background_work(self, timeout: float = 0.0) -> bool:
-        """Boundedly join the Python-owned worker outside normal GUI cleanup."""
-        worker = self._evaluation_render_worker
-        if worker is None:
-            return True
-        worker.join(timeout=max(0.0, float(timeout)))
-        return not worker.is_alive()
 
     def closeEvent(self, event):  # noqa: N802
         """Release the application publication subscription on panel close."""
@@ -1922,6 +1893,13 @@ class EvaluationPanel(BasePanel):
         )
         self.split_combo.currentIndexChanged.connect(self.update_views)
 
+        for combo in (self.model_combo, self.run_combo, self.split_combo):
+            # The native popup margin is outside the styled item viewport.
+            view = combo.view()
+            popup = view.window() if view is not None else None
+            if popup is not None:
+                popup.setStyleSheet(f"background-color: {Theme.BACKGROUND_DARK};")
+
         # Options
         self.chk_percentage = QCheckBox("Show percentages")
         self.chk_percentage.setStyleSheet(Stylesheets.CHECKBOX_MUTED)
@@ -1977,7 +1955,7 @@ class EvaluationPanel(BasePanel):
         self.bottom_tabs.currentChanged.connect(self._on_bottom_tab_changed)
 
         # Add to left layout directly
-        left_layout.addWidget(plots_group, stretch=2)
+        left_layout.addWidget(plots_group, stretch=3)
         left_layout.addWidget(self.bottom_tabs, stretch=1)
 
         # --- Right Side: Sidebar ---
@@ -2125,7 +2103,16 @@ class EvaluationPanel(BasePanel):
     def _update_chart_layout(self) -> None:
         if not hasattr(self, "chart_tabs"):
             return
-        use_tabs = self.charts_container.contentsRect().width() < CHART_TABS_BREAKPOINT
+        # Compare against content requirements, not the current (possibly tabbed)
+        # allocation. Parallel charts have equal stretch, so each needs enough
+        # room for the wider chart's labels and plot.
+        required_width = self.charts_layout.spacing() + 2 * max(
+            view.canvas.minimumWidth() if view.canvas is not None else 0
+            for view in (self.matrix_widget, self.bar_chart)
+        )
+        use_tabs = self.charts_container.contentsRect().width() < max(
+            CHART_TABS_BREAKPOINT, required_width
+        )
         if use_tabs == self._charts_are_tabbed:
             return
 

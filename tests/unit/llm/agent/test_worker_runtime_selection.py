@@ -7,10 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from XBrainLab.llm.agent.runtime_state import AssistantRuntimePhase
-from XBrainLab.llm.agent.turn import (
-    AssistantGenerationRequest,
-    AssistantResponseContract,
-)
+from XBrainLab.llm.agent.turn import AssistantGenerationRequest
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.runtime_selection import (
     AssistantRuntimeLaunchResolver,
@@ -20,24 +17,26 @@ from XBrainLab.llm.core.runtime_selection import (
 
 
 class _OwnedProcessEngine:
-    uses_owned_process = True
-
     def __init__(self, config) -> None:
         self.config = config
         self.load_calls = 0
+        self.closed = False
+        self.active_backend = None
 
     def load_model(self) -> None:
         self.load_calls += 1
+        self.active_backend = object()
 
     def close(self, *, wait_timeout: float = 5.0) -> bool:
         del wait_timeout
+        self.closed = True
+        self.active_backend = None
         return True
 
 
 def _generation_request(text: str) -> AssistantGenerationRequest:
     request = AssistantGenerationRequest.from_messages(
         [{"role": "user", "content": text}],
-        response_contract=AssistantResponseContract.NATURAL_LANGUAGE,
     )
     return request.correlated(1)
 
@@ -120,7 +119,7 @@ def test_worker_initializes_only_from_the_exact_launch_spec(
             "XBrainLab.llm.agent.worker.LLMConfig.load_from_file",
             side_effect=AssertionError("startup must not reread settings"),
         ),
-        patch("XBrainLab.llm.agent.worker.LLMEngine") as engine_class,
+        patch("XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner") as engine_class,
     ):
         engine = _OwnedProcessEngine(spec.build_config())
         engine_class.return_value = engine
@@ -174,36 +173,44 @@ def test_generation_settings_reload_cannot_reselect_the_active_model(
     assert engine.config.model_name == active_model
     assert engine.config.temperature == 1.5
     assert engine.config.timeout == original_timeout
-    engine.switch_backend.assert_not_called()
+    engine.close.assert_not_called()
     thread_class.return_value.start.assert_called_once_with()
 
 
 def test_worker_model_reselection_consumes_the_same_exact_spec_without_resolution(
-    worker,
+    owned_worker,
+    qtbot,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     initial_model = LLMConfig.default_local_model_id()
     reselected_model = LLMConfig.default_local_model_id()
     initial_spec = _launch_spec(monkeypatch, initial_model)
     target_spec = _launch_spec(monkeypatch, reselected_model)
-    engine = MagicMock()
-    engine.config = initial_spec.build_config()
-    engine.active_backend = object()
-    worker.engine = engine
-    worker._runtime_launch_spec = initial_spec
+    engine = _OwnedProcessEngine(initial_spec.build_config())
+    replacement = _OwnedProcessEngine(target_spec.build_config())
+    owned_worker.engine = engine
+    owned_worker._runtime_launch_spec = initial_spec
+    snapshots = []
+    owned_worker.runtime_snapshot_changed.connect(snapshots.append)
 
     with (
         patch(
             "XBrainLab.llm.agent.worker.LLMConfig.load_from_file",
             side_effect=AssertionError("model switch must not reread settings"),
         ),
-        patch.object(LLMConfig, "save_to_file"),
+        patch.object(LLMConfig, "save_to_file", return_value=True),
+        patch(
+            "XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner",
+            return_value=replacement,
+        ),
     ):
-        worker.reinitialize_agent(target_spec)
+        owned_worker.reinitialize_agent(target_spec)
+        qtbot.waitUntil(lambda: owned_worker.runtime_load_thread is None, timeout=2_000)
 
-    assert engine.config.model_name == target_spec.model_id
-    engine.switch_backend.assert_called_once_with(target_spec.backend_mode)
-    snapshot = worker.runtime_snapshot_changed.emit.call_args.args[0]
+    assert engine.closed
+    assert owned_worker.engine is replacement
+    assert replacement.config.model_name == target_spec.model_id
+    snapshot = snapshots[-1]
     assert snapshot.phase is AssistantRuntimePhase.READY
     assert snapshot.model_id == target_spec.model_id
     assert snapshot.selection_outcome is AssistantRuntimeSelectionOutcome.EXACT
@@ -216,6 +223,6 @@ def test_worker_rejects_untyped_model_switch_input_without_defaulting(worker) ->
 
     worker.reinitialize_agent("unknown/model")
 
-    engine.switch_backend.assert_not_called()
+    engine.close.assert_not_called()
     worker.error.emit.assert_called_once()
     assert "launch spec" in worker.error.emit.call_args.args[0].lower()

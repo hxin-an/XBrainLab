@@ -6,26 +6,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from XBrainLab.backend.application.commands import CommandName
-from XBrainLab.backend.application.view_publication import (
-    ApplicationViewPublication,
-    InterpretationReviewIdentity,
-)
-from XBrainLab.backend.application.workflow_projection import (
-    build_workflow_projection,
-)
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.ui_handoff import (
-    WorkflowUiHandoffPanel,
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
     WorkflowUiHandoffResolutionStatus,
     WorkflowUiHandoffRouteDescriptor,
     WorkflowUiHandoffRouteIdentity,
     WorkflowUiHandoffSession,
-    WorkflowUiHandoffSurfaceKind,
     WorkflowUiHandoffTransitionStatus,
-    workflow_ui_handoff_route_for,
     workflow_ui_handoff_routes,
 )
 from XBrainLab.ui.components.workflow_surface_router import (
@@ -75,7 +64,7 @@ _RESOLUTION_STATUS: dict[
     WorkflowSurfaceStatus.CLOSED_WITHOUT_CHANGE: (
         WorkflowUiHandoffResolutionStatus.CANCELLED
     ),
-    WorkflowSurfaceStatus.NAVIGATED: (WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI),
+    WorkflowSurfaceStatus.NAVIGATED: WorkflowUiHandoffResolutionStatus.FAILED,
     WorkflowSurfaceStatus.BLOCKED: WorkflowUiHandoffResolutionStatus.BLOCKED,
     WorkflowSurfaceStatus.UNAVAILABLE: (WorkflowUiHandoffResolutionStatus.UNAVAILABLE),
     WorkflowSurfaceStatus.FAILED: WorkflowUiHandoffResolutionStatus.FAILED,
@@ -149,115 +138,6 @@ class WorkflowUiHandoffHost:
             self._build_routes(),
         )
 
-    def open_current_data_import(
-        self,
-        publication: ApplicationViewPublication | None,
-    ) -> WorkflowUiHandoffResolution:
-        """Open the Data Import surface projected from current backend truth."""
-        fallback_request = WorkflowUiHandoffRequest.for_decision(
-            CommandName.REVIEW_INTERPRETATION
-        )
-        if (
-            not isinstance(publication, ApplicationViewPublication)
-            or not publication.usable
-        ):
-            return self._standalone_failure(
-                fallback_request,
-                "Application state is unavailable. Try again shortly.",
-            )
-
-        try:
-            projection = build_workflow_projection(
-                publication.state,
-                publication.effective_capabilities,
-            )
-        except Exception:
-            logger.exception("Could not project the current Data Import surface")
-            return self._standalone_failure(
-                fallback_request,
-                "The current Data Import step could not be determined.",
-            )
-        try:
-            command = CommandName(
-                projection.recommended_command or projection.blocked_command or ""
-            )
-        except ValueError:
-            return self._standalone_failure(
-                fallback_request,
-                "There is no pending Data Import step to open.",
-            )
-        if command not in {
-            CommandName.SCAN_SOURCE,
-            CommandName.REVIEW_INTERPRETATION,
-            CommandName.PREVIEW_INTERPRETATION,
-            CommandName.VALIDATE_INTERPRETATION,
-            CommandName.APPLY_INTERPRETATION,
-        }:
-            return self._standalone_failure(
-                fallback_request,
-                "There is no pending Data Import step to open.",
-            )
-        descriptor = workflow_ui_handoff_route_for(command)
-        if (
-            descriptor is None
-            or descriptor.target_panel is not WorkflowUiHandoffPanel.DATASET
-        ):
-            return self._standalone_failure(
-                fallback_request,
-                "There is no pending Data Import step to open.",
-            )
-
-        identity = (
-            self._interpretation_review_identity(publication)
-            if command is CommandName.APPLY_INTERPRETATION
-            else None
-        )
-        request = WorkflowUiHandoffRequest.for_decision(
-            command,
-            decision_fields=projection.decision_fields,
-            interpretation_identity=identity,
-        )
-        if command is CommandName.APPLY_INTERPRETATION and identity is None:
-            return self._standalone_failure(
-                request,
-                "The current Data Import review identity is unavailable. Refresh "
-                "the workflow and try again.",
-            )
-        try:
-            resolution = self.open(
-                request,
-                on_terminal=self._present_standalone_terminal,
-            )
-        except Exception:
-            logger.exception("Could not open product surface for %s", command.value)
-            return self._standalone_failure(
-                request,
-                "The requested XBrainLab view could not be opened.",
-            )
-        if resolution.status.is_terminal:
-            self._present_standalone_resolution(resolution)
-        return resolution
-
-    @staticmethod
-    def _interpretation_review_identity(
-        publication: ApplicationViewPublication,
-    ) -> InterpretationReviewIdentity | None:
-        interpretation = publication.state.interpretation
-        scan_id = interpretation.latest_scan_id
-        candidate_id = interpretation.latest_candidate_id
-        if (
-            not isinstance(scan_id, str)
-            or not scan_id.strip()
-            or not isinstance(candidate_id, str)
-            or not candidate_id.strip()
-        ):
-            return None
-        return InterpretationReviewIdentity(
-            publication_generation=publication.generation,
-            scan_id=scan_id,
-            candidate_id=candidate_id,
-        )
-
     def open(
         self,
         request: WorkflowUiHandoffRequest,
@@ -288,7 +168,6 @@ class WorkflowUiHandoffHost:
                 request.command_name,
                 request_id=request.request_id,
                 decision_fields=request.decision_fields,
-                suggested_values=request.suggestions,
             )
         if (
             surface_outcome.status is WorkflowSurfaceStatus.ACCEPTED
@@ -335,37 +214,6 @@ class WorkflowUiHandoffHost:
             self._clear_active(active)
             return failed
         return resolution
-
-    def _standalone_failure(
-        self,
-        request: WorkflowUiHandoffRequest,
-        message: str,
-    ) -> WorkflowUiHandoffResolution:
-        resolution = WorkflowUiHandoffResolution.for_request(
-            request,
-            status=WorkflowUiHandoffResolutionStatus.FAILED,
-            message=message,
-        )
-        self._present_standalone_resolution(resolution)
-        return resolution
-
-    def _present_standalone_terminal(
-        self,
-        resolution: WorkflowUiHandoffResolution,
-    ) -> bool:
-        self._present_standalone_resolution(resolution)
-        return True
-
-    def _present_standalone_resolution(
-        self,
-        resolution: WorkflowUiHandoffResolution,
-    ) -> None:
-        """Present a product action outcome without creating an assistant turn."""
-        if not resolution.status.is_terminal:
-            return
-        status_bar = self._main_window.statusBar()
-        if status_bar is not None and resolution.message:
-            status_bar.showMessage(resolution.message, 6000)
 
     @property
     def active_request(self) -> WorkflowUiHandoffRequest | None:
@@ -479,9 +327,6 @@ class WorkflowUiHandoffHost:
             WorkflowSurfaceCallback,
         ] = {
             WorkflowUiHandoffRouteIdentity.DATA_IMPORT_DIALOG: (self._open_data_import),
-            WorkflowUiHandoffRouteIdentity.DATA_IMPORT_REVIEW_DIALOG: (
-                self._open_current_import_review
-            ),
             WorkflowUiHandoffRouteIdentity.CHANNEL_SELECTION_DIALOG: (
                 self._open_channel_selection
             ),
@@ -502,7 +347,7 @@ class WorkflowUiHandoffHost:
         return {
             descriptor.command.value: self._route(
                 descriptor,
-                surface_openers.get(descriptor.route_identity),
+                surface_openers[descriptor.route_identity],
             )
             for descriptor in workflow_ui_handoff_routes()
         }
@@ -510,31 +355,13 @@ class WorkflowUiHandoffHost:
     def _route(
         self,
         descriptor: WorkflowUiHandoffRouteDescriptor,
-        open_surface: WorkflowSurfaceCallback | None = None,
+        open_surface: WorkflowSurfaceCallback,
     ) -> WorkflowSurfaceRoute:
-        requires_opener = descriptor.surface_kind in {
-            WorkflowUiHandoffSurfaceKind.DIALOG,
-            WorkflowUiHandoffSurfaceKind.ACTION,
-        }
-        if requires_opener and open_surface is None:
-            raise ValueError(
-                f"No product UI adapter registered for {descriptor.command.value}."
-            )
-        if not requires_opener and open_surface is not None:
-            raise ValueError(
-                f"Panel-only route {descriptor.command.value} cannot open an action."
-            )
         panel = WorkflowPanel(descriptor.target_panel.value)
         return WorkflowSurfaceRoute(
             panel=panel,
-            open_surface=(
-                None
-                if open_surface is None
-                else lambda request: self._open_materialized_surface(
-                    panel,
-                    open_surface,
-                    request,
-                )
+            open_surface=lambda request: self._open_materialized_surface(
+                panel, open_surface, request
             ),
         )
 
@@ -593,7 +420,7 @@ class WorkflowUiHandoffHost:
         active: _ActiveWorkflowUiHandoff,
         outcome: WorkflowSurfaceOutcome,
     ) -> WorkflowUiHandoffResolutionStatus:
-        """Keep a deferred modal non-terminal without changing panel-only routes."""
+        """Keep lazy surface preparation non-terminal until its callback."""
         pending = self._pending_surface_open
         if (
             outcome.status is WorkflowSurfaceStatus.NAVIGATED
@@ -837,50 +664,9 @@ class WorkflowUiHandoffHost:
             self._main_window.dataset_panel.action_handler.import_data()
         )
 
-    def _open_current_import_review(
-        self,
-        request: WorkflowSurfaceRequest,
-    ) -> WorkflowSurfaceResult:
-        step_by_field = {
-            "eeg_source": "Choose EEG Data",
-            "label_source": "Load Labels",
-            "metadata_review": "Review Metadata",
-            "label_matching": "Match Labels",
-            "import_review": "Review and Import",
-        }
-        initial_step = next(
-            (
-                step_by_field[field]
-                for field in request.decision_fields
-                if field in step_by_field
-            ),
-            "Review and Import",
-        )
-        active = self._active
-        identity = (
-            active.session.request.interpretation_identity
-            if active is not None
-            else None
-        )
-        if not isinstance(identity, InterpretationReviewIdentity):
-            return WorkflowSurfaceResult(
-                WorkflowSurfaceStatus.BLOCKED,
-                "The Data Import review identity is unavailable. Open the current "
-                "review and try again.",
-            )
-        action_handler = self._main_window.dataset_panel.action_handler
+    def _open_epoching(self, _request: WorkflowSurfaceRequest) -> WorkflowSurfaceResult:
         return self._surface_result(
-            action_handler.review_current_import(
-                initial_step=initial_step,
-                expected_identity=identity,
-            )
-        )
-
-    def _open_epoching(self, request: WorkflowSurfaceRequest) -> WorkflowSurfaceResult:
-        suggestions = request.suggestions
-        kwargs = {"suggested_values": suggestions} if suggestions else {}
-        return self._surface_result(
-            self._main_window.preprocess_panel.sidebar.open_epoching(**kwargs)
+            self._main_window.preprocess_panel.sidebar.open_epoching()
         )
 
     def _open_channel_selection(
@@ -895,10 +681,8 @@ class WorkflowUiHandoffHost:
         self,
         request: WorkflowSurfaceRequest,
     ) -> WorkflowSurfaceResult:
-        suggestions = request.suggestions
-        kwargs = {"suggested_values": suggestions} if suggestions else {}
         return self._surface_result(
-            self._main_window.training_panel.sidebar.split_data(**kwargs)
+            self._main_window.training_panel.sidebar.split_data()
         )
 
     def _open_training_settings(
@@ -906,36 +690,11 @@ class WorkflowUiHandoffHost:
         request: WorkflowSurfaceRequest,
     ) -> WorkflowSurfaceResult:
         sidebar = self._main_window.training_panel.sidebar
-        suggestions = request.suggestions
-        decision_fields = set(request.decision_fields)
-        needs_model = "model" in decision_fields or "model" in suggestions
-        option_suggestions = {
-            key: value for key, value in suggestions.items() if key != "model"
+        settings_actions: dict[tuple[str, ...], Callable[[], InteractionOutcome]] = {
+            ("model",): sidebar.select_model,
+            ("training_options",): sidebar.training_setting,
         }
-        needs_options = bool(
-            "training_options" in decision_fields or option_suggestions
-        )
-        if not needs_model and not needs_options:
-            needs_options = True
-
-        if needs_model and needs_options:
-            return self._surface_result(
-                sidebar.configure_training(
-                    suggested_model=suggestions.get("model"),
-                    suggested_values=option_suggestions,
-                )
-            )
-
-        if needs_model:
-            return self._surface_result(
-                sidebar.select_model(suggested_model=suggestions.get("model"))
-            )
-
-        if needs_options:
-            return self._surface_result(
-                sidebar.training_setting(suggested_values=option_suggestions)
-            )
-        return WorkflowSurfaceResult(WorkflowSurfaceStatus.FAILED)
+        return self._surface_result(settings_actions[request.decision_fields]())
 
     def _compute_saliency(
         self,
@@ -949,13 +708,9 @@ class WorkflowUiHandoffHost:
         self,
         request: WorkflowSurfaceRequest,
     ) -> WorkflowSurfaceResult:
-        """Open the existing montage dialog with correlated assistant suggestions."""
-        suggestions = request.suggestions
+        """Open the existing montage dialog without supplying user choices."""
         return self._surface_result(
-            self._main_window.dataset_panel.sidebar.open_electrode_layout(
-                default_montage=suggestions.get("montage_name"),
-                warning=suggestions.get("warning", ""),
-            )
+            self._main_window.dataset_panel.sidebar.open_electrode_layout()
         )
 
     @staticmethod

@@ -15,6 +15,7 @@ import numpy as np
 import torch
 
 from XBrainLab import __version__ as xbrainlab_version
+from XBrainLab.backend.saliency_methods import SALIENCY_METHOD_STORE_NAMES
 
 from .saliency_provenance import (
     SaliencyArtifactContext,
@@ -28,13 +29,6 @@ SALIENCY_ARTIFACT_MANIFEST_SCHEMA_VERSION: Final = 1
 SALIENCY_PAYLOAD_IDENTITY_SCHEMA_VERSION: Final = 1
 SALIENCY_RUNTIME_CONTRACT_SCHEMA_VERSION: Final = 1
 
-SALIENCY_METHOD_STORE_NAMES: Final[dict[str, str]] = {
-    "Gradient": "gradient",
-    "Gradient * Input": "gradient_input",
-    "SmoothGrad": "smoothgrad",
-    "SmoothGrad_Squared": "smoothgrad_sq",
-    "VarGrad": "vargrad",
-}
 _SALIENCY_METHOD_ORDER: Final = tuple(SALIENCY_METHOD_STORE_NAMES)
 _NOISE_METHODS: Final = frozenset({"SmoothGrad", "SmoothGrad_Squared", "VarGrad"})
 _NOISE_DEFAULTS: Final[dict[str, object]] = {
@@ -858,7 +852,6 @@ def verify_saliency_artifact_manifest(
 
 __all__ = [
     "SALIENCY_ARTIFACT_MANIFEST_SCHEMA_VERSION",
-    "SALIENCY_METHOD_STORE_NAMES",
     "SALIENCY_PAYLOAD_IDENTITY_SCHEMA_VERSION",
     "SALIENCY_RUNTIME_CONTRACT_SCHEMA_VERSION",
     "SaliencyArtifactIntegrityError",

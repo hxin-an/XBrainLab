@@ -1,11 +1,9 @@
 import threading
-import time
 from dataclasses import replace
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from matplotlib.figure import Figure
 from PyQt6.QtCore import QPoint, QRect, Qt, QTimer
 from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
@@ -90,11 +88,6 @@ class MockTrainRecord:
 
     def is_finished(self):
         return self.finished
-
-    def get_confusion_figure(self, show_percentage=False):
-        # Return a dummy figure
-
-        return Figure()
 
 
 class MockPlanHolder:
@@ -278,7 +271,8 @@ def test_confusion_matrix_keeps_long_labels_readable_at_minimum_canvas(qtbot):
     figure = widget.fig
     assert canvas is not None
     assert figure is not None
-    assert canvas.width() == 180
+    assert widget.width() == 180
+    assert canvas.width() >= 180
     canvas.draw()
     renderer = canvas.get_renderer()
     axis = next(item for item in figure.axes if item.axison)
@@ -398,7 +392,7 @@ def test_evaluation_controls_wrap_before_assistant_dock_clips_common_values(qtbo
     panel.split_combo.blockSignals(True)
     model_label = "Fold 2 (EEGNet with constrained assistant dock width)"
     panel.model_combo.addItem(model_label, object())
-    panel.run_combo.addItem("Summary (Finished Runs)", "summary")
+    panel.run_combo.addItem("Run 2 — long descriptive result label", "run-2")
     panel.split_combo.addItem("Test", "test")
     panel.model_combo.blockSignals(False)
     panel.run_combo.blockSignals(False)
@@ -418,8 +412,10 @@ def test_evaluation_controls_wrap_before_assistant_dock_clips_common_values(qtbo
     _assert_controls_are_contained_and_disjoint(panel)
     assert panel.model_combo.elided_current_text() != model_label
     assert panel.model_combo.toolTip() == model_label
-    assert panel.run_combo.elided_current_text() != "Summary (Finished Runs)"
-    assert panel.run_combo.toolTip() == "Summary (Finished Runs)"
+    assert (
+        panel.run_combo.elided_current_text() != "Run 2 — long descriptive result label"
+    )
+    assert panel.run_combo.toolTip() == "Run 2 — long descriptive result label"
 
 
 def test_evaluation_charts_use_tabs_when_assistant_reduces_content_width(qtbot):
@@ -730,7 +726,7 @@ def _serialized_evaluation_result(
                         if fold_set_count == 1
                         else f"Fold Set {fold_set_index + 1}"
                     ),
-                    "run_label": f"Run {run_index + 1} (Summary)",
+                    "run_label": f"Run {run_index + 1}",
                     "evaluation_splits": ["test"],
                     "fold_count": 2,
                     "sample_count": 40,
@@ -927,9 +923,8 @@ def test_evaluation_panel_logic_uses_detached_identity_bound_render(
     assert panel.model_combo.count() == 3
     assert panel.model_combo.itemText(0) == "Fold 1 (Plan A)"
     assert isinstance(panel.model_combo.itemData(0), EvaluationPlanIdentity)
-    assert panel.run_combo.count() == 2
+    assert panel.run_combo.count() == 1
     assert panel.run_combo.itemText(0) == "Run 1"
-    assert panel.run_combo.itemText(1) == "Summary (Finished Runs)"
     assert isinstance(panel.run_combo.itemData(0), EvaluationRunIdentity)
     assert panel.metrics_table.rowCount() == 3
     assert panel.metrics_table.item(0, 0).text() == "Left hand"
@@ -963,7 +958,7 @@ def test_evaluation_panel_logic_uses_detached_identity_bound_render(
 
     panel.model_combo.setCurrentIndex(1)
     assert panel.model_combo.currentData() == EvaluationPlanIdentity(plan_index=1)
-    assert panel.run_combo.count() == 2
+    assert panel.run_combo.count() == 1
 
 
 def test_evaluation_panel_exposes_explicit_cross_fold_summary(
@@ -1001,7 +996,7 @@ def test_evaluation_panel_exposes_explicit_cross_fold_summary(
 
     assert panel.model_combo.currentText() == "All Folds"
     assert panel.run_combo.count() == 1
-    assert panel.run_combo.currentText() == "Run 1 (Summary)"
+    assert panel.run_combo.currentText() == "Run 1"
     assert isinstance(panel.run_combo.currentData(), EvaluationCrossFoldIdentity)
     assert panel.split_combo.currentData() == "test"
     assert isinstance(requests[-1].selection, EvaluationCrossFoldIdentity)
@@ -1130,14 +1125,14 @@ def test_all_folds_preparation_keeps_gui_responsive_and_drops_stale_result(
     started = threading.Event()
     release = threading.Event()
     worker_thread_ids = []
-    preparation_finished_at = []
+    events = []
 
     def delayed_cross_fold_render(request):
         if isinstance(request.selection, EvaluationCrossFoldIdentity):
             worker_thread_ids.append(threading.get_ident())
             started.set()
             release.wait(timeout=0.3)
-            preparation_finished_at.append(time.monotonic())
+            events.append("prepared")
         return _detached_render(request)
 
     runtime.render = delayed_cross_fold_render
@@ -1154,10 +1149,9 @@ def test_all_folds_preparation_keeps_gui_responsive_and_drops_stale_result(
         return original_update_plot(data, *args, **kwargs)
 
     panel.matrix_widget.update_plot = record_render
-    switched_at = []
 
     def switch_back_to_fold() -> None:
-        switched_at.append(time.monotonic())
+        events.append("switched")
         panel.model_combo.setCurrentIndex(0)
         release.set()
 
@@ -1166,14 +1160,14 @@ def test_all_folds_preparation_keeps_gui_responsive_and_drops_stale_result(
 
     qtbot.waitUntil(started.is_set, timeout=1_000)
     qtbot.waitUntil(
-        lambda: bool(switched_at) and bool(preparation_finished_at),
+        lambda: len(events) == 2,
         timeout=1_000,
     )
     qtbot.wait(50)
 
     assert len(worker_thread_ids) == 1
     assert worker_thread_ids[0] != main_thread_id
-    assert switched_at[0] < preparation_finished_at[0]
+    assert events == ["switched", "prepared"]
     assert panel.model_combo.currentText() == "Fold 1 (Plan A)"
     assert all(identity is not None for identity in rendered_summaries)
     assert panel._evaluation_render is not None
@@ -1326,7 +1320,6 @@ def test_evaluation_close_cancels_but_retains_worker_until_terminal_cleanup(
     assert panel._evaluation_render_worker is not None
     assert runtime._evaluation_registry.snapshot(operation_id).cancel_requested is True
     release.set()
-    assert panel.wait_for_evaluation_background_work(timeout=1.0) is True
     qtbot.waitUntil(panel.evaluation_background_work_idle, timeout=1_000)
 
     assert runtime._evaluation_registry.active_snapshots() == ()
@@ -1414,6 +1407,7 @@ def test_all_folds_worker_requeues_active_request_after_discarded_result(
     worker = MagicMock()
     panel._evaluation_render_worker = worker
     panel._evaluation_render_active_request = request
+    panel._evaluation_render_active_operation_id = "active-render"
 
     with monkeypatch.context() as patch_context:
         patch_context.setattr(
@@ -1421,7 +1415,9 @@ def test_all_folds_worker_requeues_active_request_after_discarded_result(
             "_current_evaluation_render_request",
             lambda: different_request,
         )
-        panel._on_evaluation_render_ready((request, _detached_render(request)))
+        panel._on_evaluation_render_ready(
+            worker, "active-render", (request, _detached_render(request))
+        )
 
     assert panel._evaluation_render_result_seen is True
     assert panel._evaluation_render is None
@@ -1437,7 +1433,7 @@ def test_all_folds_worker_requeues_active_request_after_discarded_result(
         "_current_evaluation_render_request",
         lambda: request,
     )
-    panel._on_evaluation_render_finished()
+    panel._on_evaluation_render_finished(worker, "active-render")
 
     request_render.assert_called_once_with(request)
 
@@ -1462,6 +1458,7 @@ def test_evaluation_render_accepts_same_target_after_global_generation_advance(
     worker = MagicMock()
     panel._evaluation_render_worker = worker
     panel._evaluation_render_active_request = request
+    panel._evaluation_render_active_operation_id = "active-render"
 
     monkeypatch.setattr(
         panel,
@@ -1469,10 +1466,12 @@ def test_evaluation_render_accepts_same_target_after_global_generation_advance(
         lambda: replace(request, publication_generation=5),
     )
     monkeypatch.setattr(panel, "update_views", MagicMock())
-    panel._on_evaluation_render_ready((request, _detached_render(request)))
+    panel._on_evaluation_render_ready(
+        worker, "active-render", (request, _detached_render(request))
+    )
 
     assert panel._evaluation_render is not None
-    panel._on_evaluation_render_finished()
+    panel._on_evaluation_render_finished(worker, "active-render")
     assert panel._evaluation_render_worker is None
 
 
@@ -1509,14 +1508,17 @@ def test_evaluation_render_ignores_changed_semantic_target_callback(
     worker = MagicMock()
     panel._evaluation_render_worker = worker
     panel._evaluation_render_active_request = request
+    panel._evaluation_render_active_operation_id = "active-render"
     monkeypatch.setattr(
         panel,
         "_current_evaluation_render_request",
         lambda: current_request(request),
     )
 
-    panel._on_evaluation_render_ready((request, _detached_render(request)))
-    panel._on_evaluation_render_finished()
+    panel._on_evaluation_render_ready(
+        worker, "active-render", (request, _detached_render(request))
+    )
+    panel._on_evaluation_render_finished(worker, "active-render")
 
     assert panel._evaluation_render is None
     assert panel._evaluation_render_worker is None
@@ -1543,7 +1545,7 @@ def test_cross_fold_run_selector_keeps_repeats_separate(qtbot, monkeypatch) -> N
     panel.model_combo.setCurrentIndex(2)
     assert [
         panel.run_combo.itemText(index) for index in range(panel.run_combo.count())
-    ] == ["Run 1 (Summary)", "Run 2 (Summary)"]
+    ] == ["Run 1", "Run 2"]
 
     panel.run_combo.setCurrentIndex(1)
     qtbot.waitUntil(
@@ -1624,7 +1626,7 @@ def test_aggregate_offers_only_splits_saved_for_every_finished_run(
     panel.split_combo.setCurrentIndex(panel.split_combo.findData("validation"))
     assert panel.split_combo.currentData() == "validation"
 
-    aggregate_index = panel.run_combo.findText("Summary (Finished Runs)")
+    aggregate_index = panel.run_combo.findText("Summary")
     assert aggregate_index >= 0
     panel.run_combo.setCurrentIndex(aggregate_index)
     qtbot.waitUntil(
@@ -1665,7 +1667,6 @@ def test_evaluation_selectors_hide_incomplete_runs_and_folds(qtbot, monkeypatch)
         panel.run_combo.itemText(index) for index in range(panel.run_combo.count())
     ] == [
         "Run 1",
-        "Summary (Finished Runs)",
     ]
     assert all(
         "Run 2" not in panel.run_combo.itemText(index)
@@ -1728,6 +1729,72 @@ def test_show_percentages_redraws_only_the_confusion_matrix(qtbot, monkeypatch):
     panel.matrix_widget.update_plot.assert_called_once()
     panel.metrics_table.update_data.assert_not_called()
     panel.bar_chart.update_plot.assert_not_called()
+
+
+@pytest.mark.parametrize("delivery", ["notification", "queued"])
+def test_noop_publication_keeps_visible_matrix_percentage_toggle_working(
+    qtbot,
+    monkeypatch,
+    delivery,
+):
+    runtime, publication = _install_evaluation_read_side(
+        monkeypatch,
+        lambda *_args, **_kwargs: _serialized_evaluation_result(),
+    )
+    requests = []
+
+    def render(request):
+        requests.append(request)
+        return _detached_render(request)
+
+    runtime.render = render
+    panel = EvaluationPanel(parent=MockMainWindow())
+    qtbot.addWidget(panel)
+    panel.update_panel()
+    qtbot.waitUntil(
+        lambda: panel._evaluation_render is not None
+        and panel.evaluation_background_work_idle(),
+        timeout=1_000,
+    )
+    metrics = [
+        panel.metrics_table.item(row, column).text()
+        for row in range(panel.metrics_table.rowCount())
+        for column in range(panel.metrics_table.columnCount())
+    ]
+    request_count = len(requests)
+    old_publication = publication["value"]
+    publication["value"] = replace(
+        old_publication,
+        generation=old_publication.generation + 1,
+        revision=old_publication.revision + 1,
+    )
+    if delivery == "notification":
+        runtime.notify(
+            APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+            publication["value"],
+        )
+    else:
+        # A queued revision can become equivalent after an earlier render commits.
+        panel._application_render_ledger.queue(publication["value"])
+    qtbot.waitUntil(
+        lambda: panel._last_application_revision == publication["value"].revision,
+    )
+
+    for checked, expected_cells in (
+        (True, ["100.0%", "0.0%", "0.0%", "100.0%"]),
+        (False, ["1", "0", "0", "1"]),
+    ):
+        panel.chk_percentage.setChecked(checked)
+        assert panel.plot_stack.currentIndex() == 0
+        assert [
+            text.get_text() for text in panel.matrix_widget.fig.axes[0].texts
+        ] == expected_cells
+        assert [
+            panel.metrics_table.item(row, column).text()
+            for row in range(panel.metrics_table.rowCount())
+            for column in range(panel.metrics_table.columnCount())
+        ] == metrics
+    assert len(requests) == request_count
 
 
 def test_evaluation_panel_blocks_non_held_out_render_without_retrying(
@@ -2184,7 +2251,9 @@ def test_evaluation_panel_clears_metrics_when_detached_average_is_unavailable(
 
     runtime, _publication = _install_evaluation_read_side(
         monkeypatch,
-        lambda *_args, **_kwargs: _serialized_evaluation_result(),
+        lambda *_args, **_kwargs: _serialized_evaluation_result(
+            second_run_finished=True
+        ),
     )
 
     def render(request):
@@ -2210,7 +2279,7 @@ def test_evaluation_panel_clears_metrics_when_detached_average_is_unavailable(
         timeout=1_000,
     )
 
-    average_index = panel.run_combo.findText("Summary (Finished Runs)")
+    average_index = panel.run_combo.findText("Summary")
     assert average_index >= 0
     panel.run_combo.setCurrentIndex(average_index)
 
@@ -2267,17 +2336,19 @@ def test_evaluation_panel_preserves_selected_plan_and_average_on_new_revision(
     main_window = MockMainWindow()
     runtime, publication = _install_evaluation_read_side(
         monkeypatch,
-        lambda *_args, **_kwargs: _serialized_evaluation_result(),
+        lambda *_args, **_kwargs: _serialized_evaluation_result(
+            second_run_finished=True
+        ),
     )
     panel = EvaluationPanel(parent=main_window)
     qtbot.addWidget(panel)
 
     panel.update_panel()
     panel.model_combo.setCurrentIndex(1)
-    panel.run_combo.setCurrentIndex(1)
+    panel.run_combo.setCurrentIndex(panel.run_combo.findText("Summary"))
 
     assert panel.model_combo.currentText() == "Fold 2 (Plan B)"
-    assert panel.run_combo.currentText() == "Summary (Finished Runs)"
+    assert panel.run_combo.currentText() == "Summary"
 
     publication["value"] = _application_publication(generation=4, revision=5)
     runtime.notify(
@@ -2287,7 +2358,7 @@ def test_evaluation_panel_preserves_selected_plan_and_average_on_new_revision(
     qtbot.wait(50)
 
     assert panel.model_combo.currentText() == "Fold 2 (Plan B)"
-    assert panel.run_combo.currentText() == "Summary (Finished Runs)"
+    assert panel.run_combo.currentText() == "Summary"
 
 
 def test_evaluation_panel_adds_a_newly_completed_repeat_on_new_revision(
@@ -2335,7 +2406,9 @@ def test_evaluation_panel_resets_index_only_selection_for_a_new_generation(
     generation = 4
 
     def execute(_panel, _command, **_kwargs):
-        return _serialized_evaluation_result(generation=generation)
+        return _serialized_evaluation_result(
+            generation=generation, second_run_finished=True
+        )
 
     runtime, publication = _install_evaluation_read_side(monkeypatch, execute)
     panel = EvaluationPanel(parent=main_window)
@@ -2343,9 +2416,9 @@ def test_evaluation_panel_resets_index_only_selection_for_a_new_generation(
 
     panel.update_panel()
     panel.model_combo.setCurrentIndex(1)
-    panel.run_combo.setCurrentIndex(1)
+    panel.run_combo.setCurrentIndex(panel.run_combo.findText("Summary"))
     assert panel.model_combo.currentText() == "Fold 2 (Plan B)"
-    assert panel.run_combo.currentText() == "Summary (Finished Runs)"
+    assert panel.run_combo.currentText() == "Summary"
 
     generation = 5
     publication["value"] = _application_publication(generation=5, revision=5)

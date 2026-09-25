@@ -197,24 +197,28 @@ class ChatHistoryReplacement:
 
 
 class ChatController(QObject):
-    """Own typed transcript history while preserving the legacy text view."""
+    """Own typed transcript history and publish ordered UI notifications."""
 
-    message_added = pyqtSignal(str, bool)
     message_record_added = pyqtSignal(object)
-    message_record_updated = pyqtSignal(object)
     history_replaced = pyqtSignal(object)
     processing_state_changed = pyqtSignal(bool)
-    conversation_cleared = pyqtSignal()
 
     def __init__(self):
         super().__init__()
-        self.messages: list[dict[str, str]] = []
         self._history_records: list[ChatMessageRecord] = []
         self._pruned_row_count = 0
         self._remaining_prepared_presentation_rows: int | None = None
         self._history_replacement_depth = 0
-        self._deferred_history_notifications: list[tuple[str, ChatMessageRecord]] = []
+        self._deferred_history_notifications: list[ChatMessageRecord] = []
         self.is_processing = False
+
+    @property
+    def messages(self) -> list[dict[str, str]]:
+        """Return a detached role/content view for transcript evidence readers."""
+        return [
+            {"role": record.role.value, "content": record.content}
+            for record in self._history_records
+        ]
 
     def add_user_message(self, text: str) -> ChatMessageRecord:
         """Add one user message."""
@@ -315,10 +319,6 @@ class ChatController(QObject):
             prune_count += 1
 
         self._history_records = self._history_records[prune_count:]
-        self.messages = [
-            {"role": record.role.value, "content": record.content}
-            for record in self._history_records
-        ]
         self._pruned_row_count += prune_count
         self._remaining_prepared_presentation_rows = MAX_CHAT_PRESENTATION_ROWS_PER_TURN
         self._publish_history_replacement(
@@ -343,52 +343,23 @@ class ChatController(QObject):
     def _append_record_transaction(self, record: ChatMessageRecord) -> None:
         """Commit one append before publishing UI signals."""
         self._require_record_appendable(record)
-        history_before = list(self._history_records)
-        messages_before = list(self.messages)
-        try:
-            self._append_record(record, emit=False)
-        except Exception:
-            self._history_records = history_before
-            self.messages = messages_before
-            raise
-
+        self._history_records.append(record)
         self._emit_record_added(record)
 
-    def _append_record(self, record: ChatMessageRecord, *, emit: bool = True) -> None:
-        self._require_record_appendable(record)
-        self._history_records.append(record)
-        legacy = {"role": record.role.value, "content": record.content}
-        self.messages.append(legacy)
-        if emit:
-            self._emit_record_added(record)
-
     def _emit_record_added(self, record: ChatMessageRecord) -> None:
-        """Publish one committed record to typed and legacy UI consumers."""
+        """Publish one committed record to typed UI consumers."""
         if self._history_replacement_depth:
-            self._deferred_history_notifications.append(("added", record))
+            self._deferred_history_notifications.append(record)
             return
         self._publish_record_added(record)
 
     def _publish_record_added(self, record: ChatMessageRecord) -> None:
         """Emit one record immediately after replay ordering has been resolved."""
         self.message_record_added.emit(record)
-        self.message_added.emit(
-            record.content,
-            record.role is ChatMessageRole.USER,
-        )
-
-    def _emit_record_updated(self, record: ChatMessageRecord) -> None:
-        """Publish or defer an update until an atomic replacement is visible."""
-        if self._history_replacement_depth:
-            self._deferred_history_notifications.append(("updated", record))
-            return
-        self.message_record_updated.emit(record)
 
     def _publish_history_replacement(
         self,
         replacement: ChatHistoryReplacement,
-        *,
-        emit_legacy_clear: bool = False,
     ) -> None:
         """Publish one snapshot, then drain reentrant record deltas in FIFO order."""
         if not isinstance(replacement, ChatHistoryReplacement):
@@ -398,17 +369,11 @@ class ChatController(QObject):
         self._deferred_history_notifications.clear()
         try:
             self.history_replaced.emit(replacement)
-            if emit_legacy_clear:
-                self.conversation_cleared.emit()
-
             notification_index = 0
             while notification_index < len(self._deferred_history_notifications):
-                kind, record = self._deferred_history_notifications[notification_index]
+                record = self._deferred_history_notifications[notification_index]
                 notification_index += 1
-                if kind == "updated":
-                    self.message_record_updated.emit(record)
-                else:
-                    self._publish_record_added(record)
+                self._publish_record_added(record)
         finally:
             self._deferred_history_notifications.clear()
             self._history_replacement_depth = 0
@@ -421,7 +386,6 @@ class ChatController(QObject):
     def clear_conversation(self) -> None:
         """Clear the entire conversation history and notify the UI."""
         self._require_history_replacement_idle()
-        self.messages.clear()
         self._history_records.clear()
         self._pruned_row_count = 0
         self._remaining_prepared_presentation_rows = None
@@ -430,7 +394,6 @@ class ChatController(QObject):
                 kind=ChatHistoryReplacementKind.CLEAR,
                 records=(),
             ),
-            emit_legacy_clear=True,
         )
 
     def set_processing(self, state: bool) -> None:
@@ -470,9 +433,6 @@ class ChatController(QObject):
         self._history_records = parsed
         self._pruned_row_count = 0
         self._remaining_prepared_presentation_rows = None
-        self.messages = [
-            {"role": record.role.value, "content": record.content} for record in parsed
-        ]
         restored_records = tuple(parsed)
         self._publish_history_replacement(
             ChatHistoryReplacement(

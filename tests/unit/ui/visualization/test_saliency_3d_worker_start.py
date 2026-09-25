@@ -423,12 +423,10 @@ def test_failed_final_3d_render_allows_retry_of_the_same_scene(
         "sample_index_for_time": lambda _time: 0,
     }
     failed_scene = SimpleNamespace(
-        init_error="",
         engine=SimpleNamespace(**engine_contract),
         get_3d_head_plot=MagicMock(side_effect=RuntimeError("head plot failed")),
     )
     rendered_scene = SimpleNamespace(
-        init_error="",
         engine=SimpleNamespace(**engine_contract),
         get_3d_head_plot=MagicMock(),
     )
@@ -441,8 +439,8 @@ def test_failed_final_3d_render_allows_retry_of_the_same_scene(
     widget._do_3d_plot_if_alive(
         request_id,
         plotter,
-        publication.data,
-        "left",
+        prepared_engine=failed_scene.engine,
+        prepared_channel_count=2,
         publication_generation=publication.generation,
     )
 
@@ -456,8 +454,8 @@ def test_failed_final_3d_render_allows_retry_of_the_same_scene(
     widget._do_3d_plot_if_alive(
         retry_request_id,
         retry_plotter,
-        publication.data,
-        "left",
+        prepared_engine=rendered_scene.engine,
+        prepared_channel_count=2,
         publication_generation=publication.generation,
     )
 
@@ -487,8 +485,8 @@ def test_stale_final_3d_render_failure_keeps_newer_scene_key(
     widget._do_3d_plot_if_alive(
         stale_request_id,
         plotter,
-        publication.data,
-        "left",
+        prepared_engine=object(),
+        prepared_channel_count=2,
         publication_generation=publication.generation,
     )
 
@@ -887,10 +885,7 @@ def test_close_invalidates_engine_completion_before_geometry_initialization(
     workers, _pool, _worker_calls = _install_manual_workers(widget, monkeypatch)
     request_id = _start_engine_for_publication(widget, publication)
     old_worker = workers[0]
-    widget._current_plot_request = (publication, False)
-
     assert widget._current_publication_generation == publication.generation
-    assert widget._current_plot_request == (publication, False)
 
     widget.closeEvent(QCloseEvent())
     closed_request_id = widget._engine_request_id
@@ -914,7 +909,6 @@ def test_close_invalidates_engine_completion_before_geometry_initialization(
     assert widget._runtime_probe_worker is None
     assert widget._pending_3d_request is None
     assert widget._current_publication_generation is None
-    assert widget._current_plot_request is None
     old_worker.signals.finished.emit()
     assert widget._engine_worker is None
 

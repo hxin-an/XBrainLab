@@ -47,7 +47,7 @@ class SaliencyTopoMapViz(Visualizer):
         if self.fig is None:
             raise RuntimeError("Visualizer figure was not initialized")
         fig = self.fig
-        positions = self.epoch_data.get_montage_position()
+        positions = self.render_data.get_montage_position()
 
         if positions is None or len(positions) == 0:
             raise ValueError("No montage positions found. Please set a montage first.")
@@ -60,7 +60,7 @@ class SaliencyTopoMapViz(Visualizer):
             # Assuming single channel case, though rare for Topomap
             pos_array = pos_array.reshape(1, -1)
 
-        chs = self.epoch_data.get_channel_names()
+        chs = self.render_data.get_channel_names()
         if pos_array.ndim != 2 or pos_array.shape[1] < 2:
             raise ValueError(
                 "Montage positions must contain one 2-D or 3-D coordinate per channel.",
@@ -76,10 +76,6 @@ class SaliencyTopoMapViz(Visualizer):
             ax.text(0.5, 0.5, "No saliency data for this run.", ha="center")
             ax.set_axis_off()
             return fig
-
-        visible_label_number = len(saliency_by_label)
-        rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
-        cols = int(np.ceil(visible_label_number / rows))
 
         display_by_label = []
         for label_key, label_name, raw_saliency in saliency_by_label:
@@ -104,7 +100,7 @@ class SaliencyTopoMapViz(Visualizer):
             method,
             [data for _label_key, _label_name, data in display_by_label],
             absolute=absolute,
-            normalized=bool(getattr(self.epoch_data, "normalized", False)),
+            normalized=self.render_data.normalized,
         )
         if display_mode not in {"all", "single"}:
             raise ValueError("display_mode must be 'all' or 'single'")
@@ -118,13 +114,11 @@ class SaliencyTopoMapViz(Visualizer):
         visible_label_number = len(plotted_by_label)
         rows = 1 if visible_label_number <= self.MIN_LABEL_NUMBER_FOR_MULTI_ROW else 2
         cols = int(np.ceil(visible_label_number / rows))
-        plot_axes = []
         image = None
         for plot_index, (_label_key, label_name, data) in enumerate(
             plotted_by_label,
         ):
             ax = fig.add_subplot(rows, cols, plot_index + 1)
-            plot_axes.append(ax)
             kwargs = {
                 "pos": pos_array[:, 0:2],
                 "ch_type": "eeg",

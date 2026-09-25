@@ -38,7 +38,6 @@ from .styles import (
 
 _SOFT_WRAP_MARK = "\u200b"
 _MAX_UNBROKEN_DISPLAY_CHARS = 12
-_SETTING_CHANGE_COMMANDS = frozenset({"configure_training", "set_model"})
 _PARAMETER_LABELS = {
     "batch size": "Batch size",
     "checkpoint policy": "Checkpoint saving",
@@ -78,15 +77,6 @@ _DISPLAY_VALUES = {
     "val_auc": "Validation AUC",
     "val_loss": "Validation loss",
 }
-
-
-def _setting_change_action_labels(
-    request: AgentConfirmationRequest,
-) -> tuple[str, str]:
-    """Match setting-change actions to the number of proposed values."""
-    if len(request.parameter_rows) == 1:
-        return "Apply change", "Keep current value"
-    return "Apply changes", "Keep current"
 
 
 def _add_soft_wrap_opportunities(text: str) -> str:
@@ -183,12 +173,7 @@ def _format_display_value(raw_value: str) -> str:
 class _SoftWrappingValueLabel(QLabel):
     """Wrap long tokens visually while copying the exact original value."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._raw_text = ""
-
     def set_wrapped_text(self, text: str) -> None:
-        self._raw_text = text
         self.setText(_add_soft_wrap_opportunities(text))
         self.setAccessibleDescription(text)
 
@@ -242,15 +227,12 @@ class _SoftWrappingValueLabel(QLabel):
 
 
 class _ProposalRow(QFrame):
-    """One readable current-to-proposed setting comparison."""
+    """One readable action-detail field."""
 
     def __init__(
         self,
         label: str,
-        current: str | None,
         proposed: str,
-        setting_change: bool,
-        current_verified: bool,
         parent: QWidget,
     ) -> None:
         super().__init__(parent)
@@ -272,50 +254,14 @@ class _ProposalRow(QFrame):
         values_layout.setContentsMargins(0, 0, 0, 0)
         values_layout.setSpacing(5)
 
-        current_group = QWidget(values)
-        current_group.setStyleSheet("background: transparent; border: none;")
-        current_layout = QVBoxLayout(current_group)
-        current_layout.setContentsMargins(0, 0, 0, 0)
-        current_layout.setSpacing(1)
-        self.current_caption = QLabel("Current", current_group)
-        self.current_caption.setObjectName("AssistantProposalCaption")
-        current_layout.addWidget(self.current_caption)
-        self.current_value = _SoftWrappingValueLabel(current_group)
-        self.current_value.setObjectName("AssistantProposalCurrent")
-        current_display = _format_display_value(current) if current is not None else ""
-        self.current_value.set_wrapped_text(current_display)
-        self.current_value.setWordWrap(True)
-        self.current_value.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-            | Qt.TextInteractionFlag.TextSelectableByKeyboard
-        )
-        current_layout.addWidget(self.current_value)
         proposed_display = _format_display_value(proposed)
-        current_visible = (
-            current_verified
-            and current is not None
-            and current_display != proposed_display
-        )
-        current_group.setVisible(current_visible)
-        self.current_caption.setVisible(current_visible)
-        self.current_value.setVisible(current_visible)
-        values_layout.addWidget(current_group, 1)
 
         proposed_group = QWidget(values)
         proposed_group.setStyleSheet("background: transparent; border: none;")
         proposed_layout = QVBoxLayout(proposed_group)
         proposed_layout.setContentsMargins(0, 0, 0, 0)
         proposed_layout.setSpacing(1)
-        self.proposed_caption = QLabel(
-            (
-                "Proposed"
-                if setting_change and current_verified
-                else "Proposed value"
-                if setting_change
-                else "Details"
-            ),
-            proposed_group,
-        )
+        self.proposed_caption = QLabel("Details", proposed_group)
         self.proposed_caption.setObjectName("AssistantProposalCaption")
         proposed_layout.addWidget(self.proposed_caption)
         self.proposed_value = _SoftWrappingValueLabel(proposed_group)
@@ -387,17 +333,6 @@ class AssistantConfirmationCard(QFrame):
         self.context_warning.setVisible(False)
         layout.addWidget(self.context_warning)
 
-        self.current_state_warning = QLabel("")
-        self.current_state_warning.setObjectName("AssistantActionContextWarning")
-        self.current_state_warning.setStyleSheet(ACTION_CARD_CONTEXT_WARNING_STYLE)
-        self.current_state_warning.setWordWrap(True)
-        self.current_state_warning.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Minimum,
-        )
-        self.current_state_warning.setVisible(False)
-        layout.addWidget(self.current_state_warning)
-
         self.proposal_rows_widget = QWidget(self)
         self.proposal_rows_widget.setObjectName("AssistantProposalRows")
         self.proposal_rows_widget.setStyleSheet(
@@ -408,7 +343,7 @@ class AssistantConfirmationCard(QFrame):
         self.proposal_rows_layout.setSpacing(6)
         self.proposal_rows: list[_ProposalRow] = []
 
-        self.details_title = QLabel("Proposed settings")
+        self.details_title = QLabel("Action details")
         self.details_title.setObjectName("AssistantActionCardLabel")
         self.details_title.setStyleSheet(ACTION_CARD_LABEL_STYLE)
         layout.addWidget(self.details_title)
@@ -465,7 +400,7 @@ class AssistantConfirmationCard(QFrame):
         button_layout.setContentsMargins(0, 2, 0, 0)
         button_layout.setSpacing(8)
 
-        self.secondary_button = QPushButton("Keep current value")
+        self.secondary_button = QPushButton("Cancel")
         self.secondary_button.setObjectName("AssistantActionCardSecondary")
         self.secondary_button.setStyleSheet(ACTION_CARD_SECONDARY_BUTTON_STYLE)
         self.secondary_button.setMinimumHeight(34)
@@ -479,7 +414,7 @@ class AssistantConfirmationCard(QFrame):
         )
         button_layout.addWidget(self.secondary_button)
 
-        self.primary_button = QPushButton("Apply change")
+        self.primary_button = QPushButton("Confirm")
         self.primary_button.setObjectName("AssistantActionCardPrimary")
         self.primary_button.setStyleSheet(ACTION_CARD_PRIMARY_BUTTON_STYLE)
         self.primary_button.setMinimumHeight(34)
@@ -509,7 +444,6 @@ class AssistantConfirmationCard(QFrame):
         self,
         request: AgentConfirmationRequest,
         *,
-        current_values: Mapping[str, str] | None = None,
         current_context_changed: bool = False,
     ) -> None:
         """Render a request without changing or reconstructing its parameters."""
@@ -520,16 +454,12 @@ class AssistantConfirmationCard(QFrame):
         self.setProperty("riskHighImpact", request.high_impact)
         self.setProperty("riskLongRunning", request.long_running)
         self.setProperty("decisionBoundary", request.decision_boundary)
-        setting_change = request.command_name in _SETTING_CHANGE_COMMANDS
-        compact_long_running = (
-            request.long_running and not request.destructive and not setting_change
-        )
+        compact_long_running = request.long_running and not request.destructive
         ordinary_confirmation = not any(
             (
                 request.destructive,
                 request.high_impact,
                 compact_long_running,
-                setting_change,
             )
         )
         self.title_label.setText(
@@ -538,14 +468,12 @@ class AssistantConfirmationCard(QFrame):
             else request.action_label
             if compact_long_running
             else "High-impact confirmation"
-            if request.high_impact and not setting_change
-            else ("Suggested change" if setting_change else request.action_label)
+            if request.high_impact
+            else request.action_label
         )
         self.description_label.setText(request.action_label)
         self.description_label.setVisible(
-            not setting_change
-            and not compact_long_running
-            and not ordinary_confirmation
+            not compact_long_running and not ordinary_confirmation
         )
         self.impact_label.setText(request.impact_text or "")
         self.impact_label.setVisible(bool(request.impact_text))
@@ -561,21 +489,7 @@ class AssistantConfirmationCard(QFrame):
             else ""
         )
         self.context_warning.setVisible(current_context_changed)
-        current_verified = current_values is not None and not current_context_changed
-        self.current_state_warning.setText(
-            "Current training values could not be verified. The values below are "
-            "the assistant's proposal, not a verified comparison. XBrainLab will "
-            "revalidate before applying them."
-            if setting_change and not current_verified
-            else ""
-        )
-        self.current_state_warning.setVisible(setting_change and not current_verified)
-        self._render_proposal_rows(
-            request,
-            current_values=current_values,
-            setting_change=setting_change,
-            current_verified=current_verified,
-        )
+        self._render_proposal_rows(request)
         if compact_long_running:
             self.details_title.setVisible(False)
             self.proposal_rows_widget.setVisible(False)
@@ -583,8 +497,6 @@ class AssistantConfirmationCard(QFrame):
 
         if compact_long_running:
             primary_label, secondary_label = "Confirm", "Cancel"
-        elif setting_change:
-            primary_label, secondary_label = _setting_change_action_labels(request)
         else:
             primary_label = tool_action_label(request.command_name)
             secondary_label = "Cancel"
@@ -613,36 +525,22 @@ class AssistantConfirmationCard(QFrame):
     def _render_proposal_rows(
         self,
         request: AgentConfirmationRequest,
-        *,
-        current_values: Mapping[str, str] | None,
-        setting_change: bool,
-        current_verified: bool,
     ) -> None:
         """Render a human-facing projection without changing the typed request."""
         while self.proposal_rows:
             row = self.proposal_rows.pop()
             self.proposal_rows_layout.removeWidget(row)
             row.deleteLater()
-        current = {
-            _humanize_parameter_label(str(key)).casefold(): str(value)
-            for key, value in (current_values or {}).items()
-        }
         for raw_label, proposed in request.parameter_rows:
             label = _humanize_parameter_label(raw_label)
             row = _ProposalRow(
                 label,
-                current.get(label.casefold()),
                 proposed,
-                setting_change,
-                current_verified,
                 self.proposal_rows_widget,
             )
             self.proposal_rows.append(row)
             self.proposal_rows_layout.addWidget(row)
         has_rows = bool(self.proposal_rows)
-        self.details_title.setText(
-            "Proposed settings" if setting_change else "Action details"
-        )
         self.details_title.setVisible(has_rows)
         self.proposal_rows_widget.setVisible(has_rows)
         self.proposal_scroll.setVisible(has_rows)
@@ -693,11 +591,11 @@ class AssistantConfirmationCard(QFrame):
             row_layout = row.layout()
             if row_layout is not None:
                 row_layout.activate()
-            for label in (row.label, row.current_value, row.proposed_value):
+            for label in (row.label, row.proposed_value):
                 label.setMinimumHeight(0)
             if row_layout is not None:
                 row_layout.activate()
-            for label in (row.label, row.current_value, row.proposed_value):
+            for label in (row.label, row.proposed_value):
                 label.fit_height_to_current_width()
             if row_layout is not None:
                 row_layout.activate()
@@ -745,25 +643,16 @@ class AssistantConfirmationCard(QFrame):
         self.primary_button.setEnabled(not submitting)
         self.secondary_button.setEnabled(not submitting)
         if submitting:
-            setting_change = (
-                self._request is not None
-                and self._request.command_name in _SETTING_CHANGE_COMMANDS
-            )
-            label = "Applying..." if setting_change else "Working..."
+            label = "Working..."
             self.primary_button.setText(label)
             self.primary_button.setAccessibleName(label)
         elif self._request is not None:
-            setting_change = self._request.command_name in _SETTING_CHANGE_COMMANDS
             compact_long_running = (
-                self._request.long_running
-                and not self._request.destructive
-                and not setting_change
+                self._request.long_running and not self._request.destructive
             )
             label = (
                 "Confirm"
                 if compact_long_running
-                else _setting_change_action_labels(self._request)[0]
-                if setting_change
                 else tool_action_label(self._request.command_name)
             )
             self.primary_button.setText(label)

@@ -32,6 +32,7 @@ from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.conversation import ConversationHistory
 from XBrainLab.llm.agent.parser import (
     CommandParser,
+    ToolCommand,
     ToolEnvelopeParseResult,
     ToolEnvelopeStatus,
 )
@@ -954,6 +955,9 @@ class _EvaluatorControllerHarness:
     def _publish_activity(self, *_args: Any, **_kwargs: Any) -> None:
         """The evaluator intentionally has no activity presentation surface."""
 
+    def _observe_decision(self, _kind: str, **_details: Any) -> None:
+        """No live observer surface; replay records admission/terminal separately."""
+
     def _emit_processing_finished(self, _outcome: str = "completed") -> None:
         self.pending_interactions.clear_active_tool_input()
 
@@ -985,20 +989,18 @@ class _EvaluatorControllerHarness:
 
     def _handle_tool_envelope_failure(
         self,
-        response_text: str,
         envelope: ToolEnvelopeParseResult,
     ) -> bool:
         return LLMController._handle_tool_envelope_failure(  # type: ignore[arg-type]
             self,
-            response_text,
             envelope,
         )
 
     def _begin_typed_tool_input(self, envelope: ToolEnvelopeParseResult) -> bool:
         return LLMController._begin_typed_tool_input(self, envelope)  # type: ignore[arg-type]
 
-    def _process_tool_calls(self, command_result: Any, response_text: str) -> None:
-        LLMController._process_tool_calls(self, command_result, response_text)  # type: ignore[arg-type]
+    def _process_tool_call(self, command: ToolCommand, response_text: str) -> None:
+        LLMController._process_tool_call(self, command, response_text)  # type: ignore[arg-type]
 
     def replay_controller_generation(
         self,
@@ -1081,24 +1083,15 @@ class _EvaluatorControllerHarness:
         LLMController._begin_typed_tool_input(self, envelope)  # type: ignore[arg-type]
         return self.pending_interactions.tool_input
 
-    def _select_tool_proposal(
-        self,
-        command_result: Any,
-    ) -> tuple[str, dict[str, Any]] | None:
-        return LLMController._select_tool_proposal(self, command_result)  # type: ignore[arg-type]
-
     def _evaluate_tool_proposal(
         self,
         command: tuple[str, dict[str, Any]],
         response_text: str,
-        *,
-        single_proposal: bool = True,
     ) -> ToolAttemptDecision:
         decision = LLMController._evaluate_tool_proposal(  # type: ignore[arg-type]
             self,
             command,
             response_text,
-            single_proposal=single_proposal,
         )
         self._observed_decision = decision
         return decision
@@ -1150,14 +1143,14 @@ class _EvaluatorControllerHarness:
         envelope = CommandParser.parse_product(response)
         if envelope.status is not ToolEnvelopeStatus.VALID:
             return None, None
-        command = self._select_tool_proposal(list(envelope.commands))
+        command = self._tool_attempt_coordinator.admit_proposal(
+            envelope.commands[0],
+            execution_count=self._tool_attempt_session.execution_count,
+            cancelled=self._turn_orchestrator.cancelled,
+        )
         if command is None:
             return None, None
-        decision = self._evaluate_tool_proposal(
-            command,
-            response,
-            single_proposal=len(envelope.commands) == 1,
-        )
+        decision = self._evaluate_tool_proposal(command, response)
         return decision, command[1]
 
     def admit_origin_guard_response(
@@ -1403,7 +1396,7 @@ def _retrieve_product_rag_context(
     from the same assembler projection and the process lifecycle owns startup,
     timeout, child termination, and retriever cleanup.
     """
-    allowed_tool_names = tuple(sorted(assembler.rag_allowed_tool_names(query)))
+    allowed_tool_names = tuple(sorted(assembler.rag_allowed_tool_names()))
     completed = threading.Event()
     result: dict[str, str] = {"context": "", "error": ""}
 
@@ -1895,14 +1888,12 @@ def score_precision_response(
         ToolAttemptRequest(
             command_name=tool_name,
             params=parameters,
-            confidence=1.0,
             publication=prompt_publication,
             latest_user_text=case.user_input,
         )
     )
     safe_block = decision.action in {
         ToolAttemptAction.PUBLICATION_BLOCKED,
-        ToolAttemptAction.PROVENANCE_BLOCKED,
         ToolAttemptAction.VERIFICATION_BLOCKED,
         ToolAttemptAction.CAPABILITY_BLOCKED,
         ToolAttemptAction.RESOURCE_CONFIRMATION_BLOCKED,

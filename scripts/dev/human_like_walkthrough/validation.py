@@ -747,7 +747,7 @@ def build_assistant_full_window_contract_review(
         "assistant_runtime_ready": "ready",
         "assistant_blocked_command": "blocked",
         "assistant_narrow_panel": "ready",
-        "assistant_existing_ui_handoff": "opened",
+        "assistant_existing_ui_handoff": "ready",
     }
     findings: list[str] = []
     evidence: dict[str, Any] = {}
@@ -859,7 +859,9 @@ def build_assistant_full_window_contract_review(
         if phase_name == "assistant_narrow_panel":
             plot = state.get("evaluation_plot_readability", {})
             plot = plot if isinstance(plot, dict) else {}
-            if not bool(plot.get("available")) or not bool(plot.get("fully_visible")):
+            if not bool(plot.get("available")) or not bool(
+                plot.get("readable_reachable")
+            ):
                 overlap = ", ".join(
                     str(item) for item in plot.get("overlapping_x_ticks", []) or []
                 )
@@ -999,8 +1001,8 @@ def build_assistant_interaction_contract_review(
             2,
         ),
         "assistant_existing_ui_handoff": (
-            "typed_workflow_ui_handoff",
-            "opened_in_main_window",
+            "correlated_panel_navigation",
+            "ready_in_main_window",
             0,
             2,
         ),
@@ -1040,6 +1042,13 @@ def build_assistant_interaction_contract_review(
         ):
             findings.append(f"{phase_name} did not mark the reset as destructive")
         if request_kind == "production_confirmation_card":
+            if (
+                interaction.get("command_name") != "reset_preprocessing"
+                or interaction.get("execution_evidence") != "scripted_presentation_only"
+            ):
+                findings.append(
+                    f"{phase_name} must identify scripted preprocessing confirmation"
+                )
             waiting = interaction.get("waiting_surface", {})
             waiting = waiting if isinstance(waiting, dict) else {}
             waiting_activity = waiting.get("turn_activity", {})
@@ -1062,32 +1071,30 @@ def build_assistant_interaction_contract_review(
                 findings.append(
                     f"{phase_name} presents a pending decision as active work"
                 )
-        if request_kind == "typed_workflow_ui_handoff":
+        if request_kind == "correlated_panel_navigation":
+            correlation = interaction.get("correlation")
+            resolved = interaction.get("resolution_correlation")
             if (
-                interaction.get("handoff_kind") != "decision_required"
-                or interaction.get("command_name") != "evaluate"
-                or not bool(interaction.get("typed_handoff_emitted"))
-                or not bool(interaction.get("typed_resolution_accepted"))
+                interaction.get("target") != "evaluation"
+                or interaction.get("resolution_target") != "evaluation"
+                or not bool(interaction.get("typed_navigation_emitted"))
+                or interaction.get("navigation_success") is not True
+                or interaction.get("terminal_count") != 1
             ):
                 findings.append(
-                    f"{phase_name} did not emit the typed Evaluation handoff"
+                    f"{phase_name} did not finish one typed Evaluation navigation"
                 )
-            request_id = str(interaction.get("request_id") or "")
-            decision_fields = tuple(interaction.get("decision_fields", []) or [])
-            resolution_fields = tuple(
-                interaction.get("resolution_decision_fields", []) or []
-            )
             if (
-                not request_id
-                or interaction.get("resolution_request_id") != request_id
-                or interaction.get("resolution_command_name") != "evaluate"
-                or interaction.get("resolution_status") != "deferred_to_ui"
-                or decision_fields != ("evaluation_result",)
-                or resolution_fields != decision_fields
+                not isinstance(correlation, dict)
+                or set(correlation) != {"generation", "turn_id"}
+                or any(type(value) is not int for value in correlation.values())
+                or correlation["generation"] < 0
+                or correlation["turn_id"] <= 0
+                or resolved != correlation
                 or not bool(interaction.get("request_resolution_correlated"))
             ):
                 findings.append(
-                    f"{phase_name} did not preserve typed request/resolution correlation"
+                    f"{phase_name} did not preserve navigation request/resolution correlation"
                 )
             handoff = interaction.get("main_window_handoff", {})
             handoff = handoff if isinstance(handoff, dict) else {}
@@ -1100,15 +1107,15 @@ def build_assistant_interaction_contract_review(
                 or not bool(handoff.get("evaluation_nav_checked"))
                 or not bool(handoff.get("active_page_visible"))
                 or not bool(handoff.get("assistant_dock_visible"))
-                or handoff.get("workflow_status") != "opened"
-                or not bool(handoff.get("workflow_opened"))
             ):
                 findings.append(
                     f"{phase_name} does not prove a full-window active Evaluation view"
                 )
             plot = handoff.get("evaluation_plot_readability", {})
             plot = plot if isinstance(plot, dict) else {}
-            if not bool(plot.get("available")) or not bool(plot.get("fully_visible")):
+            if not bool(plot.get("available")) or not bool(
+                plot.get("readable_reachable")
+            ):
                 clipped = ", ".join(
                     str(item) for item in plot.get("clipped_labels", [])
                 )
@@ -1117,25 +1124,6 @@ def build_assistant_interaction_contract_review(
                     "confusion-matrix labels or responsive layout are unreadable"
                     + (f" ({clipped})" if clipped else "")
                 )
-            expected_copy = {
-                "cancelled": (
-                    "Evaluation review was cancelled. "
-                    "Your current workflow is unchanged."
-                ),
-                "completed": "Evaluation review is ready in XBrainLab.",
-                "failed": (
-                    "XBrainLab could not open Evaluation. "
-                    "Try again from the main window."
-                ),
-            }
-            product_copy = interaction.get("product_copy", {})
-            product_copy = product_copy if isinstance(product_copy, dict) else {}
-            for outcome, expected_text in expected_copy.items():
-                if product_copy.get(outcome) != expected_text:
-                    findings.append(
-                        "assistant_existing_ui_handoff has unpolished "
-                        f"{outcome} product copy: {product_copy.get(outcome)!r}"
-                    )
         terminal = [str(item) for item in interaction.get("terminal_messages", [])]
         if len(terminal) != 1:
             findings.append(f"{phase_name} must have one terminal message")
@@ -1158,9 +1146,11 @@ def build_assistant_interaction_contract_review(
         if phase_name == "assistant_confirmation_cancelled":
             cancel_text = " ".join(terminal)
             if cancel_text != (
-                "Session reset cancelled. Your current workflow is unchanged."
+                "Preprocessing reset cancelled. Your current workflow is unchanged."
             ):
-                findings.append("cancelled confirmation lacks the session reset result")
+                findings.append(
+                    "cancelled confirmation lacks the preprocessing reset result"
+                )
             if any(
                 marker in cancel_text
                 for marker in ("background action completed", "success", "ready")
@@ -1173,7 +1163,7 @@ def build_assistant_interaction_contract_review(
         ]:
             findings.append("confirmed reset lacks one clear terminal result")
         if phase_name == "assistant_existing_ui_handoff" and terminal != [
-            "Evaluation is open in the main window. Review results there."
+            "Opened Evaluation panel."
         ]:
             findings.append("Evaluation handoff lacks main-window guidance")
 

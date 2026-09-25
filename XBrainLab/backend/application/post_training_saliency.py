@@ -163,16 +163,6 @@ class PostCommandSaliencyNotificationBoundary:
         committed = self._enqueue_deliveries((notification,))
         return generation in committed
 
-    def defer(self, notification: SaliencyTerminalNotification) -> bool:
-        """Reserve and publish one terminal generation exactly once."""
-        if not self.reserve(notification):
-            return False
-        try:
-            return self.publish_reserved(notification)
-        except BaseException:
-            self.release(notification)
-            raise
-
     def _enqueue_deliveries(
         self,
         notifications: Iterable[SaliencyTerminalNotification],

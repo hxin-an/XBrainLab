@@ -1,17 +1,33 @@
-"""State owner for Assistant application publications and training terminals."""
+"""Own Assistant-only publication delivery and correlated training notices."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
-from XBrainLab.backend.application import ApplicationViewPublication
+from PyQt6.QtCore import QObject, QTimer
+
+from XBrainLab.backend.application import (
+    APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+    ApplicationService,
+)
+from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
     TrainingRunIdentity,
     TrainingTerminalOutcome,
 )
+from XBrainLab.backend.utils.logger import logger
 from XBrainLab.llm.agent.turn import AssistantTurnCorrelation
-from XBrainLab.llm.tools.application_surface import ToolCommandResult
+from XBrainLab.llm.tools.result_contract import (
+    ToolCommandResult,
+    safe_unexpected_failure,
+)
+from XBrainLab.ui.components.assistant_status_projection import (
+    AssistantStatusProjection,
+    build_assistant_status_projection,
+)
+from XBrainLab.ui.core.observer_bridge import QtObserverBridge
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,91 +46,132 @@ class AssistantTrainingTerminalNotice:
     correlation: AssistantTurnCorrelation
 
 
-@dataclass(frozen=True, slots=True)
-class PublicationRetrySchedule:
-    """Timer instruction produced from the latest publication obligation."""
+class AssistantApplicationPublicationCoordinator(QObject):
+    """Deliver committed backend truth without acknowledging Desktop delivery.
 
-    interval_ms: int
-    pending_changed: bool
-
-
-@dataclass(frozen=True, slots=True)
-class AssistantApplicationPublicationSnapshot:
-    """Read-only view of retained publication and training obligations."""
-
-    pending_publication: ApplicationViewPublication | None
-    publication_retry_attempts: int
-    training_watch: AssistantTrainingAttemptSession | None
-    pending_training_terminal: AssistantTrainingTerminalNotice | None
-
-
-class AssistantApplicationPublicationCoordinator:
-    """Own retry and training-correlation state outside the Qt presentation host."""
+    The same owner retains failed renders, schedules retries, commits a rendered
+    revision and correlates training completion. Callbacks only render UI or
+    query turn idleness; they do not own delivery state.
+    """
 
     def __init__(
         self,
         *,
+        service: ApplicationService,
+        render_status: Callable[[AssistantStatusProjection], bool],
+        render_terminal: Callable[[AssistantTrainingTerminalNotice], bool],
+        is_idle: Callable[[], bool],
+        parent: QObject,
         retry_interval_ms: int = 25,
         max_fast_retries: int = 3,
         recovery_interval_ms: int = 500,
     ) -> None:
+        super().__init__(parent)
+        self._service = service
+        self._render_status = render_status
+        self._render_terminal = render_terminal
+        self._is_idle = is_idle
         self._retry_interval_ms = retry_interval_ms
         self._max_fast_retries = max_fast_retries
         self._recovery_interval_ms = recovery_interval_ms
+        self._closed = False
+        self._projection: AssistantStatusProjection | None = None
         self._pending_publication: ApplicationViewPublication | None = None
         self._publication_retry_attempts = 0
         self._training_watch: AssistantTrainingAttemptSession | None = None
         self._pending_training_terminal: AssistantTrainingTerminalNotice | None = None
-
-    def snapshot(self) -> AssistantApplicationPublicationSnapshot:
-        """Return current state without transferring mutation ownership."""
-        return AssistantApplicationPublicationSnapshot(
-            pending_publication=self._pending_publication,
-            publication_retry_attempts=self._publication_retry_attempts,
-            training_watch=self._training_watch,
-            pending_training_terminal=self._pending_training_terminal,
+        self._publication_timer = QTimer(self)
+        self._publication_timer.setSingleShot(True)
+        self._publication_timer.timeout.connect(self._retry_publication)
+        self._terminal_timer = QTimer(self)
+        self._terminal_timer.setSingleShot(True)
+        self._terminal_timer.setInterval(500)
+        self._terminal_timer.timeout.connect(self.flush_terminal)
+        self._bridge = QtObserverBridge(
+            service,
+            APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+            self,
         )
+        self._bridge.connect_to(self.deliver)
 
-    def schedule_publication_retry(
-        self,
-        publication: ApplicationViewPublication,
-    ) -> PublicationRetrySchedule | None:
-        """Coalesce to the newest revision and select fast or recovery cadence."""
+    @property
+    def projection(self) -> AssistantStatusProjection | None:
+        """Last successfully rendered workflow truth, also used for runtime refresh."""
+        return self._projection
+
+    def refresh(self) -> None:
+        """Pull and push use the same render/commit boundary."""
+        try:
+            self.deliver(self._service.get_view_publication())
+        except Exception:
+            self._projection = None
+            raise
+
+    def deliver(self, publication: object) -> bool:
+        """Commit only newer successful renders; retain failures for retry."""
+        if not isinstance(publication, ApplicationViewPublication):
+            logger.error("Ignored malformed application publication event")
+            return False
+        if self._closed:
+            return False
+        if (
+            self._projection is not None
+            and publication.revision <= self._projection.publication_revision
+        ):
+            return True
+        try:
+            projection = build_assistant_status_projection(publication)
+            rendered = self._render_status(projection)
+        except Exception:
+            self._schedule_publication_retry(publication)
+            raise
+        if rendered is not True:
+            self._schedule_publication_retry(publication)
+            return False
+        self._projection = projection
+        self._observe_training_publication(publication)
         pending = self._pending_publication
-        pending_changed = pending is None or publication.revision > pending.revision
-        if pending_changed:
+        if pending is not None and pending.revision <= publication.revision:
+            self._pending_publication = None
+            self._publication_retry_attempts = 0
+            self._publication_timer.stop()
+        return True
+
+    def _schedule_publication_retry(
+        self, publication: ApplicationViewPublication
+    ) -> None:
+        pending = self._pending_publication
+        if self._closed:
+            return
+        if pending is None or publication.revision > pending.revision:
             self._pending_publication = publication
             self._publication_retry_attempts = 0
-        elif pending is not None and publication.revision < pending.revision:
-            return None
-        interval = (
-            self._recovery_interval_ms
-            if self._publication_retry_attempts >= self._max_fast_retries
-            else self._retry_interval_ms
-        )
-        return PublicationRetrySchedule(
-            interval_ms=interval,
-            pending_changed=pending_changed,
-        )
+            self._publication_timer.stop()
+        elif publication.revision < pending.revision:
+            return
+        if not self._publication_timer.isActive():
+            self._publication_timer.start(
+                self._recovery_interval_ms
+                if self._publication_retry_attempts >= self._max_fast_retries
+                else self._retry_interval_ms
+            )
 
-    def begin_publication_retry(self) -> ApplicationViewPublication | None:
-        """Consume one retry attempt while keeping its delivery obligation."""
+    def _retry_publication(self) -> None:
         publication = self._pending_publication
-        if publication is None:
-            return None
+        if self._closed or publication is None:
+            return
         if self._publication_retry_attempts >= self._max_fast_retries:
             self._publication_retry_attempts = 0
         self._publication_retry_attempts += 1
-        return publication
-
-    def complete_publication(self, revision: int) -> bool:
-        """Clear retry state only after this or a newer revision rendered."""
-        pending = self._pending_publication
-        if pending is None or pending.revision > revision:
-            return False
-        self._pending_publication = None
-        self._publication_retry_attempts = 0
-        return True
+        try:
+            self.deliver(publication)
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_application_publication",
+                operation="retry_view_publication_render",
+            )
 
     def begin_training_watch(
         self,
@@ -123,7 +180,8 @@ class AssistantApplicationPublicationCoordinator:
     ) -> bool:
         """Track only a typed asynchronous training run from the active turn."""
         if (
-            not isinstance(result, ToolCommandResult)
+            self._closed
+            or not isinstance(result, ToolCommandResult)
             or result.ok is not True
             or result.tool_name != "start_training"
             or result.command_name != "train"
@@ -148,9 +206,19 @@ class AssistantApplicationPublicationCoordinator:
             correlation=correlation,
         )
         self._pending_training_terminal = None
+        # A fast run may have finished before the command result reached the UI.
+        try:
+            self._observe_training_publication(self._service.get_view_publication())
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_application_publication",
+                operation="reconcile_assistant_training_terminal",
+            )
         return True
 
-    def observe_training_publication(
+    def _observe_training_publication(
         self,
         publication: ApplicationViewPublication,
     ) -> AssistantTrainingTerminalNotice | None:
@@ -174,32 +242,33 @@ class AssistantApplicationPublicationCoordinator:
         )
         self._training_watch = None
         self._pending_training_terminal = notice
+        self.flush_terminal()
         return notice
 
-    def terminal_notice_if_idle(
-        self,
-        *,
-        is_idle: bool,
-    ) -> AssistantTrainingTerminalNotice | None:
-        if not is_idle:
-            return None
-        return self._pending_training_terminal
-
-    def complete_terminal_notice(
-        self,
-        notice: AssistantTrainingTerminalNotice,
-    ) -> bool:
-        if self._pending_training_terminal is not notice:
+    def flush_terminal(self) -> bool:
+        """Keep an idle turn's notice until its visible transcript append succeeds."""
+        notice = self._pending_training_terminal
+        if self._closed or notice is None or not self._is_idle():
             return False
-        self._pending_training_terminal = None
-        return True
+        if self._render_terminal(notice):
+            if self._pending_training_terminal is notice:
+                self._pending_training_terminal = None
+                self._terminal_timer.stop()
+            return True
+        if not self._closed:
+            self._terminal_timer.start()
+        return False
 
     def clear_training(self) -> None:
-        """Drop conversation-owned training correlation without losing publications."""
+        """Clear conversation correlation without losing workflow publications."""
         self._training_watch = None
         self._pending_training_terminal = None
+        self._terminal_timer.stop()
 
-    def clear(self) -> None:
+    def close(self) -> None:
+        self._closed = True
+        self._bridge.cleanup()
+        self._publication_timer.stop()
         self._pending_publication = None
         self._publication_retry_attempts = 0
         self.clear_training()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 from XBrainLab.backend.application.commands import CommandName
 from XBrainLab.llm.agent.tool_feedback import (
@@ -10,8 +11,11 @@ from XBrainLab.llm.agent.tool_feedback import (
     format_tool_output,
     summarize_tool_result,
 )
-from XBrainLab.llm.tools.application_surface import ToolCommandResult
-from XBrainLab.llm.tools.result_contract import UiRequest, UiRequestKind
+from XBrainLab.llm.tools.result_contract import (
+    ToolCommandResult,
+    UiRequest,
+    UiRequestKind,
+)
 
 
 def test_tool_output_preserves_publication_refresh_diagnostics():
@@ -117,6 +121,54 @@ def test_format_tool_output_keeps_workflow_truth_without_raw_payloads() -> None:
     assert "state" not in payload
 
 
+def test_live_feedback_projects_hostile_cyclic_and_nonfinite_values() -> None:
+    class HostileValue:
+        def __str__(self) -> str:
+            raise AssertionError("Unknown result values must not be rendered")
+
+        def __repr__(self) -> str:
+            raise AssertionError("Unknown result values must not be inspected")
+
+    cycle: list[object] = []
+    cycle.append(cycle)
+    result = ToolCommandResult(
+        ok=True,
+        tool_name="resample_data",
+        message="Resampled data.",
+        state={"raw": {"count": float("nan")}},
+        capability={"reasons": cycle},
+        diagnostics={"errors": [HostileValue(), float("inf")]},
+        raw_result=HostileValue(),
+    )
+
+    payload = json.loads(format_tool_output("resample_data", True, result))
+
+    # The existing public projection preserves exact floats, including Python's
+    # non-finite JSON extensions. This refactor does not change that contract.
+    assert math.isnan(payload["state_summary"]["raw"]["count"])
+    assert payload["capability"]["reasons"] == ["[CYCLE]"]
+    assert payload["diagnostics"]["errors"][0] == "[UNSUPPORTED_VALUE]"
+    assert math.isinf(payload["diagnostics"]["errors"][1])
+    assert "raw_result" not in payload
+
+
+def test_live_feedback_retains_bounded_multibyte_result_fields() -> None:
+    result = ToolCommandResult(
+        ok=True,
+        tool_name="界" * 2_000,
+        message="界" * 30_000,
+        changed_state={"preprocessed_changed": True, "invalid": 1},
+    )
+
+    payload = json.loads(format_tool_output("resample_data", True, result))
+
+    assert len(payload["tool_name"].encode("utf-8")) <= 1024
+    assert len(payload["message"].encode("utf-8")) <= 64 * 1024
+    assert payload["tool_name"].endswith("[TRUNCATED]")
+    assert payload["message"].endswith("[TRUNCATED]")
+    assert result.changed_state == {"preprocessed_changed": True}
+
+
 def test_failure_feedback_redacts_paths_and_tokens_from_all_public_fields() -> None:
     private_path = r"C:\Users\Alice\private\subject-17\events.tsv"
     private_token = "Authorization: Bearer hf_super_secret"  # noqa: S105
@@ -138,7 +190,6 @@ def test_failure_feedback_redacts_paths_and_tokens_from_all_public_fields() -> N
         (
             model_feedback,
             user_summary,
-            repr(result.to_payload()),
         )
     )
 
@@ -164,6 +215,32 @@ def test_summary_translates_backend_precondition_to_product_language() -> None:
     )
     assert "ApplicationService" not in summary
     assert "paths list" not in summary
+
+
+def test_success_summary_keeps_public_message_with_large_untrusted_payload() -> None:
+    private_path = r"C:\Users\Alice\patient-data\recording.fif"
+    result = ToolCommandResult(
+        ok=True,
+        tool_name="resample_data",
+        command_name="preprocess",
+        message=f"Resampled to 128 Hz: {private_path}",
+        raw_result={"metadata": [{"value": index} for index in range(1_000)]},
+        state={"preprocessed": {"count": 1}},
+        diagnostics={
+            "errors": [f"Authorization: Bearer hf_private_token {private_path}"]
+        },
+    )
+
+    summary = summarize_tool_result("resample_data", True, result)
+    trace = format_tool_output("resample_data", True, result)
+
+    assert summary.startswith("Resampled to 128 Hz:")
+    assert "[REDACTED_PATH]" in summary
+    assert "file (.fif)" in summary
+    assert "recording.fif" not in summary
+    assert private_path not in summary + trace
+    assert "hf_private_token" not in summary + trace
+    assert json.loads(trace)["state_summary"] == {"preprocessed": {"count": 1}}
 
 
 def test_training_precondition_shows_more_setup_and_the_first_requirement() -> None:
@@ -303,138 +380,6 @@ def test_training_precondition_preserves_already_running_truth() -> None:
         summarize_tool_result("start_training", False, result)
         == "Training is already running."
     )
-
-
-def test_summary_uses_product_language_for_interpretation_decisions() -> None:
-    expected_by_decision = {
-        "safe": "Data interpretation is ready to apply.",
-        "needs_confirmation": (
-            "Review and confirm the data interpretation before applying it."
-        ),
-        "blocked": "Data interpretation needs changes before it can be applied.",
-    }
-
-    for decision, expected in expected_by_decision.items():
-        result = ToolCommandResult(
-            ok=True,
-            tool_name="validate_interpretation",
-            command_name="validate_interpretation",
-            message="Interpretation validation finished.",
-            diagnostics={
-                "payload_type": "validation_decision",
-                "validation_decision": {"decision": decision},
-            },
-        )
-
-        summary = summarize_tool_result("validate_interpretation", True, result)
-
-        assert summary == expected
-        assert decision not in summary
-
-
-def test_summary_hides_unknown_structured_interpretation_decision_token() -> None:
-    result = ToolCommandResult(
-        ok=True,
-        tool_name="validate_interpretation",
-        command_name="validate_interpretation",
-        message="Interpretation validation finished.",
-        diagnostics={
-            "payload_type": "validation_decision",
-            "validation_decision": {"decision": "future_backend_status"},
-        },
-    )
-
-    summary = summarize_tool_result("validate_interpretation", True, result)
-
-    assert summary == "Data interpretation review is ready."
-    assert "future_backend_status" not in summary
-
-
-def test_summary_names_concrete_import_decisions_and_target_surface() -> None:
-    result = ToolCommandResult(
-        ok=True,
-        tool_name="validate_interpretation",
-        command_name="validate_interpretation",
-        message="Interpretation validation finished.",
-        diagnostics={
-            "payload_type": "validation_decision",
-            "validation_decision": {
-                "decision": "needs_confirmation",
-                "action_items": [
-                    {
-                        "issue": "Task metadata is missing for 3 files.",
-                        "severity": "needs_confirmation",
-                        "target_step": "Review Metadata",
-                    },
-                    {
-                        "issue": "Event roles need review.",
-                        "severity": "needs_confirmation",
-                        "target_step": "Match Labels",
-                    },
-                    {
-                        "issue": "No external labels are attached.",
-                        "severity": "warning",
-                        "target_step": "Load Labels",
-                    },
-                ],
-            },
-        },
-    )
-
-    summary = summarize_tool_result("validate_interpretation", True, result)
-
-    assert summary == (
-        "Import review needs your input:\n"
-        "- Task metadata is missing for 3 files.\n"
-        "- Event roles need review.\n"
-        "Use the open Import EEG Data window to review these choices."
-    )
-    assert "No external labels" not in summary
-
-
-def test_summary_keeps_typed_import_decisions_when_state_payload_is_large() -> None:
-    decision = {
-        "decision": "needs_confirmation",
-        "action_items": [
-            {
-                "issue": "Confirm which events are class labels.",
-                "severity": "needs_confirmation",
-            },
-        ],
-    }
-    result = ToolCommandResult(
-        ok=True,
-        tool_name="validate_interpretation",
-        command_name="validate_interpretation",
-        message="Interpretation validation: needs_confirmation.",
-        raw_result={
-            "state": {
-                "metadata": [
-                    {"subject": index, "session": index} for index in range(1_000)
-                ],
-            },
-        },
-        state={
-            "raw": {
-                "metadata": [
-                    {"subject": index, "session": index} for index in range(1_000)
-                ],
-            },
-        },
-        diagnostics={
-            "payload_type": "validation_decision",
-            "validation_decision": decision,
-        },
-    )
-
-    summary = summarize_tool_result("validate_interpretation", True, result)
-
-    assert summary == (
-        "Import review needs your input:\n"
-        "- Confirm which events are class labels.\n"
-        "Use the open Import EEG Data window to review these choices."
-    )
-    assert "needs_confirmation" not in summary
 
 
 def test_ui_request_feedback_is_typed_for_model_and_user() -> None:

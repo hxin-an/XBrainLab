@@ -60,7 +60,6 @@ def test_resolver_freezes_the_exact_launch_selection_and_settings(
     assert spec.requested_model_id == primary
     assert spec.model_id == primary
     assert spec.outcome is AssistantRuntimeSelectionOutcome.EXACT
-    assert spec.fallback_used is False
 
     config.model_name = "microsoft/Phi-4-mini-instruct"
     config.temperature = 1.75
@@ -95,7 +94,6 @@ def test_resolver_accepts_each_catalog_model_exactly_without_fallback(
     assert resolution.launch_spec.requested_model_id == model_id
     assert resolution.launch_spec.model_id == model_id
     assert resolution.launch_spec.outcome is AssistantRuntimeSelectionOutcome.EXACT
-    assert resolution.launch_spec.fallback_used is False
 
 
 def test_resolver_makes_cuda_to_cpu_fallback_explicit_before_launch(

@@ -6,10 +6,9 @@ debug-mode interception.
 """
 
 from contextlib import suppress
-from uuid import uuid4
 from weakref import ReferenceType, ref
 
-from PyQt6.QtCore import QEvent, QPoint, QRect, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QRect, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QApplication,
@@ -19,9 +18,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QProgressBar,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
-    QSpacerItem,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -31,9 +28,6 @@ from XBrainLab.backend.controller.chat_controller import (
     ChatController,
     ChatHistoryReplacement,
     ChatHistoryReplacementKind,
-    ChatMessagePresentationKind,
-    ChatMessageRecord,
-    ChatMessageRole,
 )
 from XBrainLab.debug.tool_debug_mode import ToolDebugMode
 from XBrainLab.llm.agent.confirmation import (
@@ -47,7 +41,6 @@ from XBrainLab.ui.product_language import workflow_stage_text_label
 from ..styles.theme import Theme
 from .action_card import AssistantConfirmationCard
 from .composer import AssistantComposer
-from .message_bubble import MessageBubble
 from .presentation import (
     ChatTurnCancelability,
     ChatTurnPresentation,
@@ -68,7 +61,6 @@ from .styles import (
     RUNTIME_STATE_DETAIL_STYLE,
     RUNTIME_STATE_STYLE,
     RUNTIME_STATE_TITLE_STYLE,
-    SCROLL_AREA_STYLE,
     SEND_BUTTON_LOCKED_STYLE,
     SEND_BUTTON_PROCESSING_STYLE,
     SEND_BUTTON_STYLE,
@@ -79,6 +71,7 @@ from .styles import (
     TURN_ACTIVITY_TITLE_STYLE,
 )
 from .suggestion_card import AssistantSuggestionCard
+from .transcript_view import ChatTranscriptView
 
 CHAT_SURFACE_MAX_WIDTH = 620
 CHAT_CONTROL_MAX_WIDTH = 620
@@ -86,7 +79,6 @@ EMPTY_STATE_MAX_WIDTH = 560
 STATE_SURFACE_MAX_WIDTH = 540
 COMPOSER_ACTION_WIDTH = 84
 COMPOSER_ACTION_HEIGHT = 34
-HISTORY_REBUILD_CHUNK_SIZE = 12
 
 EMPTY_STATE_TITLE = "Get started with XBrainLab"
 EMPTY_STATE_INTRO = "Choose a prompt or ask your own question."
@@ -131,7 +123,7 @@ class ChatPanel(QWidget):
         is_processing: Whether the panel is currently awaiting a response.
         debug_mode: Optional ``ToolDebugMode`` for interactive debug
             script playback.
-        scroll_area: Scrollable area containing chat messages.
+        transcript_view: Scrollable transcript and transient surfaces.
         input_field: Text input for user messages.
         send_btn: Button to send messages or stop generation.
     """
@@ -151,56 +143,17 @@ class ChatPanel(QWidget):
         super().__init__()
         self.is_processing = False
         self._runtime_phase = AssistantRuntimePhase.IDLE
-        self._workflow_status_text = ""
-        self._pending_scroll_to_bottom = False
-        self._applying_tail_scroll = False
-        self._viewport_reflow_pending = False
-        self._reader_anchor: tuple[str, int] | None = None
-        self._reader_anchor_restore_attempts = 0
-        self._restoring_reader_anchor = False
         self._notice_owner: str | None = None
         self._runtime_recovery = False
-        self._follow_transcript_updates = True
         self._header_status_text = "Local · Setup"
         self._runtime_execution_device = ""
         self._turn_presentation = ChatTurnPresentation.idle()
         self._chat_controller_ref: ReferenceType[ChatController] | None = None
-        self._message_bubbles_by_id: dict[str, MessageBubble] = {}
-        self._history_rebuild_active = False
-        self._history_rebuild_phase = "idle"
-        self._history_rebuild_index = 0
-        self._history_rebuild_delta_index = 0
-        self._history_rebuild_snapshot: tuple[ChatMessageRecord, ...] = ()
-        self._history_rebuild_order: dict[str, int] = {}
-        self._history_rebuild_deltas: list[tuple[str, ChatMessageRecord]] = []
-        self._history_rebuild_remove_ids: tuple[str, ...] = ()
-        self._history_rebuild_requires_reorder = False
-        self._history_rebuild_reflow_bubbles: tuple[MessageBubble, ...] = ()
-        self._history_rebuild_tail_message_id: str | None = None
-        self._history_rebuild_follow_tail = True
         app = QApplication.instance()
         script_path = app.property("tool_debug_script") if app else None
         self.debug_mode = ToolDebugMode(script_path) if script_path else None
         self.setObjectName("AssistantPanel")
         self.setStyleSheet(ASSISTANT_PANEL_STYLE)
-        self._deferred_reflow_timer = QTimer(self)
-        self._deferred_reflow_timer.setSingleShot(True)
-        self._deferred_reflow_timer.timeout.connect(self._reflow_chat_content)
-        self._empty_state_scroll_timer = QTimer(self)
-        self._empty_state_scroll_timer.setSingleShot(True)
-        self._empty_state_scroll_timer.timeout.connect(self._apply_empty_state_scroll)
-        self._tail_scroll_timer = QTimer(self)
-        self._tail_scroll_timer.setSingleShot(True)
-        self._tail_scroll_timer.timeout.connect(self._apply_pending_scroll_to_bottom)
-        self._viewport_reflow_timer = QTimer(self)
-        self._viewport_reflow_timer.setSingleShot(True)
-        self._viewport_reflow_timer.timeout.connect(self._apply_queued_viewport_reflow)
-        self._reader_anchor_timer = QTimer(self)
-        self._reader_anchor_timer.setSingleShot(True)
-        self._reader_anchor_timer.timeout.connect(self._restore_reader_anchor)
-        self._history_rebuild_timer = QTimer(self)
-        self._history_rebuild_timer.setSingleShot(True)
-        self._history_rebuild_timer.timeout.connect(self._apply_history_rebuild_chunk)
         self.init_ui()
         self._notice_timer = QTimer(self)
         self._notice_timer.setSingleShot(True)
@@ -213,35 +166,7 @@ class ChatPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # --- Chat Display (Scroll Area) ---
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
-        )
-        self.scroll_area.setStyleSheet(SCROLL_AREA_STYLE)
-
-        # Container Widget inside ScrollArea
-        self.chat_content_widget = QWidget()
-        self.chat_content_widget.setStyleSheet(
-            f"background-color: {Theme.BACKGROUND_DARK};"
-        )
-        self.chat_layout = QVBoxLayout(self.chat_content_widget)
-        self.chat_layout.setContentsMargins(12, 12, 12, 12)
-        self.chat_layout.setSpacing(12)
-        self.content_top_spacer = QSpacerItem(
-            0,
-            0,
-            QSizePolicy.Policy.Minimum,
-            QSizePolicy.Policy.Expanding,
-        )
-        self.content_bottom_spacer = QSpacerItem(
-            0,
-            0,
-            QSizePolicy.Policy.Minimum,
-            QSizePolicy.Policy.Expanding,
-        )
-        self.chat_layout.addItem(self.content_top_spacer)
+        # --- Shared transcript and transient surfaces ---
         self.runtime_state_widget = self._build_runtime_state()
         self.empty_state_widget = self._build_empty_state()
         self.turn_activity_widget = self._build_turn_activity()
@@ -260,28 +185,13 @@ class ChatPanel(QWidget):
                 QSizePolicy.Policy.Expanding,
                 QSizePolicy.Policy.Maximum,
             )
-        self.chat_layout.addWidget(self.runtime_state_widget)
-        self.chat_layout.addWidget(self.empty_state_widget)
-        self.chat_layout.addWidget(self.confirmation_card_widget)
-        self.chat_layout.addWidget(self.turn_activity_widget)
-        for surface in (
-            self.runtime_state_widget,
-            self.empty_state_widget,
-            self.confirmation_card_widget,
-            self.turn_activity_widget,
-        ):
-            self.chat_layout.setAlignment(
-                surface,
-                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-            )
-        self.chat_layout.addItem(self.content_bottom_spacer)
-
-        self.scroll_area.setWidget(self.chat_content_widget)
-        scroll_bar = self.scroll_area.verticalScrollBar()
-        if scroll_bar:
-            scroll_bar.rangeChanged.connect(self._on_scroll_range_changed)
-            scroll_bar.valueChanged.connect(self._on_scroll_value_changed)
-        layout.addWidget(self.scroll_area, 1)
+        self.transcript_view = ChatTranscriptView(
+            runtime_surface=self.runtime_state_widget,
+            empty_surface=self.empty_state_widget,
+            confirmation_surface=self.confirmation_card_widget,
+            activity_surface=self.turn_activity_widget,
+        )
+        layout.addWidget(self.transcript_view, 1)
 
         # --- Control Panel (Bottom) ---
         control_panel = QWidget()
@@ -391,6 +301,15 @@ class ChatPanel(QWidget):
         self.notice_label.setVisible(False)
         control_layout.addWidget(self.notice_label)
         layout.addWidget(control_panel, 0)
+        self.transcript_view.surface_fit_requested.connect(
+            self._fit_chat_surfaces_to_viewport
+        )
+        self.transcript_view.content_changed.connect(
+            self._on_transcript_content_changed
+        )
+        self.transcript_view.history_replacement_started.connect(
+            self._on_history_replacement_started
+        )
 
     @staticmethod
     def _build_centered_control_host(control: QWidget) -> QWidget:
@@ -525,9 +444,7 @@ class ChatPanel(QWidget):
         self.runtime_actions.setVisible(True)
         self._fit_runtime_state_to_contents()
         self._publish_header_status()
-        self._place_transient_surfaces_after_messages()
-        self._sync_content_alignment()
-        self._reflow_chat_content()
+        self.transcript_view.refresh_layout()
 
     def _dispatch_runtime_primary_action(self) -> None:
         if self._runtime_primary_action == "retry":
@@ -632,7 +549,6 @@ class ChatPanel(QWidget):
             button = AssistantSuggestionCard(
                 title,
                 subtitle,
-                accent="blue",
                 parent=self.suggestion_prompt_widget,
             )
             button.setProperty("assistantPrompt", prompt)
@@ -664,25 +580,20 @@ class ChatPanel(QWidget):
         self,
         request: AgentConfirmationRequest,
         *,
-        current_values: dict[str, str] | None = None,
         current_context_changed: bool = False,
     ) -> None:
         """Show one transient typed confirmation inside the message area."""
-        follow_tail = self._follow_transcript_updates or self._is_near_bottom()
+        follow_tail = (
+            self.transcript_view.following_tail or self.transcript_view.is_near_bottom()
+        )
         self.empty_state_widget.setVisible(False)
         self.confirmation_card_widget.present(
             request,
-            current_values=current_values,
             current_context_changed=current_context_changed,
         )
         if self._turn_presentation.phase is ChatTurnPresentationPhase.WAITING:
             self.turn_activity_widget.setVisible(False)
-        self._place_transient_surfaces_after_messages()
-        self._sync_content_alignment()
-        self._reflow_chat_content()
-        self._follow_transcript_updates = follow_tail
-        if follow_tail:
-            self._scroll_to_bottom()
+        self.transcript_view.refresh_layout(follow_tail=follow_tail)
 
     def set_confirmation_submitting(
         self,
@@ -708,14 +619,11 @@ class ChatPanel(QWidget):
             self.turn_activity_widget.setVisible(True)
         if (
             self._runtime_phase is AssistantRuntimePhase.READY
-            and not self._has_transcript_messages()
+            and not self.transcript_view.has_messages()
             and not self.turn_activity_widget.isVisible()
         ):
             self.empty_state_widget.setVisible(True)
-        self._place_transient_surfaces_after_messages()
-        self._sync_content_alignment()
-        if not self._history_rebuild_active:
-            self._schedule_reflow()
+        self.transcript_view.refresh_layout(deferred=True)
 
     def _on_confirmation_decision(
         self,
@@ -751,16 +659,15 @@ class ChatPanel(QWidget):
         )
         if previous is not None and previous is not controller:
             with suppress(TypeError):
-                previous.message_record_added.disconnect(self._render_message_record)
-            with suppress(TypeError):
-                previous.message_record_updated.disconnect(self._update_rendered_record)
+                previous.message_record_added.disconnect(
+                    self.transcript_view.append_record
+                )
             with suppress(TypeError):
                 previous.processing_state_changed.disconnect(self._update_processing_ui)
             with suppress(TypeError):
                 previous.history_replaced.disconnect(self._on_history_replaced)
         if previous is not controller:
-            controller.message_record_added.connect(self._render_message_record)
-            controller.message_record_updated.connect(self._update_rendered_record)
+            controller.message_record_added.connect(self.transcript_view.append_record)
             controller.processing_state_changed.connect(self._update_processing_ui)
             controller.history_replaced.connect(self._on_history_replaced)
         self._chat_controller_ref = ref(controller)
@@ -768,7 +675,7 @@ class ChatPanel(QWidget):
 
     def _restore_controller_state(self, controller: ChatController) -> None:
         """Rebuild a controller snapshot without monopolizing the Qt thread."""
-        self._begin_history_rebuild(
+        self._on_history_replaced(
             ChatHistoryReplacement(
                 kind=ChatHistoryReplacementKind.RESTORE,
                 records=controller.get_typed_history(),
@@ -780,250 +687,20 @@ class ChatPanel(QWidget):
         """Render one immutable controller snapshot without polling live truth."""
         if not isinstance(replacement, ChatHistoryReplacement):
             raise TypeError("ChatPanel history replacements must be typed.")
-        self._begin_history_rebuild(replacement)
+        self.transcript_view.replace_history(replacement)
 
-    def _begin_history_rebuild(self, replacement: ChatHistoryReplacement) -> None:
-        """Capture one snapshot and reconcile it in bounded Qt event-loop turns."""
-        snapshot = replacement.records
-        preserve_reader = replacement.kind is ChatHistoryReplacementKind.PRUNE
-        follow_tail = bool(
-            not preserve_reader
-            or self._follow_transcript_updates
-            or self._is_near_bottom()
-        )
-        anchor = None if follow_tail else self._capture_reader_anchor()
-        retained_ids = {message.message_id for message in snapshot}
-        if anchor is not None and anchor[0] not in retained_ids:
-            anchor = (snapshot[0].message_id, 0) if snapshot else None
-
-        self._history_rebuild_timer.stop()
-        self._reader_anchor_timer.stop()
-        self._tail_scroll_timer.stop()
-        self._deferred_reflow_timer.stop()
-        self._viewport_reflow_timer.stop()
-        self._viewport_reflow_pending = False
-        self._history_rebuild_active = True
-        self._history_rebuild_phase = "remove"
-        self._history_rebuild_index = 0
-        self._history_rebuild_delta_index = 0
-        self._history_rebuild_snapshot = snapshot
-        self._history_rebuild_order = {
-            message.message_id: index for index, message in enumerate(snapshot)
-        }
-        self._history_rebuild_deltas.clear()
-        current_ids = tuple(
-            bubble.property("chatMessageId")
-            for bubble in self._layout_message_bubbles()
-            if isinstance(bubble.property("chatMessageId"), str)
-        )
-        current_id_set = set(current_ids)
-        self._history_rebuild_remove_ids = tuple(
-            message_id for message_id in current_ids if message_id not in retained_ids
-        )
-        current_retained_order = tuple(
-            message_id for message_id in current_ids if message_id in retained_ids
-        )
-        desired_existing_order = tuple(
-            message.message_id
-            for message in snapshot
-            if message.message_id in current_id_set
-        )
-        self._history_rebuild_requires_reorder = (
-            current_retained_order != desired_existing_order
-        )
-        self._history_rebuild_reflow_bubbles = ()
-        tail_record = snapshot[-1] if snapshot else None
-        self._history_rebuild_tail_message_id = (
-            tail_record.message_id if tail_record is not None else None
-        )
-        self._history_rebuild_follow_tail = follow_tail
-        self._follow_transcript_updates = follow_tail
-        self._reader_anchor = anchor
-        self._reader_anchor_restore_attempts = 0
-        self._pending_scroll_to_bottom = False
+    def _on_history_replacement_started(self, has_records: bool) -> None:
+        """Clear transient decisions only after the viewport captures its reader."""
         self.clear_confirmation_request()
-        if snapshot:
+        if has_records:
             self.empty_state_widget.setVisible(False)
-        if not snapshot and not self._history_rebuild_remove_ids:
-            self._history_rebuild_phase = "reflow"
-            self._fit_chat_surfaces_to_viewport()
-            self._finish_history_rebuild()
-            return
-        self._history_rebuild_timer.start(0)
 
-    def _apply_history_rebuild_chunk(self) -> None:
-        """Apply one bounded remove, upsert, delta, or reflow slice."""
-        if not self._history_rebuild_active:
-            return
-
-        if self._history_rebuild_phase == "remove":
-            remove_ids = self._history_rebuild_remove_ids
-            start = min(self._history_rebuild_index, len(remove_ids))
-            end = min(start + HISTORY_REBUILD_CHUNK_SIZE, len(remove_ids))
-            for message_id in remove_ids[start:end]:
-                self._remove_history_bubble(message_id)
-            self._history_rebuild_index = end
-            self.chat_content_widget.updateGeometry()
-            if end < len(remove_ids):
-                self._history_rebuild_timer.start(0)
-                return
-            self._history_rebuild_phase = "upsert"
-            self._history_rebuild_index = 0
-            self._history_rebuild_timer.start(0)
-            return
-
-        if self._history_rebuild_phase == "upsert":
-            snapshot = self._history_rebuild_snapshot
-            start = min(self._history_rebuild_index, len(snapshot))
-            end = min(start + HISTORY_REBUILD_CHUNK_SIZE, len(snapshot))
-            for message in snapshot[start:end]:
-                bubble = self._message_bubbles_by_id.get(message.message_id)
-                if bubble is None:
-                    self._insert_message_record_widget(
-                        message,
-                        settle_layout=False,
-                        history_order=self._history_rebuild_order,
-                        update_reader_state=False,
-                    )
-                    continue
-                if self._history_rebuild_requires_reorder:
-                    self.chat_layout.removeWidget(bubble)
-                    self.chat_layout.insertWidget(
-                        self._message_layout_insert_index(
-                            message.message_id,
-                            self._history_rebuild_order,
-                        ),
-                        bubble,
-                    )
-                if bubble.get_text() != message.content:
-                    bubble.set_text(message.content)
-                if bubble.presentation_kind is not message.presentation_kind:
-                    bubble.set_presentation_kind(message.presentation_kind)
-            self._history_rebuild_index = end
-            self.chat_content_widget.updateGeometry()
-            if end < len(snapshot):
-                self._history_rebuild_timer.start(0)
-                return
-            self._history_rebuild_phase = "delta"
-            self._history_rebuild_delta_index = 0
-            self._history_rebuild_timer.start(0)
-            return
-
-        if self._history_rebuild_phase == "delta":
-            start = min(
-                self._history_rebuild_delta_index,
-                len(self._history_rebuild_deltas),
-            )
-            end = min(
-                start + HISTORY_REBUILD_CHUNK_SIZE,
-                len(self._history_rebuild_deltas),
-            )
-            for kind, record in self._history_rebuild_deltas[start:end]:
-                self._apply_history_rebuild_delta(kind, record)
-            self._history_rebuild_delta_index = end
-            if end < len(self._history_rebuild_deltas):
-                self._history_rebuild_timer.start(0)
-                return
-            self._history_rebuild_phase = "reflow"
-            self._history_rebuild_index = 0
-            self._place_transient_surfaces_after_messages()
-            self._history_rebuild_reflow_bubbles = tuple(self._layout_message_bubbles())
-            self._fit_chat_surfaces_to_viewport()
-            self._history_rebuild_timer.start(0)
-            return
-
-        if self._history_rebuild_phase == "reflow":
-            bubbles = self._history_rebuild_reflow_bubbles
-            viewport = self.scroll_area.viewport()
-            if viewport is None or viewport.width() <= 0:
-                self._finish_history_rebuild()
-                return
-            start = min(self._history_rebuild_index, len(bubbles))
-            end = min(start + HISTORY_REBUILD_CHUNK_SIZE, len(bubbles))
-            for bubble in bubbles[start:end]:
-                bubble.adjust_width(viewport.width())
-            self._history_rebuild_index = end
-            if end < len(bubbles):
-                self._history_rebuild_timer.start(0)
-                return
-            if self._history_rebuild_delta_index < len(self._history_rebuild_deltas):
-                self._history_rebuild_phase = "delta"
-                self._history_rebuild_timer.start(0)
-                return
-            self._finish_history_rebuild()
-
-    def _remove_history_bubble(self, message_id: str) -> None:
-        """Remove one durable bubble without rebuilding the surrounding UI."""
-        bubble = self._message_bubbles_by_id.pop(message_id, None)
-        if bubble is None:
-            return
-        self.chat_layout.removeWidget(bubble)
-        with suppress(TypeError):
-            bubble.layout_changed.disconnect(self._on_message_bubble_layout_changed)
-        bubble.hide()
-        bubble.setParent(None)
-        bubble.deleteLater()
-
-    def _apply_history_rebuild_delta(
-        self,
-        kind: str,
-        record: ChatMessageRecord,
-    ) -> None:
-        """Apply one queued typed delta in controller signal order."""
-        if kind == "added":
-            if record.message_id not in self._message_bubbles_by_id:
-                self._insert_message_record_widget(
-                    record,
-                    settle_layout=False,
-                    update_reader_state=False,
-                )
-                self._history_rebuild_tail_message_id = record.message_id
-            return
-        if kind != "updated":
-            return
-        self._apply_rendered_record_update(record, schedule_reflow=False)
-
-    def _finish_history_rebuild(self) -> None:
-        """Publish the final action/scroll state after bounded reconciliation."""
-        self._history_rebuild_active = False
-        self._history_rebuild_phase = "idle"
-        self._history_rebuild_index = 0
-        self._history_rebuild_delta_index = 0
-        self._history_rebuild_snapshot = ()
-        self._history_rebuild_order.clear()
-        self._history_rebuild_deltas.clear()
-        self._history_rebuild_remove_ids = ()
-        self._history_rebuild_requires_reorder = False
-        self._history_rebuild_reflow_bubbles = ()
-        self._history_rebuild_tail_message_id = None
+    def _on_transcript_content_changed(self) -> None:
+        """Project transcript presence without duplicating its rendered state."""
         self.empty_state_widget.setVisible(
-            not self._has_transcript_messages()
+            not self.transcript_view.has_messages()
             and self._runtime_phase is AssistantRuntimePhase.READY
         )
-        self._complete_chat_reflow()
-        if self._history_rebuild_follow_tail:
-            self._scroll_to_bottom()
-        elif self._reader_anchor is not None:
-            self._pending_scroll_to_bottom = False
-            self._reader_anchor_timer.start(0)
-
-    def set_workflow_status(self, text: str) -> None:
-        """Update a legacy status caller without using its text as state."""
-        self._workflow_status_text = " ".join(str(text or "").split())
-        self.workflow_run_status_label.setText(self._workflow_status_text)
-        self.workflow_run_status_label.setToolTip(self._workflow_status_text)
-        if self.is_processing and self._workflow_status_text:
-            current = self._turn_presentation
-            if current.is_busy:
-                self.set_turn_activity(
-                    ChatTurnPresentation(
-                        phase=current.phase,
-                        primary_status=current.primary_status,
-                        step=self._workflow_status_text,
-                        cancelability=current.cancelability,
-                        cancelability_text=current.cancelability_text,
-                    )
-                )
 
     def _sync_control_context_visibility(self) -> None:
         """Keep transient workflow copy in the typed activity surface."""
@@ -1057,18 +734,16 @@ class ChatPanel(QWidget):
             self.empty_state_widget.setVisible(False)
         elif (
             self._runtime_phase is AssistantRuntimePhase.READY
-            and not self._has_transcript_messages()
+            and not self.transcript_view.has_messages()
             and not self.confirmation_card_widget.isVisible()
         ):
             self.empty_state_widget.setVisible(True)
-        self._place_transient_surfaces_after_messages()
         self._apply_composer_activity_state()
         self._sync_control_context_visibility()
         self._publish_header_status()
-        self._sync_content_alignment()
-        self._reflow_chat_content()
-        if presentation.is_visible and self._is_near_bottom():
-            self._scroll_to_bottom()
+        self.transcript_view.refresh_layout()
+        if presentation.is_visible and self.transcript_view.is_near_bottom():
+            self.transcript_view.follow_tail()
 
     def _apply_composer_activity_state(self) -> None:
         """Expose Stop only while the typed state says cancellation is accepted."""
@@ -1270,15 +945,6 @@ class ChatPanel(QWidget):
         self.input_field.setFocus(Qt.FocusReason.OtherFocusReason)
         self._set_notice(str(message or "").strip(), timeout_ms=0, owner="submission")
 
-    def set_processing_state(self, is_processing: bool):
-        """Update the processing state and refresh the UI accordingly.
-
-        Args:
-            is_processing: Whether the agent is currently generating.
-
-        """
-        self._update_processing_ui(is_processing)
-
     def _update_processing_ui(self, is_processing: bool):
         """Restore legacy boolean state without assuming cancellation is safe."""
         if is_processing:
@@ -1293,7 +959,6 @@ class ChatPanel(QWidget):
             else:
                 self._apply_composer_activity_state()
             return
-        self._workflow_status_text = ""
         self.workflow_run_status_label.clear()
         self.workflow_run_status_label.setToolTip("")
         self.set_turn_activity(ChatTurnPresentation.idle())
@@ -1385,7 +1050,7 @@ class ChatPanel(QWidget):
             self.setup_btn.setVisible(False)
             self.runtime_actions.setVisible(False)
             self.runtime_state_widget.setVisible(False)
-            if not self._has_transcript_messages():
+            if not self.transcript_view.has_messages():
                 self.empty_state_widget.setVisible(True)
         else:
             is_failed = self._runtime_phase is AssistantRuntimePhase.FAILED
@@ -1430,15 +1095,16 @@ class ChatPanel(QWidget):
         self._fit_runtime_state_to_contents()
         self._update_processing_ui(self.is_processing)
         self._publish_header_status()
-        self._place_transient_surfaces_after_messages()
-        self._sync_content_alignment()
-        self._reflow_chat_content()
+        self.transcript_view.refresh_layout()
         if (
             self._runtime_phase is not AssistantRuntimePhase.READY
-            and self._has_transcript_messages()
-            and (self._follow_transcript_updates or self._is_near_bottom())
+            and self.transcript_view.has_messages()
+            and (
+                self.transcript_view.following_tail
+                or self.transcript_view.is_near_bottom()
+            )
         ):
-            self._scroll_to_bottom()
+            self.transcript_view.follow_tail()
 
     def _hide_runtime_surfaces(self) -> None:
         """Reset mutually exclusive runtime surfaces before rendering a phase."""
@@ -1557,53 +1223,15 @@ class ChatPanel(QWidget):
         )
         label.setMinimumHeight(max(needed, label.fontMetrics().height()))
 
-    def set_status_summary(self, text: str, tooltip: str | None = None) -> None:
-        """Update low-priority workflow diagnostics without changing onboarding."""
-        stage = "checking"
-        model_status = "checking"
-        if "|" in text:
-            stage_part, model_part = text.split("|", 1)
-            stage = stage_part.replace("Backend:", "").strip()
-            model_status = model_part.strip()
-        elif text.lower().startswith("backend:"):
-            stage = text.replace("Backend:", "").strip()
-        stage = workflow_stage_text_label(stage)
-
-        self._update_status_widgets(
-            stage=stage,
-            model_status=model_status,
-            available_commands=None,
-            tooltip=tooltip,
-        )
-
     def set_product_status(
         self,
         stage: str,
         model_status: str,
-        available_commands: list[str],
         tooltip: str | None = None,
         blocked_reason: str | None = None,
     ) -> None:
         """Update workflow guidance and low-priority diagnostics."""
         stage = workflow_stage_text_label(stage)
-        self._update_status_widgets(
-            stage=stage,
-            model_status=model_status,
-            available_commands=available_commands,
-            tooltip=tooltip,
-            blocked_reason=blocked_reason,
-        )
-
-    def _update_status_widgets(
-        self,
-        stage: str,
-        model_status: str,
-        available_commands: list[str] | None,
-        tooltip: str | None = None,
-        blocked_reason: str | None = None,
-    ) -> None:
-        """Apply workflow diagnostics without changing fixed onboarding copy."""
-        del available_commands
         status_tooltip = f"Workflow: {stage}\nSetup: {model_status}"
         if blocked_reason:
             status_tooltip = f"{status_tooltip}\n\nAction required: {blocked_reason}"
@@ -1667,52 +1295,13 @@ class ChatPanel(QWidget):
         if text.strip() and timeout_ms > 0:
             self._notice_timer.start(timeout_ms)
 
-    def resizeEvent(self, event):  # noqa: N802
-        """Re-adjust all bubble widths on window resize.
-
-        Args:
-            event: The ``QResizeEvent``.
-
-        """
-        scroll_bar = self.scroll_area.verticalScrollBar()
-        was_at_bottom = self._follow_transcript_updates or self._is_near_bottom()
-        self._reader_anchor = None if was_at_bottom else self._capture_reader_anchor()
-        self._reader_anchor_restore_attempts = 0
-        super().resizeEvent(event)
-        self._reflow_chat_content()
-        if was_at_bottom:
-            self._scroll_to_bottom()
-        elif scroll_bar is not None:
-            self._pending_scroll_to_bottom = False
-            self._reader_anchor_timer.start(0)
-
-    def showEvent(self, event):  # noqa: N802
-        """Reflow content that may have arrived while the dock was hidden."""
-        super().showEvent(event)
-        self._reflow_chat_content()
-        self._schedule_reflow()
-
-    def _reflow_chat_content(self) -> None:
-        """Fit transcript bubbles and transient cards to the live viewport."""
-        viewport = self.scroll_area.viewport()
-        if viewport is None or viewport.width() <= 0:
-            return
-        self._fit_chat_surfaces_to_viewport()
-        for bubble in self._layout_message_bubbles():
-            bubble.adjust_width(viewport.width())
-        self._complete_chat_reflow()
-
-    def _fit_chat_surfaces_to_viewport(self) -> None:
+    def _fit_chat_surfaces_to_viewport(self, container_width: int) -> None:
         """Fit non-transcript surfaces without scanning every message bubble."""
-        viewport = self.scroll_area.viewport()
-        if viewport is None or viewport.width() <= 0:
-            return
-        container_width = viewport.width()
         transcript_surface_width = max(
             min(
                 container_width
-                - self.chat_layout.contentsMargins().left()
-                - self.chat_layout.contentsMargins().right(),
+                - self.transcript_view.content_layout.contentsMargins().left()
+                - self.transcript_view.content_layout.contentsMargins().right(),
                 CHAT_SURFACE_MAX_WIDTH,
             ),
             1,
@@ -1835,495 +1424,3 @@ class ChatPanel(QWidget):
                     )
                 )
                 self.turn_activity_widget.updateGeometry()
-
-    def _complete_chat_reflow(self) -> None:
-        """Commit shared geometry after surfaces and bubbles have been fitted."""
-        self._sync_content_alignment()
-        self.chat_layout.activate()
-        self.chat_content_widget.updateGeometry()
-        QApplication.sendEvent(self.scroll_area, QEvent(QEvent.Type.LayoutRequest))
-        if self._shows_empty_state_only():
-            self._scroll_empty_state_to_top()
-
-    def _place_transient_surfaces_after_messages(self) -> None:
-        """Keep current transcript activity after the durable messages."""
-        for surface in (
-            self.runtime_state_widget,
-            self.confirmation_card_widget,
-            self.turn_activity_widget,
-        ):
-            self.chat_layout.removeWidget(surface)
-            self.chat_layout.insertWidget(
-                self._bottom_spacer_index(),
-                surface,
-            )
-            self.chat_layout.setAlignment(
-                surface,
-                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
-            )
-
-    def _bottom_spacer_index(self) -> int:
-        """Return the insertion point immediately before the bottom spacer."""
-        for index in range(self.chat_layout.count()):
-            item = self.chat_layout.itemAt(index)
-            if item is not None and item.spacerItem() is self.content_bottom_spacer:
-                return index
-        return self.chat_layout.count()
-
-    def _sync_content_alignment(self) -> None:
-        """Center owned empty/runtime states and top-align real transcripts."""
-        homepage_visible = (
-            not self._has_transcript_messages()
-            and self.empty_state_widget.isVisible()
-            and not self.runtime_state_widget.isVisible()
-            and not self.confirmation_card_widget.isVisible()
-            and not self.turn_activity_widget.isVisible()
-        )
-        centered_surface_visible = (
-            not self._has_transcript_messages()
-            and (
-                self.runtime_state_widget.isVisible()
-                or self.empty_state_widget.isVisible()
-            )
-            and not self.confirmation_card_widget.isVisible()
-            and not self.turn_activity_widget.isVisible()
-        )
-        vertical_policy = (
-            QSizePolicy.Policy.Expanding
-            if centered_surface_visible
-            else QSizePolicy.Policy.Minimum
-        )
-        self.content_top_spacer.changeSize(
-            0,
-            0,
-            QSizePolicy.Policy.Minimum,
-            vertical_policy,
-        )
-        self.content_bottom_spacer.changeSize(
-            0,
-            0,
-            QSizePolicy.Policy.Minimum,
-            QSizePolicy.Policy.Expanding,
-        )
-        for index in range(self.chat_layout.count()):
-            self.chat_layout.setStretch(index, 0)
-        top_index = next(
-            (
-                index
-                for index in range(self.chat_layout.count())
-                if (item := self.chat_layout.itemAt(index)) is not None
-                and item.spacerItem() is self.content_top_spacer
-            ),
-            -1,
-        )
-        bottom_index = self._bottom_spacer_index()
-        if top_index >= 0:
-            self.chat_layout.setStretch(
-                top_index,
-                7 if homepage_visible else (1 if centered_surface_visible else 0),
-            )
-        if bottom_index < self.chat_layout.count():
-            self.chat_layout.setStretch(
-                bottom_index,
-                4 if homepage_visible else 1,
-            )
-        self.chat_layout.invalidate()
-
-    def _is_near_bottom(self, tolerance: int = 12) -> bool:
-        """Return whether transcript updates should continue following the tail."""
-        scroll_bar = self.scroll_area.verticalScrollBar()
-        return bool(
-            scroll_bar is None
-            or scroll_bar.maximum() <= 0
-            or scroll_bar.value() >= scroll_bar.maximum() - tolerance
-        )
-
-    def _render_message_record(
-        self,
-        message: ChatMessageRecord,
-    ) -> None:
-        """Create one bubble directly from the typed persistence record."""
-        if not isinstance(message, ChatMessageRecord):
-            raise TypeError("ChatPanel messages require typed chat records.")
-        if self._history_rebuild_active:
-            self._history_rebuild_deltas.append(("added", message))
-            return
-        self._insert_message_record_widget(message)
-
-    def _insert_message_record_widget(
-        self,
-        record: ChatMessageRecord,
-        *,
-        settle_layout: bool = True,
-        history_order: dict[str, int] | None = None,
-        update_reader_state: bool = True,
-    ) -> MessageBubble:
-        """Insert one unique bubble, optionally deferring transcript-wide layout."""
-        existing = self._message_bubbles_by_id.get(record.message_id)
-        if existing is not None:
-            return existing
-        is_user = record.role is ChatMessageRole.USER
-        had_transcript = self._has_transcript_messages()
-        follow_tail = is_user or not had_transcript or self._is_near_bottom()
-        if update_reader_state:
-            self._follow_transcript_updates = follow_tail
-        bubble = MessageBubble(
-            record.content,
-            is_user,
-            presentation_kind=record.presentation_kind,
-        )
-        bubble.layout_changed.connect(self._on_message_bubble_layout_changed)
-        bubble.setProperty("chatMessageId", record.message_id)
-        self._message_bubbles_by_id[record.message_id] = bubble
-
-        # M0.4: Initial width adjustment
-        viewport = self.scroll_area.viewport()
-        if viewport:
-            bubble.adjust_width(viewport.width())
-
-        # Insert before stretch
-        if hasattr(self, "empty_state_widget"):
-            self.empty_state_widget.setVisible(False)
-        self.chat_layout.insertWidget(
-            self._message_layout_insert_index(record.message_id, history_order),
-            bubble,
-        )
-        if not settle_layout:
-            return bubble
-        self._place_transient_surfaces_after_messages()
-        self._reflow_chat_content()
-        self._sync_content_alignment()
-        self._schedule_reflow()
-        if follow_tail:
-            self._scroll_to_bottom()
-        else:
-            self._pending_scroll_to_bottom = False
-        return bubble
-
-    def _message_layout_insert_index(
-        self,
-        message_id: str,
-        history_order: dict[str, int] | None,
-    ) -> int:
-        """Place a rebuilt row before any already-rendered newer live row."""
-        if history_order is None:
-            return self._bottom_spacer_index()
-        desired_order = history_order.get(message_id)
-        if desired_order is None:
-            return self._bottom_spacer_index()
-        for layout_index in range(self.chat_layout.count()):
-            item = self.chat_layout.itemAt(layout_index)
-            widget = item.widget() if item is not None else None
-            if not isinstance(widget, MessageBubble):
-                continue
-            existing_id = widget.property("chatMessageId")
-            existing_order = history_order.get(existing_id)
-            if existing_order is not None and existing_order > desired_order:
-                return layout_index
-        return self._bottom_spacer_index()
-
-    def _on_message_bubble_layout_changed(self) -> None:
-        """Settle streamed text geometry without stealing the reader's scroll."""
-        self.chat_content_widget.updateGeometry()
-        if self._history_rebuild_active:
-            return
-        self._schedule_reflow()
-        if self._follow_transcript_updates or self._is_near_bottom():
-            self._scroll_to_bottom()
-        else:
-            self._pending_scroll_to_bottom = False
-
-    def _update_rendered_record(self, record: ChatMessageRecord) -> None:
-        """Apply a correlated typed history update to its existing bubble."""
-        message = record
-        if not isinstance(message, ChatMessageRecord):
-            return
-        if self._history_rebuild_active:
-            self._history_rebuild_deltas.append(("updated", message))
-            return
-        self._apply_rendered_record_update(message)
-
-    def _apply_rendered_record_update(
-        self,
-        record: ChatMessageRecord,
-        *,
-        schedule_reflow: bool = True,
-    ) -> None:
-        """Apply one already-ordered typed update without consulting the controller."""
-        bubble = self._message_bubbles_by_id.get(record.message_id)
-        if bubble is not None:
-            bubble.set_text(record.content)
-            bubble.set_presentation_kind(record.presentation_kind)
-        if bubble is not None and schedule_reflow:
-            self._schedule_reflow()
-
-    def _clear_ui(self, *, cancel_history_rebuild: bool = True):
-        """Remove all message bubbles from the chat layout."""
-        self._reader_anchor_timer.stop()
-        self._reader_anchor = None
-        self._reader_anchor_restore_attempts = 0
-        if cancel_history_rebuild:
-            self._history_rebuild_timer.stop()
-            self._history_rebuild_active = False
-            self._history_rebuild_phase = "idle"
-            self._history_rebuild_index = 0
-            self._history_rebuild_delta_index = 0
-            self._history_rebuild_snapshot = ()
-            self._history_rebuild_order.clear()
-            self._history_rebuild_deltas.clear()
-            self._history_rebuild_remove_ids = ()
-            self._history_rebuild_requires_reorder = False
-            self._history_rebuild_reflow_bubbles = ()
-            self._history_rebuild_tail_message_id = None
-        runtime_state = getattr(self, "runtime_state_widget", None)
-        empty_state = getattr(self, "empty_state_widget", None)
-        confirmation_card = getattr(self, "confirmation_card_widget", None)
-        turn_activity = getattr(self, "turn_activity_widget", None)
-        preserved = {
-            runtime_state,
-            empty_state,
-            confirmation_card,
-            turn_activity,
-        }
-        while self.chat_layout.count():
-            item = self.chat_layout.takeAt(0)
-            if item:
-                w = item.widget()
-                if w and w not in preserved:
-                    w.hide()
-                    w.setParent(None)
-                    w.deleteLater()
-        self.chat_layout.addItem(self.content_top_spacer)
-        for surface in (
-            runtime_state,
-            empty_state,
-            confirmation_card,
-            turn_activity,
-        ):
-            if surface is None:
-                continue
-            self.chat_layout.addWidget(surface)
-            self.chat_layout.setAlignment(
-                surface,
-                Qt.AlignmentFlag.AlignHCenter,
-            )
-        self.clear_confirmation_request()
-        self._message_bubbles_by_id.clear()
-        self.chat_layout.addItem(self.content_bottom_spacer)
-        if empty_state is not None:
-            empty_state.setVisible(self._runtime_phase is AssistantRuntimePhase.READY)
-        self._sync_content_alignment()
-
-    def _has_transcript_messages(self) -> bool:
-        """Return transcript truth even while the assistant dock is hidden."""
-        return bool(self._message_bubbles_by_id)
-
-    def _shows_empty_state_only(self) -> bool:
-        """Return whether the scroll area currently contains only onboarding UI."""
-        return bool(
-            self.empty_state_widget.isVisible()
-            and not self._has_transcript_messages()
-            and not self.confirmation_card_widget.isVisible()
-            and not self.turn_activity_widget.isVisible()
-        )
-
-    def _scroll_empty_state_to_top(self) -> None:
-        """Keep the onboarding title visible when its suggestions need scrolling."""
-        self._pending_scroll_to_bottom = False
-        # The empty state is not transcript history. Keep the next real turn
-        # tail-following even though onboarding itself starts at the top.
-        self._follow_transcript_updates = True
-
-        self._apply_empty_state_scroll()
-        self._empty_state_scroll_timer.start(0)
-
-    def _apply_empty_state_scroll(self) -> None:
-        """Apply top alignment while the onboarding surface remains current."""
-        scroll_bar = self.scroll_area.verticalScrollBar()
-        if scroll_bar is not None and self._shows_empty_state_only():
-            scroll_bar.setValue(scroll_bar.minimum())
-
-    def _scroll_to_bottom(self):
-        """Scroll the chat area to the bottom."""
-        self._follow_transcript_updates = True
-        self._pending_scroll_to_bottom = True
-        self._apply_pending_scroll_to_bottom()
-        self._tail_scroll_timer.start(0)
-
-    def _on_scroll_range_changed(self, _minimum: int, _maximum: int) -> None:
-        """Reflow after scrollbar visibility changes, then follow the tail."""
-        if self._history_rebuild_active:
-            return
-        self._queue_viewport_reflow()
-        if self._pending_scroll_to_bottom:
-            self._apply_pending_scroll_to_bottom()
-
-    def _queue_viewport_reflow(self) -> None:
-        """Coalesce scrollbar-driven width changes into one settled reflow."""
-        if self._viewport_reflow_pending:
-            return
-        self._viewport_reflow_pending = True
-        self._viewport_reflow_timer.start(0)
-
-    def _apply_queued_viewport_reflow(self) -> None:
-        """Apply one scrollbar-driven reflow through an owned timer."""
-        self._viewport_reflow_pending = False
-        self._reflow_chat_content()
-        if self._shows_empty_state_only():
-            self._scroll_empty_state_to_top()
-        elif self._follow_transcript_updates or self._pending_scroll_to_bottom:
-            self._scroll_to_bottom()
-        elif self._reader_anchor is not None:
-            self._reader_anchor_timer.start(0)
-
-    def _capture_reader_anchor(self) -> tuple[str, int] | None:
-        """Remember the first visible durable message and its viewport offset."""
-        viewport = self.scroll_area.viewport()
-        if viewport is None:
-            return None
-        for bubble in self._layout_message_bubbles():
-            top = bubble.mapTo(viewport, QPoint(0, 0)).y()
-            bottom = top + bubble.height()
-            message_id = bubble.property("chatMessageId")
-            if bottom > 0 and isinstance(message_id, str) and message_id:
-                return message_id, top
-        return None
-
-    def _restore_reader_anchor(self) -> None:
-        """Restore a non-tail reader after width-dependent bubble reflow settles."""
-        anchor = self._reader_anchor
-        if anchor is None:
-            return
-        if self._follow_transcript_updates:
-            self._reader_anchor = None
-            self._reader_anchor_restore_attempts = 0
-            return
-        message_id, expected_y = anchor
-        viewport = self.scroll_area.viewport()
-        scroll_bar = self.scroll_area.verticalScrollBar()
-        if viewport is None or scroll_bar is None:
-            return
-        bubble = self._message_bubbles_by_id.get(message_id)
-        if bubble is None:
-            self._reader_anchor = None
-            return
-        self.chat_layout.activate()
-        current_y = bubble.mapTo(viewport, QPoint(0, 0)).y()
-        delta = current_y - expected_y
-        if delta:
-            self._restoring_reader_anchor = True
-            try:
-                scroll_bar.setValue(scroll_bar.value() + delta)
-            finally:
-                self._restoring_reader_anchor = False
-        self._reader_anchor_restore_attempts += 1
-        if self._reader_anchor_restore_attempts < 3:
-            self._reader_anchor_timer.start(8)
-        else:
-            self._reader_anchor = None
-
-    def _schedule_reflow(self) -> None:
-        """Coalesce deferred geometry work in a timer owned by this panel."""
-        self._deferred_reflow_timer.start(0)
-
-    def _on_scroll_value_changed(self, _value: int) -> None:
-        """Track explicit reading position without fighting internal follow."""
-        if (
-            self._history_rebuild_active
-            or self._applying_tail_scroll
-            or self._restoring_reader_anchor
-            or self._reader_anchor is not None
-        ):
-            return
-        near_bottom = self._is_near_bottom()
-        if not near_bottom:
-            self._pending_scroll_to_bottom = False
-        self._follow_transcript_updates = near_bottom
-
-    def _apply_pending_scroll_to_bottom(self) -> None:
-        """Apply a pending bottom scroll once the scroll range is available."""
-        if not self._pending_scroll_to_bottom:
-            return
-        self.chat_content_widget.adjustSize()
-        self.chat_content_widget.updateGeometry()
-        scroll_bar = self.scroll_area.verticalScrollBar()
-        if not scroll_bar:
-            return
-        self._applying_tail_scroll = True
-        try:
-            scroll_bar.setValue(scroll_bar.maximum())
-            latest_bubble = self._latest_message_bubble()
-            if latest_bubble is not None:
-                self.scroll_area.ensureWidgetVisible(latest_bubble, 0, 8)
-                scroll_bar.setValue(scroll_bar.maximum())
-        finally:
-            self._applying_tail_scroll = False
-        if scroll_bar.maximum() > 0 and scroll_bar.value() >= scroll_bar.maximum() - 2:
-            self._pending_scroll_to_bottom = False
-            self._follow_transcript_updates = True
-
-    def _latest_message_bubble(self) -> MessageBubble | None:
-        for index in range(self.chat_layout.count() - 1, -1, -1):
-            item = self.chat_layout.itemAt(index)
-            widget = item.widget() if item is not None else None
-            if isinstance(widget, MessageBubble) and widget.isVisible():
-                return widget
-        return None
-
-    def _layout_message_bubbles(self) -> list[MessageBubble]:
-        """Return transcript bubbles in their visible layout order."""
-        bubbles: list[MessageBubble] = []
-        for index in range(self.chat_layout.count()):
-            item = self.chat_layout.itemAt(index)
-            widget = item.widget() if item is not None else None
-            if isinstance(widget, MessageBubble):
-                bubbles.append(widget)
-        return bubbles
-
-    def _latest_layout_message_bubble(self) -> MessageBubble | None:
-        """Return the latest transcript bubble even while the dock is hidden."""
-        for index in range(self.chat_layout.count() - 1, -1, -1):
-            item = self.chat_layout.itemAt(index)
-            widget = item.widget() if item is not None else None
-            if isinstance(widget, MessageBubble):
-                return widget
-        return None
-
-    def _message_bubble_visible(self, bubble: MessageBubble | None) -> bool:
-        if bubble is None:
-            return True
-        viewport = self.scroll_area.viewport()
-        if viewport is None:
-            return True
-        bottom_y = bubble.mapTo(viewport, bubble.rect().bottomLeft()).y()
-        return bottom_y <= viewport.height() + 2
-
-    def append_message(
-        self,
-        sender: str,
-        text: str,
-        *,
-        presentation_kind: ChatMessagePresentationKind | None = None,
-    ) -> None:
-        """Append a message bubble.
-
-        Args:
-            sender: Message sender identifier (e.g., ``"user"``,
-                ``"assistant"``).
-            text: The message text content.
-
-        """
-        is_user = sender.lower() == "user"
-        role = ChatMessageRole.USER if is_user else ChatMessageRole.ASSISTANT
-        kind = presentation_kind or (
-            ChatMessagePresentationKind.USER
-            if is_user
-            else ChatMessagePresentationKind.ASSISTANT
-        )
-        record = ChatMessageRecord(
-            role=role,
-            content=text,
-            presentation_kind=kind,
-            message_id=uuid4().hex,
-        )
-        self._render_message_record(record)

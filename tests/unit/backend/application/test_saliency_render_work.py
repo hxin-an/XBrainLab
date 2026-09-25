@@ -66,13 +66,16 @@ def test_saliency_render_stays_owned_until_native_commit() -> None:
     request = _request()
     scheduled = controller.begin(request)
 
-    publication = controller.prepare(scheduled.operation_id, request)
+    publication, normalized = controller.prepare_variants(
+        scheduled.operation_id, request, include_normalized=False
+    )
 
     running = registry.snapshot(scheduled.operation_id)
     assert scheduled.kind is OwnedWorkKind.RENDER
     assert running.phase is OwnedWorkPhase.RUNNING
     assert running.stage == "Rendering saliency canvas"
     assert publication.operation_id == scheduled.operation_id
+    assert normalized is None
 
     assert controller.enter_commit(scheduled.operation_id) is True
     controller.finish(scheduled.operation_id, "completed")
@@ -89,7 +92,9 @@ def test_saliency_render_cancel_before_commit_rejects_canvas_and_retry_succeeds(
     )
     request = _request()
     scheduled = controller.begin(request)
-    controller.prepare(scheduled.operation_id, request)
+    controller.prepare_variants(
+        scheduled.operation_id, request, include_normalized=False
+    )
 
     assert controller.cancel(scheduled.operation_id) is True
     assert controller.enter_commit(scheduled.operation_id) is False
@@ -98,7 +103,9 @@ def test_saliency_render_cancel_before_commit_rejects_canvas_and_retry_succeeds(
 
     retry_request = _request(generation=4)
     retry = controller.begin(retry_request)
-    controller.prepare(retry.operation_id, retry_request)
+    controller.prepare_variants(
+        retry.operation_id, retry_request, include_normalized=False
+    )
     assert controller.enter_commit(retry.operation_id) is True
     controller.finish(retry.operation_id, "completed")
     assert registry.snapshot(retry.operation_id).phase is OwnedWorkPhase.COMPLETED
@@ -112,7 +119,9 @@ def test_saliency_render_cancel_after_commit_is_not_admitted() -> None:
     )
     request = _request()
     scheduled = controller.begin(request)
-    controller.prepare(scheduled.operation_id, request)
+    controller.prepare_variants(
+        scheduled.operation_id, request, include_normalized=False
+    )
 
     assert controller.enter_commit(scheduled.operation_id) is True
     assert controller.cancel(scheduled.operation_id) is False

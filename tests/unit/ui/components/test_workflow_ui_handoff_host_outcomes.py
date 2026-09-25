@@ -317,27 +317,3 @@ def test_navigation_preparation_failure_invalidates_late_ready_callback() -> Non
     assert initial.matches(request)
     assert host.active_request is None
     window.preprocess_panel.sidebar.open_epoching.assert_not_called()
-
-
-def test_deferred_panel_only_navigation_remains_terminal() -> None:
-    window = _DeferredWindow(
-        lambda: InteractionOutcome.completed("This modal must not open.")
-    )
-    host = WorkflowUiHandoffHost(window)
-    request = WorkflowUiHandoffRequest.for_decision("evaluate")
-
-    outcome = host.open(request)
-    window.failed_callbacks[0](
-        PanelPreparationFailure(
-            panel_index=3,
-            panel_name="Evaluation",
-            message="Could not open Evaluation.",
-        )
-    )
-    window.deliver_ready()
-
-    assert outcome.status is WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI
-    assert outcome.matches(request)
-    assert host.active_request is None
-    assert window.navigation_calls == [3]
-    window.preprocess_panel.sidebar.open_epoching.assert_not_called()

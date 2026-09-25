@@ -1,7 +1,10 @@
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
+from PyQt6.QtWidgets import QWidget
 
+from XBrainLab.backend.application import ApplicationService
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.state import (
     ActiveTrainingSnapshot,
@@ -9,13 +12,14 @@ from XBrainLab.backend.application.state import (
     TrainingStateSnapshot,
 )
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
+from XBrainLab.backend.study import Study
 from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
     TrainingRunIdentity,
     TrainingTerminalOutcome,
 )
 from XBrainLab.llm.agent.turn import AssistantTurnCorrelation
-from XBrainLab.llm.tools.application_surface import ToolCommandResult
+from XBrainLab.llm.tools.result_contract import ToolCommandResult
 from XBrainLab.ui.components.assistant_application_publication_coordinator import (
     AssistantApplicationPublicationCoordinator,
 )
@@ -31,36 +35,55 @@ def _publication(revision: int) -> ApplicationViewPublication:
     )
 
 
-def test_publication_retry_coalesces_to_latest_and_enters_recovery_interval() -> None:
+@pytest.fixture
+def delivery(qtbot):
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    observed = SimpleNamespace(idle=False, notices=[], revisions=[], render_ok=True)
+
+    def render_status(projection):
+        observed.revisions.append(projection.publication_revision)
+        return observed.render_ok
+
+    def render_terminal(notice):
+        observed.notices.append(notice)
+        return True
+
     coordinator = AssistantApplicationPublicationCoordinator(
-        retry_interval_ms=25,
-        max_fast_retries=3,
-        recovery_interval_ms=500,
+        service=ApplicationService(Study()),
+        render_status=render_status,
+        render_terminal=render_terminal,
+        is_idle=lambda: observed.idle,
+        parent=parent,
     )
-    first = _publication(8)
-    latest = _publication(9)
-
-    first_schedule = coordinator.schedule_publication_retry(first)
-    latest_schedule = coordinator.schedule_publication_retry(latest)
-
-    assert first_schedule is not None and first_schedule.pending_changed is True
-    assert latest_schedule is not None and latest_schedule.pending_changed is True
-    assert coordinator.snapshot().pending_publication is latest
-    for _ in range(3):
-        assert coordinator.begin_publication_retry() is latest
-        schedule = coordinator.schedule_publication_retry(latest)
-        assert schedule is not None
-    assert schedule.interval_ms == 500
-
-    coordinator.complete_publication(9)
-
-    state = coordinator.snapshot()
-    assert state.pending_publication is None
-    assert state.publication_retry_attempts == 0
+    yield coordinator, observed
+    coordinator.close()
 
 
-def test_training_terminal_keeps_exact_assistant_run_until_rendered() -> None:
-    coordinator = AssistantApplicationPublicationCoordinator()
+def test_publication_retry_coalesces_to_latest_and_enters_recovery_interval(
+    delivery, qtbot
+):
+    coordinator, observed = delivery
+    observed.render_ok = False
+    assert not coordinator.deliver(_publication(8))
+    assert not coordinator.deliver(_publication(9))
+    qtbot.waitUntil(lambda: len(observed.revisions) == 5, timeout=1000)
+    assert observed.revisions == [8, 9, 9, 9, 9]
+    qtbot.wait(100)
+    assert len(observed.revisions) == 5
+    observed.render_ok = True
+    qtbot.waitUntil(lambda: coordinator.projection is not None, timeout=2000)
+    assert coordinator.projection.publication_revision == 9
+    assert observed.revisions == [8, 9, 9, 9, 9, 9]
+
+
+@pytest.mark.parametrize("ending", ["deliver", "clear", "close"])
+def test_training_terminal_keeps_exact_assistant_run_until_rendered(
+    delivery,
+    qtbot,
+    ending,
+) -> None:
+    coordinator, observed = delivery
     correlation = AssistantTurnCorrelation(generation=4, turn_id=12)
     run = TrainingRunIdentity(trainer_id="trainer-1", run_id=2)
     running = replace(
@@ -115,19 +138,36 @@ def test_training_terminal_keeps_exact_assistant_run_until_rendered() -> None:
     )
 
     assert coordinator.begin_training_watch(result, correlation) is True
-    notice = coordinator.observe_training_publication(publication)
+    assert coordinator.deliver(publication)
+    assert observed.notices == []
+    assert not coordinator.flush_terminal()
+    observed.idle = True
+    if ending != "deliver":
+        attempts = []
 
-    assert notice is not None
+        def fail_render(notice):
+            attempts.append(notice)
+            return False
+
+        coordinator._render_terminal = fail_render
+        assert not coordinator.flush_terminal()
+        assert len(attempts) == 1
+        if ending == "clear":
+            coordinator.clear_training()
+        else:
+            coordinator.close()
+            assert not coordinator.begin_training_watch(result, correlation)
+        qtbot.wait(600)
+        assert len(attempts) == 1
+        assert not coordinator.flush_terminal()
+        return
+    assert coordinator.flush_terminal()
+    assert len(observed.notices) == 1
+    notice = observed.notices[0]
     assert notice.outcome is TrainingOutcomeState.COMPLETED
     assert notice.correlation == correlation
-    assert coordinator.terminal_notice_if_idle(is_idle=False) is None
-    assert coordinator.terminal_notice_if_idle(is_idle=True) is notice
-
-    coordinator.complete_terminal_notice(notice)
-
-    state = coordinator.snapshot()
-    assert state.pending_training_terminal is None
-    assert state.training_watch is None
+    assert not coordinator.flush_terminal()
+    assert len(observed.notices) == 1
 
 
 @pytest.mark.parametrize(
@@ -142,10 +182,12 @@ def test_training_terminal_keeps_exact_assistant_run_until_rendered() -> None:
     ids=("missing-identity", "stale-identity"),
 )
 def test_training_terminal_requires_the_watched_run_identity(
+    delivery,
     outcome: TrainingOutcomeState,
     published_run: TrainingRunIdentity | None,
 ) -> None:
-    coordinator = AssistantApplicationPublicationCoordinator()
+    coordinator, observed = delivery
+    observed.idle = True
     watched_run = TrainingRunIdentity(trainer_id="trainer-1", run_id=2)
     running = replace(
         ApplicationStateSnapshot.empty(),
@@ -189,7 +231,7 @@ def test_training_terminal_requires_the_watched_run_identity(
         result,
         AssistantTurnCorrelation(generation=4, turn_id=12),
     )
-    watch_before = coordinator.snapshot().training_watch
+    watch_before = coordinator._training_watch
     assert watch_before is not None
     publication = ApplicationViewPublication(
         generation=8,
@@ -198,15 +240,15 @@ def test_training_terminal_requires_the_watched_run_identity(
         capabilities=build_capability_policy(terminal),
     )
 
-    assert coordinator.observe_training_publication(publication) is None
-    snapshot = coordinator.snapshot()
-    assert snapshot.training_watch == watch_before
-    assert snapshot.pending_training_terminal is None
+    assert coordinator.deliver(publication)
+    assert observed.notices == []
+    assert coordinator._training_watch == watch_before
+    assert not coordinator.flush_terminal()
 
 
 @pytest.mark.parametrize("generation", [None, True, 0, -1, "7"])
-def test_training_watch_rejects_untyped_handoff_identity(generation) -> None:
-    coordinator = AssistantApplicationPublicationCoordinator()
+def test_training_watch_rejects_untyped_handoff_identity(generation, delivery) -> None:
+    coordinator, _observed = delivery
     result = ToolCommandResult(
         ok=True,
         tool_name="start_training",
@@ -223,4 +265,4 @@ def test_training_watch_rejects_untyped_handoff_identity(generation) -> None:
         )
         is False
     )
-    assert coordinator.snapshot().training_watch is None
+    assert coordinator._training_watch is None

@@ -43,7 +43,10 @@ def dialog_with_params(qtbot):
         SaliencySettingDialog,
     )
 
-    params = {"Gradient": {"n_steps": 50}}
+    params = {
+        "methods": ["SmoothGrad"],
+        "SmoothGrad": {"nt_samples": 7, "nt_samples_batch_size": 2, "stdevs": 0.3},
+    }
     dlg = SaliencySettingDialog(parent=None, saliency_params=params)
     qtbot.addWidget(dlg)
     return dlg
@@ -52,9 +55,6 @@ def dialog_with_params(qtbot):
 class TestSaliencySettingInit:
     def test_creates_dialog(self, dialog):
         assert dialog.windowTitle() == "Saliency Setting"
-
-    def test_has_params_tables(self, dialog):
-        assert isinstance(dialog.params_tables, dict)
 
     def test_has_method_checkboxes(self, dialog):
         checks = {
@@ -156,15 +156,13 @@ class TestSaliencySettingInit:
 
     def test_creates_with_params(self, dialog_with_params):
         assert isinstance(dialog_with_params, QDialog)
+        editors = dialog_with_params.param_editors["SmoothGrad"]
+        assert editors["nt_samples"].value() == 7
+        assert editors["nt_samples_batch_size"].value() == 2
+        assert editors["stdevs"].value() == pytest.approx(0.3)
 
 
 class TestSaliencySettingMethods:
-    def test_check_init_data(self, dialog):
-        dialog.check_init_data()
-
-    def test_display_data(self, dialog):
-        dialog.display_data()
-
     def test_method_checkboxes_drive_dynamic_parameter_tabs(self, dialog, qtbot):
         tabs = dialog.findChild(QTabWidget, "SaliencyMethodTabs")
         assert tabs is not None

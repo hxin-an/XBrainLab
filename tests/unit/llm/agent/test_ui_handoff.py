@@ -7,9 +7,6 @@ from pathlib import Path
 import pytest
 
 from XBrainLab.backend.application.commands import CommandName
-from XBrainLab.backend.application.view_publication import (
-    InterpretationReviewIdentity,
-)
 from XBrainLab.llm.agent.assistant_activity import AssistantDecisionOwner
 from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffKind,
@@ -65,42 +62,6 @@ def test_workflow_handoff_route_descriptors_preserve_existing_ui_taxonomy() -> N
             "Finish or cancel in the open Import EEG Data dialog.",
         ),
         (
-            CommandName.REVIEW_INTERPRETATION,
-            WorkflowUiHandoffSurfaceKind.PANEL,
-            AssistantDecisionOwner.PANEL_HANDOFF,
-            WorkflowUiHandoffPanel.DATASET,
-            WorkflowUiHandoffRouteIdentity.DATA_IMPORT_PANEL,
-            "Continue in Import EEG Data",
-            "Continue in the opened XBrainLab panel.",
-        ),
-        (
-            CommandName.PREVIEW_INTERPRETATION,
-            WorkflowUiHandoffSurfaceKind.PANEL,
-            AssistantDecisionOwner.PANEL_HANDOFF,
-            WorkflowUiHandoffPanel.DATASET,
-            WorkflowUiHandoffRouteIdentity.DATA_IMPORT_PANEL,
-            "Continue in Import EEG Data",
-            "Continue in the opened XBrainLab panel.",
-        ),
-        (
-            CommandName.VALIDATE_INTERPRETATION,
-            WorkflowUiHandoffSurfaceKind.PANEL,
-            AssistantDecisionOwner.PANEL_HANDOFF,
-            WorkflowUiHandoffPanel.DATASET,
-            WorkflowUiHandoffRouteIdentity.DATA_IMPORT_PANEL,
-            "Continue in Import EEG Data",
-            "Continue in the opened XBrainLab panel.",
-        ),
-        (
-            CommandName.APPLY_INTERPRETATION,
-            WorkflowUiHandoffSurfaceKind.DIALOG,
-            AssistantDecisionOwner.GUI_DIALOG,
-            WorkflowUiHandoffPanel.DATASET,
-            WorkflowUiHandoffRouteIdentity.DATA_IMPORT_REVIEW_DIALOG,
-            "Continue in Import EEG Data",
-            "Finish or cancel in the open Import EEG Data dialog.",
-        ),
-        (
             CommandName.PREPROCESS,
             WorkflowUiHandoffSurfaceKind.DIALOG,
             AssistantDecisionOwner.GUI_DIALOG,
@@ -135,33 +96,6 @@ def test_workflow_handoff_route_descriptors_preserve_existing_ui_taxonomy() -> N
             WorkflowUiHandoffRouteIdentity.TRAINING_SETTINGS_DIALOG,
             "Continue in Training Settings",
             "Finish or cancel in the open Training Settings dialog.",
-        ),
-        (
-            CommandName.TRAIN,
-            WorkflowUiHandoffSurfaceKind.PANEL,
-            AssistantDecisionOwner.PANEL_HANDOFF,
-            WorkflowUiHandoffPanel.TRAINING,
-            WorkflowUiHandoffRouteIdentity.TRAINING_PANEL,
-            "Continue in Training",
-            "Continue in the opened XBrainLab panel.",
-        ),
-        (
-            CommandName.EVALUATE,
-            WorkflowUiHandoffSurfaceKind.PANEL,
-            AssistantDecisionOwner.PANEL_HANDOFF,
-            WorkflowUiHandoffPanel.EVALUATION,
-            WorkflowUiHandoffRouteIdentity.EVALUATION_PANEL,
-            "Continue in Evaluation",
-            "Continue in the opened XBrainLab panel.",
-        ),
-        (
-            CommandName.VISUALIZE,
-            WorkflowUiHandoffSurfaceKind.PANEL,
-            AssistantDecisionOwner.PANEL_HANDOFF,
-            WorkflowUiHandoffPanel.VISUALIZATION,
-            WorkflowUiHandoffRouteIdentity.VISUALIZATION_PANEL,
-            "Continue in Visualization",
-            "Continue in the opened XBrainLab panel.",
         ),
         (
             CommandName.SALIENCY,
@@ -255,7 +189,6 @@ def test_action_handoff_has_no_gui_decision_owner_or_model_parameters() -> None:
     assert request.kind is WorkflowUiHandoffKind.ACTION_REQUESTED
     assert request.command is CommandName.SALIENCY
     assert request.decision_fields == ()
-    assert request.suggestions == {}
     assert route is not None
     assert route.surface_kind is WorkflowUiHandoffSurfaceKind.ACTION
     assert route.decision_owner is None
@@ -310,59 +243,13 @@ def test_resolution_rejects_changed_public_tool_identity() -> None:
     assert not resolution.matches(forged)
 
 
-def test_import_review_handoff_preserves_domain_identity() -> None:
-    identity = InterpretationReviewIdentity(
-        publication_generation=17,
-        scan_id="scan-a",
-        candidate_id="candidate-a",
-    )
-    request = WorkflowUiHandoffRequest.for_decision(
-        "apply_interpretation",
-        decision_fields=("import_review",),
-        interpretation_identity=identity,
-    )
-
-    resolution = WorkflowUiHandoffResolution.for_request(
-        request,
-        status=WorkflowUiHandoffResolutionStatus.CANCELLED,
-    )
-
-    assert request.interpretation_identity is identity
-    assert resolution.interpretation_identity is identity
-    assert resolution.matches(request) is True
-
-
 def test_handoff_status_contract_distinguishes_initiation_from_terminal_results() -> (
     None
 ):
     assert WorkflowUiHandoffResolutionStatus.COMMAND_PENDING.is_terminal is False
-    assert WorkflowUiHandoffResolutionStatus.NAVIGATED.is_terminal is True
-    assert WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI.is_terminal is True
     assert WorkflowUiHandoffResolutionStatus.COMPLETED.is_terminal is True
     assert WorkflowUiHandoffResolutionStatus.FAILED.is_terminal is True
     assert WorkflowUiHandoffResolutionStatus.CANCELLED.is_terminal is True
-
-
-@pytest.mark.parametrize(
-    "status",
-    [
-        WorkflowUiHandoffResolutionStatus.NAVIGATED,
-        WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI,
-    ],
-)
-def test_navigation_handoff_terminates_without_verified_completion(
-    status: WorkflowUiHandoffResolutionStatus,
-) -> None:
-    request = WorkflowUiHandoffRequest.for_decision("evaluate")
-    session = WorkflowUiHandoffSession(request)
-    resolution = WorkflowUiHandoffResolution.for_request(request, status=status)
-
-    transition = session.resolve(resolution)
-
-    assert transition is WorkflowUiHandoffTransitionStatus.TERMINATED
-    assert session.status is WorkflowUiHandoffSessionStatus.TERMINAL
-    assert session.terminal_resolution is resolution
-    assert resolution.status is status
 
 
 def test_correlated_handoff_session_stays_pending_until_terminal_callback() -> None:
@@ -414,44 +301,14 @@ def test_handoff_session_rejects_stale_terminal_without_resolving_current_reques
     assert session.terminal_resolution is None
 
 
-def test_handoff_preserves_normalized_ui_suggestions_for_exact_resolution() -> None:
-    request = WorkflowUiHandoffRequest.for_decision(
-        CommandName.APPLY_MONTAGE,
-        decision_fields=("channel_mapping",),
-        suggested_values={
-            "montage_name": " standard_1020 ",
-            "warning": " Review\nchannel identities. ",
-            "empty": "  ",
-        },
-    )
-
-    resolution = WorkflowUiHandoffResolution.for_request(
-        request,
-        status=WorkflowUiHandoffResolutionStatus.COMPLETED,
-    )
-
-    assert request.suggested_values == (
-        ("montage_name", "standard_1020"),
-        ("warning", "Review channel identities."),
-    )
-    assert request.suggestions == {
-        "montage_name": "standard_1020",
-        "warning": "Review channel identities.",
-    }
-    assert resolution.suggested_values == request.suggested_values
-    assert resolution.matches(request)
-
-
 def test_resolution_match_rejects_any_changed_correlation_field() -> None:
     request = WorkflowUiHandoffRequest.for_decision(
         "create_epoch",
         decision_fields=("epoch_window",),
-        suggested_values={"target_event": "769"},
     )
     other_request = WorkflowUiHandoffRequest.for_decision(
         "create_epoch",
         decision_fields=("epoch_window",),
-        suggested_values={"target_event": "769"},
     )
     resolution = WorkflowUiHandoffResolution.for_request(
         request,
@@ -509,36 +366,6 @@ def test_handoff_rejects_unknown_command_instead_of_routing_text() -> None:
             ValueError,
             "decision_fields entries cannot be empty",
         ),
-        (
-            {"suggested_values": "target_event=769"},
-            TypeError,
-            "suggested_values must be a tuple",
-        ),
-        (
-            {"suggested_values": (("target_event", "769"), ["window", "1.0"])},
-            TypeError,
-            "suggested_values entries must be key/value tuples",
-        ),
-        (
-            {"suggested_values": (("target_event",),)},
-            TypeError,
-            "suggested_values entries must be key/value tuples",
-        ),
-        (
-            {"suggested_values": (("target_event", 769),)},
-            TypeError,
-            "suggested_values keys and values must be strings",
-        ),
-        (
-            {"suggested_values": ((CommandName.CREATE_EPOCH, "769"),)},
-            TypeError,
-            "suggested_values keys and values must be strings",
-        ),
-        (
-            {"suggested_values": (("target_event", " "),)},
-            ValueError,
-            "suggested_values cannot contain empty text",
-        ),
     ],
 )
 def test_direct_handoff_request_construction_rejects_untyped_contract_values(
@@ -551,7 +378,6 @@ def test_direct_handoff_request_construction_rejects_untyped_contract_values(
         "command": CommandName.CREATE_EPOCH,
         "request_id": "request-1",
         "decision_fields": ("epoch_window",),
-        "suggested_values": (("target_event", "769"),),
     }
     values.update(overrides)
 
@@ -601,36 +427,6 @@ def test_direct_handoff_request_construction_rejects_untyped_contract_values(
             ValueError,
             "decision_fields entries cannot be empty",
         ),
-        (
-            {"suggested_values": "target_event=769"},
-            TypeError,
-            "suggested_values must be a tuple",
-        ),
-        (
-            {"suggested_values": (("target_event", "769"), ["window", "1.0"])},
-            TypeError,
-            "suggested_values entries must be key/value tuples",
-        ),
-        (
-            {"suggested_values": (("target_event",),)},
-            TypeError,
-            "suggested_values entries must be key/value tuples",
-        ),
-        (
-            {"suggested_values": (("target_event", 769),)},
-            TypeError,
-            "suggested_values keys and values must be strings",
-        ),
-        (
-            {"suggested_values": ((CommandName.CREATE_EPOCH, "769"),)},
-            TypeError,
-            "suggested_values keys and values must be strings",
-        ),
-        (
-            {"suggested_values": (("target_event", " "),)},
-            ValueError,
-            "suggested_values cannot contain empty text",
-        ),
     ],
 )
 def test_direct_handoff_resolution_construction_rejects_untyped_contract_values(
@@ -643,7 +439,6 @@ def test_direct_handoff_resolution_construction_rejects_untyped_contract_values(
         "command": CommandName.CREATE_EPOCH,
         "status": WorkflowUiHandoffResolutionStatus.COMPLETED,
         "decision_fields": ("epoch_window",),
-        "suggested_values": (("target_event", "769"),),
         "message": "Epoch settings were applied.",
     }
     values.update(overrides)

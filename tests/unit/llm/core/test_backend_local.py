@@ -10,7 +10,6 @@ from XBrainLab.llm.core.config import LLMConfig
 def config():
     cfg = LLMConfig()
     cfg.device = "cpu"
-    cfg.model_name = "test-model"
     cfg.cache_dir = "test_cache_dir"
     cfg.load_in_4bit = False
     return cfg
@@ -35,24 +34,6 @@ class TestProcessMessages:
     def test_empty_messages(self, backend):
         result = backend._process_messages_for_template([])
         assert result == []
-
-    def test_system_merged_into_first_user(self, backend):
-        messages = [
-            {"role": "system", "content": "You are helpful."},
-            {"role": "user", "content": "Hello"},
-        ]
-        result = backend._process_messages_for_template(messages)
-        assert len(result) == 1
-        assert result[0]["role"] == "user"
-        assert "You are helpful." in result[0]["content"]
-        assert "Hello" in result[0]["content"]
-
-    def test_system_only_creates_user_message(self, backend):
-        messages = [{"role": "system", "content": "Instructions"}]
-        result = backend._process_messages_for_template(messages)
-        assert len(result) == 1
-        assert result[0]["role"] == "user"
-        assert "Instructions" in result[0]["content"]
 
     def test_consecutive_same_role_merged(self, backend):
         messages = [

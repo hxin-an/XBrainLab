@@ -1,4 +1,5 @@
 import multiprocessing
+import os
 import queue as stdlib_queue
 import threading
 import time
@@ -67,6 +68,124 @@ def _patch_download_process_context(process, result_queue):
         "XBrainLab.llm.core.downloader.multiprocessing.get_context",
         return_value=context,
     )
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [None, "wrong_revision", "tokenizer.json", "1_Pooling/config.json", "weight"],
+)
+def test_embedding_download_checks_real_artifacts_and_pins_only_required_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, defect: str | None
+) -> None:
+    from XBrainLab.llm.core import downloader
+
+    spec = model_catalog.RAG_EMBEDDING_SPEC
+    cache = tmp_path / "RAG 模型 cache"
+    monkeypatch.setattr(model_catalog, "MIN_EMBEDDING_WEIGHT_BYTES", 64)
+    snapshot = (
+        cache
+        / model_catalog.hf_model_cache_name(spec.repo_id)
+        / "snapshots"
+        / ("0" * 40 if defect == "wrong_revision" else spec.revision)
+    )
+    observed = []
+
+    def download(**kwargs):
+        observed.append(kwargs)
+        for name in spec.allow_patterns or ():
+            if name == defect:
+                continue
+            path = snapshot / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(
+                (b"x" if defect == "weight" else b"x" * 64)
+                if name == "model.safetensors"
+                else b"{}"
+            )
+        return str(snapshot)
+
+    monkeypatch.setattr(downloader, "snapshot_download", download)
+    messages = stdlib_queue.Queue()
+    run_download_task(spec.repo_id, str(cache), messages)
+    results = []
+    while not messages.empty():
+        results.append(messages.get_nowait())
+    assert observed == [
+        {
+            "repo_id": spec.repo_id,
+            "cache_dir": str(cache),
+            "revision": spec.revision,
+            "allow_patterns": spec.allow_patterns,
+        }
+    ]
+    assert "pytorch_model.bin" not in (spec.allow_patterns or ())
+    assert not any(name.endswith(".py") for name in spec.allow_patterns or ())
+    assert results[-1][0] == ("finished" if defect is None else "error")
+    assert model_catalog.model_cache_complete(str(cache), spec.repo_id) is (
+        defect is None
+    )
+
+
+def test_embedding_download_rejects_redirected_cache_before_network(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from XBrainLab.llm.core import downloader
+
+    spec = model_catalog.RAG_EMBEDDING_SPEC
+    cache = tmp_path / "cache"
+    outside = tmp_path / "outside"
+    cache.mkdir()
+    outside.mkdir()
+    target = cache / model_catalog.hf_model_cache_name(spec.repo_id)
+    try:
+        target.symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"Native symlink privilege unavailable: {exc}")
+    monkeypatch.setattr(
+        downloader,
+        "snapshot_download",
+        lambda **_kwargs: pytest.fail("must reject before external writes"),
+    )
+    messages = stdlib_queue.Queue()
+    run_download_task(spec.repo_id, str(cache), messages)
+    assert messages.get_nowait()[0] == "error"
+    assert not list(outside.iterdir())
+
+
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+@pytest.mark.parametrize("location", ["lock", "incomplete", "LOCK", "INCOMPLETE"])
+def test_embedding_download_rejects_linked_mutable_files_before_transport(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, link_kind: str, location: str
+) -> None:
+    from XBrainLab.llm.core import downloader
+
+    spec = model_catalog.RAG_EMBEDDING_SPEC
+    cache = tmp_path / "cache"
+    repo = model_catalog.hf_model_cache_name(spec.repo_id)
+    path = (
+        cache / ".locks" / repo / f"etag.{location}"
+        if location.casefold() == "lock"
+        else cache / repo / "blobs" / f"etag.{location}"
+    )
+    path.parent.mkdir(parents=True)
+    sentinel = tmp_path / "user-original.txt"
+    sentinel.write_bytes(b"must survive")
+    try:
+        if link_kind == "symlink":
+            path.symlink_to(sentinel)
+        else:
+            os.link(sentinel, path)
+    except OSError as exc:
+        pytest.skip(f"Native link unavailable: {exc}")
+    monkeypatch.setattr(
+        downloader,
+        "snapshot_download",
+        lambda **_kwargs: pytest.fail("must reject unsafe write before transport"),
+    )
+    messages = stdlib_queue.Queue()
+    run_download_task(spec.repo_id, str(cache), messages)
+    assert messages.get_nowait()[0] == "error"
+    assert sentinel.read_bytes() == b"must survive"
 
 
 def test_model_downloader_publishes_failure_after_thread_terminal() -> None:

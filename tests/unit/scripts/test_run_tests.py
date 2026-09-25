@@ -389,8 +389,9 @@ def test_platform_gate_runs_only_explicit_cross_platform_regressions(
     ]
     assert selected_paths
     assert len(selected_paths) == len(set(selected_paths))
-    assert all(Path(path).is_file() for path in selected_paths)
-    assert all(Path(path).name.startswith("test_") for path in selected_paths)
+    selected_files = [Path(path.split("::", 1)[0]) for path in selected_paths]
+    assert all(path.is_file() for path in selected_files)
+    assert all(path.name.startswith("test_") for path in selected_files)
     assert "tests/unit" not in selected_paths
     assert "tests/integration" not in selected_paths
     assert "tests/regression" not in selected_paths
@@ -447,6 +448,18 @@ def test_daily_launcher_is_required_only_on_windows() -> None:
     assert ("tests/unit/scripts/test_windows_daily_launcher.py" in paths) == (
         sys.platform == "win32"
     )
+
+
+@pytest.mark.parametrize(
+    "node",
+    [
+        "tests/unit/scripts/test_assistant_pilot_report.py::test_cross_drive_evidence_links_remain_openable",
+        "tests/unit/scripts/test_run_assistant_baseline.py::test_second_entry_rejected_before_reading_archive",
+    ],
+)
+def test_windows_research_entry_contracts_have_native_platform_coverage(node) -> None:
+    paths = dict(run_tests.PLATFORM_SHARDS)["process-and-launcher-contracts"]
+    assert (node in paths) == (sys.platform == "win32")
 
 
 def test_platform_ci_groups_partition_focused_platform_gate_exactly_once() -> None:

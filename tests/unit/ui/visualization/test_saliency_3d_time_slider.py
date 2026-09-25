@@ -89,10 +89,8 @@ def _saliency_with_time_axis() -> tuple[
     update = MagicMock()
     saliency_any.engine = engine
     saliency_any.plotter = plotter
-    saliency_any.channelBox = MagicMock()
-    saliency_any.headBox = MagicMock()
-    saliency_any.showChannel = True
-    saliency_any.showHead = True
+    saliency_any.show_electrodes = True
+    saliency_any.show_head = True
     saliency_any.chs = []
     saliency_any.cmap = "coolwarm"
     saliency_any.param = {"sample_index": 0}
@@ -241,8 +239,6 @@ def test_completed_3d_scene_resets_time_controls_from_its_engine(
     widget.plotter_widget = QWidget()
 
     class SceneWithTimedEngine:
-        init_error = ""
-
         def __init__(self, *_args, **_kwargs) -> None:
             self.engine = scene.engine
 
@@ -256,7 +252,7 @@ def test_completed_3d_scene_resets_time_controls_from_its_engine(
         "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.Saliency3D",
         SceneWithTimedEngine,
     ):
-        widget._do_3d_plot(MagicMock(), "left")
+        widget._do_3d_plot(prepared_engine=scene.engine, prepared_channel_count=2)
 
     assert widget.scene_controls.isHidden() is False
     assert widget.epoch_time_spin.minimum() == -0.75

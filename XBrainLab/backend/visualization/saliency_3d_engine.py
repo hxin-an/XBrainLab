@@ -11,9 +11,6 @@ import numpy as np
 import pyvista as pv
 
 from XBrainLab.backend.application.saliency_render import SaliencyRenderData
-from XBrainLab.backend.dataset import Epochs
-from XBrainLab.backend.training.record.eval import EvalRecord
-from XBrainLab.backend.training.saliency_provenance import SaliencyArtifactContext
 from XBrainLab.backend.utils.logger import logger
 
 from .base import SaliencyClassIdentity, resolve_saliency_class_identities
@@ -229,22 +226,19 @@ class Saliency3DEngine:
 
     def process_data(
         self,
-        eval_record,
-        epoch_data,
+        render_data: SaliencyRenderData,
         selected_event_name,
         *,
         method="Gradient",
         absolute=False,
     ):
-        """Process epoch data and evaluation record for 3-D visualisation.
+        """Prepare 3-D geometry from one detached render publication.
 
         Computes saliency values, maps channels onto the 3-D head model,
         builds scaled meshes, and prepares the interpolation cap.
 
         Args:
-            eval_record: Evaluation record containing saliency data.
-            epoch_data: Epoch data providing channel names, montage positions
-                and event IDs.
+            render_data: Published saliency, channels, positions and class identity.
             selected_event_name: Name of the event class to visualise.
             method: Saliency method to render.
             absolute: Whether to render absolute saliency magnitudes.
@@ -258,43 +252,20 @@ class Saliency3DEngine:
             RuntimeError: If the head or brain mesh has not been loaded.
 
         """
-        render_data = (
-            eval_record if isinstance(eval_record, SaliencyRenderData) else None
-        )
-        if render_data is not None:
-            epoch_data = render_data
-        context: SaliencyArtifactContext | None = None
-        context_status = getattr(
-            eval_record,
-            "saliency_context_status",
-            "runtime_unbound",
-        )
-        context_value = getattr(eval_record, "saliency_context", None)
-        validate_context = getattr(eval_record, "validate_saliency_context", None)
-        if (
-            isinstance(eval_record, EvalRecord)
-            and callable(validate_context)
-            and (
-                isinstance(epoch_data, Epochs)
-                or context_value is not None
-                or context_status == "legacy_missing"
+        if not isinstance(render_data, SaliencyRenderData):
+            raise TypeError("render_data must be a SaliencyRenderData")
+        if method != render_data.method:
+            raise ValueError(
+                f"Render publication contains {render_data.method}, not {method}."
             )
-        ):
-            context = cast(SaliencyArtifactContext, validate_context(epoch_data))
         # Training records usually store saliency by class index, while EEG files
         # often keep original event codes such as 769/770. Resolve both shapes.
-        saliency_store = self._saliency_store(eval_record, method)
+        saliency_store = render_data.saliency_by_class
         label_key = self._resolve_saliency_label_key(
             saliency_store,
-            epoch_data,
+            render_data,
             selected_event_name,
-            class_items=(
-                render_data.class_map
-                if render_data is not None
-                else context.class_map
-                if context is not None
-                else None
-            ),
+            class_items=render_data.class_map,
         )
         saliency_raw = np.asarray(saliency_store[label_key])
         if not self._has_saliency_data(saliency_raw):
@@ -309,8 +280,8 @@ class Saliency3DEngine:
         # the complete epoch tensor as float64.
         saliency = saliency_raw.mean(axis=0, dtype=np.float64)
 
-        ch_pos = epoch_data.get_montage_position()
-        electrode = epoch_data.get_channel_names()
+        ch_pos = render_data.get_montage_position()
+        electrode = render_data.get_channel_names()
 
         if ch_pos is None or len(ch_pos) == 0:
             raise ValueError("No montage positions found. Please set a montage first.")
@@ -334,7 +305,7 @@ class Saliency3DEngine:
             )
 
         time_axis_seconds = self._build_time_axis_seconds(
-            epoch_data,
+            render_data,
             sample_count=int(saliency.shape[1]),
         )
 
@@ -344,7 +315,7 @@ class Saliency3DEngine:
             method,
             self.saliency,
             absolute=absolute,
-            normalized=bool(getattr(epoch_data, "normalized", False)),
+            normalized=render_data.normalized,
         )
         self.scalar_bar_range = [color_min, color_max]
 
@@ -388,7 +359,6 @@ class Saliency3DEngine:
             ),
         )
 
-        self.scalar_buffer = np.zeros(self.saliency_cap.n_points)
         self._prepared_interpolation_key = None
         self._prepared_interpolation = None
         self._prepared_interpolation_neighbor_count = None
@@ -547,31 +517,6 @@ class Saliency3DEngine:
             return len(value) > 0
         except TypeError:
             return False
-
-    @staticmethod
-    def _saliency_store(eval_record, method):
-        """Return saliency data for the selected 3-D method."""
-        if isinstance(eval_record, SaliencyRenderData):
-            if method != eval_record.method:
-                raise ValueError(
-                    f"Render publication contains {eval_record.method}, not {method}."
-                )
-            return eval_record.saliency_by_class
-        if method == "Gradient":
-            store = getattr(eval_record, "gradient", None)
-        elif method == "Gradient * Input":
-            store = getattr(eval_record, "gradient_input", None)
-        elif method == "SmoothGrad":
-            store = getattr(eval_record, "smoothgrad", None)
-        elif method == "SmoothGrad_Squared":
-            store = getattr(eval_record, "smoothgrad_sq", None)
-        elif method == "VarGrad":
-            store = getattr(eval_record, "vargrad", None)
-        else:
-            raise ValueError(f"Unknown saliency method: {method}")
-        if store is None:
-            raise KeyError(f"No {method} saliency is available for this evaluation.")
-        return store
 
     def update_scalars(self, sample_index, neighbor=3):
         """Update scalar values on the saliency cap for a given time point.

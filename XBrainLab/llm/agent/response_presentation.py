@@ -11,10 +11,22 @@ from XBrainLab.backend.utils.public_diagnostics import (
     public_diagnostic_text,
 )
 from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH, bounded_chat_string
+from XBrainLab.llm.tools.result_contract import ToolCommandResult, UiRequest
 from XBrainLab.product_language import tool_action_label
 
 from .interaction import AgentInteractionOutcome, AgentInteractionStatus
 from .turn import AssistantTurnCorrelation
+
+_BLOCKED_TOOL_ERROR_TYPES = frozenset(
+    {
+        "confirmation_required",
+        "input",
+        "precondition",
+        "stale_confirmation",
+        "stale_publication",
+        "tool_not_published",
+    }
+)
 
 
 class AssistantResponseKind(str, Enum):
@@ -36,6 +48,45 @@ class AssistantPanelTarget(str, Enum):
     TRAINING = "training"
     EVALUATION = "evaluation"
     VISUALIZATION = "visualization"
+
+
+def tool_result_response_kind(
+    success: bool,
+    result: ToolCommandResult | UiRequest,
+) -> AssistantResponseKind:
+    """Distinguish a completed command from a still-pending UI request."""
+    if not success:
+        if (
+            isinstance(result, ToolCommandResult)
+            and result.error_type in _BLOCKED_TOOL_ERROR_TYPES
+        ):
+            return AssistantResponseKind.BLOCKED
+        return AssistantResponseKind.ERROR
+    if isinstance(result, ToolCommandResult):
+        return AssistantResponseKind.TOOL_RESULT
+    return AssistantResponseKind.MESSAGE
+
+
+def terminal_outcome_for_result(
+    success: bool,
+    result: ToolCommandResult | UiRequest,
+) -> str:
+    """Map one trusted tool result to the diagnostic terminal contract."""
+    if success:
+        return "completed"
+    if tool_result_response_kind(False, result) is AssistantResponseKind.BLOCKED:
+        return "blocked"
+    return "failed"
+
+
+def terminal_outcome_for_interaction(outcome: AgentInteractionOutcome) -> str:
+    """Project typed UI outcomes onto the diagnostic terminal vocabulary."""
+    if outcome.status in {
+        AgentInteractionStatus.CONFIRMED,
+        AgentInteractionStatus.COMPLETED_IN_UI,
+    }:
+        return "completed"
+    return outcome.status.value
 
 
 _PANEL_VIEW_MODES: dict[AssistantPanelTarget, frozenset[str]] = {
@@ -126,28 +177,17 @@ def interaction_outcome_message(outcome: AgentInteractionOutcome) -> str:
         return f"Approved: {label}. XBrainLab is starting the action."
     if outcome.status is AgentInteractionStatus.CANCELLED:
         cancelled_copy = {
-            "clear_datasets": (
-                "Dataset removal cancelled. Your current workspace is unchanged."
-            ),
             "clear_training_history": (
                 "Training history removal cancelled. Your current history is unchanged."
             ),
             "reset_preprocessing": (
                 "Preprocessing reset cancelled. Your current workflow is unchanged."
             ),
-            "new_session": (
-                "Session reset cancelled. Your current workflow is unchanged."
-            ),
-            "apply_interpretation": ("Data import was cancelled. No data was added."),
         }
         return cancelled_copy.get(
             command_identifier,
             f"{label} was cancelled. Your current workflow is unchanged.",
         )
-    if outcome.status is AgentInteractionStatus.DEFERRED_TO_UI:
-        if command_identifier == CommandName.EVALUATE.value:
-            return "Evaluation is open in the main window. Review results there."
-        return f"{label} is open in the main window. Continue there."
     detail = public_diagnostic_text(
         outcome.message or "",
         layout=DiagnosticTextLayout.SINGLE_LINE,

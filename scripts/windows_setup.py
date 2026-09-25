@@ -28,7 +28,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from XBrainLab.llm.core.model_catalog import (
+    MAX_TOTAL_MODEL_CACHE_GB,
+    RAG_EMBEDDING_SPEC,
     allowed_local_model_ids,
+    cache_usage_bytes,
     default_local_model_id,
     local_model_spec,
     plan_model_download,
@@ -38,6 +41,7 @@ from XBrainLab.platform_paths import (
     user_data_dir,
     user_log_dir,
     user_model_cache_dir,
+    user_rag_cache_dir,
     user_settings_path,
 )
 
@@ -206,7 +210,7 @@ def run_model_download(
 
         lifecycle_factory = ModelDownloadLifecycle
         application = application or QCoreApplication.instance() or QCoreApplication([])
-    elif application is None:
+    if application is None:
         raise ValueError("An application is required with an injected lifecycle.")
 
     lifecycle = lifecycle_factory()
@@ -256,6 +260,7 @@ def _run(
     env: dict[str, str] | None = None,
     capture: bool = False,
     stage: str,
+    timeout: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [str(item) for item in argv]
     print(f"\n[{stage}]")
@@ -267,6 +272,7 @@ def _run(
         text=True,
         capture_output=capture,
         check=False,
+        timeout=timeout,
     )
     if result.returncode != 0:
         LOGGER.error("failed (%s): %s", result.returncode, stage)
@@ -574,6 +580,16 @@ def _build_plan(
     model_plan = plan_model_download(model_id, str(model_cache))
     if not model_plan.ok:
         raise SetupError(model_plan.message)
+    rag_cache = user_rag_cache_dir() / "models"
+    rag_plan = plan_model_download(RAG_EMBEDDING_SPEC.repo_id, str(rag_cache))
+    if not rag_plan.ok:
+        raise SetupError(rag_plan.message)
+    _check_combined_cache_budget(
+        model_cache,
+        pending_download_bytes=(
+            model_plan.estimated_download_bytes + rag_plan.estimated_download_bytes
+        ),
+    )
     if environment.status != "valid":
         free_bytes = shutil.disk_usage(repo_root).free
         if free_bytes < MINIMUM_NEW_ENV_FREE_BYTES:
@@ -605,6 +621,15 @@ def _build_plan(
             "download_required": model_plan.estimated_download_bytes > 0,
             "cache": str(model_cache),
         },
+        "rag": {
+            "id": RAG_EMBEDDING_SPEC.repo_id,
+            "revision": RAG_EMBEDDING_SPEC.revision,
+            "source": f"https://huggingface.co/{RAG_EMBEDDING_SPEC.repo_id}",
+            "license": "Apache-2.0",
+            "estimated_download_gb": RAG_EMBEDDING_SPEC.estimated_download_gb,
+            "download_required": rag_plan.estimated_download_bytes > 0,
+            "cache": str(rag_cache),
+        },
     }
 
 
@@ -628,6 +653,19 @@ def _print_plan(plan: dict[str, Any]) -> None:
         f"up to {model['estimated_download_gb']:.2f} GB"
     )
     print(f"  Model cache: {model['cache']}")
+    rag = plan["rag"]
+    print(f"  RAG:         {rag['id']} (revision {rag['revision']})")
+    print(f"  Source:      {rag['source']} / {rag['license']}")
+    print(f"  RAG cache:   {rag['cache']}")
+    print(
+        f"               up to {rag['estimated_download_gb']:.2f} GB; "
+        "FP32 safetensors, offline verification on CPU (no GPU required)."
+    )
+    print(
+        "               "
+        + ("Download required." if rag["download_required"] else "Reuse pinned cache.")
+    )
+    print("Interrupted downloads are retained for retry; no existing cache is deleted.")
     print("\nDependency downloads and the .venv may require several additional GB.")
     if model["download_required"]:
         print("The selected model is not complete in the cache and will be downloaded.")
@@ -643,6 +681,23 @@ def _confirm() -> bool:
     except EOFError:
         return False
     return answer.strip().casefold() in {"y", "yes"}
+
+
+def _check_combined_cache_budget(
+    model_cache: Path, *, pending_download_bytes: int = 0
+) -> None:
+    """Recheck actual usage after downloads; estimates never certify completion."""
+    roots = {model_cache.resolve(), (user_rag_cache_dir() / "models").resolve()}
+    # Count nested/shared roots once; different drives/roots still share one cap.
+    distinct = [
+        root for root in roots if not any(parent in roots for parent in root.parents)
+    ]
+    actual = sum(cache_usage_bytes(str(root)) for root in distinct)
+    if actual + pending_download_bytes > MAX_TOTAL_MODEL_CACHE_GB * 1_000_000_000:
+        raise SetupError(
+            "Combined Assistant model caches exceed the 20 GB setup budget. "
+            "Existing files were kept; free unused cache space before retrying."
+        )
 
 
 def _setup_environment(
@@ -729,6 +784,21 @@ def _setup_environment(
         env=setup_env,
         stage="Prepare local Assistant model",
     )
+    rag_plan = plan_model_download(
+        RAG_EMBEDDING_SPEC.repo_id, str(user_rag_cache_dir() / "models")
+    )
+    if not rag_plan.ok:
+        raise SetupError(rag_plan.message)
+    _check_combined_cache_budget(
+        model_cache, pending_download_bytes=rag_plan.estimated_download_bytes
+    )
+    _run(
+        [environment_python, Path(__file__).resolve(), "--prepare-rag"],
+        cwd=repo_root,
+        env=setup_env,
+        stage="Prepare and verify local RAG",
+    )
+    _check_combined_cache_budget(model_cache)
 
     print("\nXBrainLab setup is complete.")
     LOGGER.info("setup complete")
@@ -770,7 +840,66 @@ def _argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--download-model", help=argparse.SUPPRESS)
     parser.add_argument("--cache-dir", help=argparse.SUPPRESS)
+    parser.add_argument("--prepare-rag", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--verify-rag-offline", action="store_true", help=argparse.SUPPRESS
+    )
     return parser
+
+
+def prepare_rag() -> int:
+    """Use the shared download owner, then require real offline RAG readiness."""
+    result = run_model_download(
+        RAG_EMBEDDING_SPEC.repo_id, str(user_rag_cache_dir() / "models")
+    )
+    if result:
+        return result
+    offline_env = os.environ.copy()
+    offline_env.update(
+        HF_HUB_OFFLINE="1",
+        TRANSFORMERS_OFFLINE="1",
+        HF_DATASETS_OFFLINE="1",
+        CUDA_VISIBLE_DEVICES="",
+    )
+    _run(
+        [sys.executable, Path(__file__).resolve(), "--verify-rag-offline"],
+        cwd=REPO_ROOT,
+        env=offline_env,
+        stage="Verify pinned RAG offline (CPU)",
+        timeout=180,
+    )
+    return 0
+
+
+def verify_rag_offline() -> int:
+    """Check installed readiness, not accuracy or Git/source-bound evidence.
+
+    A source ZIP need not contain Git metadata. The full engineering probe gate
+    stays separate and unchanged; this smoke loads the real local model/index
+    and retrieves a known bundled example without executing any EEG command.
+    """
+    from XBrainLab.llm.agent.context_encoding import decode_untrusted_context
+    from XBrainLab.llm.rag import RAGConfig, RAGRetriever
+
+    if os.environ.get("HF_HUB_OFFLINE") != "1":
+        raise SetupError("RAG verification must run with networking disabled.")
+    if not RAGConfig.embedding_cache_ready() or not RAGConfig.gold_set_integrity_ok():
+        raise SetupError("Pinned RAG embedding or bundled examples are unavailable.")
+    retriever = RAGRetriever()
+    try:
+        retriever.initialize()
+        if not retriever.is_initialized:
+            raise SetupError("The local RAG model/index could not initialize.")
+        context = retriever.get_similar_examples(
+            "Import an EEG dataset.",
+            allowed_tool_names=frozenset({"import_eeg_data"}),
+        )
+        if not decode_untrusted_context(context):
+            raise SetupError("The local RAG index did not return its bundled example.")
+    finally:
+        retriever.close()
+    print("Pinned RAG model and local retrieval verified offline.")
+    return 0
 
 
 def _run_internal_model_download(model_id: str, cache_dir: str | None) -> int:
@@ -789,6 +918,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         _validate_bootstrap_python()
         _validate_checkout(REPO_ROOT)
+        if args.verify_rag_offline:
+            return verify_rag_offline()
+        if args.prepare_rag:
+            return prepare_rag()
         if args.download_model:
             return _run_internal_model_download(
                 args.download_model,

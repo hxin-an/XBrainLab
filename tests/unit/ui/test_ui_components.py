@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QScrollArea, QWidget
 
 # ============ ConfusionMatrix & MetricsBarChart ============
 
@@ -100,13 +100,24 @@ class TestConfusionMatrix:
         qtbot.wait(20)
         assert widget.canvas is not None
         assert widget.fig is not None
-        # Match the product path: the Evaluation panel starts wide, then the
-        # Assistant dock narrows the plot canvas.
-        widget.canvas.setFixedSize(530, 320)
+        # Resize the viewport, not the canvas: approved readable labels retain
+        # their measured minimum size and overflow remains reachable by scroll.
+        widget.setFixedSize(530, 350)
+        qtbot.wait(20)
         widget.fit_plot_to_canvas()
-        widget.canvas.setFixedSize(canvas_width, 280)
+        widget.setFixedSize(canvas_width, 350)
+        qtbot.wait(20)
         widget.fit_plot_to_canvas()
-        assert widget.canvas.width() == canvas_width
+        scroll = widget.findChild(QScrollArea)
+        assert scroll is not None
+        qtbot.waitUntil(lambda: scroll.horizontalScrollBar().maximum() > 0)
+        assert widget.canvas.width() >= widget.canvas.minimumWidth()
+        bar = scroll.horizontalScrollBar()
+        bar.setValue(bar.maximum())
+        assert (
+            widget.canvas.mapTo(scroll.viewport(), widget.canvas.rect().topRight()).x()
+            <= scroll.viewport().width()
+        )
         widget.canvas.draw()
         renderer = widget.canvas.get_renderer()
 

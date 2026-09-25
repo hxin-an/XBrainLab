@@ -676,22 +676,10 @@ def test_saliency_render_start_failure_is_actionable_released_and_retryable(
     assert view.error_label.isHidden()
 
 
-def test_saliency_render_path_does_not_pump_nested_qt_events():
-    source = inspect.getsource(BaseSaliencyView)
-
-    assert "processEvents" not in source
-
-
 def test_saliency_render_worker_does_not_depend_on_the_global_qthreadpool():
     source = inspect.getsource(BaseSaliencyView._start_render_request)
 
     assert "QThreadPool.globalInstance" not in source
-
-
-def test_saliency_layout_path_does_not_defer_geometry_with_qtimer():
-    source = inspect.getsource(base_saliency_view)
-
-    assert "QTimer.singleShot" not in source
 
 
 def test_all_saliency_views_avoid_timing_based_render_workarounds():
@@ -700,7 +688,7 @@ def test_all_saliency_views_avoid_timing_based_render_workarounds():
     for source_path in view_dir.glob("*.py"):
         source = source_path.read_text(encoding="utf-8")
         assert "QTimer.singleShot" not in source, source_path.name
-        assert ".processEvents(" not in source, source_path.name
+        assert "processEvents" not in source, source_path.name
 
 
 def test_2d_saliency_render_jobs_do_not_capture_widget_instance():

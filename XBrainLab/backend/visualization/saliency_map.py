@@ -72,7 +72,7 @@ class SaliencyMapViz(Visualizer):
             method,
             [saliency for _label_key, _label_name, saliency in display_by_label],
             absolute=absolute,
-            normalized=bool(getattr(self.epoch_data, "normalized", False)),
+            normalized=self.render_data.normalized,
         )
         display_cmap = attribution_colormap(cmap)
         visible_label_number = len(plotted_by_label)
@@ -91,7 +91,6 @@ class SaliencyMapViz(Visualizer):
             wspace=0.38,
             hspace=0.45,
         )
-        plot_axes = []
         image = None
         for plot_index, (label_key, label_name, saliency) in enumerate(
             plotted_by_label,
@@ -99,7 +98,6 @@ class SaliencyMapViz(Visualizer):
             ax = fig.add_subplot(grid[plot_index // cols, plot_index % cols])
             ax.set_gid(f"saliency-class:{label_key!r}")
             cast(Any, ax)._xbrainlab_class_key = label_key
-            plot_axes.append(ax)
 
             image = ax.imshow(
                 saliency,
@@ -112,7 +110,7 @@ class SaliencyMapViz(Visualizer):
 
             ax.set_xlabel("Time (s)")
             ax.set_ylabel("Channel")
-            ch_names = self.epoch_data.get_channel_names()
+            ch_names = self.render_data.get_channel_names()
             if display_mode == "single" and len(ch_names) > 12:
                 tick_indices = np.unique(
                     np.linspace(0, len(ch_names) - 1, 12, dtype=int),
@@ -129,12 +127,12 @@ class SaliencyMapViz(Visualizer):
                 fontsize=6,
             )
             sample_count = int(saliency.shape[-1])
-            sfreq = float(self.epoch_data.get_model_args()["sfreq"])
+            sfreq = self.render_data.sfreq
             if sfreq <= 0:
                 raise ValueError(
                     "Sampling frequency must be positive for a saliency map."
                 )
-            epoch_start = float(getattr(self.epoch_data, "tmin", 0.0))
+            epoch_start = self.render_data.tmin
             epoch_end = epoch_start + (sample_count - 1) / sfreq
             tick_count = min(4, sample_count)
             ax.set_xticks(

@@ -1,53 +1,37 @@
-"""Lightweight user-intent helpers for agent command boundaries."""
+"""Language checks for suppressing action examples in RAG retrieval.
+
+These checks filter example retrieval only; they do not select or authorize tools.
+"""
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-
-from XBrainLab.backend.application import CommandName
-from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
-
-from .training_request import (
-    contains_explicit_training_options,
-    extract_explicit_training_model,
-)
-
-INTENT_TO_COMMAND: dict[str, CommandName] = AGENT_ACTION_CONTRACTS.intent_to_command()
 
 
-@dataclass(frozen=True, slots=True)
-class BlockedExplanationIntent:
-    """Resolved workflow target for one state-readiness explanation."""
+def should_suppress_action_examples(text: str) -> bool:
+    """Keep explanatory or unresolved requests free of action examples."""
+    normalized = text.lower()
+    if _is_blocked_workflow_explanation(text):
+        return True
+    if is_unresolved_historical_action_reference(text):
+        return True
+    if _is_workflow_state_request(normalized):
+        return False
+    if _is_file_browse_request(normalized):
+        return False
+    if _is_explanatory_no_tool_request(normalized):
+        return True
+    return _is_ambiguous_workflow_request(normalized)
 
-    target_intents: tuple[str, ...]
 
-    @property
-    def target_intent(self) -> str | None:
-        return self.target_intents[0] if len(self.target_intents) == 1 else None
-
-
-def resolve_blocked_explanation_intent(
-    text: str,
-) -> BlockedExplanationIntent | None:
-    """Resolve an inability/readiness question to exactly one workflow command.
-
-    ``None`` means the text is not asking about current application readiness.
-    A returned object without a target is deliberately ambiguous and must not be
-    answered from a guessed command.
-    """
+def _is_blocked_workflow_explanation(text: str) -> bool:
     normalized = text.casefold().replace("\u2019", "'")
     if not _has_blocked_explanation_language(normalized):
-        return None
-
+        return False
     target_clause = _blocked_explanation_target_clause(normalized)
     if _is_knowledge_definition_clause(target_clause):
-        return None
-
-    targets = _blocked_target_intents(target_clause)
-    if not targets and not _has_workflow_reference(normalized):
-        return None
-    return BlockedExplanationIntent(target_intents=targets)
+        return False
+    return _has_workflow_reference(normalized)
 
 
 def is_explicit_workflow_continuation(text: str) -> bool:
@@ -285,185 +269,6 @@ def _has_authoritative_current_surface_reference(normalized: str) -> bool:
     )
 
 
-def infer_user_intent(text: str) -> str:
-    """Infer the next workflow intent from user-visible text."""
-    normalized = text.lower()
-    has_it = re.search(r"\bit\b", normalized) is not None
-    blocked_explanation = resolve_blocked_explanation_intent(text)
-    if blocked_explanation is not None:
-        return blocked_explanation.target_intent or "ask_clarification"
-    if is_unresolved_historical_action_reference(text):
-        return "ask_clarification"
-    if _is_workflow_state_request(normalized):
-        return "query_state"
-    if _is_file_browse_request(normalized):
-        return "browse_files"
-    if _is_explanatory_no_tool_request(normalized):
-        return "no_tool"
-    if _is_ambiguous_workflow_request(normalized):
-        return "ask_clarification"
-    if _is_reset_preprocess_request(normalized):
-        return "reset_preprocess"
-    if "reset" in normalized or "clear the dataset" in normalized:
-        return "reset_session"
-    if "重設" in normalized or "清空" in normalized:
-        return "reset_session"
-    if re.search(r"\b(?:validate|validation)\b", normalized) and (
-        "interpret" in normalized or "candidate" in normalized or has_it
-    ):
-        return "validate_interpretation"
-    if "check whether" in normalized and "interpretation" in normalized:
-        return "validate_interpretation"
-    if "reload recipe" in normalized or "reload the interpretation recipe" in (
-        normalized
-    ):
-        return "reload_interpretation_recipe"
-    if "remap" in normalized and (
-        "recipe" in normalized
-        or "eeg file" in normalized
-        or "label carrier" in normalized
-        or "event carrier" in normalized
-        or "saved" in normalized
-    ):
-        return "preview_interpretation"
-    if "save" in normalized and "recipe" in normalized:
-        return "save_interpretation_recipe"
-    if "儲存" in normalized and "recipe" in normalized:
-        return "save_interpretation_recipe"
-    if "apply" in normalized and ("interpret" in normalized or has_it):
-        return "apply_interpretation"
-    if _is_reviewed_import_apply_request(normalized):
-        return "apply_interpretation"
-    if "preview" in normalized and (
-        "interpret" in normalized
-        or "candidate" in normalized
-        or "subject" in normalized
-        or "session" in normalized
-        or "task" in normalized
-        or "run" in normalized
-        or "event role" in normalized
-        or "remap" in normalized
-        or has_it
-    ):
-        return "preview_interpretation"
-    if "預覽" in normalized and ("資料" in normalized or "標籤" in normalized):
-        return "preview_interpretation"
-    if _is_natural_interpretation_preview_request(normalized):
-        return "preview_interpretation"
-    if "驗證" in normalized and ("資料" in normalized or "標籤" in normalized):
-        return "validate_interpretation"
-    if "套用" in normalized and ("資料" in normalized or "標籤" in normalized):
-        return "apply_interpretation"
-    if _is_chinese_data_interpretation_request(normalized):
-        return "scan_source"
-    if _is_english_data_interpretation_request(normalized):
-        return "scan_source"
-    if (
-        "interpret data source" in normalized
-        or "interpret my eeg dataset" in normalized
-        or ("scan" in normalized and "bids" in normalized)
-        or "scan bids" in normalized
-        or "scan /" in normalized
-        or "scan a data source" in normalized
-        or "scan data source" in normalized
-        or "scan the bids dataset" in normalized
-        or "scan the source" in normalized
-        or (
-            "scan" in normalized
-            and any(
-                marker in normalized
-                for marker in ("data", "dataset", "source", "file", "folder", "eeg")
-            )
-        )
-    ):
-        return "scan_source"
-    if "saliency" in normalized:
-        return "saliency"
-    if "顯著" in normalized or "可解釋" in normalized:
-        return "saliency"
-    if "evaluate" in normalized or "evaluation" in normalized:
-        return "evaluate"
-    if "評估" in normalized or "評價" in normalized:
-        return "evaluate"
-    if (
-        "visualize" in normalized
-        or "visualise" in normalized
-        or "visualization" in normalized
-        or "visualisation" in normalized
-    ):
-        return "visualize"
-    if "視覺化" in normalized or "可視化" in normalized:
-        return "visualize"
-    if any(
-        marker in normalized
-        for marker in (
-            "preprocess",
-            "bandpass",
-            "filter",
-            "resample",
-            "normalize",
-            "normalise",
-            "reference",
-            "select channel",
-        )
-    ):
-        return "preprocess"
-    if any(
-        marker in normalized
-        for marker in (
-            "前處理",
-            "濾波",
-            "帶通",
-            "重採樣",
-            "重新採樣",
-            "正規化",
-            "標準化",
-            "參考電極",
-            "選擇通道",
-        )
-    ):
-        return "preprocess"
-    if _is_dataset_generation_request(normalized):
-        return "configure_dataset_split"
-    if (
-        "create epoch" in normalized
-        or "epochs from" in normalized
-        or "epoch creation" in normalized
-        or "epoching" in normalized
-    ):
-        return "create_epoch"
-    if "切 epoch" in normalized or "切epoch" in normalized or "切片段" in normalized:
-        return "create_epoch"
-    if _is_stop_training_request(normalized):
-        return "stop_training"
-    if _is_primary_train_with_conditional_fallback(normalized):
-        return "train"
-    if re.search(r"\btrain\b", normalized) or re.search(
-        r"\b(?:start|run|begin)\s+(?:the\s+)?training\b",
-        normalized,
-    ):
-        return "train"
-    if extract_explicit_training_model(normalized) is not None:
-        return "configure_training"
-    if "configure training" in normalized or contains_explicit_training_options(
-        normalized
-    ):
-        return "configure_training"
-    if ("設定" in normalized or "配置" in normalized or "選擇" in normalized) and (
-        "訓練" in normalized or "模型" in normalized
-    ):
-        return "configure_training"
-    if "train it" in normalized or ("train" in normalized and "blocked" in normalized):
-        return "train"
-    if "train" in normalized or "training" in normalized:
-        return "train"
-    if "訓練" in normalized:
-        return "train"
-    if "model" in normalized and "use" in normalized:
-        return "configure_training"
-    return "unknown"
-
-
 def _has_blocked_explanation_language(normalized: str) -> bool:
     has_blocked_signal = bool(
         re.search(
@@ -604,44 +409,6 @@ def _has_workflow_reference(normalized: str) -> bool:
     )
 
 
-def _blocked_target_intents(clause: str) -> tuple[str, ...]:
-    """Reuse the canonical intent parser for one or more explicit targets."""
-    segments = re.split(r"\s+\b(?:or|and)\b\s+|(?:或|還是|、)", clause)
-    targets: list[str] = []
-    commands: set[CommandName] = set()
-    for segment in segments:
-        sanitized = re.sub(
-            r"\b(?:why|can(?:not|'t)|unable\s+to|blocked|not\s+ready|"
-            r"unavailable|disabled)\b",
-            " ",
-            segment,
-        )
-        for marker in ("不能", "無法", "不可以", "不可用", "被擋", "阻擋"):
-            sanitized = sanitized.replace(marker, " ")
-        normalized = " ".join(sanitized.split())
-        if not normalized:
-            continue
-
-        intent = infer_user_intent(normalized)
-        command = command_for_intent(intent)
-        if command is None:
-            continue
-        if command is CommandName.QUERY_STATE and not (
-            re.search(r"\b(?:state|status|readiness)\b", normalized)
-            or any(marker in normalized for marker in ("狀態", "進度"))
-        ):
-            continue
-        if command not in commands:
-            targets.append(intent)
-            commands.add(command)
-    return tuple(targets)
-
-
-def command_for_intent(intent: str) -> CommandName | None:
-    """Return the backend command represented by an inferred intent."""
-    return INTENT_TO_COMMAND.get(intent)
-
-
 def _is_explanatory_no_tool_request(normalized: str) -> bool:
     if _is_natural_interpretation_preview_request(normalized):
         return False
@@ -676,42 +443,6 @@ def _is_explanatory_no_tool_request(normalized: str) -> bool:
             "目前狀態",
             "現在狀態",
         )
-    )
-
-
-def _is_reset_preprocess_request(normalized: str) -> bool:
-    """Recognize a narrow preprocessing reset before generic session reset."""
-    english_action = re.search(
-        r"\b(?:reset|clear|discard|remove|undo|revert)\b",
-        normalized,
-    )
-    english_target = re.search(
-        r"\bpre[- ]?process(?:ing|ed)?\b",
-        normalized,
-    )
-    chinese_action = any(
-        action in normalized for action in ("重設", "重置", "清除", "還原")
-    )
-    chinese_target = "前處理" in normalized or "預處理" in normalized
-    return bool(
-        (english_action is not None and english_target is not None)
-        or (chinese_action and chinese_target)
-    )
-
-
-def _is_stop_training_request(normalized: str) -> bool:
-    """Recognize explicit training-stop language before generic training intent."""
-    english_action = re.search(
-        r"\b(?:stop|cancel|abort|terminate|interrupt)\b",
-        normalized,
-    )
-    english_target = re.search(r"\btrain(?:ing)?\b", normalized)
-    chinese_action = any(
-        action in normalized for action in ("停止", "中止", "終止", "取消")
-    )
-    return bool(
-        (english_action is not None and english_target is not None)
-        or (chinese_action and "訓練" in normalized)
     )
 
 
@@ -791,100 +522,6 @@ def _is_ambiguous_workflow_request(normalized: str) -> bool:
     return endpoint_concepts >= 2
 
 
-def _is_primary_train_with_conditional_fallback(normalized: str) -> bool:
-    """Keep an explicit train command primary over a conditional fallback."""
-    fallback = re.search(r"(?:[;,]\s*)?\b(?:if|otherwise)\b", normalized)
-    if fallback is None:
-        return False
-    primary_clause = normalized[: fallback.start()]
-    return re.search(r"\btrain(?:\s+it|\s+the\s+model)?\b", primary_clause) is not None
-
-
-def _is_chinese_data_interpretation_request(normalized: str) -> bool:
-    if (
-        "腦波" not in normalized
-        and "eeg" not in normalized
-        and "bci" not in normalized
-        and "bids" not in normalized
-    ):
-        return False
-    return any(
-        marker in normalized
-        for marker in (
-            "讀",
-            "載入",
-            "匯入",
-            "貼標籤",
-            "標籤",
-            "資料",
-        )
-    )
-
-
-def _is_english_data_interpretation_request(normalized: str) -> bool:
-    """Detect user-facing data-entry phrasing that should start scan_source."""
-    has_source_locator = any(
-        marker in normalized
-        for marker in (
-            "/",
-            "\\",
-            ".gdf",
-            ".edf",
-            ".bdf",
-            ".set",
-            ".vhdr",
-            ".xdf",
-            ".fif",
-        )
-    )
-    if has_source_locator and re.search(
-        r"\buse\b.{0,100}\b(?:eeg\s+recording|recording|dataset|source|file|folder)\b",
-        normalized,
-    ):
-        return True
-
-    data_entry_verbs = (
-        r"\bload(?:ing)?\b",
-        r"\bimport(?:ing)?\b",
-        r"\bopen(?:ing)?\b",
-        r"\bread(?:ing)?\b",
-        r"\bfind(?:ing)?\b",
-        r"\bselect(?:ing)?\b",
-        r"\b(?:choose|chosen)\b",
-        r"\binspect(?:ing)?\b",
-    )
-    if not any(re.search(pattern, normalized) for pattern in data_entry_verbs):
-        return False
-    data_entry_objects = (
-        "data",
-        "dataset",
-        "source",
-        "file",
-        "folder",
-        "eeg",
-        "bci",
-        "bids",
-        ".gdf",
-        ".edf",
-        ".bdf",
-        ".set",
-        ".vhdr",
-        ".xdf",
-        "/",
-        "\\",
-    )
-    return any(marker in normalized for marker in data_entry_objects)
-
-
-def _is_reviewed_import_apply_request(normalized: str) -> bool:
-    """Recognize applying an already-reviewed interpretation as import."""
-    return bool(
-        re.search(r"\bimport\b", normalized)
-        and re.search(r"\breviewed\b", normalized)
-        and re.search(r"\b(?:recording|data|dataset|source|file)\b", normalized)
-    )
-
-
 def _is_natural_interpretation_preview_request(normalized: str) -> bool:
     """Recognize user-facing review language without requiring backend terms."""
     return bool(
@@ -893,25 +530,5 @@ def _is_natural_interpretation_preview_request(normalized: str) -> bool:
             "how xbrainlab understands" in normalized
             or "before it is imported" in normalized
             or "before importing" in normalized
-        )
-    )
-
-
-def _is_dataset_generation_request(normalized: str) -> bool:
-    """Keep dataset construction distinct from starting model training."""
-    return bool(
-        (
-            "dataset" in normalized
-            and re.search(
-                r"\b(?:generate|generation|build|create|prepare|split)\b",
-                normalized,
-            )
-        )
-        or (
-            "資料集" in normalized
-            and any(
-                marker in normalized
-                for marker in ("建立", "產生", "生成", "切分", "分割")
-            )
         )
     )

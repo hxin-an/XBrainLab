@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
 
 from .styles import (
     SUGGESTION_CHEVRON_STYLE,
-    SUGGESTION_ICON_STYLES,
     SUGGESTION_PROMPT_STYLE,
     SUGGESTION_SUBTITLE_STYLE,
     SUGGESTION_TITLE_STYLE,
@@ -29,14 +28,12 @@ class AssistantSuggestionCard(QPushButton):
         title: str,
         subtitle: str,
         *,
-        accent: str,
         parent=None,
     ) -> None:
         super().__init__("", parent)
         self._title = title
         self._subtitle = subtitle
         self.setObjectName("AssistantSuggestionPrompt")
-        self.setProperty("accent", accent)
         self.setProperty("assistantCustomContent", True)
         self.setStyleSheet(SUGGESTION_PROMPT_STYLE)
         self.setMinimumHeight(52)
@@ -52,16 +49,6 @@ class AssistantSuggestionCard(QPushButton):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 6, 8, 6)
         layout.setSpacing(6)
-
-        self.icon_label = QLabel(self)
-        self.icon_label.setObjectName("AssistantSuggestionIcon")
-        self.icon_label.setProperty("accent", accent)
-        self.icon_label.setFixedSize(0, 0)
-        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icon_label.setStyleSheet(SUGGESTION_ICON_STYLES)
-        self.icon_label.setVisible(False)
-        self.icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        layout.addWidget(self.icon_label)
 
         copy = QWidget(self)
         copy.setObjectName("AssistantSuggestionCopy")
@@ -104,7 +91,6 @@ class AssistantSuggestionCard(QPushButton):
             int(width)
             - margins.left()
             - margins.right()
-            - (self.icon_label.width() if self.icon_label.isVisible() else 0)
             - self.chevron_label.width()
             - spacing,
             40,
@@ -134,9 +120,7 @@ class AssistantSuggestionCard(QPushButton):
         )
         target_height = max(
             52,
-            margins.top()
-            + margins.bottom()
-            + max(self.icon_label.height(), copy_height),
+            margins.top() + margins.bottom() + copy_height,
         )
         if self.height() != target_height:
             self.setFixedHeight(target_height)
