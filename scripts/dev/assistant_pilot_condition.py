@@ -184,13 +184,19 @@ class PilotConditionSession:
         self.case_index = 0
         self.launch = make_launch_spec(payload["model_id"], payload["model_cache"])
         first_output.mkdir()
+        research_worker = None
+
+        def worker_factory():
+            nonlocal research_worker
+            research_worker = build_research_worker(self.launch)
+            return research_worker
 
         def factory(host, actual_study, *, application_service):
             def controller_factory(actual):
                 controller = LLMController(
                     actual,
                     rag_enabled=payload["rag_enabled"],
-                    worker_factory=partial(build_research_worker, self.launch),
+                    worker_factory=worker_factory,
                 )
                 if payload.get("experiment") is not None:
                     from scripts.dev.assistant_dev_context import DevContextAssembler
@@ -244,8 +250,10 @@ class PilotConditionSession:
 
         def warmup():
             try:
+                if research_worker is None or research_worker.engine is None:
+                    raise RuntimeError("Research worker engine is not ready")
                 warm["output"] = "".join(
-                    self.manager.agent_controller.worker.engine.generate_stream(
+                    research_worker.engine.generate_stream(
                         [
                             {
                                 "role": "user",

@@ -1,7 +1,9 @@
 """Condition workers may reuse only one exact model/RAG runtime identity."""
 
 import copy
+import os
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
@@ -51,6 +53,83 @@ def condition_request():
 
 def test_condition_accepts_distinct_cases_with_one_runtime_identity():
     validate_condition_request(condition_request())
+
+
+def test_condition_warmup_uses_owned_engine_and_isolates_real_capture(
+    qtbot, monkeypatch, tmp_path
+):
+    import transformers
+
+    from scripts.dev import assistant_pilot_condition as condition
+    from tests.integration.assistant_runtime.test_lifecycle import (
+        _ControlledEngine,
+        _NoopRagLifecycle,
+    )
+    from tests.unit.llm.core.test_runtime_prompt_capture import (
+        _backend,
+        _ImmediateThread,
+        _Streamer,
+    )
+    from XBrainLab.llm.agent import controller, worker
+    from XBrainLab.llm.core.backends import local
+    from XBrainLab.llm.core.config import LLMConfig
+    from XBrainLab.llm.core.generation import (
+        GenerationProfile,
+        ResolvedGenerationOptions,
+    )
+
+    engines = []
+
+    class CapturingEngine(_ControlledEngine):
+        def generate_stream(self, messages, *, profile):
+            self.generated_messages.append(messages)
+            self.generated_profiles.append(profile)
+            yield from _backend().generate_stream(
+                messages,
+                options=ResolvedGenerationOptions(max_new_tokens=128, do_sample=False),
+            )
+
+    def process_double(config, **_kwargs):
+        engine = CapturingEngine(config)
+        engine.release_all()
+        engines.append(engine)
+        return engine
+
+    # Keep the real research worker, controller, runtime, host, and capture writer.
+    # Only model/process work and environment readiness are controlled here.
+    monkeypatch.setattr(worker, "LocalRuntimeProcessOwner", process_double)
+    monkeypatch.setattr(controller, "ProcessRAGRetrieverLifecycle", _NoopRagLifecycle)
+    monkeypatch.setattr(LLMConfig, "local_backend_ready", lambda *_: True)
+    monkeypatch.setattr(LLMConfig, "save_to_file", lambda *_: True)
+    monkeypatch.setattr(condition, "bootstrap_case_checkout", lambda: None)
+    monkeypatch.setattr(
+        transformers, "TextIteratorStreamer", lambda *_a, **_k: _Streamer()
+    )
+    monkeypatch.setattr(local, "Thread", _ImmediateThread)
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    with patch.dict(os.environ):
+        try:
+            session.__init__(request(), tmp_path, tmp_path / "first")
+            assert len(engines) == 1
+            assert engines[0].load_calls == 1
+            assert engines[0].generated_messages == [
+                [{"role": "user", "content": "Reply with the single word READY."}]
+            ]
+            assert engines[0].generated_profiles == [
+                GenerationProfile.STRUCTURED_DECISION
+            ]
+            assert session.condition_evidence["warmup"]["output"] == "raw output"
+            captures = list(session.prompt_root.glob("*/*/metadata.json"))
+            assert len(captures) == 1
+            assert (captures[0].parent / "prompt.txt").read_text() == (
+                "<user>Reply with the single word READY.<assistant>"
+            )
+            assert (captures[0].parent / "raw-output.txt").read_text() == "raw output"
+            assert session.case_index == 0
+            assert not session.runtime.turn_in_flight
+        finally:
+            assert session.close()
+    assert engines[0].close_called.is_set()
 
 
 def test_condition_cannot_mix_candidates_even_with_the_same_model_and_repeat():

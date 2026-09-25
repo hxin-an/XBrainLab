@@ -9,6 +9,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from scripts.dev.assistant_experiment_audit import evidence_digest, replay_rows
 
@@ -98,6 +101,36 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(evidence_digest(self.run), before)
         (self.run / "raw/result.json").write_text('{"changed":true}')
         self.assertNotEqual(evidence_digest(self.run), before)
+
+    def test_inventory_supports_python311_without_path_junction_method(self):
+        with patch.object(
+            Path,
+            "is_junction",
+            side_effect=AttributeError("Path.is_junction is absent on Python 3.11"),
+            create=True,
+        ):
+            self.assertEqual(evidence_digest(self.run)["entries"], 1)
+
+    @pytest.mark.platform_contract
+    @unittest.skipUnless(os.name == "nt", "Windows junction no-follow contract")
+    def test_junction_cache_is_not_followed_without_path_junction_method(self):
+        import _winapi
+
+        outside = self.run / "external"
+        outside.mkdir()
+        weight = outside / "weight"
+        weight.write_bytes(b"original shared weight")
+        _winapi.CreateJunction(str(outside), str(self.run / "raw/models"))
+        with patch.object(
+            Path,
+            "is_junction",
+            side_effect=AttributeError("Path.is_junction is absent on Python 3.11"),
+            create=True,
+        ):
+            before = evidence_digest(self.run)
+            self.assertEqual(before["entries"], 2)
+            weight.write_bytes(b"changed shared weight")
+            self.assertEqual(evidence_digest(self.run), before)
 
     def test_real_subprocess_imports_selected_scorer_not_coordinator(self):
         source = self.run / "候選 source"

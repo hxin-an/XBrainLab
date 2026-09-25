@@ -15,6 +15,7 @@ import argparse
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -35,7 +36,11 @@ def evidence_digest(run: Path) -> dict:
             for child in directories[:] + names:
                 path = Path(base) / child
                 relative = path.relative_to(run).as_posix()
-                if path.is_symlink() or path.is_junction():
+                if path.is_symlink() or (
+                    os.name == "nt"
+                    and getattr(path.lstat(), "st_reparse_tag", None)
+                    == stat.IO_REPARSE_TAG_MOUNT_POINT
+                ):
                     files[relative] = {"link": os.readlink(path)}
                     if child in directories:
                         directories.remove(child)

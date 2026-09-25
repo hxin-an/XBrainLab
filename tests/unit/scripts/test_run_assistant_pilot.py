@@ -613,6 +613,7 @@ def test_child_launch_pid_and_virtual_environment_are_exact(tmp_path, monkeypatc
     assert launch_flags == [runner._child_creation_flags()]
 
 
+@pytest.mark.platform_contract
 @pytest.mark.skipif(os.name != "nt", reason="Windows view of an explicit WSL gitfile")
 def test_windows_git_location_uses_exact_gitfile_without_rewriting(
     tmp_path, monkeypatch

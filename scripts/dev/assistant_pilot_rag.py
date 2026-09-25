@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 from pathlib import Path
 
 from XBrainLab.llm.rag.config import RAGConfig
@@ -21,7 +22,16 @@ _MAX_BYTES = 512 * 1024 * 1024
 
 
 def _linked(path: Path) -> bool:
-    return path.is_symlink() or (os.name == "nt" and path.is_junction())
+    if path.is_symlink():
+        return True
+    try:
+        return (
+            os.name == "nt"
+            and getattr(path.lstat(), "st_reparse_tag", None)
+            == stat.IO_REPARSE_TAG_MOUNT_POINT
+        )
+    except FileNotFoundError:
+        return False
 
 
 def _identity(root: Path) -> tuple[str, list[dict]]:

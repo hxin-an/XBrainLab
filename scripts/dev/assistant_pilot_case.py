@@ -456,6 +456,12 @@ def run_case(payload: dict, output: Path) -> dict[str, Any]:
         )
         _write(path, result)
         launch = make_launch_spec(payload["model_id"], payload["model_cache"])
+        research_worker = None
+
+        def worker_factory():
+            nonlocal research_worker
+            research_worker = build_research_worker(launch)
+            return research_worker
 
         def factory(host, actual_study, *, application_service):
             nonlocal manager, runtime, driver
@@ -464,7 +470,7 @@ def run_case(payload: dict, output: Path) -> dict[str, Any]:
                 controller = LLMController(
                     actual,
                     rag_enabled=payload["rag_enabled"],
-                    worker_factory=partial(build_research_worker, launch),
+                    worker_factory=worker_factory,
                 )
                 driver.attach(controller)  # Before host connects modal callbacks.
                 return controller
@@ -509,8 +515,10 @@ def run_case(payload: dict, output: Path) -> dict[str, Any]:
 
         def warmup():
             try:
+                if research_worker is None or research_worker.engine is None:
+                    raise RuntimeError("Research worker engine is not ready")
                 warm["output"] = "".join(
-                    manager.agent_controller.worker.engine.generate_stream(
+                    research_worker.engine.generate_stream(
                         [
                             {
                                 "role": "user",

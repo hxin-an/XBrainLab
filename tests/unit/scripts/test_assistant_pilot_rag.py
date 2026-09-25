@@ -53,6 +53,27 @@ def test_existing_destination_and_missing_source_do_not_write(tmp_path, embeddin
     assert not (tmp_path / "new").exists()
 
 
+@pytest.mark.platform_contract
+@pytest.mark.skipif(os.name != "nt", reason="Windows junction compatibility")
+def test_cache_isolation_without_python312_junction_method(
+    tmp_path, embeddings, monkeypatch
+):
+    def unavailable(_path):
+        raise AttributeError("Path.is_junction is absent on Python 3.11")
+
+    monkeypatch.setattr(Path, "is_junction", unavailable, raising=False)
+    result = prepare_rag_cache(tmp_path / "run", embedding_cache=embeddings)
+    assert (Path(result["cache_root"]) / "models").samefile(embeddings)
+    assert verify_rag_cache(result) is True
+    vectors = Path(result["cache_root"]) / "vectors"
+    vectors.rmdir()
+    from scripts.dev.assistant_pilot_rag import _link_directory
+
+    _link_directory(embeddings, vectors)
+    with pytest.raises(ValueError, match="vectors"):
+        verify_rag_cache(result)
+
+
 def test_source_overlap_and_identity_mismatch_fail_before_writes(tmp_path, embeddings):
     with pytest.raises(ValueError, match="overlap"):
         prepare_rag_cache(embeddings / "run", embedding_cache=embeddings)
