@@ -859,7 +859,9 @@ def build_assistant_full_window_contract_review(
         if phase_name == "assistant_narrow_panel":
             plot = state.get("evaluation_plot_readability", {})
             plot = plot if isinstance(plot, dict) else {}
-            if not bool(plot.get("available")) or not bool(plot.get("fully_visible")):
+            if not bool(plot.get("available")) or not bool(
+                plot.get("readable_reachable")
+            ):
                 overlap = ", ".join(
                     str(item) for item in plot.get("overlapping_x_ticks", []) or []
                 )
@@ -1111,7 +1113,9 @@ def build_assistant_interaction_contract_review(
                 )
             plot = handoff.get("evaluation_plot_readability", {})
             plot = plot if isinstance(plot, dict) else {}
-            if not bool(plot.get("available")) or not bool(plot.get("fully_visible")):
+            if not bool(plot.get("available")) or not bool(
+                plot.get("readable_reachable")
+            ):
                 clipped = ", ".join(
                     str(item) for item in plot.get("clipped_labels", [])
                 )

@@ -10,8 +10,11 @@ from typing import Any, cast
 
 from PIL import Image, ImageStat
 from PyQt6.QtCore import QPoint, QRect, Qt
+from PyQt6.QtGui import QRegion
 from PyQt6.QtWidgets import (
     QAbstractButton,
+    QAbstractSlider,
+    QApplication,
     QComboBox,
     QLabel,
     QScrollArea,
@@ -319,6 +322,103 @@ def assistant_main_window_evidence(
     return evidence
 
 
+def _evaluation_scroll_reachability(
+    canvas: QWidget, scroll: QScrollArea | None
+) -> dict[str, Any]:
+    """Observe real scrollbar endpoints, then restore the captured viewport."""
+    if scroll is None:
+        return {"reachable": False, "endpoints": []}
+    horizontal, vertical = scroll.horizontalScrollBar(), scroll.verticalScrollBar()
+    viewport = scroll.viewport()
+    if horizontal is None or vertical is None or viewport is None:
+        return {"reachable": False, "endpoints": []}
+    bars = (horizontal, vertical)
+    original = tuple(bar.value() for bar in bars)
+
+    def unobscured_region(widget: QWidget) -> QRegion:
+        # Qt's region can omit occlusion by siblings of an ancestor. Account
+        # for actual same-window stacking, including overlays on the viewport.
+        visible = widget.visibleRegion()
+        current = widget
+        while (parent := current.parentWidget()) is not None:
+            above = False
+            for sibling in parent.children():
+                if sibling is current:
+                    above = True
+                elif above and isinstance(sibling, QWidget) and sibling.isVisible():
+                    region = sibling.mask()
+                    if region.isEmpty():
+                        region = QRegion(sibling.rect())
+                    offset = widget.mapFromGlobal(sibling.mapToGlobal(QPoint(0, 0)))
+                    visible -= region.translated(offset)
+            current = parent
+        return visible
+
+    controls_reachable = all(
+        bar.maximum() == bar.minimum()
+        or (
+            bar.isVisible()
+            and bar.isEnabled()
+            and QRegion(bar.rect()).subtracted(unobscured_region(bar)).isEmpty()
+        )
+        for bar in bars
+    )
+    endpoints = []
+    try:
+        for right, bottom in (
+            (False, False),
+            (True, False),
+            (False, True),
+            (True, True),
+        ):
+            for bar, at_end in zip(bars, (right, bottom), strict=True):
+                bar.triggerAction(
+                    QAbstractSlider.SliderAction.SliderToMaximum
+                    if at_end
+                    else QAbstractSlider.SliderAction.SliderToMinimum
+                )
+            QApplication.processEvents()
+            visible = unobscured_region(canvas)
+            expected = QRect(
+                canvas.mapFromGlobal(viewport.mapToGlobal(QPoint(0, 0))),
+                viewport.size(),
+            )
+            expected = expected.intersected(canvas.rect())
+            corner = QPoint(
+                canvas.width() - 1 if right else 0, canvas.height() - 1 if bottom else 0
+            )
+            endpoints.append(
+                {
+                    "horizontal": horizontal.value(),
+                    "vertical": vertical.value(),
+                    "corner": [corner.x(), corner.y()],
+                    "corner_visible": visible.contains(corner),
+                    "viewport_unobscured": (
+                        not expected.isEmpty()
+                        and QRegion(expected).subtracted(visible).isEmpty()
+                    ),
+                }
+            )
+    finally:
+        for bar, value in zip(bars, original, strict=True):
+            bar.setValue(value)
+        QApplication.processEvents()
+    return {
+        "reachable": bool(
+            canvas.isVisible()
+            and controls_reachable
+            and all(
+                endpoint["corner_visible"] and endpoint["viewport_unobscured"]
+                for endpoint in endpoints
+            )
+        ),
+        "controls_reachable": controls_reachable,
+        "original_position": list(original),
+        "restored_position": [bar.value() for bar in bars],
+        "endpoints": endpoints,
+    }
+
+
 def evaluation_plot_readability_evidence(window: Any) -> dict[str, Any]:
     """Measure responsive layout and all confusion-matrix decorations."""
     panel = getattr(window, "evaluation_panel", None)
@@ -433,9 +533,9 @@ def evaluation_plot_readability_evidence(window: Any) -> dict[str, Any]:
     )
     # Figure bounds include content outside the visible scroll viewport. A
     # complete offscreen canvas is not proof of a complete screenshot.
-    visible_canvas = canvas.visibleRegion().boundingRect()
     canvas_fully_visible = bool(
-        canvas.isVisible() and visible_canvas.contains(canvas.rect())
+        canvas.isVisible()
+        and QRegion(canvas.rect()).subtracted(canvas.visibleRegion()).isEmpty()
     )
     scroll_area = matrix_widget.findChild(QScrollArea)
     scroll_range = (
@@ -447,9 +547,13 @@ def evaluation_plot_readability_evidence(window: Any) -> dict[str, Any]:
         else {"horizontal": 0, "vertical": 0}
     )
     fully_visible = content_readable and canvas_fully_visible
+    reachability = _evaluation_scroll_reachability(canvas, scroll_area)
+    readable_reachable = content_readable and bool(reachability["reachable"])
     return {
         "available": bool(rows),
         "fully_visible": fully_visible,
+        "readable_reachable": readable_reachable,
+        "scroll_reachability": reachability,
         "content_readable": content_readable,
         "canvas_fully_visible": canvas_fully_visible,
         "requires_scrolling": any(scroll_range.values()),
@@ -470,9 +574,9 @@ def evaluation_plot_readability_evidence(window: Any) -> dict[str, Any]:
         "y_tick_labels": [row for row in rows if row["role"] == "y_tick"],
         "finding": (
             ""
-            if fully_visible
+            if readable_reachable
             else "Evaluation plot labels, aggregate information, axes, or responsive "
-            "layout are not fully visible in the captured viewport of the assistant handoff "
+            "layout are unreadable or unreachable through the local scroll viewport of the assistant handoff "
             "artifact."
         ),
     }

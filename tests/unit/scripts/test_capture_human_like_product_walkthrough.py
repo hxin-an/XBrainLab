@@ -249,8 +249,7 @@ def test_assistant_settings_isolation_builds_a_complete_pinned_model_snapshot(
         assert isolation.evidence["host_config_unchanged"] is True
 
 
-@pytest.mark.parametrize("class_count", [4, 20])
-def test_evaluation_readability_measures_visible_viewport(qtbot, class_count):
+def _show_evaluation_readability_panel(qtbot, class_count):
     panel = EvaluationPanel()
     qtbot.addWidget(panel)
     panel.resize(1280, 920)
@@ -269,8 +268,35 @@ def test_evaluation_readability_measures_visible_viewport(qtbot, class_count):
         panel.show()
     panel._update_responsive_layout()
     qtbot.wait(50)
+    return panel
+
+
+@pytest.mark.parametrize("class_count", [4, 20])
+def test_evaluation_readability_measures_visible_viewport(qtbot, class_count):
+    panel = _show_evaluation_readability_panel(qtbot, class_count)
     window = SimpleNamespace(evaluation_panel=panel)
+    scroll = panel.matrix_widget.findChild(QScrollArea)
+    scroll.horizontalScrollBar().setValue(scroll.horizontalScrollBar().maximum() // 2)
+    original = (
+        scroll.horizontalScrollBar().value(),
+        scroll.verticalScrollBar().value(),
+    )
     evidence = evaluation_plot_readability_evidence(window)
+    assert (
+        scroll.horizontalScrollBar().value(),
+        scroll.verticalScrollBar().value(),
+    ) == original
+    phases = _valid_assistant_interaction_phases()
+    phases[2]["notes"]["assistant_interaction"]["main_window_handoff"][
+        "evaluation_plot_readability"
+    ] = evidence
+    assert build_assistant_interaction_contract_review(phases)["passed"]
+    payload = _base_payload()
+    narrow = next(
+        row for row in payload["phases"] if row["phase"] == "assistant_narrow_panel"
+    )
+    narrow["notes"]["assistant_main_window"]["evaluation_plot_readability"] = evidence
+    assert build_assistant_full_window_contract_review(payload["phases"])["passed"]
     scroll = panel.matrix_widget.findChild(QScrollArea)
     if class_count == 20:
         assert scroll.horizontalScrollBar().maximum() > 0
@@ -288,9 +314,89 @@ def test_evaluation_readability_measures_visible_viewport(qtbot, class_count):
         assert scroll.verticalScrollBar().maximum() == 0
         assert evidence["fully_visible"]
         assert not evidence["requires_scrolling"]
+    assert evidence["readable_reachable"]
+    assert evidence["scroll_reachability"]["reachable"]
     panel.matrix_widget.hide()
     QApplication.processEvents()
     assert not evaluation_plot_readability_evidence(window)["fully_visible"]
+    assert not evaluation_plot_readability_evidence(window)["readable_reachable"]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "covered",
+        "covered_bar",
+        "disabled_bar",
+        "hidden_bar",
+        "short_range",
+        "clipped_label",
+    ],
+)
+def test_evaluation_scroll_readability_rejects_unreachable_or_clipped_content(
+    qtbot, fault
+):
+    panel = _show_evaluation_readability_panel(qtbot, 20)
+    canvas = panel.matrix_widget.canvas
+    scroll = panel.matrix_widget.findChild(QScrollArea)
+    assert scroll.horizontalScrollBar().maximum() > 0
+    if fault == "covered":
+        cover = QWidget(scroll.viewport())
+        cover.setGeometry(5, 5, 40, 40)
+        cover.setStyleSheet("background: red")
+        cover.show()
+        cover.raise_()
+    elif fault == "covered_bar":
+        bar = scroll.horizontalScrollBar()
+        cover = QWidget(bar.parentWidget())
+        cover.setGeometry(bar.geometry())
+        cover.setStyleSheet("background: red")
+        cover.show()
+        cover.raise_()
+    elif fault == "disabled_bar":
+        scroll.horizontalScrollBar().setEnabled(False)
+    elif fault == "hidden_bar":
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    elif fault == "short_range":
+        scroll.horizontalScrollBar().setMaximum(1)
+    else:
+        axis = canvas.figure.axes[0]
+        axis.set_title("Outside the figure", y=100)
+    QApplication.processEvents()
+    if fault == "covered_bar":
+        assert bar.parentWidget().childAt(bar.geometry().center()) is cover
+    before = (scroll.horizontalScrollBar().value(), scroll.verticalScrollBar().value())
+    evidence = evaluation_plot_readability_evidence(
+        SimpleNamespace(evaluation_panel=panel)
+    )
+    assert not evidence["readable_reachable"]
+    assert (
+        scroll.horizontalScrollBar().value(),
+        scroll.verticalScrollBar().value(),
+    ) == before
+    phases = _valid_assistant_interaction_phases()
+    phases[2]["notes"]["assistant_interaction"]["main_window_handoff"][
+        "evaluation_plot_readability"
+    ] = evidence
+    assert not build_assistant_interaction_contract_review(phases)["passed"]
+
+
+@pytest.mark.parametrize("review_kind", ["full_window", "handoff"])
+def test_evaluation_review_rejects_missing_reachability_evidence(review_kind):
+    if review_kind == "full_window":
+        phases = _base_payload()["phases"]
+        narrow = next(row for row in phases if row["phase"] == "assistant_narrow_panel")
+        plot = narrow["notes"]["assistant_main_window"]["evaluation_plot_readability"]
+        review = build_assistant_full_window_contract_review
+    else:
+        phases = _valid_assistant_interaction_phases()
+        plot = phases[2]["notes"]["assistant_interaction"]["main_window_handoff"][
+            "evaluation_plot_readability"
+        ]
+        review = build_assistant_interaction_contract_review
+    assert review(phases)["passed"]
+    del plot["readable_reachable"]
+    assert not review(phases)["passed"]
 
 
 def test_rotated_x_tick_overlap_uses_anchor_spacing_not_axis_aligned_bounds() -> None:
@@ -497,6 +603,7 @@ def _base_payload() -> dict:
     narrow_phase["notes"]["assistant_main_window"]["evaluation_plot_readability"] = {
         "available": True,
         "fully_visible": True,
+        "readable_reachable": True,
         "clipped_labels": [],
         "overlapping_x_ticks": [],
     }
@@ -2107,6 +2214,7 @@ def test_assistant_full_window_contract_rejects_narrow_plot_overlap() -> None:
     plot.update(
         {
             "fully_visible": False,
+            "readable_reachable": False,
             "overlapping_x_ticks": ["Left hand / Right hand"],
         }
     )
@@ -2457,6 +2565,7 @@ def _valid_assistant_interaction_phases() -> list[dict[str, Any]]:
                         "evaluation_plot_readability": {
                             "available": True,
                             "fully_visible": True,
+                            "readable_reachable": True,
                             "responsive_layout_ok": True,
                             "layout_mode": "tabs",
                             "clipped_labels": [],
@@ -2533,6 +2642,7 @@ def test_assistant_interaction_review_hard_fails_clipped_evaluation_labels() -> 
         "evaluation_plot_readability"
     ]
     plot["fully_visible"] = False
+    plot["readable_reachable"] = False
     plot["clipped_labels"] = ["Left hand", "Right hand"]
 
     review = build_assistant_interaction_contract_review(phases)
