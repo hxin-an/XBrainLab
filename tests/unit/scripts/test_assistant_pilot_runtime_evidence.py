@@ -59,6 +59,94 @@ def test_every_final_boundary_uses_recorded_time_not_poll_time(kind):
     )
 
 
+def test_real_command_boundary_excludes_operation_and_late_poll_time(
+    qtbot, monkeypatch, tmp_path
+):
+    from PyQt6.QtCore import Qt
+
+    from scripts.dev.assistant_pilot_case import record_decision_clock
+    from scripts.dev.assistant_pilot_observation import PilotCaseTrace
+    from tests.integration.agent.test_product_flow import (
+        _load_tiny_raw_via_command_spine,
+    )
+    from tests.integration.assistant_runtime.test_lifecycle import (
+        WATCHDOG_MS,
+        _release_initial_load,
+        _runtime_harness,
+        _send_request,
+        _wait_for_event,
+    )
+    from XBrainLab.backend.application import PreprocessCommand, get_application_service
+    from XBrainLab.llm.agent.turn import AssistantGenerationEventPhase
+
+    # Real owners/events with an injected monotonic clock; model/RAG stay external seams.
+    with _runtime_harness(
+        qtbot, monkeypatch, use_real_workflow_router=True, use_real_main_window=True
+    ) as harness:
+        _release_initial_load(qtbot, harness)
+        _load_tiny_raw_via_command_spine(harness.study, tmp_path)
+        harness.engine.generation_output = (
+            '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+            '"parameters":{"rate":64}}'
+        )
+        clock = [1_000_000_000]
+
+        def generation_progress(event):
+            if event.phase is AssistantGenerationEventPhase.STARTED:
+                clock[0] = 2_000_000_000
+            elif event.phase is AssistantGenerationEventPhase.FINISHED:
+                clock[0] = 3_000_000_000
+
+        service = get_application_service(harness.study)
+        execute = service.execute
+
+        def measured_execute(command, **kwargs):
+            if isinstance(command, PreprocessCommand):
+                clock[0] = 8_000_000_000
+            return execute(command, **kwargs)
+
+        monkeypatch.setattr(service, "execute", measured_execute)
+        harness.controller.generation_event.connect(
+            generation_progress, Qt.ConnectionType.DirectConnection
+        )
+        trace = PilotCaseTrace("public-runtime-timing", clock=lambda: clock[0])
+        trace.attach(harness.controller, harness.runtime)
+        try:
+            _send_request(harness, "Resample to 64 Hz")
+            _wait_for_event(qtbot, harness.engine.generation_started)
+            harness.engine.generation_release.set()
+            qtbot.waitUntil(
+                lambda: trace.snapshot()["turn_terminal"] is not None,
+                timeout=WATCHDOG_MS,
+            )
+            snapshot = trace.snapshot()
+            assert snapshot["measurement_issues"] == []
+            assert harness.study.preprocessed_data_list[0].get_mne().info["sfreq"] == 64
+            terminal = next(
+                event
+                for event in snapshot["events"]
+                if event["kind"] == "turn_terminal"
+            )
+            assert (
+                snapshot["origin_monotonic_ns"] + terminal["elapsed_ns"]
+                == 8_000_000_000
+            )
+            assert decision_boundary_ns(snapshot) == 3_000_000_000
+            # Deliberately late runner polling is not a model decision timestamp.
+            clock[0] = 20_000_000_000
+            result = {}
+            record_decision_clock(
+                result, 1_000_000_000, decision_boundary_ns(trace.snapshot()), clock[0]
+            )
+            assert result["decision_seconds"] == 2.0
+            assert result["case_turn_seconds"] == 19.0
+            assert result["case_operation_seconds"] == 17.0
+            assert result["decision_clock"]["terminal_observed"] is True
+        finally:
+            trace.detach()
+            harness.controller.generation_event.disconnect(generation_progress)
+
+
 def service(outcome):
     registry = OwnedWorkRegistry()
     return SimpleNamespace(

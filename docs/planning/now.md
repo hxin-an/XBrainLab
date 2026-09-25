@@ -103,8 +103,15 @@ fold／run／class／method切換、2D／3D及warning偏好、視窗縮放與結
 - **可達效果**：證明指定版本在Windows代表流程與134指定工程量測範圍可運作，量測輸入、
   判分及計時可追查；留下雙線後續的共同起點。不能證明所有資料／硬體組合無bug、
   Saliency科學有效性、模型高準確率、研究統計效力或六部件設計／內容已全部打磨完成。
-- **目前next**：A進行中：重新核對Git/main與134資源，再提交計畫並建立驗證PR。Windows
-  流程盤點與量測oracle審查並行；尚未標記B–G通過。GPU工作由主代理協調，不互相爭用。
+- **目前next**：A已確認main仍為 `94328196`；134既有Python／Torch／CUDA可用、查詢時GPU
+  無compute程序，lock未變，不重建環境。首次20秒import預檢逾時保留，分段診斷後實測
+  Torch／Transformers匯入約1.45／2.75秒，未載入權重。資源完整性仍待正式prepare核對。
+  E既有量測正反例361案及新真Command計時直接組14案通過（重疊不加總）；新增test-only
+  clock oracle區分生成開始、Command admission、terminal及晚輪詢，獨立覆核通過。
+  C的Evaluation／Saliency／training局部原生流程通過，但連續GUI主流程缺口仍待補；
+  在既有training-refresh測試重用真wizard／dialogs補一案，不新增產品owner或UI。
+  正在固定候選並建立驗證PR，再安排同版本模型／import catalog；尚未標記B–G通過。
+  GPU工作由主代理協調，不互相爭用。
 
 ### 目標、基線與文件分工
 
