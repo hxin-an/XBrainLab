@@ -690,6 +690,69 @@ def test_native_stress_exercises_active_3d_engine_and_probe_deletion():
     assert "globalInstance" not in called_attributes
 
 
+@pytest.mark.parametrize("worker_kind", ["engine", "probe"])
+@pytest.mark.parametrize("heartbeat_running", [True, False])
+def test_active_worker_deletion_observes_real_delayed_or_stopped_heartbeat(
+    qapp, monkeypatch, worker_kind, heartbeat_running
+):
+    from PyQt6 import sip
+    from PyQt6.QtCore import QTimer
+
+    from scripts.dev import run_ui_native_render_stress as stress
+
+    heartbeat = QTimer()
+    observed_ticks = []
+    deleted_views = []
+    owners = []
+    original_delete = stress.Saliency3DPlotWidget.deleteLater
+
+    def delete_with_controlled_heartbeat(view):
+        deleted_views.append(view)
+        owners.append(view._worker_pool_owner)
+        # Reset a real Qt timer immediately before deletion so the next tick
+        # falls outside the old fixed 12 ms observation window.
+        heartbeat.stop()
+        if heartbeat_running:
+            heartbeat.start(250)
+        original_delete(view)
+
+    def record_tick():
+        if deleted_views:
+            owner = owners[-1]
+            observed_ticks.append(
+                (
+                    sip.isdeleted(deleted_views[-1]),
+                    not sip.isdeleted(owner) and owner.active_worker_count == 1,
+                )
+            )
+
+    heartbeat.timeout.connect(record_tick)
+    monkeypatch.setattr(stress, "QTimer", lambda: heartbeat)
+    monkeypatch.setattr(
+        stress.Saliency3DPlotWidget, "deleteLater", delete_with_controlled_heartbeat
+    )
+
+    safe, late_callbacks, _ticks = stress._exercise_one_active_3d_worker_deletion(
+        app=qapp, worker_kind=worker_kind
+    )
+
+    # Neither outcome may abandon the real running worker or its cleanup owner.
+    assert len(deleted_views) == len(owners) == 1
+    assert sip.isdeleted(deleted_views[0])
+    assert sip.isdeleted(owners[0])
+    assert not heartbeat.isActive()
+    assert late_callbacks == 0
+    assert safe is heartbeat_running
+    if heartbeat_running:
+        assert (True, True) in observed_ticks
+    else:
+        assert observed_ticks == []
+        result = _passing_stress_result()
+        failed_metric = f"active_3d_{worker_kind}_close_safe"
+        result[failed_metric] = safe
+        assert failed_metric in stress._stress_contract_failures(result, cycles=1)
+
+
 def test_stress_failures_return_nonzero_without_intentional_native_crash():
     source = SCRIPT_PATH.read_text(encoding="utf-8")
     for forbidden in (

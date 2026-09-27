@@ -859,11 +859,23 @@ def _exercise_one_active_3d_worker_deletion(
             ),
             timeout_seconds=3.0,
         )
-        heartbeat_before_delete = heartbeat_ticks
         view.deleteLater()
         _pump_until(app, lambda target=view: sip.isdeleted(target))
-        _pump_events(app, 12)
-        gui_remained_responsive = heartbeat_ticks > heartbeat_before_delete
+        heartbeat_after_delete = heartbeat_ticks
+        try:
+            _pump_until(
+                app,
+                lambda: (
+                    heartbeat_ticks > heartbeat_after_delete
+                    and not sip.isdeleted(owner)
+                    and owner.active_worker_count == 1
+                ),
+                timeout_seconds=1.0,
+            )
+        except RuntimeError:
+            gui_remained_responsive = False
+        else:
+            gui_remained_responsive = True
     finally:
         release.set()
 

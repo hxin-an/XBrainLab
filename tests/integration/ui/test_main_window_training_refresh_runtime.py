@@ -16,6 +16,7 @@ import torchinfo
 from PyQt6 import sip
 from PyQt6.QtCore import QCoreApplication, QEvent, Qt, QTimer
 from PyQt6.QtWidgets import QApplication, QDialogButtonBox, QWidget
+from pytestqt.exceptions import TimeoutError as QtWaitTimeoutError
 
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
@@ -737,9 +738,59 @@ def test_gui_import_to_subject_training_and_reopened_results(
     finally:
         wizard.stop()
         wizard_watchdog.stop()
-    qtbot.waitUntil(
-        lambda: window.dataset_panel.sidebar.chan_select_btn.isEnabled(), timeout=10_000
-    )
+    try:
+        qtbot.waitUntil(
+            lambda: window.dataset_panel.sidebar.chan_select_btn.isEnabled(),
+            timeout=10_000,
+        )
+    except QtWaitTimeoutError:
+        try:
+            # Public reads can recover stale publications. Inspect only already
+            # committed/cached state so diagnostics cannot refresh the failure away.
+            publication = service._committed_view_publication()
+            capability = publication.effective_capabilities.get("preprocess")
+            panel = window.dataset_panel
+            button = panel.sidebar.chan_select_btn
+            ledger = panel._application_render_ledger
+            renderer = window._application_publication_renderer
+            modal = visible_modal_dialog()
+            print(
+                "Channels wait timeout:",
+                {
+                    "capability": (capability.enabled, capability.reasons),
+                    "active_dataset": publication.state.active_dataset,
+                    "publication": (
+                        publication.generation,
+                        publication.revision,
+                        publication.usable,
+                    ),
+                    "tooltip": button.toolTip(),
+                    "enabled": {
+                        "button": button.isEnabled(),
+                        "to_sidebar": button.isEnabledTo(panel.sidebar),
+                        "sidebar": panel.sidebar.isEnabled(),
+                        "panel": panel.isEnabled(),
+                        "window": window.isEnabled(),
+                    },
+                    "panel_rendered_revision": ledger.last_rendered_revision,
+                    "panel_pending_revision": getattr(
+                        ledger.pending_publication, "revision", None
+                    ),
+                    "desktop_pending_revision": getattr(
+                        renderer.pending_publication if renderer else None,
+                        "revision",
+                        None,
+                    ),
+                    "visible_modal": (
+                        (type(modal).__name__, modal.objectName(), modal.windowTitle())
+                        if modal is not None
+                        else None
+                    ),
+                },
+            )
+        except Exception as diagnostic_error:
+            print("Channels timeout diagnostic failed:", repr(diagnostic_error))
+        raise
     assert len({item["subject"] for item in service.get_state().raw.metadata}) == 3
 
     # One bounded driver handles the real nested modal event loops. Unexpected

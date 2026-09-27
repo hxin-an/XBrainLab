@@ -153,6 +153,35 @@ fold／run／class／method切換、2D／3D及warning偏好、視窗縮放與結
   門檻，不另跑CI已提供的等價本機全套。Source凍結後進度存於既有ignored驗證報告，
   不為每次進度再移動候選；手測及merge仍分別等待使用者明確確認。
 
+#### 驗證收尾發現（2026-09-27，89913442）
+
+137新包固定20筆工程量測、report-only／audit及cleanup已完成並獨立核對；
+134個required代表匯入與source-diverse也通過。原失敗與所有模型錯答保留。
+Windows正常產品、SmoothGrad與互動3D操作通過，但native stress在active probe刪除後
+以固定12ms檢查1ms QTimer心跳，得到false；view／owner實際刪除與零late callback均通過。
+此固定等待未保證最後一次Qt事件派送，須先用延遲／停止timer正反例驗證oracle，不能重跑取綠。
+另外macOS CI的真匯入流程在等待Channels啟用時逾時，仍須讀取owner與publication證據定位，
+不能先假定只是CI慢或放寬timeout。
+
+- 本次最小修理：只在證明測量缺口後，改既有stress heartbeat判定為有界等待真tick，
+  保留active worker、已刪view、零late callback、owner drain及timeout fail closed；
+  正反例使用真Qt／thread，外部引擎仍沿用既有controlled seam。
+- 不改可見UI、模型、prompt、scorer或研究題目；不增加owner、不放寬產品cleanup條件。
+  macOS先在原Channels等待失敗處補只讀診斷（capability reason、publication、render pending、
+  parent enabled及modal）；原10秒上限及assertions不變。若證明產品缺陷，另在本段補精確
+  最小repair後實作；不以推測改產品或忽略原CI失敗。
+- Focused：延遲heartbeat在舊oracle失敗、新oracle成功；完全停止heartbeat仍失敗且worker
+  被釋放；相關script unit、native lifecycle及Windows12+2壓力測試，獨立覆核actual diff。
+- UI確認狀態：沒有新layout／文案／互動變化。Stop仍為同版本必要gates完成後Windows手測；
+  89913442證據不換標。先暫停未執行的真模型情境，避免修理期間污染來源或重複生成。
+- 已驗：既有62測試通過；真Qt engine／probe兩個延遲heartbeat正例在舊碼RED，兩個停止
+  heartbeat負例仍fail closed且清理完整。修理後四例與相鄰測試共66通過／0skip，
+  新等待限1秒且短於controlled worker的5秒；timeout仍釋放worker、drain owner再判失敗。
+  Script +15/-3、tests +63，product零改動；macOS僅test failure diagnostics +54/-3。
+  下一步：獨立覆核、凍結新候選及同head CI／尚缺native與量測證據；若macOS再失敗，
+  以新增狀態證據修理，不把上次逾時宣稱已修復。137原budget已用1324.652615秒，
+  後續仍共用剩餘2275秒（不是新3600秒）；不以新run重設預算或混接舊模型結果。
+
 ### 目標、基線與文件分工
 
 - **目標**：形成一套能說清楚各部件的目的、輸入輸出、責任與取捨，且能被可靠測量的
