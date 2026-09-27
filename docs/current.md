@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-09-24`
+最後更新：`2026-09-27`
 
 ## 一句話
 
@@ -66,20 +66,23 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 
 ## Assistant research baseline
 
-### 共同工程基線：本機整合完成（2026-09-24） { #assistant-integration-baseline }
+### 共同工程基線：PR #147 已合併（2026-09-27） { #assistant-integration-baseline }
 
-使用者已授權在 `integration/agent-baseline` 合成研究 clean `293f1890` 與產品 checkpoint
-`8c50bee9`，保留原兩線及既有結果。產品 checkpoint 已修復最新真人要求被 `System:`／
+研究 clean `293f1890` 與產品 checkpoint `8c50bee9` 已合成於 PR #147，於 2026-09-27
+經使用者 Windows 手測及明確批准後合併到 `main`。最終候選 source 為 `e4ba5282`；實驗封裝、
+執行、判分、報告與稽核程式和產品程式同在這個共同基線，原施工／手測 worktree 已移除。
+之後先在單一 `main` 基線穩定化，再決定何時從同一精確版本分出產品與實驗兩線；這不表示
+正式研究起始配置或模型品質已獲批准。原產品 checkpoint 曾修復最新真人要求被 `System:`／
 `Tool Output:` 前綴誤當內部feedback的缺陷：history producer明確標示 `internal`，
 模型context與參數來源仍使用真正最新user；331案直接回歸、22案runner回歸及獨立review通過。
 這是model-free工程證據，不是模型accuracy或正式研究成績。
 
-共用source與文件內容衝突已合成並通過獨立工程覆核；精確版本由本節所在整合分支的Git
-commit擁有，不把main或原兩線當作同一版本。Typed observer以真request的generation
+共用source與文件內容衝突已合成並通過獨立工程覆核；歷史整合候選不再與 `main` 分開宣稱。
+Typed observer以真request的generation
 profile重建既有artifact欄位，未恢復產品dead欄位或更改scorer；GUI研究driver沿正式
 decision fields接合既有dialog，不恢復suggestions路徑。
 
-本輪model-free工程證據分組如下，組間可能重疊，不加總成coverage或全專案通過：
+整合期 model-free 工程證據分組如下，組間可能重疊，不加總成coverage或全專案通過：
 
 - Controller直接整合438通過；core227通過，另4案重疊量化回歸通過；observer122通過。
 - Research廣組初次356通過、1失敗、9錯誤、12跳過；修理上述真dialog observer及以短
@@ -90,15 +93,12 @@ decision fields接合既有dialog，不恢復suggestions路徑。
   Command → trace → 未修改scorer的補測通過，同檔lifecycle17案通過。驗證完整輸入、
   生成事件、恰一次command結果、資料副作用及相關聯terminal；模型程序、RAG與設定資源
   使用受控測試邊界，不冒充真模型執行。
-- Windows XML保存於 `build/agent-baseline/`，包括controller、core、research初次／修復後
-  與 `source-diverse-integration.xml`；這些是當前工程candidate的直接證據，不是正式模型量測。
-  最後lifecycle補測位於 `build/assistant-cleanup/integration-observer-runtime-final.xml`。
-
-上述接合及證據經獨立覆核，沒有剩餘blocking finding；本輪共同工程整合scope完成，
-不是release handoff-ready。這不表示六個Agent部件的設計／內容已打磨完成或正式研究起始條件
-已驗收。下方B0、d0及Linux量測保持原來源／模型／配置身分，不覆寫、不換標；兩線之後
-從共同精確版本接續，施工與剩餘驗證由[Now](planning/now.md)擁有。本輪沒有新模型量測、
-正式DEV／VALID／TEST、CI或人工產品驗收，也未改公開工具、UI或scorer政策。
+上述接合經獨立覆核，最終 PR #147 另以同 source 的 CI、Windows 原生流程、真 Assistant、
+137 fixed20 工程量測及使用者手測驗收。137 的 20 筆均有有效量測，最終 14 筆答對、6 筆答錯；
+這不是模型排名、Stable promotion 或正式 DEV／VALID／TEST。六個 Agent 部件的設計／內容亦未
+因合併而自動打磨完成。舊 B0、d0 及 Linux 量測保有各自的 source／模型／配置身分；
+後續穩定化與分線時機由 [Now](planning/now.md) 擁有。這輪工程 smoke 的本機暫存可重跑，
+不作正式研究證據的持久保存要求。
 
 後續正式非 TEST 題庫已在來源移除 `ground_truth.review_status`；runner 維持原樣複製與
 原始位元組指紋核對，不含匯出轉換。歷史 d0 不變，沒有重跑模型或更改判分。
@@ -108,8 +108,8 @@ Windows focused 100 tests、實際題庫的題目／答案保留核對及獨立 
 目前量測腳本將啟動／暖機的UI觀測留在condition輸出，實際開始題目才建立case目錄。
 因此啟動失敗且cleanup已認證時，不會由預先占用的空case目錄阻擋同source缺題續跑；
 已開始／未知目錄、未認證cleanup及有效錯答的保護不放寬。原失敗condition證據保留，
-source或配置改變仍須另開run，不能用新程式接續舊版結果。此修理的整合驗收由Now擁有，
-不表示137五模型量測已通過。
+source或配置改變仍須另開run，不能用新程式接續舊版結果。此修理本身不表示量測通過；
+最終 PR #147 同 source 的 137 五模型 fixed20 工程 smoke 已完成，正式研究宣稱邊界如上。
 
 ### Linux 封存包與 evaluator 工程驗證（2026-09-23）
 
