@@ -9,6 +9,12 @@
 `settings.json`、共用環境／模型、正式研究題庫或既有結果。這一輪包含 product、tests、scripts、
 corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測試通過當成完成。
 
+**目前狀態（優先於下方歷史Next）**：施工停在需要新的設計決策，不是已完成或等待CI。
+使用者同意的24題回答示範移除診斷已完成並經獨立覆核；不得採用全刪或刪單題來清分數。
+Next先討論是否將「概念知識」與「操作／不操作決策示範」區分用途及其有界施工出口。
+未經此決策不新增實驗條件、不再改prompt／corpus追24題分數，也不宣稱mixed-request回歸
+已解決。保留這輪結構整理、BM25、原門檻及失敗證據；PR #149尚不交付手測／merge。
+
 ### 問題、outcome 與邊界
 
 - 現行文字分流使同義詢問／混合要求走不同路；全庫 dense top-10 後才篩 callable tools
@@ -91,6 +97,18 @@ corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測
   此為ignored一次性diagnostic，不改production、不作promotion或新held-out成績；control
   rendered prompt必須逐筆hash相同，記錄移除ID／完整模型輸入輸出。結論決定下一個最小
   修理，禁止無限prompt／語料搜尋；手測仍待新退步處置、同版本CI／native及獨立覆核。
+- **55632eb2受控診斷**：產品／tests／scripts與785c完全相同；Windows真Assistant四步
+  開Dataset→匯入→選三channel→160轉64Hz通過，source／原始EDF／設定不變、cleanup零
+  owned worker／subprocess。此不代表mixed-request或全產品驗收。
+  ignored診斷先核對24個785c control rendered prompt hash，再只移除response示範、不補位。
+  六題context有變，其餘18題prompt及原始輸出逐byte一致；24筆capture完整，source／設定
+  不變。操作首發11/12→12/12，不操作首發11/12→9/12，總22/24→21/24；normalize混合
+  操作改善，但純說明變非JSON，training settings禁止開窗卻選switch_panel。這是raw-only
+  一次性因果定位，不是Host執行、重試後成績或獨立泛化證據；歷史control非同時隨機重跑，
+  舊settings位元與全部載入參數未保存，限制明列於診斷report。
+  獨立覆核確認回答示範兼有格式／不操作保護與概念回答干擾，沒有建立通用更佳政策。
+  使用者關切局部最佳解；本輪不再逐題調優，不能把可靠基線誤作這24題全對，也不能以
+  未來Development為由默認接受本輪新回歸。需要上述職責決策才繼續新的有界設計施工。
 
 ## Context — 單一 main 基線先穩定，再分產品與實驗兩線
 
