@@ -9,7 +9,9 @@
 `settings.json`、共用環境／模型、正式研究題庫或既有結果。這一輪包含 product、tests、scripts、
 corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測試通過當成完成。
 
-**目前狀態（優先於下方歷史Next）**：2026-09-28 使用者批准獨立遷移模型輸出契約：
+**目前狀態（優先於下方歷史Next）**：兩欄契約已實作，但15e06744真模型驗證仍有新增
+語意退步，獨立覆核不批准non-regression／交付。需要決定暫緩此遷移，或明確接受新增限制；
+不再自動調prompt追分，也未合併。2026-09-28 使用者批准獨立遷移模型輸出契約：
 移除模型回填的 `workflow_stage`，只接受 `tool_name` 與 `parameters`；階段仍由後端提供給
 模型，publication generation、工具資格、參數來源與confirmation保護不變。先更新target，
 再以parser RED／既有execution baseline施工，接續focused與真模型／native驗證及獨立覆核。
@@ -32,8 +34,8 @@ unit／真command／Qt整合556通過。五個production檔+22/-81/net-59，owne
 確認host generation、confirmation及execution保護仍在。Script評分移除model echo並分別升版
 stable v13／pilot scores v3／synthetic calibration v2；保留backend案例情境與原81＋24題。
 另以RED補上raw scorer拒絕多JSON物件，避免移除stage比對後錯入內容評分。
-Next：完成script focused、獨立覆核最終diff，凍結commit跑一次hybrid105及Windows四步真模型
-journey，再檢查同head CI；不調語意prompt／corpus追分。額外直接typing檢查的product無診斷，
+Script evaluator109、runtime evidence14、report／observer直接案例37通過；與前述測試有重疊，
+不相加為coverage。額外直接typing檢查的product無診斷，
 scripts出現15項既有duck-typing／Optional診斷（canonical typing範圍原為XBrainLab），不宣稱全scripts
 typing乾淨；本切片沒有修改那些型別責任。
 
@@ -43,9 +45,27 @@ paired22/24；product precision23/24、clarification6/7。新增split-before-epo
 Windows四步真模型journey通過，資料／隔離設定／source未變、關閉後worker/process皆0。
 初次native preflight因受保護settings選Phi而拒絕，未生成；改用明示的隔離Granite設定，未覆寫settings。
 獨立覆核發現移除output echo時亦移除了trusted system中的stage值，state card仍有stage並非全失。
-批准scope原本保留stage輸入；下一個直接修正只從已讀publication補回一行trusted stage事實，
-不新增policy/router/output欄位或再次讀state。先RED確認該輸入位置，再凍結修正版驗同105及native；
-不承諾此修正能挽回語意退步，不覆寫c49f失敗證據，不進一步追分調參。
+批准scope原本保留stage輸入；15e06744只從已讀publication補回一行trusted stage事實，
+不新增policy/router/output欄位或再次讀state。該輸入位置先RED，相關102測試GREEN。
+兩欄切片合計五個production檔+27/-85/net-58；parser／prompt／consumer刪除stage echo，owner不變。
+
+15e06744完成同105題與Windows四步真模型journey；獨立覆核逐筆驗103個capture hash，
+確認模型／cases／corpus／retrieval一致、無degraded。positive36/36、raw precision14/24，
+paired22/24，product precision23/24、clarification6/7。相對785c新增失敗為
+`split_before_epochs_en`與`training_settings_before_epochs_en`：提出不可用工具，被Host擋住。
+`start_before_setup_en`相對c49f恢復不操作；challenge3→4/14只通過措辭oracle，
+新回答誤列必要前置操作，不能宣稱語意品質提高。mixed normalize仍輸出兩個JSON；
+模糊import仍誤提開窗。Native完成真匯入／三channel／160→64Hz，source、隔離設定及EDF不變，
+關閉時0 worker／subprocess；不代表全產品或模型語意驗收。
+
+獨立code／evidence覆核通過可追溯性及Host保護，但不批准模型非退步；所有失败產物留在
+`build/dev-artifacts/rag-{c49f,15e0}-*`，舊785c不重評、不覆寫。PR #149目前不是手測候選。
+另c49f的macOS lifecycle CI實際失敗：匯入完成且最新preprocess capability可用，Channels卻disabled。
+source-based獨立診斷指向import busy release恢復舊enabled值、蓋掉最新publication render；
+尚未建立確定性重現，未修改UI或擴大本切片。保留run36333439996/job108659706271證據，
+不加timeout或盲目重跑。15e同head CI仍在追蹤，不用較新綠燈抹除這個既有race finding。
+**Next／需決策**：建議暫緩兩欄遷移、保留此失敗比較，再另定修理邊界；不默認接受語意退步，
+不擅自回退已批准public contract。上述import競態需另准最小RED→GREEN修理，不混入廣泛UI清理。
 
 ### 問題、outcome 與邊界
 
