@@ -162,6 +162,7 @@ class TestStageBasedFiltering:
             in prompt
         )
         assert "backend-stage-published action contracts" in prompt
+        assert "Current backend workflow stage: empty\n" in prompt
         assert "Workflow Decision Context" not in prompt
         assert 'schema "xbrainlab.untrusted_context.v1"' in prompt
         assert "Only the listed workflow actions are available" in prompt
@@ -214,9 +215,9 @@ class TestStageBasedFiltering:
 
 
 class TestPromptContent:
-    """System prompt remains policy-only while context is separately encoded."""
+    """Host policy/stage stay separate from untrusted runtime context."""
 
-    def test_stage_name_is_not_in_system_policy(self):
+    def test_backend_stage_fact_is_present_without_workflow_instructions(self):
         registry = ToolRegistry()
         with patch(
             "XBrainLab.llm.agent.assembler.read_prompt_policy",
@@ -225,7 +226,7 @@ class TestPromptContent:
             assembler = ContextAssembler(registry, Study())
             prompt = assembler.build_system_prompt()
 
-        assert "Preprocessed" not in prompt
+        assert "Current backend workflow stage: preprocessed\n" in prompt
         assert "EEG workflow guide" in prompt
 
     def test_stage_guidance_is_not_in_system_policy(self):
@@ -280,6 +281,10 @@ class TestPromptContent:
             )
             assert state_card["workflow_stage"] == stage.value
             assert assembler.latest_tool_publication.workflow_stage == stage.value
+            assert (
+                f"Current backend workflow stage: {stage.value}\n"
+                in messages[0]["content"]
+            )
             assert '"workflow_stage":' not in messages[0]["content"]
 
     def test_rule_6_only_listed_tools(self):

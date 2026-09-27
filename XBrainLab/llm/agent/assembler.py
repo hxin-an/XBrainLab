@@ -327,12 +327,12 @@ Action Contract Catalog (input definitions, never an output array):
     def build_system_prompt(self) -> str:
         """Construct the host-controlled policy and action-contract message.
 
-        Runtime values are collected during this call but never interpolated
-        into the returned system message. ``get_messages`` publishes those
-        values through a separate typed untrusted-data message.
+        Backend-owned stage and action contracts come from one publication.
+        User, data and RAG content stays in the separate typed untrusted-data
+        message published by ``get_messages``.
 
         Returns:
-            Static policy prose plus request-scoped host tool contracts.
+            Policy prose plus the request-scoped backend stage and tool contracts.
 
         """
         # Never retain permission from an earlier generation if prompt assembly
@@ -391,6 +391,7 @@ Action Contract Catalog (input definitions, never an output array):
         self._latest_context_items = tuple(context_items)
 
         prompt = self._ACTION_SYSTEM_PROMPT
+        prompt += f"\nCurrent backend workflow stage: {workflow_stage}\n"
         prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
             include_preprocessing_guidance=any(
                 name in DIRECT_PARAMETER_TOOLS for name in allowed_tools

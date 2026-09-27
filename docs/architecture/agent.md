@@ -487,7 +487,7 @@ admission。若state publication不可靠，prompt stage固定為`unavailable`�
 `respond_to_user`。
 
 模型輸出只包含`tool_name`與`parameters`，不回填`workflow_stage`。Stage仍在backend-owned
-state card／publication中，host以保存的generation驗證proposal、confirmation及execution，
+state card／publication中，system亦保留同一publication的簡短stage事實；host以保存的generation驗證proposal、confirmation及execution，
 而不是從模型JSON取得state。舊三欄輸出屬extra-field format error；沒有雙格式兼容路徑。
 
 RAG action examples受同一條18-tool與stage publication邊界約束，response examples則重用

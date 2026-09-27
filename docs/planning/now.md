@@ -37,6 +37,16 @@ journey，再檢查同head CI；不調語意prompt／corpus追分。額外直接
 scripts出現15項既有duck-typing／Optional診斷（canonical typing範圍原為XBrainLab），不宣稱全scripts
 typing乾淨；本切片沒有修改那些型別責任。
 
+c49f3625已實測hybrid105且capture完整：positive36/36、raw precision14/24（785c為16/24）、
+paired22/24；product precision23/24、clarification6/7。新增split-before-epochs及start-before-setup
+語意錯選，均被Host擋住；mixed normalize改成雙JSON仍失敗，不能用安全拒絕冒稱模型正確。
+Windows四步真模型journey通過，資料／隔離設定／source未變、關閉後worker/process皆0。
+初次native preflight因受保護settings選Phi而拒絕，未生成；改用明示的隔離Granite設定，未覆寫settings。
+獨立覆核發現移除output echo時亦移除了trusted system中的stage值，state card仍有stage並非全失。
+批准scope原本保留stage輸入；下一個直接修正只從已讀publication補回一行trusted stage事實，
+不新增policy/router/output欄位或再次讀state。先RED確認該輸入位置，再凍結修正版驗同105及native；
+不承諾此修正能挽回語意退步，不覆寫c49f失敗證據，不進一步追分調參。
+
 ### 問題、outcome 與邊界
 
 - 現行文字分流使同義詢問／混合要求走不同路；全庫 dense top-10 後才篩 callable tools
