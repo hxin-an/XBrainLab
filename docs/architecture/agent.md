@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-09-24`
+最後更新：`2026-09-27`
 
 ## 範圍
 
@@ -215,17 +215,34 @@ Prompt history只保留最新user訊息與最多一則Assistant-visible訊息。
 proposal與diagnostic trace由producer標記為history的`internal` role，不進模型訊息；來源不由
 `System:`／`Tool Output:`前綴或JSON形狀推論，真人與可見Assistant內容仍保留為資料。
 該內部role不輸出給chat template；既有untrusted-context隔離與redaction保持。
-bundled gold set目前有72個英文正例（18個approved tools各4筆），維持
-coverage；RAG example也只能在同一stage的approved tool集合中檢索，不能授予capability、confirmation
-或continuation權限。目前retriever先用 cosine threshold 篩候選，再以 cosine／normalized BM25
-加權排序取`TOP_K = 3`；target所述canonical／top-2
-selection尚未實作，不能把兩者混為同一policy。
+Bundled gold set目前有132個英文示範：108個操作示範涵蓋18個approved tools，另24個
+`respond_to_user`示範涵蓋概念詢問、只要說明、明確禁止操作與無法辨識的外部指涉。
+它們是retrieval corpus，不是驗收題庫，也不代表已證明模型準確率改善。
+
+RAG不再以手寫intent grammar決定是否檢索。Qdrant在搜尋前，以已發布callable tools及
+`respond_to_user`篩選候選，再取dense top-10並以raw cosine threshold `0.7`准入。
+保留候選通過schema／membership驗證後，BM25沿用全corpus的IDF與平均長度，只在此准入集合
+內取分、正規化並參與排序；
+不以keyword命中把低於semantic門檻的範例補入。預設cosine／BM25權重為`0.7／0.3`，
+最多取`TOP_K = 3`，也允許零命中。`hybrid_alpha = 1`的dense-only對照不建立或查詢BM25，
+不是建立後再把sparse權重乘零。Hybrid模式若BM25無法建立，初始化失敗，不silent fallback
+成dense-only。上述常數是目前設定，不是已證實最佳值。
+
+回應示範使用既有strict response parser驗證，不加入action registry或backend capability。
+檢索等待期間publication可能改變；最終組prompt時，assembler以當次同一份publication
+產生schemas／state card，並重新檢查RAG範例資格，排除已不可用的action。範例仍是有來源標籤、
+有大小上限的untrusted data，不能授予capability、confirmation或continuation權限，
+也不能替使用者提供缺少的參數。
 
 `scripts/dev/verify_rag.py` 以固定的 36 正例／12 邊界工程探針驗證真離線檢索，沿用產品
 assembler 的七個 stage tool publications，不以預期工具單獨過濾候選。Top-3 門檻為 33/36，
-每工具至少一題；另檢查 context bounds、未授權工具、索引身分與重用。`--baseline-report`
+每工具至少一題；另檢查 context bounds、未授權工具、索引身分與重用。原48題的輸入保持不變；
+說明性問題的retrieval oracle檢查範例資格與邊界，不再強迫空結果。模型是否正確不操作須另驗。
+另有24個獨立成對工程探針，記錄action／response命中與相同安全檢查，不加入原36題的分母。
+`--ranking hybrid|dense`使用同一產品retriever比較排序；`--baseline-report`
 可比對同一探針／設定的舊報告，並核對逐題資料與摘要一致。這些探針已用於開發修訂，
 不是 holdout／正式 Validation 或 Test；檢索命中也不等於模型判斷或工具執行成功。
+本節描述source與驗證介面，不宣稱本輪真模型收益、BM25消融、Windows手測或交付gate已通過。
 Retriever 擁有 Qdrant client 與 embedding；`RAGIndexer` 只借用這兩個資源建索引，
 不自行配置或關閉。索引 manifest、point identity 與 payload digest 仍驗證持久化內容，
 不是可省略的記憶體快取標記。
@@ -468,16 +485,14 @@ publication。ApplicationService capability不是另一個prompt router，而是
 admission。若state publication不可靠，prompt stage固定為`unavailable`且只保留`switch_panel`與
 `respond_to_user`。
 
-RAG examples也受同一條18-tool與stage publication邊界約束：
-`RAGIndexer`、`BM25Index` 和 `RAGRetriever` 會透過
-`XBrainLab/llm/rag/example_policy.py` 排除所有未發布 tool examples，包括舊 dataset-info、direct
-load / attach 與 granular preprocess names。這同時處理新建 index 和使用者機器上已存在的舊 Qdrant
-collection，避免 legacy few-shot examples 被重新注入 local LLM prompt。
-
-`llm/agent/intent.py` 只提供 RAG action-example suppression 與其語句判斷；
-它不再分類或選擇下一個 tool，也不抽取 training options。這個 boolean 保留說明性／
-未解歷史指涉／歧義問題的既有處理順序，以及 state、browse、preview 的既有例外，
-不取代模型決策或 backend admission。
+RAG action examples受同一條18-tool與stage publication邊界約束，response examples則重用
+既有非執行決策契約。`example_policy.py`由實際action schemas或response parser判斷可索引內容，
+排除舊dataset-info、direct load／attach、granular preprocess及malformed例子。
+Index payload的`decision_name`由驗證後示範推導，作為搜尋篩選欄位而不是第二權限來源；
+manifest與payload完整性要求舊索引重新符合目前schema，retriever及最終assembler仍重新驗證。
+索引包含跨stage的合法示範，不在建索引時把某一時刻的callable集合固定成永久權限。
+RAG專用的`llm/agent/intent.py`已移除；語句不再由另一層規則分派操作／說明，
+模型理解當前要求，後端保留authoritative admission。
 
 目前stage包括：
 

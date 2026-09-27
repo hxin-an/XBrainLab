@@ -1,6 +1,6 @@
 # XBrainLab Agent 目標
 
-最後更新：`2026-09-21`
+最後更新：`2026-09-27`
 
 這份文件是 XBrainLab Assistant 產品目標的唯一權威。Runtime inventory、目前測試集合與歷史
 artifact 只能描述 current implementation，不能反推本文件的產品契約。
@@ -300,14 +300,24 @@ State card 只投影 ApplicationService publication：
 舊 tool output或一般pending intent。receipt 不投影進 prompt；它只在 Host lifecycle 中保存 verified values，
 並且不能恢復 stale capability。
 
-RAG／examples規則：
+RAG／examples規則（2026-09-27批准的部件打磨目標）：
 
-- stage 只發布 1–3 callable tools 時，使用每個 visible tool 一個 compact canonical example，不做 semantic
-  retrieval。
-- stage 發布 4 個以上 callable tools 時，只在該 stage 的 approved examples中取 top 2。
-- example retrieval failure時退回schema／format，不擴大tool surface。
-- unavailable-action reference永遠不提供example，也不進RAG allowed tool names。
-- example不能授予capability、confirmation或continuation權限。
+- RAG提供操作／正確不操作的英文決策示範，不承擔EEG知識庫或第二套intent／permission router。
+  不以文字關鍵字先判定是否檢索，也不按callable數量切換固定範例與semantic retrieval兩套policy。
+- 搜尋前限制為當次callable action examples及既有`respond_to_user` examples；後者不是新增可執行
+  action。示範須以actual action schema或strict response parser驗證，不允許額外欄位或多action。
+- 保留dense admission＋BM25 reranking；BM25不得靠keyword命中擴大semantic准入集合。
+  第一輪保持cosine門檻`0.7`、最多三例及既有context上限，允許正常零命中。Dense-only消融須
+  真正省去BM25建置／查詢，不另維護一套production retriever；hybrid缺BM25時不得silent fallback。
+- 範例內容涵蓋參數與相鄰操作差異、概念詢問、只要說明、明確禁止操作與無法辨識的指涉；
+  不機械湊數、不複製驗收題，不把缺參數範例教成略過既有clarification流程。
+- RAG延遲後，最終prompt以同一份publication組schemas／state card並重查範例資格；
+  unavailable-action reference永遠不提供可操作示範，也不進RAG allowed tool names。
+- retrieval failure退回既有schema／format並明示degraded，不擴大tool surface或冒稱正常零命中。
+  範例不能授予capability、confirmation或continuation權限，也不能供給未出現在使用者要求的參數。
+- 驗證同時看工具／參數、正確不操作、實際副作用與分段延遲；retrieval命中不等於模型效果。
+  保留固定48個工程probe輸入，另列24個成對probe；說明性問題檢查安全資格而非必須無context。
+  BM25去留以同source／corpus／model對照證據判斷，不因小樣本打平刪除，不以放寬gate完成驗收。
 
 Backend state不可靠時，state card固定為 `workflow_stage: "unavailable"`、
 `state_reliable: false`，只允許 `respond_to_user` 與 `switch_panel`；不沿用 stale tool set。Granite

@@ -131,7 +131,15 @@ def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> No
                 UntrustedContextItem(
                     item_type="rag_example",
                     source=UntrustedContextSource(kind="bundled_example"),
-                    data={"text": "Alpha rhythm is commonly discussed around 8-12 Hz."},
+                    data={
+                        "input": "What is an EEG alpha rhythm?",
+                        "expected_action": {
+                            "tool_name": "respond_to_user",
+                            "parameters": {
+                                "message": "Alpha rhythm is discussed around 8-12 Hz."
+                            },
+                        },
+                    },
                 ),
             ]
         )
@@ -147,8 +155,8 @@ def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> No
     assert "external_context:workflow_decision" in item_types
     assert "rag_example" in item_types
     rag_item = next(item for item in items if item["type"] == "rag_example")
-    assert rag_item["data"]["text"] == (
-        "Alpha rhythm is commonly discussed around 8-12 Hz."
+    assert rag_item["data"]["expected_action"]["parameters"]["message"] == (
+        "Alpha rhythm is discussed around 8-12 Hz."
     )
 
 
@@ -307,6 +315,107 @@ def test_rag_scope_reads_backend_publication_without_intent_shortcut() -> None:
 
     assert allowed == frozenset()
     runtime.get_view_publication.assert_called_once_with()
+
+
+def test_rag_notes_cannot_publish_actions_absent_from_final_prompt_scope():
+    assembler = ContextAssembler(ToolRegistry(), Study())
+    assembler.add_context(
+        encode_untrusted_context(
+            [
+                UntrustedContextItem(
+                    item_type="rag_example",
+                    source=UntrustedContextSource(kind="xbrainlab_bundled_gold_set"),
+                    data={
+                        "input": query,
+                        "expected_action": {"tool_name": name, "parameters": params},
+                    },
+                )
+                for query, name, params in [
+                    ("Stop training.", "stop_training", {}),
+                    ("Do not act.", "respond_to_user", {"message": "I will not act."}),
+                    ("Malformed response.", "respond_to_user", {}),
+                ]
+            ]
+        )
+    )
+    messages = assembler.get_messages([{"role": "user", "content": "Do not act."}])
+    assert not assembler.latest_tool_publication.tool_names
+    examples = [
+        item
+        for item in _untrusted_context(messages)["items"]
+        if item["type"] == "rag_example"
+    ]
+    assert [item["data"]["expected_action"] for item in examples] == [
+        {"tool_name": "respond_to_user", "parameters": {"message": "I will not act."}}
+    ]
+
+
+@pytest.mark.parametrize("malformed", [None, [], "not an example"])
+def test_malformed_rag_data_does_not_crash_prompt_assembly(malformed):
+    assembler = ContextAssembler(ToolRegistry(), Study())
+    assembler.add_context(
+        encode_untrusted_context(
+            [
+                UntrustedContextItem(
+                    item_type="rag_example",
+                    source=UntrustedContextSource(kind="xbrainlab_bundled_gold_set"),
+                    data=malformed,
+                )
+            ]
+        )
+    )
+    messages = assembler.get_messages([{"role": "user", "content": "Hello"}])
+    assert not any(
+        item["type"] == "rag_example" for item in _untrusted_context(messages)["items"]
+    )
+
+
+def test_rag_result_is_rechecked_when_publication_changes_during_retrieval():
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        pipeline_stage="training",
+        active_training=ActiveTrainingSnapshot(is_running=True),
+    )
+    runtime = _ApplicationRuntimeFake(
+        ApplicationViewPublication(
+            generation=1, state=state, capabilities=build_capability_policy(state)
+        )
+    )
+    registry = ToolRegistry()
+    for name in ("stop_training", "switch_panel", "import_eeg_data"):
+        registry.register(_NamedTool(name))
+    assembler = ContextAssembler(registry, Study(), application_runtime=runtime)
+    assert "stop_training" in assembler.rag_allowed_tool_names()
+    assembler.add_context(
+        encode_untrusted_context(
+            [
+                UntrustedContextItem(
+                    item_type="rag_example",
+                    source=UntrustedContextSource(kind="xbrainlab_bundled_gold_set"),
+                    data={
+                        "input": "Stop the run.",
+                        "expected_action": {
+                            "tool_name": "stop_training",
+                            "parameters": {},
+                        },
+                    },
+                )
+            ]
+        )
+    )
+    empty = ApplicationStateSnapshot.empty()
+    runtime._publication = ApplicationViewPublication(
+        generation=2, state=empty, capabilities=build_capability_policy(empty)
+    )
+    runtime.publication_reads = 0
+    messages = assembler.get_generation_request(
+        [{"role": "user", "content": "Stop the run."}]
+    ).to_model_messages()
+    assert runtime.publication_reads == 1
+    assert "stop_training" not in assembler.latest_tool_publication.tool_names
+    assert not any(
+        item["type"] == "rag_example" for item in _untrusted_context(messages)["items"]
+    )
 
 
 def test_rag_scope_excludes_backend_enabled_action_outside_target_stage() -> None:

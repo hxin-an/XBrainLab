@@ -50,7 +50,7 @@
   {
     "id": "apply_bandpass_filter_02",
     "category": "preprocess",
-    "input": "Apply a 1 to 40 Hz bandpass filter.",
+    "input": "Set the bandpass upper cutoff to 40 Hz and the lower cutoff to 1 Hz.",
     "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 1, "high_freq": 40}}]
   },
   {
@@ -62,7 +62,7 @@
   {
     "id": "apply_notch_filter_02",
     "category": "preprocess",
-    "input": "Apply a 50 Hz notch filter.",
+    "input": "The mains frequency is 50 Hz; apply a notch at that frequency.",
     "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 50}}]
   },
   {
@@ -74,7 +74,7 @@
   {
     "id": "resample_data_02",
     "category": "preprocess",
-    "input": "Resample the EEG data to 256 Hz.",
+    "input": "Change the sampling rate to 256 samples per second.",
     "expected_tool_calls": [{"tool_name": "resample_data", "parameters": {"rate": 256}}]
   },
   {
@@ -217,7 +217,7 @@
   {
     "id": "set_montage_03",
     "category": "data_setup",
-    "input": "Show the montage selection dialog.",
+    "input": "Let me review the electrode positions in Montage Settings before applying them.",
     "expected_tool_calls": [
       {
         "tool_name": "set_montage",
@@ -283,7 +283,7 @@
   {
     "id": "configure_dataset_split_03",
     "category": "training_setup",
-    "input": "Open the dataset splitting settings for the epoched data.",
+    "input": "Open Dataset Splitting so I can configure cross-validation folds.",
     "expected_tool_calls": [
       {
         "tool_name": "configure_dataset_split",
@@ -349,7 +349,7 @@
   {
     "id": "configure_training_03",
     "category": "training_setup",
-    "input": "Show the dialog for setting training hyperparameters.",
+    "input": "Open Training Settings to adjust the evaluation strategy and number of repeats.",
     "expected_tool_calls": [
       {
         "tool_name": "configure_training",
@@ -412,7 +412,7 @@
   {
     "id": "apply_notch_filter_04",
     "category": "preprocess",
-    "input": "Notch-filter the EEG at 60 Hz.",
+    "input": "Reject the narrow power-line component at 60 Hz with a notch, without applying a bandpass.",
     "expected_tool_calls": [
       {
         "tool_name": "apply_notch_filter",
@@ -464,7 +464,7 @@
   {
     "id": "set_reference_03",
     "category": "preprocess",
-    "input": "Apply an average EEG reference.",
+    "input": "Re-reference using the average of all EEG channels rather than a single electrode.",
     "expected_tool_calls": [
       {
         "tool_name": "set_reference",
@@ -538,7 +538,7 @@
   {
     "id": "start_training_04",
     "category": "training_lifecycle",
-    "input": "Launch model training now.",
+    "input": "Train with the existing configuration; do not reopen Training Settings.",
     "expected_tool_calls": [
       {
         "tool_name": "start_training",
@@ -571,7 +571,7 @@
   {
     "id": "stop_training_04",
     "category": "training_lifecycle",
-    "input": "Please end this training run now.",
+    "input": "Stop training, but do not clear its history.",
     "expected_tool_calls": [
       {
         "tool_name": "stop_training",
@@ -637,7 +637,7 @@
   {
     "id": "clear_training_history_04",
     "category": "lifecycle",
-    "input": "Erase the saved training-run history.",
+    "input": "Clear the training plans and run history; do not reset preprocessing.",
     "expected_tool_calls": [
       {
         "tool_name": "clear_training_history",
@@ -670,7 +670,7 @@
   {
     "id": "compute_saliency_04",
     "category": "analysis_execution",
-    "input": "Generate saliency results for the selected completed run.",
+    "input": "Compute saliency for the selected result, rather than just opening the Visualization panel.",
     "expected_tool_calls": [
       {
         "tool_name": "compute_saliency",
@@ -703,5 +703,365 @@
         }
       }
     ]
+  },
+  {
+    "id": "import_eeg_data_05",
+    "category": "data_entry",
+    "input": "Bring up Import EEG Data; I will choose the BIDS directory myself.",
+    "expected_tool_calls": [{"tool_name": "import_eeg_data", "parameters": {}}]
+  },
+  {
+    "id": "select_channels_05",
+    "category": "data_setup",
+    "input": "Bring up the channel list so I can exclude electrodes, without changing their montage.",
+    "expected_tool_calls": [{"tool_name": "select_channels", "parameters": {}}]
+  },
+  {
+    "id": "set_montage_05",
+    "category": "data_setup",
+    "input": "I need to fix the sensor positions, not change the reference. Open Montage Settings.",
+    "expected_tool_calls": [{"tool_name": "set_montage", "parameters": {}}]
+  },
+  {
+    "id": "create_epochs_05",
+    "category": "epoch",
+    "input": "Open the epoch dialog so I can choose the baseline interval for my trials.",
+    "expected_tool_calls": [{"tool_name": "create_epochs", "parameters": {}}]
+  },
+  {
+    "id": "configure_dataset_split_05",
+    "category": "training_setup",
+    "input": "Bring up Dataset Splitting so I can decide which sessions to hold out.",
+    "expected_tool_calls": [{"tool_name": "configure_dataset_split", "parameters": {}}]
+  },
+  {
+    "id": "select_model_05",
+    "category": "training_setup",
+    "input": "Open Model Selection for review; do not launch a training run.",
+    "expected_tool_calls": [{"tool_name": "select_model", "parameters": {}}]
+  },
+  {
+    "id": "configure_training_05",
+    "category": "training_setup",
+    "input": "Let me choose the training device and output directory in Training Settings.",
+    "expected_tool_calls": [{"tool_name": "configure_training", "parameters": {}}]
+  },
+  {
+    "id": "apply_bandpass_filter_05",
+    "category": "preprocess",
+    "input": "For the bandpass, use 2 Hz for the high-pass edge and 35 Hz for the low-pass edge. Apply it.",
+    "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 2, "high_freq": 35}}]
+  },
+  {
+    "id": "apply_bandpass_filter_06",
+    "category": "preprocess",
+    "input": "Pass frequencies from 7.5 through 28.5 Hz using a bandpass filter on the EEG.",
+    "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 7.5, "high_freq": 28.5}}]
+  },
+  {
+    "id": "apply_bandpass_filter_07",
+    "category": "preprocess",
+    "input": "Apply only a 3-32 Hz bandpass. Leave the sampling rate and reference unchanged.",
+    "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 3, "high_freq": 32}}]
+  },
+  {
+    "id": "apply_notch_filter_05",
+    "category": "preprocess",
+    "input": "The interference peak is at 50 Hz. Suppress that narrow frequency with a notch filter.",
+    "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 50}}]
+  },
+  {
+    "id": "apply_notch_filter_06",
+    "category": "preprocess",
+    "input": "Use 60 Hz as the notch center frequency, without changing the sampling rate.",
+    "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 60}}]
+  },
+  {
+    "id": "apply_notch_filter_07",
+    "category": "preprocess",
+    "input": "Notch out 50 Hz only; do not notch its harmonics or resample the signal.",
+    "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 50}}]
+  },
+  {
+    "id": "resample_data_05",
+    "category": "preprocess",
+    "input": "The recording is sampled at 1000 Hz; resample it to 250 Hz.",
+    "expected_tool_calls": [{"tool_name": "resample_data", "parameters": {"rate": 250}}]
+  },
+  {
+    "id": "resample_data_06",
+    "category": "preprocess",
+    "input": "Resample to 200 samples per second without applying a 200 Hz notch filter.",
+    "expected_tool_calls": [{"tool_name": "resample_data", "parameters": {"rate": 200}}]
+  },
+  {
+    "id": "resample_data_07",
+    "category": "preprocess",
+    "input": "Resample to 160 Hz, not 128 Hz. Do not apply normalization.",
+    "expected_tool_calls": [{"tool_name": "resample_data", "parameters": {"rate": 160}}]
+  },
+  {
+    "id": "set_reference_05",
+    "category": "preprocess",
+    "input": "Use channel Pz as the EEG reference, not Cz.",
+    "expected_tool_calls": [{"tool_name": "set_reference", "parameters": {"method": "Pz"}}]
+  },
+  {
+    "id": "set_reference_06",
+    "category": "preprocess",
+    "input": "Apply common average referencing, leaving the electrode positions unchanged.",
+    "expected_tool_calls": [{"tool_name": "set_reference", "parameters": {"method": "average"}}]
+  },
+  {
+    "id": "set_reference_07",
+    "category": "preprocess",
+    "input": "Re-reference the EEG to the single electrode named FCz.",
+    "expected_tool_calls": [{"tool_name": "set_reference", "parameters": {"method": "FCz"}}]
+  },
+  {
+    "id": "normalize_data_05",
+    "category": "preprocess",
+    "input": "Use Z score standardization on the EEG samples.",
+    "expected_tool_calls": [{"tool_name": "normalize_data", "parameters": {"method": "z-score"}}]
+  },
+  {
+    "id": "normalize_data_06",
+    "category": "preprocess",
+    "input": "Scale the EEG with min max normalization, not z-score.",
+    "expected_tool_calls": [{"tool_name": "normalize_data", "parameters": {"method": "min-max"}}]
+  },
+  {
+    "id": "normalize_data_07",
+    "category": "preprocess",
+    "input": "Apply z-score normalization only; keep the reference and sampling rate as they are.",
+    "expected_tool_calls": [{"tool_name": "normalize_data", "parameters": {"method": "z-score"}}]
+  },
+  {
+    "id": "start_training_05",
+    "category": "training_lifecycle",
+    "input": "Begin training with the saved setup. Leave the previous run history in place.",
+    "expected_tool_calls": [{"tool_name": "start_training", "parameters": {}}]
+  },
+  {
+    "id": "stop_training_05",
+    "category": "training_lifecycle",
+    "input": "Request a stop for the active training job; keep XBrainLab open.",
+    "expected_tool_calls": [{"tool_name": "stop_training", "parameters": {}}]
+  },
+  {
+    "id": "reset_preprocessing_05",
+    "category": "lifecycle",
+    "input": "Reset the whole preprocessing pipeline, not just the latest filter. I accept losing the derived workflow state.",
+    "expected_tool_calls": [{"tool_name": "reset_preprocessing", "parameters": {}}]
+  },
+  {
+    "id": "clear_training_history_05",
+    "category": "lifecycle",
+    "input": "Clear all training plans and run history so I can configure a fresh set of runs.",
+    "expected_tool_calls": [{"tool_name": "clear_training_history", "parameters": {}}]
+  },
+  {
+    "id": "compute_saliency_05",
+    "category": "analysis_execution",
+    "input": "Run the saliency calculation for the selected completed run using the existing saliency settings.",
+    "expected_tool_calls": [{"tool_name": "compute_saliency", "parameters": {}}]
+  },
+  {
+    "id": "compute_saliency_06",
+    "category": "analysis_execution",
+    "input": "Recompute saliency for the selected completed training run.",
+    "expected_tool_calls": [{"tool_name": "compute_saliency", "parameters": {}}]
+  },
+  {
+    "id": "switch_panel_05",
+    "category": "navigation",
+    "input": "Take me back to the Dataset panel, without opening an import dialog.",
+    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "dataset"}}]
+  },
+  {
+    "id": "switch_panel_06",
+    "category": "navigation",
+    "input": "Show the spectrogram view in Visualization.",
+    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "visualization", "view_mode": "spectrogram"}}]
+  },
+  {
+    "id": "switch_panel_07",
+    "category": "navigation",
+    "input": "Switch Visualization to the topographic map.",
+    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "visualization", "view_mode": "topographic_map"}}]
+  },
+  {
+    "id": "switch_panel_08",
+    "category": "navigation",
+    "input": "Open the 3D plot in the Visualization panel.",
+    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "visualization", "view_mode": "3d_plot"}}]
+  },
+  {
+    "id": "switch_panel_09",
+    "category": "navigation",
+    "input": "Show Evaluation so I can examine the confusion matrix.",
+    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "evaluation"}}]
+  },
+  {
+    "id": "switch_panel_10",
+    "category": "navigation",
+    "input": "Open the Training panel to inspect progress; do not start another run.",
+    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "training"}}]
+  },
+  {
+    "id": "switch_panel_11",
+    "category": "navigation",
+    "input": "Navigate to Preprocess, but do not apply a filter.",
+    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "preprocess"}}]
+  },
+  {
+    "id": "switch_panel_12",
+    "category": "navigation",
+    "input": "Display the existing saliency map without recomputing it.",
+    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "visualization", "view_mode": "saliency_map"}}]
+  },
+  {
+    "id": "respond_concept_01",
+    "category": "response_concept",
+    "input": "What is the difference between a bandpass filter and a notch filter?",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "A bandpass retains a frequency range while attenuating frequencies outside it. A notch attenuates a narrow band, such as power-line interference."}}]
+  },
+  {
+    "id": "respond_concept_02",
+    "category": "response_concept",
+    "input": "Is changing the sampling rate the same as choosing bandpass cutoffs?",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "No. Resampling changes the number of samples per second; bandpass cutoffs specify a frequency range to retain. They are different preprocessing operations."}}]
+  },
+  {
+    "id": "respond_concept_03",
+    "category": "response_concept",
+    "input": "How does an EEG reference differ from an electrode montage?",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "The reference determines the baseline used for EEG voltage differences. A montage describes electrode positions; assigning positions does not itself re-reference the signals."}}]
+  },
+  {
+    "id": "respond_concept_04",
+    "category": "response_concept",
+    "input": "Does creating EEG epochs mean the same thing as setting training epochs?",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "No. EEG epoching divides recordings into time segments. A training epoch is a pass through the training data during model fitting."}}]
+  },
+  {
+    "id": "respond_concept_05",
+    "category": "response_concept",
+    "input": "Explain the basic difference between z-score normalization and min-max scaling.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Z-score normalization centers values using a mean and scales them using a standard deviation. Min-max scaling uses the minimum and maximum to map values into a target range."}}]
+  },
+  {
+    "id": "respond_concept_06",
+    "category": "response_concept",
+    "input": "Does a high saliency value prove that an EEG channel caused the model prediction?",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "No. Saliency attributes a model output to aspects of its input under a particular method. It is not proof of causation or physiological importance."}}]
+  },
+  {
+    "id": "respond_instructions_01",
+    "category": "response_instructions",
+    "input": "Tell me how to choose EEG channels manually; keep all dialogs closed.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "When you are ready, open Channel Selection, review the channel list, choose the channels to retain, and confirm your selection. I will not open it for you."}}]
+  },
+  {
+    "id": "respond_instructions_02",
+    "category": "response_instructions",
+    "input": "Describe how I would assign sensor positions in XBrainLab, without opening Montage Settings.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Use Montage Settings to review the available position information, resolve the channel positions, and apply your choice when satisfied. Nothing is opened or changed by this explanation."}}]
+  },
+  {
+    "id": "respond_instructions_03",
+    "category": "response_instructions",
+    "input": "Give me written guidance for choosing epoch time windows. Do not create any epochs.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Choose a window relative to the event that includes the interval your analysis needs. Review event timing and any baseline interval in Epoch Settings before applying your choice."}}]
+  },
+  {
+    "id": "respond_instructions_04",
+    "category": "response_instructions",
+    "input": "How would I set up a subject-based split? I only want instructions, not a dialog.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "In Dataset Splitting, choose subject-based splitting and review which subjects belong to each partition before applying it. Keep held-out subjects separate according to your evaluation protocol."}}]
+  },
+  {
+    "id": "respond_instructions_05",
+    "category": "response_instructions",
+    "input": "Where would I select a neural network architecture? Please answer without navigating anywhere.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Use Model Selection to review and choose the architecture. Selecting a model is separate from starting training."}}]
+  },
+  {
+    "id": "respond_instructions_06",
+    "category": "response_instructions",
+    "input": "Explain where I can adjust the learning rate and batch size, but leave the application as it is.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "You can adjust those options in Training Settings. Review the learning rate and batch size there before applying your settings; this explanation makes no changes."}}]
+  },
+  {
+    "id": "respond_prohibition_01",
+    "category": "response_prohibition",
+    "input": "Do not clear the training history. I want to keep every run entry.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Understood. I will not clear the training history."}}]
+  },
+  {
+    "id": "respond_prohibition_02",
+    "category": "response_prohibition",
+    "input": "I am not asking you to start training. Leave the training controls alone.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Understood. I will not start training or change the training controls."}}]
+  },
+  {
+    "id": "respond_prohibition_03",
+    "category": "response_prohibition",
+    "input": "Do not calculate or recalculate saliency, and do not open a plot.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Understood. I will not run saliency computation or open a plot."}}]
+  },
+  {
+    "id": "respond_prohibition_04",
+    "category": "response_prohibition",
+    "input": "Leave the import wizard closed; I am not ready to load another dataset.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Understood. I will not open the import wizard or load another dataset."}}]
+  },
+  {
+    "id": "respond_prohibition_05",
+    "category": "response_prohibition",
+    "input": "Do not apply the 50 Hz notch filter. Keep the data unchanged.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Understood. I will not apply a notch filter or change the data."}}]
+  },
+  {
+    "id": "respond_prohibition_06",
+    "category": "response_prohibition",
+    "input": "I do not want preprocessing reset. Preserve the work already done.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Understood. I will not reset preprocessing."}}]
+  },
+  {
+    "id": "respond_reference_01",
+    "category": "response_ungrounded_reference",
+    "input": "Do the task I described in another chat, which is not included here.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Please describe the task here so I can identify what you want me to do."}}]
+  },
+  {
+    "id": "respond_reference_02",
+    "category": "response_ungrounded_reference",
+    "input": "Use the option my supervisor recommended offline. I have not shared that recommendation.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "What option did your supervisor recommend, and which operation is it for?"}}]
+  },
+  {
+    "id": "respond_reference_03",
+    "category": "response_ungrounded_reference",
+    "input": "Choose the second alternative from my notebook; you do not have the list.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Please share the alternatives or name the one you want. I cannot identify the second option without the list."}}]
+  },
+  {
+    "id": "respond_reference_04",
+    "category": "response_ungrounded_reference",
+    "input": "Perform the operation I circled on paper. No photo or description is attached.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Please name or describe the circled operation before I take any action."}}]
+  },
+  {
+    "id": "respond_reference_05",
+    "category": "response_ungrounded_reference",
+    "input": "Use the setup from an earlier session whose details I have not provided here.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Please provide that setup and the operation you want to apply it to, so I do not guess at your earlier choices."}}]
+  },
+  {
+    "id": "respond_reference_06",
+    "category": "response_ungrounded_reference",
+    "input": "Make the changes from my lab notes. The notes have not been shared with you.",
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Please share the relevant changes from your notes before I modify anything."}}]
   }
 ]

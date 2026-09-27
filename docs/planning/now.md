@@ -2,7 +2,58 @@
 
 最後更新：`2026-09-27`
 
-## Active — 單一 main 基線先穩定，再分產品與實驗兩線
+## Active — RAG 部件完整打磨，完成獨立覆核後一次集中手測
+
+2026-09-27 使用者批准實作：先把 RAG 作為完整部件整理，再往下一部件推進。
+起點 main `a5f57a15`；單一 task branch `fix/rag-component-baseline`，不更動使用者
+`settings.json`、共用環境／模型、正式研究題庫或既有結果。這一輪包含 product、tests、scripts、
+corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測試通過當成完成。
+
+### 問題、outcome 與邊界
+
+- 現行文字分流使同義詢問／混合要求走不同路；全庫 dense top-10 後才篩 callable tools
+  可能漏掉合格範例。改為不做手寫語意分流、在已發布工具及合法 response 範例內搜尋。
+- 保留 BM25；目前沒有足夠移除證據。共同修正後，以同source/corpus/model的 hybrid 與
+  dense-only 做有界消融，不將old/new總體差異誤稱BM25效果，不因小樣本打平刪除。
+- 約108操作＋24正確不操作範例是初始整理預算，不強迫湊數；最多約180，新增須對應
+  真語意／參數缺口。示範、公開工程probes及sealed研究題庫隔離，不複製驗收題進corpus。
+- UI、18個action contracts、confirmation、模型及正式研究政策不變；response範例重用
+  `respond_to_user`既有契約，不新增tool、owner、classifier、reranker或第二套評測平台。
+- 保持門檻0.7、top-3及bounded context，量測初始化／暖機／檢索／決策，不靠放寬timeout
+  或依速度silent skip取得綠燈。缺資源須degraded，不能冒稱正常empty。
+
+### 施工與驗證
+
+1. 保存目前source/config身分及focused基準；先RED重現post-filter候選飢餓，再最小修理。
+2. 更新範例驗證、搜尋前篩選、索引版本；刪除僅供RAG的intent規則及無用途測試／引用。
+   必要輸出schema、資格、取消、close、late callback與index integrity保護留下。
+3. 逐筆審corpus，補獨立英文案例；原48個retrieval probes不改題，新增24個成對工程案例。
+   查驗GUI／Assistant／實驗runner送入同一產品RAG路徑，actual context及身分可追查。
+4. 用既有產品模型／evaluator比較原main、新hybrid、新dense-only、新RAG-off；既有81題
+   與新增24題保留首發輸出、side effects、失敗與時段。只屬工程準備，非正式DEV／VALID／TEST。
+5. focused lint/tests與真offline retrieval後做獨立覆核，再同head applicable CI、Windows
+   native Assistant操作／相鄰流程。覆核含未改生命週期、測試oracle及剩餘複雜度，非只看diff。
+
+### 複雜度、交付與停止條件
+
+- Owner維持retriever持有embedding/client、indexer借用、process lifecycle持有程序；assembler
+  讀後端publication。篩選metadata由已驗證decision推導，不成為第二權限來源。
+- 刪除候選：RAG專用intent grammar及exclusive characterization；保留BM25、完整性與
+  lifecycle保護。各slice記錄實際production +/-/net，不以LOC證明品質；小commit可回退。
+- 原gate不降低，不新增錯誤開窗／confirmation／execution，不注入不可用action。若合適示範
+  已提供但model仍錯，定位責任，不無限增例；若無可辨識RAG收益，不宣稱效果已證實。
+- 完成獨立覆核及同版本適用驗證後，開Windows程式＋一個PowerShell log，附重啟指令，
+  一次集中手測。Pending CI、commit或compaction不是停止理由；merge另待明確批准。
+- **進度／Next**：原main retrieval34/36，81題真模型原始輸出已保留（非全對）；
+  候選132範例與搜尋前篩選已完成。BM25候選遺漏、prompt最終publication漂移、
+  malformed context／metadata及comparison失敗exit0均先RED再修理；整合focused306通過，
+  獨立source／test覆核無blocker。Production Python +119/-572/net-453，corpus JSON
+  +372/-12/net+360；owner不增加，刪除534行intent grammar，未增第二router。
+  Next固定source後真模型四條件比較、同head CI及Windows手測交付；目前不是scope-complete。
+  原產品的新增24題比較採共同harness回植到臨時snapshot、完整跑105題；記錄原產品SHA與
+  三份harness hash，明示modified harness，不將其冒稱clean原main或拼接原81題結果。
+
+## Context — 單一 main 基線先穩定，再分產品與實驗兩線
 
 PR #147 已於 2026-09-27 合併；使用者完成最終 Windows 手測並明確同意合併。
 產品與研究量測程式現在共用 `main`，原三條施工 worktree 與手測 worktree 已清理。

@@ -2,7 +2,7 @@
 
 Implements Okapi BM25 scoring without external dependencies beyond the
 Python standard library.  Designed to complement the Qdrant semantic
-retriever with keyword-based scoring for improved exact-match recall.
+retriever by reranking semantically admitted candidates with keyword scores.
 
 Reference:
     Robertson, S. & Zaragoza, H. (2009). *The Probabilistic Relevance
@@ -113,12 +113,15 @@ class BM25Index:
 
     # ── Query ────────────────────────────────────────────────
 
-    def query(self, text: str, k: int = 3) -> list[tuple[float, str, str, dict]]:
+    def query(
+        self, text: str, k: int = 3, *, candidate_ids: frozenset[str] | None = None
+    ) -> list[tuple[float, str, str, dict]]:
         """Scores all documents against the query and returns top-*k*.
 
         Args:
             text: The query text.
             k: Maximum number of results.
+            candidate_ids: Optional admitted pool; corpus IDF stays unchanged.
 
         Returns:
             A list of ``(score, doc_id, doc_text, metadata)`` tuples
@@ -135,6 +138,8 @@ class BM25Index:
         n = self.doc_count
 
         for idx in range(n):
+            if candidate_ids is not None and self._docs[idx][0] not in candidate_ids:
+                continue
             score = 0.0
             dl = self._dl[idx]
             tf_map = self._tf[idx]

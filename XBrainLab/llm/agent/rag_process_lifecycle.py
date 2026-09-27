@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import multiprocessing
 import queue
 import threading
@@ -10,6 +11,7 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
 from XBrainLab.llm.tools.result_contract import safe_unexpected_failure
@@ -25,11 +27,13 @@ RAGResultCallback = Callable[[int, str, str, str], None]
 RAGProcessTarget = Callable[[Any, Any], None]
 
 
-def _run_rag_process(command_queue: Any, result_queue: Any) -> None:
+def _run_rag_process(
+    command_queue: Any, result_queue: Any, *, hybrid_alpha: float | None = None
+) -> None:
     """Own all heavyweight RAG state inside one terminable child process."""
     from XBrainLab.llm.rag import RAGRetriever  # noqa: PLC0415
 
-    retriever = RAGRetriever()
+    retriever = RAGRetriever(hybrid_alpha=hybrid_alpha)
     try:
         retriever.initialize()
         result_queue.put(("ready", bool(retriever.is_initialized)))
@@ -107,7 +111,12 @@ class ProcessRAGRetrieverLifecycle:
         retrieval_timeout_seconds: float = RAG_RETRIEVAL_TIMEOUT_SECONDS,
         shutdown_wait_seconds: float = RAG_PROCESS_SHUTDOWN_SECONDS,
         process_target: RAGProcessTarget = _run_rag_process,
+        hybrid_alpha: float | None = None,
     ) -> None:
+        if hybrid_alpha is not None and (
+            not math.isfinite(hybrid_alpha) or not 0 <= hybrid_alpha <= 1
+        ):
+            raise ValueError("hybrid_alpha must be finite and between 0 and 1")
         self._initialization_timeout_seconds = max(
             0.01,
             float(initialization_timeout_seconds),
@@ -117,7 +126,11 @@ class ProcessRAGRetrieverLifecycle:
             float(retrieval_timeout_seconds),
         )
         self._shutdown_wait_seconds = max(0.01, float(shutdown_wait_seconds))
-        self._process_target = process_target
+        self._process_target = (
+            process_target
+            if hybrid_alpha is None
+            else partial(process_target, hybrid_alpha=hybrid_alpha)
+        )
         self._context = multiprocessing.get_context("spawn")
         self._lock = threading.Lock()
         self._closed = False

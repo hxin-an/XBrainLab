@@ -104,6 +104,7 @@ def test_load_gold_set(mock_indexer, tmp_path: Path):
     assert docs[0].page_content == "User Input"
     assert docs[0].metadata["id"] == "test_01"
     assert "tool_calls" in docs[0].metadata
+    assert docs[0].metadata["decision_name"] == "import_eeg_data"
 
 
 def test_load_gold_set_missing_file_raises_without_mutating_index(

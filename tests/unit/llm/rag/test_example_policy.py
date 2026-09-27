@@ -4,7 +4,10 @@ import json
 from collections import Counter
 from pathlib import Path
 
+import pytest
+
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
+from XBrainLab.llm.agent.decision_contract import MODEL_RESPONSE_TOOL_NAME
 from XBrainLab.llm.rag.bm25 import BM25Index
 from XBrainLab.llm.rag.example_policy import (
     is_primary_workflow_example,
@@ -72,6 +75,38 @@ def test_rag_policy_rejects_retired_and_malformed_actions() -> None:
         assert is_primary_workflow_example(metadata) is False
 
 
+def test_response_example_uses_the_existing_non_executing_contract() -> None:
+    assert prompt_tool_call_from_metadata(
+        _metadata("respond_to_user", {"message": "I will not run a filter."})
+    ) == {
+        "tool_name": "respond_to_user",
+        "parameters": {"message": "I will not run a filter."},
+    }
+    for parameters in ({}, {"message": " "}, {"message": "OK", "execute": True}):
+        assert (
+            prompt_tool_call_from_metadata(_metadata("respond_to_user", parameters))
+            is None
+        )
+    assert MODEL_RESPONSE_TOOL_NAME not in AGENT_ACTION_CONTRACTS.model_tool_names()
+
+
+@pytest.mark.parametrize("garbage", [None, "invalid", []])
+@pytest.mark.parametrize("serialized", [False, True])
+@pytest.mark.parametrize(
+    "call",
+    [
+        {"tool_name": "import_eeg_data", "parameters": {}},
+        {"tool_name": "respond_to_user", "parameters": {"message": "No action."}},
+    ],
+)
+def test_malformed_list_is_not_silently_repaired_into_valid_example(
+    garbage, serialized, call
+):
+    calls = [call, garbage]
+    metadata = {"tool_calls": json.dumps(calls) if serialized else calls}
+    assert prompt_tool_call_from_metadata(metadata) is None
+
+
 def test_gold_set_exactly_covers_every_approved_action_with_live_schemas() -> None:
     from XBrainLab.llm.agent.verifier import ToolSchemaValidator
     from XBrainLab.llm.tools import get_all_tools
@@ -86,14 +121,17 @@ def test_gold_set_exactly_covers_every_approved_action_with_live_schemas() -> No
         assert len(calls) == 1, item["id"]
         call = calls[0]
         assert set(call) == {"tool_name", "parameters"}, item["id"]
-        result = validator.validate(call["tool_name"], call["parameters"])
-        assert result.is_valid, f"{item['id']}: {result.error_message}"
+        if call["tool_name"] != MODEL_RESPONSE_TOOL_NAME:
+            result = validator.validate(call["tool_name"], call["parameters"])
+            assert result.is_valid, f"{item['id']}: {result.error_message}"
         assert is_primary_workflow_example({"tool_calls": json.dumps(calls)}), item[
             "id"
         ]
         covered.add(call["tool_name"])
 
-    assert covered == AGENT_ACTION_CONTRACTS.model_tool_names()
+    assert covered == AGENT_ACTION_CONTRACTS.model_tool_names() | {
+        MODEL_RESPONSE_TOOL_NAME
+    }
 
 
 def test_gold_set_has_no_cjk_or_duplicate_input_action_pairs() -> None:
@@ -117,11 +155,12 @@ def test_gold_set_has_no_cjk_or_duplicate_input_action_pairs() -> None:
     assert len(pairs) == len(set(pairs))
 
 
-def test_bundled_corpus_has_four_distinct_examples_per_published_tool() -> None:
+def test_bundled_corpus_preserves_action_coverage_and_response_examples() -> None:
     items = json.loads(_GOLD_SET_PATH.read_text(encoding="utf-8"))
     counts = Counter(item["expected_tool_calls"][0]["tool_name"] for item in items)
 
-    assert counts == dict.fromkeys(AGENT_ACTION_CONTRACTS.model_tool_names(), 4)
+    assert all(counts[name] >= 4 for name in AGENT_ACTION_CONTRACTS.model_tool_names())
+    assert counts[MODEL_RESPONSE_TOOL_NAME] >= 12
     assert len({item["id"] for item in items}) == len(items)
     assert len({item["input"].strip().casefold() for item in items}) == len(items)
 

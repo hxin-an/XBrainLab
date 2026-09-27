@@ -19,7 +19,7 @@ from XBrainLab.llm.agent.context_encoding import (
     UntrustedContextSource,
     encode_untrusted_context,
 )
-from XBrainLab.llm.agent.intent import should_suppress_action_examples
+from XBrainLab.llm.agent.decision_contract import MODEL_RESPONSE_TOOL_NAME
 
 if TYPE_CHECKING:
     from langchain_huggingface import HuggingFaceEmbeddings
@@ -121,7 +121,13 @@ class RAGRetriever:
                 local_embeddings,
             )
             self._require_verified_vectorstore(local_vectorstore)
-            local_bm25_index = self._build_bm25_index()
+            if self.hybrid_alpha < 1:
+                local_bm25_index = self._build_bm25_index()
+                if local_bm25_index is None:
+                    # Keep resource cleanup in the initialization failure path.
+                    raise RuntimeError(  # noqa: TRY301
+                        "Hybrid retrieval requires a valid BM25 index"
+                    )
 
         except Exception as e:
             logger.error("Failed to init RAGRetriever: %s", e)
@@ -250,8 +256,8 @@ class RAGRetriever:
     def _build_bm25_index(self) -> BM25Index | None:
         """Builds the in-memory BM25 index from the bundled gold-set.
 
-        Falls back gracefully if the gold-set file is missing — hybrid
-        retrieval degrades to pure semantic search.
+        Failure leaves hybrid initialization unavailable, never silently labelled
+        as a successful hybrid run. Explicit dense-only mode skips this build.
         """
         from pathlib import Path
 
@@ -331,8 +337,8 @@ class RAGRetriever:
 
         Combines dense (Qdrant cosine) and sparse (BM25 keyword)
         scores with a weighted interpolation controlled by
-        ``self.hybrid_alpha``.  When BM25 is unavailable, falls back
-        to pure semantic search.
+        ``self.hybrid_alpha``. Dense-only is explicit (alpha=1); hybrid
+        initialization requires both components to be available.
 
         This method performs embedding and vector search synchronously. The
         production controller runs it in an isolated RAG process.
@@ -349,8 +355,6 @@ class RAGRetriever:
             matches are found.
 
         """
-        if should_suppress_action_examples(query):
-            return ""
         safe_k = min(max(int(k), 0), RAGConfig.TOP_K)
         if safe_k == 0:
             return ""
@@ -363,13 +367,31 @@ class RAGRetriever:
             if self._is_closed():
                 return ""
 
-            # Fetch more candidates for re-ranking
+            from qdrant_client.http import models
+
+            # Filter inside search: unavailable examples must not consume the
+            # candidate budget before the eligible examples can be ranked.
+            query_filter = None
+            if allowed_tool_names is not None:
+                query_filter = models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="metadata.decision_name",
+                            match=models.MatchAny(
+                                any=sorted(
+                                    allowed_tool_names | {MODEL_RESPONSE_TOOL_NAME}
+                                ),
+                            ),
+                        ),
+                    ],
+                )
             dense_k = max(safe_k * 3, 10)
             search_result = lease.client.query_points(
                 collection_name=RAGConfig.COLLECTION_NAME,
                 query=query_vector,
                 limit=dense_k,
                 with_payload=True,
+                query_filter=query_filter,
             ).points
             if self._is_closed():
                 return ""
@@ -411,19 +433,22 @@ class RAGRetriever:
             }
 
             # ── 3. BM25 sparse scoring (if available) ──
-            if lease.bm25_index is not None:
-                bm25_results = lease.bm25_index.query(query, k=dense_k)
+            if lease.bm25_index is not None and lease.hybrid_alpha < 1:
+                candidates_by_id = {
+                    str(candidate["metadata"].get("id") or doc_id): candidate
+                    for doc_id, candidate in candidates.items()
+                }
+                bm25_results = lease.bm25_index.query(
+                    query, k=dense_k, candidate_ids=frozenset(candidates_by_id)
+                )
                 if self._is_closed():
                     return ""
                 if bm25_results:
                     bm25_max = bm25_results[0][0]  # already sorted desc
-                    for score, _bm_id, bm_text, _bm_meta in bm25_results:
+                    for score, bm_id, _bm_text, _bm_meta in bm25_results:
                         norm_bm25 = score / bm25_max if bm25_max > 0 else 0.0
-                        # Try to match to dense candidate by content
-                        for cval in candidates.values():
-                            if cval["content"] == bm_text:
-                                cval["bm25_score"] = norm_bm25
-                                break
+                        if bm_id in candidates_by_id:
+                            candidates_by_id[bm_id]["bm25_score"] = norm_bm25
                         # BM25 may rerank semantically admitted candidates, but
                         # it cannot admit a tool example on keyword overlap alone.
 
@@ -480,4 +505,6 @@ class RAGRetriever:
             return False
         if allowed_tool_names is None:
             return True
-        return prompt_call["tool_name"] in allowed_tool_names
+        return prompt_call["tool_name"] in (
+            allowed_tool_names | {MODEL_RESPONSE_TOOL_NAME}
+        )

@@ -10,6 +10,21 @@ import pytest
 from XBrainLab.llm.rag.bm25 import BM25Index
 
 
+def test_eligible_keyword_match_is_not_lost_behind_global_top_ten():
+    index = BM25Index()
+    for number in range(12):
+        index.add_document(str(number), "apply 60 hz notch filter")
+    index.add_document("eligible", "apply 60 hz notch filter please")
+
+    matches = index.query(
+        "apply 60 hz notch filter", k=3, candidate_ids=frozenset({"eligible"})
+    )
+
+    assert len(matches) == 1
+    assert matches[0][1] == "eligible"
+    assert matches[0][0] > 0
+
+
 def test_query_ranks_matching_document_and_preserves_public_metadata() -> None:
     index = BM25Index()
     index.add_document(
