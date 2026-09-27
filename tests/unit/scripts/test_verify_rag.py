@@ -20,6 +20,15 @@ from XBrainLab.llm.agent.context_encoding import (
 
 
 def _encoded_tool_context(tool_name: str) -> str:
+    parameters = {
+        "switch_panel": {"panel_name": "evaluation"},
+        "respond_to_user": {"message": "No operation will be performed."},
+        "apply_bandpass_filter": {"low_freq": 2, "high_freq": 35},
+        "apply_notch_filter": {"freq": 50},
+        "resample_data": {"rate": 160},
+        "set_reference": {"method": "average"},
+        "normalize_data": {"method": "z-score"},
+    }.get(tool_name, {})
     return encode_untrusted_context(
         [
             UntrustedContextItem(
@@ -33,7 +42,7 @@ def _encoded_tool_context(tool_name: str) -> str:
                     "input": "test prompt",
                     "expected_action": {
                         "tool_name": tool_name,
-                        "parameters": {},
+                        "parameters": parameters,
                     },
                 },
             )
@@ -41,37 +50,6 @@ def _encoded_tool_context(tool_name: str) -> str:
         max_chars=4_096,
         max_items=1,
         max_string_chars=768,
-    )
-
-
-def test_evaluate_context_result_requires_expected_tool() -> None:
-    result = verify_rag.evaluate_context_result(
-        _encoded_tool_context("import_eeg_data"),
-        expected_tool="import_eeg_data",
-    )
-
-    assert result == {
-        "ok": True,
-        "expected_tool": "import_eeg_data",
-        "observed_tool": "import_eeg_data",
-        "item_count": 1,
-    }
-
-
-def test_evaluate_context_result_rejects_empty_or_wrong_context() -> None:
-    assert (
-        verify_rag.evaluate_context_result(
-            "",
-            expected_tool="start_training",
-        )["ok"]
-        is False
-    )
-    assert (
-        verify_rag.evaluate_context_result(
-            _encoded_tool_context("get_dataset_info"),
-            expected_tool="start_training",
-        )["ok"]
-        is False
     )
 
 
@@ -107,6 +85,44 @@ def test_rank_three_hit_does_not_hide_an_unauthorized_candidate() -> None:
     assert result["top3_hit"] is True
     assert result["membership_ok"] is False
     assert result["unauthorized_tools"] == ["get_dataset_info"]
+
+
+def test_response_example_is_legal_without_becoming_a_callable_tool() -> None:
+    result = verify_rag.evaluate_probe_context(
+        _encoded_tool_context("respond_to_user"),
+        expected_tool="respond_to_user",
+        allowed_tools=frozenset({"import_eeg_data"}),
+    )
+    assert result["membership_ok"] is True
+    assert result["top1_hit"] is True
+
+
+def test_response_name_does_not_hide_an_invalid_response_contract() -> None:
+    payload = json.loads(_encoded_tool_context("respond_to_user"))
+    payload["items"][0]["data"]["expected_action"]["parameters"] = {}
+    result = verify_rag.evaluate_probe_context(
+        json.dumps(payload),
+        expected_tool="respond_to_user",
+        allowed_tools=frozenset(),
+    )
+    assert result["context_valid"] is False
+    assert result["membership_ok"] is False
+
+
+def test_paired_probes_are_separate_independent_and_stage_legal() -> None:
+    paired = verify_rag.load_paired_probes()
+    assert len(paired) == 24
+    old = verify_rag.load_probes()
+    old_queries = {
+        case["query"].casefold()
+        for case in old["positive_cases"] + old["boundary_cases"]
+    }
+    assert not old_queries.intersection(case["query"].casefold() for case in paired)
+    publications = verify_rag.stage_tool_publications()
+    for case in paired:
+        assert case["expected_tool"] == "respond_to_user" or case["expected_tool"] in (
+            publications[case["stage"]].tool_names
+        )
 
 
 def test_empty_tool_name_cannot_hide_beside_a_valid_hit() -> None:
@@ -229,7 +245,9 @@ def test_verification_passes_the_entire_production_publication_to_retrieval() ->
     publications = verify_rag.stage_tool_publications()
     cases = {
         case["query"]: case
-        for case in probes["positive_cases"] + probes["boundary_cases"]
+        for case in probes["positive_cases"]
+        + probes["boundary_cases"]
+        + verify_rag.load_paired_probes()
     }
     observed: list[str] = []
 
@@ -239,7 +257,8 @@ def test_verification_passes_the_entire_production_publication_to_retrieval() ->
         assert allowed_tool_names == publications[case["stage"]].tool_names
         assert len(allowed_tool_names) > 1
         observed.append(case["id"])
-        return _encoded_tool_context(case["tool"]) if "tool" in case else ""
+        tool = case.get("tool", case.get("expected_tool"))
+        return _encoded_tool_context(tool) if tool else ""
 
     retriever = MagicMock()
     retriever.is_initialized = True
@@ -265,7 +284,8 @@ def test_verification_passes_the_entire_production_publication_to_retrieval() ->
         ),
     ):
         report = verify_rag.run_verification()
-    assert len(observed) == 48
+    assert len(observed) == 72
+    assert len(report["paired_cases"]) == 24
     assert report["retrieval_summary"]["top3_hits"] == 36
     assert report["ok"] is True
 

@@ -7,6 +7,8 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from scripts.dev.run_stable_assistant_model_eval import (
     BOUNDED_BASELINE_MODEL_ID,
     BOUNDED_BASELINE_MODEL_REVISION,
@@ -2836,6 +2838,247 @@ def test_main_records_actual_invocation_without_local_working_directory(
         "working_directory_is_repository_root": True,
     }
     assert "bounded_baseline_gate" not in write_report.call_args.args[1]
+
+
+def test_paired_no_action_oracles_reject_the_corresponding_action() -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+    from scripts.dev.verify_rag import load_paired_probes
+
+    registry = target_tool_registry()
+    probes = load_paired_probes()
+    actions = {
+        probe["pair_id"]: probe
+        for probe in probes
+        if probe["expected_tool"] != "respond_to_user"
+    }
+    for probe in probes:
+        if probe["expected_tool"] != "respond_to_user":
+            continue
+        case = evaluator.PrecisionCase(
+            probe["id"], probe["query"], probe["stage"], probe["category"], None
+        )
+        safe_response = json.dumps(
+            {
+                "workflow_stage": probe["stage"],
+                "tool_name": "respond_to_user",
+                "parameters": {
+                    "message": "I will leave the current workflow unchanged."
+                },
+            }
+        )
+        safe = evaluate_case_trajectory(
+            case, registry, lambda _messages, response=safe_response: response
+        )
+        assert safe.raw_score.passed, probe["id"]
+        assert safe.final_score.passed, probe["id"]
+        action = actions[probe["pair_id"]]
+        wrong_response = json.dumps(
+            {
+                "workflow_stage": probe["stage"],
+                "tool_name": action["expected_tool"],
+                "parameters": action["expected_parameters"],
+            }
+        )
+        wrong = evaluate_case_trajectory(
+            case, registry, lambda _messages, response=wrong_response: response
+        )
+        assert not wrong.raw_score.passed, probe["id"]
+        assert not wrong.final_score.passed, probe["id"]
+
+
+def test_rag_disabled_prompt_equals_product_assembler_with_no_retrieved_context() -> (
+    None
+):
+    registry = target_tool_registry()
+    for case in load_target_cases(DEFAULT_CASES):
+        product = _ProductRAGCaseMessages(registry, _ImmediateProductRAGLifecycle(""))
+        assert build_case_messages(case, registry) == product.messages(case)
+        assert _build_recovery_case_messages(case, registry, ("Fix JSON.",)) == (
+            product.messages(case, recovery_messages=("Fix JSON.",))
+        )
+
+
+@pytest.mark.parametrize("mode", ["dense", "off"])
+def test_engineering_rag_modes_cannot_masquerade_as_promotion(mode) -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    with pytest.raises(SystemExit) as error:
+        evaluator.main(["--rag-mode", mode, "--strict"])
+    assert error.value.code == 2
+
+
+@pytest.fixture
+def model_free_eval_cli(monkeypatch):
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    monkeypatch.setattr(
+        evaluator.LLMConfig, "load_from_file", staticmethod(lambda: LLMConfig())
+    )
+    for loader in (
+        "load_target_cases",
+        "load_challenge_cases",
+        "load_precision_cases",
+        "load_clarification_cases",
+    ):
+        monkeypatch.setattr(evaluator, loader, lambda *_args, **_kwargs: ())
+    monkeypatch.setattr(evaluator, "_experiment_identity", lambda **_kwargs: {})
+    return evaluator
+
+
+@pytest.mark.parametrize("mode", ["hybrid", "dense", "off"])
+def test_comparison_cli_returns_failure_when_execution_raises(
+    model_free_eval_cli, monkeypatch, capsys, mode
+) -> None:
+    monkeypatch.setattr(
+        model_free_eval_cli,
+        "run_eval",
+        MagicMock(side_effect=RuntimeError("engine unavailable")),
+    )
+
+    assert model_free_eval_cli.main(["--rag-mode", mode]) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["failure"] == "RuntimeError: engine unavailable"
+    assert report["case_summaries"]["total"]["complete"] is False
+
+
+@pytest.mark.parametrize("mode", ["hybrid", "dense", "off"])
+@pytest.mark.parametrize(
+    "missing_inventory",
+    [
+        "incomplete_total",
+        "missing_total",
+        "missing_summaries",
+        "incomplete_paired",
+        "missing_paired",
+    ],
+)
+def test_comparison_cli_rejects_incomplete_or_missing_inventory(
+    model_free_eval_cli, monkeypatch, mode, missing_inventory
+) -> None:
+    report = {
+        "case_summaries": _complete_v12_case_summaries(),
+        "rag_paired_engineering": {"complete": True, "passed": False},
+    }
+    if missing_inventory == "incomplete_total":
+        report["case_summaries"]["total"]["complete"] = False
+    elif missing_inventory == "missing_total":
+        del report["case_summaries"]["total"]
+    elif missing_inventory == "missing_summaries":
+        del report["case_summaries"]
+    elif missing_inventory == "incomplete_paired":
+        report["rag_paired_engineering"]["complete"] = False
+    else:
+        del report["rag_paired_engineering"]
+    monkeypatch.setattr(
+        model_free_eval_cli, "run_eval", lambda *_args, **_kwargs: report
+    )
+
+    assert (
+        model_free_eval_cli.main(["--rag-mode", mode, "--include-rag-paired-probes"])
+        == 1
+    )
+
+
+@pytest.mark.parametrize("mode", ["hybrid", "dense", "off"])
+@pytest.mark.parametrize("include_paired", [False, True])
+def test_comparison_cli_keeps_completed_model_wrong_answers_successful(
+    model_free_eval_cli, monkeypatch, capsys, mode, include_paired
+) -> None:
+    report = {
+        "case_summaries": _complete_v12_case_summaries(),
+        "candidate_gate": {"passed": False},
+    }
+    argv = ["--rag-mode", mode]
+    if include_paired:
+        report["rag_paired_engineering"] = {"complete": True, "passed": False}
+        argv.append("--include-rag-paired-probes")
+    monkeypatch.setattr(
+        model_free_eval_cli, "run_eval", lambda *_args, **_kwargs: report
+    )
+
+    assert model_free_eval_cli.main(argv) == 0
+    rendered = json.loads(capsys.readouterr().out)
+    assert rendered["candidate_gate"]["passed"] is False
+    assert rendered["case_summaries"]["core"]["failed_count"] == 14
+    if include_paired:
+        assert rendered["rag_paired_engineering"]["passed"] is False
+
+
+@pytest.mark.parametrize("mode", ["off", "dense"])
+def test_engineering_run_keeps_81_gate_separate_from_paired_24(
+    monkeypatch, mode
+) -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    config = _stable_eval_config(LLMConfig(), device="cpu")
+    monkeypatch.setattr(config, "local_backend_ready", lambda _model_id: True)
+    precision = load_precision_cases(DEFAULT_PRECISION_CASES)
+    engine = MagicMock()
+    engine.generate_stream.side_effect = lambda *_a, **_kw: iter(
+        (
+            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '"parameters":{"message":"Please clarify the request."}}',
+        )
+    )
+    with (
+        patch.object(evaluator, "LLMEngine", return_value=engine),
+        patch.object(
+            evaluator,
+            "ProcessRAGRetrieverLifecycle",
+            return_value=_ImmediateProductRAGLifecycle(""),
+        ) as lifecycle,
+    ):
+        report = evaluator.run_eval(
+            config,
+            load_target_cases(DEFAULT_CASES),
+            challenge_cases=load_challenge_cases(DEFAULT_CHALLENGES),
+            precision_cases=precision,
+            clarification_cases=load_clarification_cases(
+                DEFAULT_CLARIFICATION_CASES, precision_cases=precision
+            ),
+            rag_mode=mode,
+            include_rag_paired_probes=True,
+        )
+    if mode == "off":
+        lifecycle.assert_not_called()
+    else:
+        lifecycle.assert_called_once_with(hybrid_alpha=1.0)
+    assert report["case_summaries"]["total"]["case_count"] == 81
+    assert report["case_summaries"]["total"]["complete"] is True
+    assert len(report["results"]) == 81
+    paired = report["rag_paired_engineering"]
+    assert paired["case_count"] == 24
+    assert paired["complete"] is True
+    assert len({row["pair_id"] for row in paired["results"]}) == 12
+    assert paired["passed"] is False  # Inventory completion never erases wrong answers.
+    if mode == "off":
+        assert report["rag_protocol"]["name"] == "product_rag_disabled.v1"
+        assert report["rag_retrievals"] == []
+        assert all(
+            row["rag_context"]["protocol"] == "product_rag_disabled.v1"
+            for row in report["results"] + paired["results"]
+        )
+    else:
+        assert report["rag_protocol"]["hybrid_alpha"] == 1.0
+        assert report["rag_retrievals"]
+    assert report["timing"]["model_load_seconds"] >= 0
+
+
+def test_duration_summary_reports_explicit_quantiles_and_empty_measurements() -> None:
+    from scripts.dev.run_stable_assistant_model_eval import _duration_summary
+
+    assert _duration_summary([]) == {
+        "count": 0,
+        "median": None,
+        "p95_nearest_rank": None,
+        "maximum": None,
+    }
+    assert _duration_summary([float(value) for value in range(20, 0, -1)]) == {
+        "count": 20,
+        "median": 10.5,
+        "p95_nearest_rank": 19.0,
+        "maximum": 20.0,
+    }
 
 
 def test_first_turn_rows_record_controller_admission_and_terminal_for_all_core_cases() -> (

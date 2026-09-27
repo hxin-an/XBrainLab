@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -15,6 +16,8 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
+from statistics import median
+from time import perf_counter
 from typing import Any
 
 from XBrainLab.backend.application.capabilities import build_capability_policy
@@ -223,6 +226,7 @@ class ProductRAGContextEvidence:
     context_item_ids: tuple[str, ...]
     assembled_context_item_ids: tuple[str, ...]
     context_sha256: str | None
+    elapsed_seconds: float = 0.0
 
 
 class _ProductRAGCaseMessages:
@@ -1396,6 +1400,7 @@ def _retrieve_product_rag_context(
     from the same assembler projection and the process lifecycle owns startup,
     timeout, child termination, and retriever cleanup.
     """
+    started = perf_counter()
     allowed_tool_names = tuple(sorted(assembler.rag_allowed_tool_names()))
     completed = threading.Event()
     result: dict[str, str] = {"context": "", "error": ""}
@@ -1430,6 +1435,7 @@ def _retrieve_product_rag_context(
             context_item_ids=(),
             assembled_context_item_ids=(),
             context_sha256=None,
+            elapsed_seconds=perf_counter() - started,
         )
         return "", evidence
 
@@ -1449,6 +1455,7 @@ def _retrieve_product_rag_context(
             context_item_ids=(),
             assembled_context_item_ids=(),
             context_sha256=None,
+            elapsed_seconds=perf_counter() - started,
         )
         return "", evidence
 
@@ -1468,6 +1475,7 @@ def _retrieve_product_rag_context(
         context_sha256=(
             hashlib.sha256(context.encode("utf-8")).hexdigest() if context else None
         ),
+        elapsed_seconds=perf_counter() - started,
     )
 
 
@@ -3046,6 +3054,7 @@ def _build_report(
     capture_integrity: dict[str, Any] | None = None,
     rag_protocol: dict[str, Any] | None = None,
     rag_retrievals: list[ProductRAGContextEvidence] | None = None,
+    engineering_results: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     core_rows = [
         row for row in results if row.get("suite") in {"positive", "challenge"}
@@ -3343,6 +3352,30 @@ def _build_report(
             "These suites are not workflow success or thesis-grade model accuracy."
         ),
     }
+    if engineering_results is not None:
+        from scripts.dev.verify_rag import PAIRED_PROBE_SHA256
+
+        report["rag_paired_engineering"] = {
+            "probe_sha256": PAIRED_PROBE_SHA256,
+            "expected_case_count": 24,
+            "case_count": len(engineering_results),
+            "complete": complete and len(engineering_results) == 24,
+            "first_generation_passed": sum(
+                bool(row["first_generation_score"]["passed"])
+                for row in engineering_results
+            ),
+            "final_passed": sum(
+                bool(row["score"]["passed"]) for row in engineering_results
+            ),
+            "passed": complete
+            and len(engineering_results) == 24
+            and all(row["score"]["passed"] for row in engineering_results),
+            "results": engineering_results,
+            "claim_boundary": (
+                "Separate public engineering pairs, not part of the frozen 81-case gate "
+                "or a held-out thesis score. Controller admission is not actual GUI execution."
+            ),
+        }
     return report
 
 
@@ -3662,8 +3695,10 @@ def _evaluation_generation_policy(config: LLMConfig) -> dict[str, Any]:
     }
 
 
-def _product_rag_protocol() -> dict[str, Any]:
+def _product_rag_protocol(*, hybrid_alpha: float | None = None) -> dict[str, Any]:
     """Identify the current product retrieval path without claiming empty is healthy."""
+    from XBrainLab.llm.rag import RAGRetriever
+
     return {
         "name": "product_process_rag.v1",
         "lifecycle": "ProcessRAGRetrieverLifecycle",
@@ -3672,6 +3707,9 @@ def _product_rag_protocol() -> dict[str, Any]:
         "embedding_revision": RAGConfig.EMBEDDING_REVISION,
         "corpus_sha256": RAGConfig.GOLD_SET_SHA256,
         "index_schema_version": RAGConfig.INDEX_SCHEMA_VERSION,
+        "hybrid_alpha": (
+            RAGRetriever.DEFAULT_HYBRID_ALPHA if hybrid_alpha is None else hybrid_alpha
+        ),
         "empty_result_note": (
             "Empty means the ready product retriever found no eligible context; "
             "initialization and retrieval errors are reported as degraded."
@@ -3684,10 +3722,11 @@ def _clarification_rag_context(
     case: ClarificationCase,
     attempts: tuple[ModelGenerationAttempt, ...],
     product_rag_messages: _ProductRAGCaseMessages | None,
+    no_rag_protocol: str = "synthetic_no_rag.v1",
 ) -> dict[str, Any]:
     """Report all retrievals for one clarification trajectory without guessing."""
     if product_rag_messages is None:
-        return {"protocol": "synthetic_no_rag.v1", "status": "not_requested"}
+        return {"protocol": no_rag_protocol, "status": "not_requested"}
     evidence = product_rag_messages.evidence_for_case(case.case_id)
     if evidence:
         return {
@@ -3737,6 +3776,8 @@ def run_eval(
     clarification_cases: tuple[ClarificationCase, ...],
     checkpoint_path: Path | None = None,
     product_rag: bool = False,
+    rag_mode: str | None = None,
+    include_rag_paired_probes: bool = False,
 ) -> dict[str, Any]:
     """Load one exact local engine and score every frozen target case."""
     selection = config.assistant_runtime_selection()
@@ -3753,18 +3794,48 @@ def run_eval(
             "Candidate evaluation requires exactly seven clarification cases."
         )
 
+    if rag_mode is not None:
+        if rag_mode not in {"hybrid", "dense", "off"}:
+            raise ValueError("Unknown RAG engineering comparison mode.")
+        product_rag = rag_mode != "off"
+    engineering_probes = []
+    if include_rag_paired_probes:
+        from scripts.dev.verify_rag import load_paired_probes
+
+        engineering_probes = load_paired_probes()
+    engineering_by_id = {case["id"]: case for case in engineering_probes}
+    engineering_cases = tuple(
+        PrecisionCase(case["id"], case["query"], case["stage"], case["category"], None)
+        if case["expected_tool"] == "respond_to_user"
+        else TargetEvalCase(
+            case["id"],
+            case["query"],
+            case["stage"],
+            case["expected_tool"],
+            case["expected_parameters"],
+        )
+        for case in engineering_probes
+    )
     generation_policy = _evaluation_generation_policy(config)
     registry = target_tool_registry()
     engine = LLMEngine(config)
-    rag_lifecycle = ProcessRAGRetrieverLifecycle() if product_rag else None
+    rag_lifecycle = (
+        ProcessRAGRetrieverLifecycle(hybrid_alpha=1.0)
+        if product_rag and rag_mode == "dense"
+        else ProcessRAGRetrieverLifecycle()
+        if product_rag
+        else None
+    )
     product_rag_messages = (
         _ProductRAGCaseMessages(registry, rag_lifecycle)
         if rag_lifecycle is not None
         else None
     )
     rag_protocol = (
-        _product_rag_protocol()
+        _product_rag_protocol(hybrid_alpha=1.0 if rag_mode == "dense" else None)
         if product_rag_messages is not None
+        else {"name": "product_rag_disabled.v1", "status": "disabled"}
+        if rag_mode == "off"
         else {"name": "synthetic_no_rag.v1", "status": "historical_comparison_only"}
     )
     capture_request = _capture_audit_request()
@@ -3797,13 +3868,19 @@ def run_eval(
 
     generation_recorder = GenerationTraceRecorder()
     results: list[dict[str, Any]] = []
+    engineering_results: list[dict[str, Any]] | None = (
+        [] if include_rag_paired_probes else None
+    )
     final_responses_by_case: dict[str, str] = {}
+    model_load_started = perf_counter()
     try:
         engine.load_model()
+        model_load_seconds = perf_counter() - model_load_started
         all_cases: tuple[TargetEvalCase | TargetChallengeCase | PrecisionCase, ...] = (
             *cases,
             *challenge_cases,
             *precision_cases,
+            *engineering_cases,
         )
         total_case_count = len(all_cases) + len(clarification_cases)
         for index, case in enumerate(all_cases, start=1):
@@ -3812,6 +3889,7 @@ def run_eval(
                 file=sys.stderr,
                 flush=True,
             )
+            case_started = perf_counter()
             trajectory = evaluate_case_trajectory(
                 case,
                 registry,
@@ -3852,16 +3930,21 @@ def run_eval(
                 ),
                 "host_admission": trajectory.host_admission,
                 "product_terminal": trajectory.product_terminal,
+                "decision_seconds": perf_counter() - case_started,
                 "rag_context": (
                     asdict(product_rag_messages.evidence_for(case))
                     if product_rag_messages is not None
                     else {
-                        "protocol": "synthetic_no_rag.v1",
+                        "protocol": rag_protocol["name"],
                         "status": "not_requested",
                     }
                 ),
             }
-            results.append(row)
+            if engineering_results is not None and case.case_id in engineering_by_id:
+                row["pair_id"] = engineering_by_id[case.case_id]["pair_id"]
+                engineering_results.append(row)
+            else:
+                results.append(row)
             if checkpoint_path is not None:
                 _write_report(
                     checkpoint_path,
@@ -3874,6 +3957,7 @@ def run_eval(
                         generation_trace=generation_recorder.entries,
                         capture_integrity=checkpoint_capture_integrity,
                         rag_protocol=rag_protocol,
+                        engineering_results=engineering_results,
                         rag_retrievals=(
                             product_rag_messages.all_evidence()
                             if product_rag_messages is not None
@@ -3996,6 +4080,7 @@ def run_eval(
                         case=case,
                         attempts=trajectory_attempts,
                         product_rag_messages=product_rag_messages,
+                        no_rag_protocol=rag_protocol["name"],
                     ),
                 }
             )
@@ -4011,6 +4096,7 @@ def run_eval(
                         generation_trace=generation_recorder.entries,
                         capture_integrity=checkpoint_capture_integrity,
                         rag_protocol=rag_protocol,
+                        engineering_results=engineering_results,
                         rag_retrievals=(
                             product_rag_messages.all_evidence()
                             if product_rag_messages is not None
@@ -4025,7 +4111,7 @@ def run_eval(
             with suppress(Exception):
                 rag_lifecycle.close()
 
-    return _build_report(
+    report = _build_report(
         model_id=selection.model_id,
         results=results,
         expected_case_count=len(cases) + len(challenge_cases),
@@ -4039,12 +4125,42 @@ def run_eval(
             generation_policy=generation_policy,
         ),
         rag_protocol=rag_protocol,
+        engineering_results=engineering_results,
         rag_retrievals=(
             product_rag_messages.all_evidence()
             if product_rag_messages is not None
             else []
         ),
     )
+    report["timing"] = {
+        "model_load_seconds": model_load_seconds,
+        "first_turn_decision_seconds": _duration_summary(
+            [
+                row["decision_seconds"]
+                for row in results + (engineering_results or [])
+                if "decision_seconds" in row
+            ]
+        ),
+        "retrieval_seconds": _duration_summary(
+            [row["elapsed_seconds"] for row in report["rag_retrievals"]]
+        ),
+        "retrieval_note": "Per-retrieval elapsed time includes startup if not already ready.",
+        "decision_note": "Per-first-turn-case time includes retrieval and format recovery, excludes model load; not GPU kernel time.",
+    }
+    return report
+
+
+def _duration_summary(values: list[float]) -> dict[str, int | float | None]:
+    """Describe observed durations using an explicit nearest-rank P95."""
+    ordered = sorted(values)
+    return {
+        "count": len(ordered),
+        "median": median(ordered) if ordered else None,
+        "p95_nearest_rank": ordered[math.ceil(len(ordered) * 0.95) - 1]
+        if ordered
+        else None,
+        "maximum": ordered[-1] if ordered else None,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -4060,10 +4176,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--json-out", type=Path)
     parser.add_argument("--device", choices=("cpu", "cuda"))
+    parser.add_argument(
+        "--rag-mode", choices=("hybrid", "dense", "off"), default="hybrid"
+    )
+    parser.add_argument("--include-rag-paired-probes", action="store_true")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--strict", action="store_true")
     mode.add_argument("--require-bounded-baseline", action="store_true")
     args = parser.parse_args(effective_argv)
+    if args.rag_mode != "hybrid" and (args.strict or args.require_bounded_baseline):
+        parser.error(
+            "RAG ablations are engineering comparisons, not product promotion gates."
+        )
 
     config = _stable_eval_config(
         LLMConfig.load_from_file(),
@@ -4082,6 +4206,8 @@ def main(argv: list[str] | None = None) -> int:
             ),
             checkpoint_path=args.json_out,
             product_rag=True,
+            rag_mode=args.rag_mode,
+            include_rag_paired_probes=args.include_rag_paired_probes,
         )
         report["experiment_identity"] = _experiment_identity(
             cases_path=args.cases,
@@ -4128,8 +4254,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.strict
         else report_bounded_baseline_passed(report)
         if args.require_bounded_baseline
-        else True
+        else report.get("case_summaries", {}).get("total", {}).get("complete") is True
     )
+    if args.include_rag_paired_probes:
+        paired = report.get("rag_paired_engineering", {})
+        passed = passed and paired.get("complete") is True
+        if args.strict or args.require_bounded_baseline:
+            passed = passed and paired.get("passed") is True
     return 1 if not passed else 0
 
 

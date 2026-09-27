@@ -20,13 +20,18 @@ from typing import Any
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.context_encoding import decode_untrusted_context
 from XBrainLab.llm.rag import RAGConfig, RAGRetriever
-from XBrainLab.llm.rag.example_policy import is_primary_workflow_example
+from XBrainLab.llm.rag.example_policy import (
+    is_primary_workflow_example,
+    prompt_tool_call_from_metadata,
+)
 from XBrainLab.llm.rag.indexer import RAGIndexer
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ARTIFACT = ROOT / "build" / "dev-artifacts" / "rag-offline.json"
 PROBE_PATH = Path(__file__).with_name("rag_verification_probes.json")
 PROBE_SHA256 = "d4222a3e1595db23d45622ec0b29348e65482c0cb7eb3c3cb4bf880ad2d96822"  # pragma: allowlist secret
+PAIRED_PROBE_PATH = Path(__file__).with_name("rag_paired_probes.json")
+PAIRED_PROBE_SHA256 = "1efaa1d9c8c354f61e91bd619ef512b8277634aa7ae1f60fbf3b9f6f95dc6b40"  # pragma: allowlist secret
 _ALLOWED_GIT_ARGUMENTS = frozenset(
     {
         ("rev-parse", "--show-toplevel"),
@@ -48,30 +53,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--write-artifact", action="store_true")
     parser.add_argument("--artifact-path", type=Path, default=DEFAULT_ARTIFACT)
     parser.add_argument("--baseline-report", type=Path)
+    parser.add_argument("--ranking", choices=("hybrid", "dense"), default="hybrid")
     return parser.parse_args(argv)
-
-
-def evaluate_context_result(
-    encoded_context: str,
-    *,
-    expected_tool: str,
-) -> dict[str, object]:
-    """Evaluate one typed RAG result without treating it as instructions."""
-    decoded = decode_untrusted_context(encoded_context)
-    observed_tool: str | None = None
-    if decoded:
-        action = decoded[0].data.get("expected_action")
-        if isinstance(action, dict):
-            candidate = action.get("tool_name")
-            if isinstance(candidate, str):
-                observed_tool = candidate
-    item_count = len(decoded or ())
-    return {
-        "ok": item_count > 0 and observed_tool == expected_tool,
-        "expected_tool": expected_tool,
-        "observed_tool": observed_tool,
-        "item_count": item_count,
-    }
 
 
 def load_probes() -> dict[str, Any]:
@@ -116,6 +99,35 @@ def stage_tool_publications() -> dict[str, Any]:
     return publications
 
 
+def load_paired_probes() -> list[dict[str, Any]]:
+    """Load the separate frozen engineering pairs, not any research bank."""
+    content = PAIRED_PROBE_PATH.read_bytes()
+    if hashlib.sha256(content).hexdigest() != PAIRED_PROBE_SHA256:
+        raise ValueError("Frozen paired RAG engineering probes changed.")
+    cases = json.loads(content)
+    pairs = Counter(case["pair_id"] for case in cases)
+    if (
+        len(cases) != 24
+        or len({case["id"] for case in cases}) != 24
+        or len({case["query"].casefold() for case in cases}) != 24
+        or len(pairs) != 12
+        or set(pairs.values()) != {2}
+        or any(
+            sum(
+                case["expected_tool"] == "respond_to_user"
+                for case in cases
+                if case["pair_id"] == pair
+            )
+            != 1
+            for pair in pairs
+        )
+    ):
+        raise ValueError(
+            "RAG engineering probes must retain twelve action/response pairs."
+        )
+    return cases
+
+
 def evaluate_probe_context(
     encoded_context: str,
     *,
@@ -137,13 +149,18 @@ def evaluate_probe_context(
             and item.item_type == "rag_example"
             and isinstance(tool, str)
             and bool(tool)
+            and prompt_tool_call_from_metadata({"tool_calls": [action]}) is not None
         )
     if decoded is not None:
         # The production decoder deliberately skips malformed rows; a verifier
         # must not let those rows disappear from its safety check.
         valid = valid and len(json.loads(encoded_context)["items"]) == len(decoded)
     unauthorized = sorted(
-        {tool for tool in tools if tool and tool not in allowed_tools}
+        {
+            tool
+            for tool in tools
+            if tool and tool != "respond_to_user" and tool not in allowed_tools
+        }
     )
     top1 = expected_tool is not None and bool(tools) and tools[0] == expected_tool
     top3 = expected_tool is not None and expected_tool in tools[:3]
@@ -254,10 +271,11 @@ def _verified_top3_hits(report: dict[str, Any]) -> int | None:
     return hits if type(declared_hits) is int and declared_hits == hits else None
 
 
-def run_verification() -> dict[str, Any]:
+def run_verification(*, hybrid_alpha: float | None = None) -> dict[str, Any]:
     """Run the real local-only RAG gate and return a bounded report."""
     started = perf_counter()
     probes = load_probes()
+    paired_probes = load_paired_probes()
     checks: list[dict[str, object]] = []
     provenance = _git_provenance()
     _add_check(
@@ -302,6 +320,12 @@ def run_verification() -> dict[str, Any]:
             "expected_document_count": expected_document_count,
             "offline_only": True,
             "probe_sha256": PROBE_SHA256,
+            "paired_probe_sha256": PAIRED_PROBE_SHA256,
+            "hybrid_alpha": (
+                RAGRetriever.DEFAULT_HYBRID_ALPHA
+                if hybrid_alpha is None
+                else hybrid_alpha
+            ),
             "top_k": RAGConfig.TOP_K,
             "max_context_bytes": RAGConfig.MAX_CONTEXT_CHARS,
             "max_example_content_chars": RAGConfig.MAX_EXAMPLE_CONTENT_CHARS,
@@ -309,6 +333,7 @@ def run_verification() -> dict[str, Any]:
         "checks": checks,
         "retrieval_cases": [],
         "boundary_cases": [],
+        "paired_cases": [],
         "claim_boundary": (
             "This verifies local embedding/index/retrieval behavior. It does not "
             "measure end-to-end local-LLM tool-call accuracy."
@@ -318,10 +343,14 @@ def run_verification() -> dict[str, Any]:
         report["ok"] = False
         return report
 
-    retriever = RAGRetriever()
+    retriever = RAGRetriever(hybrid_alpha=hybrid_alpha)
     first_point_count = 0
     try:
+        initialization_started = perf_counter()
         retriever.initialize()
+        report["initialization_seconds"] = round(
+            perf_counter() - initialization_started, 6
+        )
         _add_check(
             checks,
             "retriever_initialized",
@@ -404,9 +433,9 @@ def run_verification() -> dict[str, Any]:
                 result.update(
                     {
                         "kind": case["kind"],
-                        "expect_empty": case.get("expect_empty", False),
+                        "historical_expect_empty": case.get("expect_empty", False),
                         "blocked_tool": case.get("blocked_tool"),
-                        "ok": (not case.get("expect_empty") or result["empty"])
+                        "ok": result["membership_ok"]
                         and case.get("blocked_tool") not in result["candidate_tools"],
                     }
                 )
@@ -438,18 +467,52 @@ def run_verification() -> dict[str, Any]:
         )
         _add_check(
             checks,
-            "non_action_filter",
+            "informational_context_safety",
             all(
                 case["ok"] for case in boundary_cases if case["kind"] == "informational"
             ),
-            "Existing informational-intent policy returned no action examples.",
+            "Information requests permit safe retrieved examples; model no-action is measured separately.",
+        )
+        paired_results = []
+        for case in paired_probes:
+            allowed_tools = publications[case["stage"]].tool_names
+            case_started = perf_counter()
+            context = retriever.get_similar_examples(
+                case["query"], k=RAGConfig.TOP_K, allowed_tool_names=allowed_tools
+            )
+            result = evaluate_probe_context(
+                context,
+                expected_tool=case["expected_tool"],
+                allowed_tools=allowed_tools,
+            )
+            result.update(
+                **case,
+                allowed_tools=sorted(allowed_tools),
+                duration_seconds=round(perf_counter() - case_started, 6),
+                oracle_stage_valid=case["expected_tool"] == "respond_to_user"
+                or case["expected_tool"] in allowed_tools,
+            )
+            paired_results.append(result)
+        report["paired_cases"] = paired_results
+        _add_check(
+            checks,
+            "paired_context_safety",
+            all(
+                case["membership_ok"] and case["bounded"] and case["oracle_stage_valid"]
+                for case in paired_results
+            ),
+            "Twenty-four separate paired probes preserve membership and bounds; retrieval hits are not model decisions.",
         )
     finally:
         retriever.close()
 
-    second = RAGRetriever()
+    second = RAGRetriever(hybrid_alpha=hybrid_alpha)
     try:
+        repeat_started = perf_counter()
         second.initialize()
+        report["repeat_initialization_seconds"] = round(
+            perf_counter() - repeat_started, 6
+        )
         second_count = (
             int(
                 second.client.count(
@@ -487,7 +550,11 @@ def main(argv: list[str] | None = None) -> int:
     logger.setLevel(logging.CRITICAL + 1)
     try:
         try:
-            report = run_verification()
+            report = (
+                run_verification(hybrid_alpha=1.0)
+                if args.ranking == "dense"
+                else run_verification()
+            )
             if args.baseline_report:
                 baseline = json.loads(args.baseline_report.read_text(encoding="utf-8"))
                 comparison = compare_baseline(report, baseline)
