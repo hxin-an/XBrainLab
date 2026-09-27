@@ -120,6 +120,9 @@ def test_prompt_policy_defers_multi_action_requests_without_execution() -> None:
 
     assert "multi-action request" in prompt
     assert "respond_to_user with parameters containing only message" in prompt
+    assert "non-negated operation is a single-action request" in prompt
+    assert "apply rules 1-3" in prompt
+    assert "an explanation alone never authorizes an operation" in prompt
 
 
 def test_prompt_policy_forbids_unverified_completion_claims() -> None:

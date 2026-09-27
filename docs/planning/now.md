@@ -76,6 +76,13 @@ corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測
   bandpass／notch／resample／min-max例，145筆上限（121操作／24回應）。Author未讀probes／
   輸出，參數直述，不新增router／回合／tool。只承諾選對既有單一action，不宣稱同時完整解說。
   Next重凍結、整批三條件與原gate比較；若合適例已取回仍錯，定位prompt／model，不再加同義句。
+- **785cf2d1責任定位**：145例offline兩模式仍34/36；hybrid／dense／off各105題完整，
+  mixed normalize的合法response仍漏操作，四例不能修正它。既有action示範已取回；不再加例。
+  獨立覆核指出canonical decision rule 4將information及multi-action都列response，未區分
+  「解說＋單一明確操作」。直接修理只在既有prompt policy釐清information-only及單一未否定
+  操作；rules 1–3的可用性、必填值及禁止操作保護不變，不加assembler第二套政策。
+  785c真模型結果作RED，既有prompt composition／contract測試及最後同版本三條件真模型
+  作回歸；不以文字斷言冒稱模型會遵循。維持145例、原門檻與所有失敗產物，再做Windows真旅程。
 
 ## Context — 單一 main 基線先穩定，再分產品與實驗兩線
 
