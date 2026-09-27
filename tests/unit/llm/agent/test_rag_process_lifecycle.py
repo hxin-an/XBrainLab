@@ -38,6 +38,14 @@ def test_ranking_weight_is_bound_into_spawn_target():
         lifecycle.close()
 
 
+def test_ranking_weight_cannot_be_silently_bound_to_a_custom_two_argument_worker():
+    def worker(command_queue, result_queue):
+        raise AssertionError("Rejected configuration must not start a worker")
+
+    with pytest.raises(ValueError, match="product RAG process target"):
+        ProcessRAGRetrieverLifecycle(process_target=worker, hybrid_alpha=1.0)
+
+
 @pytest.mark.parametrize("phase", ["initialize", "retrieve", "close"])
 @pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
 def test_child_failure_logs_are_safe_and_preserve_queue_contract(

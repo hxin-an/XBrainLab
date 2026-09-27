@@ -126,11 +126,12 @@ class ProcessRAGRetrieverLifecycle:
             float(retrieval_timeout_seconds),
         )
         self._shutdown_wait_seconds = max(0.01, float(shutdown_wait_seconds))
-        self._process_target = (
-            process_target
-            if hybrid_alpha is None
-            else partial(process_target, hybrid_alpha=hybrid_alpha)
-        )
+        if hybrid_alpha is None:
+            self._process_target = process_target
+        else:
+            if process_target is not _run_rag_process:
+                raise ValueError("hybrid_alpha requires the product RAG process target")
+            self._process_target = partial(_run_rag_process, hybrid_alpha=hybrid_alpha)
         self._context = multiprocessing.get_context("spawn")
         self._lock = threading.Lock()
         self._closed = False

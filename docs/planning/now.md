@@ -58,6 +58,12 @@ corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測
   同版模型105題已生成，但最終stdout因Windows CP950無法編碼U+202F中斷，僅checkpoint／
   raw保留，不冒稱完成。修理CLI以ASCII-safe JSON輸出、先保存UTF-8 report再寫stdout，
   補CP950及pipe failure測試；舊版105比較使用UTF-8環境獨立執行。候選修理後重凍结真驗。
+- **325fdbbd驗證**：141例hybrid／dense offline均34/36、non-regression通過；真hybrid
+  105題完整，既有positive36/36、no-action product23/24、clarification6/7，原有限制仍在。
+  成對題first22/24（原版21/24）、final22/24（原版22/24），不是明顯收益證據。
+  PR #149 CI發現partial(custom兩參數target, hybrid_alpha)型別不符，及三個security fixture
+  仍用retired get_dataset_info或缺少decision。修為explicit product-target binding、提前拒絕
+  不支援的custom+alpha組合；fixture改合法response並保留原攻擊／隱私斷言。隨後同head重驗。
 
 ## Context — 單一 main 基線先穩定，再分產品與實驗兩線
 
