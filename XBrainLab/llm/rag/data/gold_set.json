@@ -50,7 +50,7 @@
   {
     "id": "apply_bandpass_filter_02",
     "category": "preprocess",
-    "input": "Set the bandpass upper cutoff to 40 Hz and the lower cutoff to 1 Hz.",
+    "input": "Apply a 1 to 40 Hz bandpass filter.",
     "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 1, "high_freq": 40}}]
   },
   {
@@ -62,7 +62,7 @@
   {
     "id": "apply_notch_filter_02",
     "category": "preprocess",
-    "input": "The mains frequency is 50 Hz; apply a notch at that frequency.",
+    "input": "Apply a 50 Hz notch filter.",
     "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 50}}]
   },
   {
@@ -74,7 +74,7 @@
   {
     "id": "resample_data_02",
     "category": "preprocess",
-    "input": "Change the sampling rate to 256 samples per second.",
+    "input": "Resample the EEG data to 256 Hz.",
     "expected_tool_calls": [{"tool_name": "resample_data", "parameters": {"rate": 256}}]
   },
   {
@@ -217,7 +217,7 @@
   {
     "id": "set_montage_03",
     "category": "data_setup",
-    "input": "Let me review the electrode positions in Montage Settings before applying them.",
+    "input": "Show the montage selection dialog.",
     "expected_tool_calls": [
       {
         "tool_name": "set_montage",
@@ -283,7 +283,7 @@
   {
     "id": "configure_dataset_split_03",
     "category": "training_setup",
-    "input": "Open Dataset Splitting so I can configure cross-validation folds.",
+    "input": "Open the dataset splitting settings for the epoched data.",
     "expected_tool_calls": [
       {
         "tool_name": "configure_dataset_split",
@@ -349,7 +349,7 @@
   {
     "id": "configure_training_03",
     "category": "training_setup",
-    "input": "Open Training Settings to adjust the evaluation strategy and number of repeats.",
+    "input": "Show the dialog for setting training hyperparameters.",
     "expected_tool_calls": [
       {
         "tool_name": "configure_training",
@@ -412,7 +412,7 @@
   {
     "id": "apply_notch_filter_04",
     "category": "preprocess",
-    "input": "Reject the narrow power-line component at 60 Hz with a notch, without applying a bandpass.",
+    "input": "Notch-filter the EEG at 60 Hz.",
     "expected_tool_calls": [
       {
         "tool_name": "apply_notch_filter",
@@ -464,7 +464,7 @@
   {
     "id": "set_reference_03",
     "category": "preprocess",
-    "input": "Re-reference using the average of all EEG channels rather than a single electrode.",
+    "input": "Apply an average EEG reference.",
     "expected_tool_calls": [
       {
         "tool_name": "set_reference",
@@ -538,7 +538,7 @@
   {
     "id": "start_training_04",
     "category": "training_lifecycle",
-    "input": "Train with the existing configuration; do not reopen Training Settings.",
+    "input": "Launch model training now.",
     "expected_tool_calls": [
       {
         "tool_name": "start_training",
@@ -571,7 +571,7 @@
   {
     "id": "stop_training_04",
     "category": "training_lifecycle",
-    "input": "Stop training, but do not clear its history.",
+    "input": "Please end this training run now.",
     "expected_tool_calls": [
       {
         "tool_name": "stop_training",
@@ -637,7 +637,7 @@
   {
     "id": "clear_training_history_04",
     "category": "lifecycle",
-    "input": "Clear the training plans and run history; do not reset preprocessing.",
+    "input": "Erase the saved training-run history.",
     "expected_tool_calls": [
       {
         "tool_name": "clear_training_history",
@@ -670,7 +670,7 @@
   {
     "id": "compute_saliency_04",
     "category": "analysis_execution",
-    "input": "Compute saliency for the selected result, rather than just opening the Visualization panel.",
+    "input": "Generate saliency results for the selected completed run.",
     "expected_tool_calls": [
       {
         "tool_name": "compute_saliency",
@@ -919,6 +919,60 @@
     "category": "navigation",
     "input": "Display the existing saliency map without recomputing it.",
     "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "visualization", "view_mode": "saliency_map"}}]
+  },
+  {
+    "id": "apply_bandpass_filter_08",
+    "category": "preprocess",
+    "input": "Set the bandpass upper cutoff to 40 Hz and the lower cutoff to 1 Hz.",
+    "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 1, "high_freq": 40}}]
+  },
+  {
+    "id": "set_montage_06",
+    "category": "data_setup",
+    "input": "Let me review the electrode positions in Montage Settings before applying them.",
+    "expected_tool_calls": [{"tool_name": "set_montage", "parameters": {}}]
+  },
+  {
+    "id": "configure_dataset_split_06",
+    "category": "training_setup",
+    "input": "Open Dataset Splitting so I can configure cross-validation folds.",
+    "expected_tool_calls": [{"tool_name": "configure_dataset_split", "parameters": {}}]
+  },
+  {
+    "id": "configure_training_06",
+    "category": "training_setup",
+    "input": "Open Training Settings to adjust the evaluation strategy and number of repeats.",
+    "expected_tool_calls": [{"tool_name": "configure_training", "parameters": {}}]
+  },
+  {
+    "id": "apply_notch_filter_08",
+    "category": "preprocess",
+    "input": "Reject the narrow power-line component at 60 Hz with a notch, without applying a bandpass.",
+    "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 60}}]
+  },
+  {
+    "id": "start_training_06",
+    "category": "training_lifecycle",
+    "input": "Train with the existing configuration; do not reopen Training Settings.",
+    "expected_tool_calls": [{"tool_name": "start_training", "parameters": {}}]
+  },
+  {
+    "id": "stop_training_06",
+    "category": "training_lifecycle",
+    "input": "Stop training, but do not clear its history.",
+    "expected_tool_calls": [{"tool_name": "stop_training", "parameters": {}}]
+  },
+  {
+    "id": "clear_training_history_06",
+    "category": "lifecycle",
+    "input": "Clear the training plans and run history; do not reset preprocessing.",
+    "expected_tool_calls": [{"tool_name": "clear_training_history", "parameters": {}}]
+  },
+  {
+    "id": "compute_saliency_07",
+    "category": "analysis_execution",
+    "input": "Compute saliency for the selected result, rather than just opening the Visualization panel.",
+    "expected_tool_calls": [{"tool_name": "compute_saliency", "parameters": {}}]
   },
   {
     "id": "respond_concept_01",

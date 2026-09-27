@@ -4245,10 +4245,10 @@ def main(argv: list[str] | None = None) -> int:
         "argv": effective_argv,
         "working_directory_is_repository_root": Path.cwd().resolve() == ROOT,
     }
-    rendered = json.dumps(report, ensure_ascii=False, indent=2)
-    print(rendered)
     if args.json_out is not None:
         _write_report(args.json_out, report)
+    rendered = json.dumps(report, ensure_ascii=True, indent=2)
+    print(rendered)
     passed = (
         report_candidate_passed(report)
         if args.strict

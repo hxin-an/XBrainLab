@@ -66,6 +66,15 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 
 ## Assistant research baseline
 
+### RAG 部件邊界（2026-09-27）
+
+RAG改為在已發布action及合法response示範內檢索，不再先以手寫語句分流。
+原72筆有效示範保留，新增操作差異與正確不操作示範後共141筆（117操作／24回應）；
+仍使用固定MiniLM、cosine准入及BM25排序、最多三例。最終prompt按同一份當前publication
+重新確認範例資格；不擴大tool、權限、confirmation或參數來源。
+細節由[目前架構](architecture/agent.md)擁有。此為source行為，不表示語料數量已證明
+模型收益、Stable promotion或正式論文效果；本輪比較與交付進度見[Now](planning/now.md)。
+
 ### 共同工程基線：PR #147 已合併（2026-09-27） { #assistant-integration-baseline }
 
 研究 clean `293f1890` 與產品 checkpoint `8c50bee9` 已合成於 PR #147，於 2026-09-27

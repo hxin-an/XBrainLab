@@ -52,6 +52,12 @@ corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測
   Next固定source後真模型四條件比較、同head CI及Windows手測交付；目前不是scope-complete。
   原產品的新增24題比較採共同harness回植到臨時snapshot、完整跑105題；記錄原產品SHA與
   三份harness hash，明示modified harness，不將其冒稱clean原main或拼接原81題結果。
+- **18b8de9a真跑發現**：retrieval33/36，相對原34/36退步一題，原non-regression gate
+  保留失敗；獨立語料審查發現12個有效舊表達被改寫取代。恢復原72筆，僅追加9個有新
+  區辨意義的改寫（另3個與新增例重複），總141筆；不抄probe、不降低0.7／33/36門檻。
+  同版模型105題已生成，但最終stdout因Windows CP950無法編碼U+202F中斷，僅checkpoint／
+  raw保留，不冒稱完成。修理CLI以ASCII-safe JSON輸出、先保存UTF-8 report再寫stdout，
+  補CP950及pipe failure測試；舊版105比較使用UTF-8環境獨立執行。候選修理後重凍结真驗。
 
 ## Context — 單一 main 基線先穩定，再分產品與實驗兩線
 

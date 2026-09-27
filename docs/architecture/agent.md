@@ -215,8 +215,9 @@ Prompt history只保留最新user訊息與最多一則Assistant-visible訊息。
 proposal與diagnostic trace由producer標記為history的`internal` role，不進模型訊息；來源不由
 `System:`／`Tool Output:`前綴或JSON形狀推論，真人與可見Assistant內容仍保留為資料。
 該內部role不輸出給chat template；既有untrusted-context隔離與redaction保持。
-Bundled gold set目前有132個英文示範：108個操作示範涵蓋18個approved tools，另24個
+Bundled gold set目前有141個英文示範：117個操作示範涵蓋18個approved tools，另24個
 `respond_to_user`示範涵蓋概念詢問、只要說明、明確禁止操作與無法辨識的外部指涉。
+原72個操作示範保持內容，新增案例補參數與相鄰操作差異，不以長句改寫取代既有詞彙覆蓋。
 它們是retrieval corpus，不是驗收題庫，也不代表已證明模型準確率改善。
 
 RAG不再以手寫intent grammar決定是否檢索。Qdrant在搜尋前，以已發布callable tools及

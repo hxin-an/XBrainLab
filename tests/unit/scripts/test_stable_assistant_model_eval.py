@@ -1,6 +1,7 @@
 """Stable-v2 local-model selection evaluation contracts."""
 
 import hashlib
+import io
 import json
 from collections.abc import Iterator
 from dataclasses import replace
@@ -3002,6 +3003,58 @@ def test_comparison_cli_keeps_completed_model_wrong_answers_successful(
     assert rendered["case_summaries"]["core"]["failed_count"] == 14
     if include_paired:
         assert rendered["rag_paired_engineering"]["passed"] is False
+
+
+def test_comparison_cli_preserves_unicode_report_on_cp950_console(
+    model_free_eval_cli, monkeypatch, tmp_path
+) -> None:
+    report = {
+        "case_summaries": _complete_v12_case_summaries(),
+        "candidate_gate": {"passed": False},
+        "response": "Resample to 128\u202fHz. \u03b1 \U0001f9e0",
+    }
+    monkeypatch.setattr(
+        model_free_eval_cli, "run_eval", lambda *_args, **_kwargs: report
+    )
+    output = tmp_path / "completed-eval.json"
+    buffer = io.BytesIO()
+    with io.TextIOWrapper(buffer, encoding="cp950", errors="strict") as console:
+        with monkeypatch.context() as console_patch:
+            console_patch.setattr(model_free_eval_cli.sys, "stdout", console)
+            assert (
+                model_free_eval_cli.main(
+                    ["--rag-mode", "dense", "--json-out", str(output)]
+                )
+                == 0
+            )
+        console.flush()
+        rendered = json.loads(buffer.getvalue().decode("cp950"))
+
+    saved = json.loads(output.read_text(encoding="utf-8"))
+    assert saved == rendered == report
+    assert saved["case_summaries"]["total"]["complete"] is True
+    assert saved["candidate_gate"]["passed"] is False
+
+
+def test_comparison_cli_saves_completed_report_before_broken_stdout(
+    model_free_eval_cli, monkeypatch, tmp_path
+) -> None:
+    report = {
+        "case_summaries": _complete_v12_case_summaries(),
+        "candidate_gate": {"passed": False},
+    }
+    monkeypatch.setattr(
+        model_free_eval_cli, "run_eval", lambda *_args, **_kwargs: report
+    )
+    output = tmp_path / "completed-eval.json"
+    console = MagicMock()
+    console.write.side_effect = BrokenPipeError("consumer disconnected")
+    with monkeypatch.context() as console_patch:
+        console_patch.setattr(model_free_eval_cli.sys, "stdout", console)
+        with pytest.raises(BrokenPipeError, match="consumer disconnected"):
+            model_free_eval_cli.main(["--rag-mode", "off", "--json-out", str(output)])
+
+    assert json.loads(output.read_text(encoding="utf-8")) == report
 
 
 @pytest.mark.parametrize("mode", ["off", "dense"])
