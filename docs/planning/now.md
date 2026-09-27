@@ -11,6 +11,10 @@ corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測
 
 **目前狀態（優先於下方歷史Next）**：使用者最新授權離席後持續施工，直到RAG可集中手測，
 並準備後續Agent架構討論；下述需決策checkpoint已恢復施工，不因CI／compaction停止。
+**目前阻擋**：f329f3c9全部適用CI與Windows四步真模型journey已通過，但兩欄契約新增
+語意退步仍未閉合。兩個有界呈現方案均被真模型／獨立覆核否決，沒有採用、沒有降低gate。
+已用非同步問題請使用者決定是否允許必要時回退已批准、但實測退步的輸出／提示契約；
+尚未收到答覆，不把離席或預選選項當成批准。需要新契約取捨才繼續，不能把此版本交作完成手測。
 沿用兩欄已批准契約及不改UI功能的邊界，先處理15e新增語意退步／mixed-request缺口，
 以及直接阻擋產品驗證的import busy還原競態。後者僅恢復既定按鈕可用性與取消保護，
 不改layout／文案／工具membership。先以既有失敗作baseline，按責任做一個有依據的
@@ -35,12 +39,25 @@ paired first21/24、final22/24；新增多個不可用操作誤選及negated nav
 回退該schema呈現及專屬測試／文件到23693406，保留已批准兩欄契約及632b94e0的import修理。
 所有bfad報告／capture保留，不再修補oneOf提示。獨立檢查發現103個15e prompt中，
 不可用tool ID只出現在status reference；Host才需要stable ID作admission。
-**Next**：一次ignored的status-label隔離診斷：固定15e全部98個首輪case（不冒稱包含7個
+**已完成的status-label隔離診斷**：固定15e全部98個首輪case（不冒稱包含7個
 clarification trajectories），只把reference字典key換成既有trusted tool description，
 保留數量／順序／reason／其他所有prompt內容，98個control rendered hash全吻合才允許生成。
 不改RAG／callable IDs／Host map，不重抽control、不將raw-only證據冒稱產品成功；此診斷
 不直接解釋normalize雙JSON，也不授權回退使用者批准的兩欄契約。依結果決定是否採用此
-呈現修理，再以原完整105及native／CI驗證；不降低原門檻、未知模型誤選不稱RAG已完成。
+呈現修理，不降低原門檻、未知模型誤選不稱RAG已完成。
+f329診斷98個control輸入逐byte相同，98個treatment capture全部驗證、source／設定不變，
+零重試、零Host執行，正常cleanup。positive36/36、precision14→15/24、paired22/24，
+但`split_before_epochs_en`從不可用split改成可用`set_montage {}`，在同state會通過既有
+admission而開錯GUI；這是source-supported reachable risk，診斷並未真的開窗或改資料。
+新增training-settings no-action分數只是收集不應收集的參數，不是正確解釋阻擋。
+獨立覆核否決採用；script／report保留在`build/dev-artifacts/rag-status-label-*`，產品未改。
+
+f329產品版最終證據：回退後context／真command111及evaluator109通過；PR run36335898154
+所有適用non-skipped checks completed/success（含macOS原失敗流程、Windows lifecycle及source-diverse）。
+`rag-f329-native/journey.json`四步通過，source／隔離設定／EDF不變，0 owned workers/subprocesses，
+未修改root settings或使用者per-user設定。這不覆蓋模型誤選、不等於Stable或手測候選。
+後續Agent討論已核對三個真正產品決策：解釋＋單一操作的完成語意、clarification支援邊界、
+對話指涉／歷史範圍；不先加planner或第二套控制層。當前先等待上述契約回退授權，未merge。
 
 **前一checkpoint**：兩欄契約已實作，但15e06744真模型驗證仍有新增
 語意退步，獨立覆核不批准non-regression／交付。需要決定暫緩此遷移，或明確接受新增限制；
