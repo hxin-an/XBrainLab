@@ -120,7 +120,7 @@ def validate_condition_request(payload: dict) -> None:
 class PilotConditionSession:
     """Own one normal product host and its pinned model for several fresh cases."""
 
-    def __init__(self, payload: dict, root: Path, first_output: Path):
+    def __init__(self, payload: dict, root: Path):
         self.closed = False
         self.manager = self.runtime = self.window = self.driver = None
         self.service = None
@@ -183,7 +183,6 @@ class PilotConditionSession:
         self.service = get_application_service(self.study)
         self.case_index = 0
         self.launch = make_launch_spec(payload["model_id"], payload["model_cache"])
-        first_output.mkdir()
         research_worker = None
 
         def worker_factory():
@@ -225,7 +224,7 @@ class PilotConditionSession:
             self.driver = PilotUiDriver(
                 host,
                 self.manager,
-                first_output / "ui",
+                self.root / "ui",
                 allow_confirmation=True,
             )
             return self.manager
@@ -363,8 +362,8 @@ class PilotConditionSession:
         )
 
         self._assert_identity(payload)
+        output.mkdir()
         if self.case_index:
-            output.mkdir()
             reset = self.service.execute(ResetSessionCommand(confirmed=True))
             if not reset.ok:
                 raise RuntimeError("Product session reset was rejected")
@@ -376,11 +375,9 @@ class PilotConditionSession:
             modal = QApplication.activeModalWidget()
             if modal is not None:
                 raise RuntimeError("An active modal crossed the case boundary")
-            self.driver.begin_case(output / "ui")
-        elif not output.is_dir():
-            raise RuntimeError("First case output was not reserved by the condition")
         if not self._boundary_clean():
             raise RuntimeError("Condition did not reach a clean case boundary")
+        self.driver.begin_case(output / "ui")
         return {
             "runtime_reused": self.case_index > 0,
             "model_id": self.runtime.current.model_id,
@@ -704,9 +701,8 @@ def run_condition(payload: dict, cases_root: Path, output: Path) -> dict:
         _write(path, summary)
         return summary
     try:
-        first_output = cases_root / jobs[0]["id"]
         session = PilotConditionSession.__new__(PilotConditionSession)
-        session.__init__(jobs[0]["payload"], output, first_output)
+        session.__init__(jobs[0]["payload"], output)
         if bounded:
             session.condition_evidence["artifact_id"] = output.name
         summary["condition_evidence"] = session.condition_evidence
@@ -718,7 +714,7 @@ def run_condition(payload: dict, cases_root: Path, output: Path) -> dict:
                 summary["stop_reason"] = "budget_exhausted"
                 break
             destination = cases_root / job["id"]
-            if job is not jobs[0] and destination.exists():
+            if destination.exists():
                 raise FileExistsError("Condition case output already exists")
             result = session.run_case(job["payload"], destination)
             results.append(

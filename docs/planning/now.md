@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-09-26`
+最後更新：`2026-09-27`
 
 ## Active — 共同版本功能與實驗量測驗收，做到 Windows 集中手測
 
@@ -21,7 +21,8 @@ RAG 作法與庫內數量等基本合理性也須查證，不能把目前做法�
 ### 優先施工計畫 — 功能與量測驗收 { #integrated-functional-acceptance }
 
 2026-09-25 使用者要求：分線继续改善前，先由代理實機跑過整合產品與另一線實驗腳本，
-涵蓋已迭代的 Evaluation／Saliency，準備到一次集中 Windows 手測；實驗部署在工作站134。
+涵蓋已迭代的 Evaluation／Saliency，準備到一次集中 Windows 手測；實驗部署在工作站137
+（使用者於2026-09-26更正原先誤認的134）。
 計畫已固化並經獨立覆核，使用者現已明確要求開始執行，做到集中手測。
 下方六部件打磨是後續工作，
 不能跳過本節驗收直接接續。這不是重開無限全盤清理或重新定義研究方法。
@@ -33,9 +34,11 @@ RAG 作法與庫內數量等基本合理性也須查證，不能把目前做法�
   不把 dirty source 當成已凍結版本。既有整合證據及限制見
   [Current](../current.md#assistant-integration-baseline)。本輪產品與研究須驗同一最終source，
   Windows／Linux runtime及模型配置各自記錄，不混用速度或判分成績。
-- 已以 `hxin` 成功登入 `140.113.193.134`，既有主機金鑰核對通過；只執行身分查詢。
-  今日GPU／程序、容量、環境、模型cache完整性與新source可執行性尚未預檢。
-  舊 `b42cd81e` 工作站smoke是歷史證據，不替本輪背書。
+- 2026-09-26已以 `hxin` 成功登入正確目標 `140.113.193.137`，嚴格核對既有host key；
+  主機為 `ws-4090-03`、RTX4090 24GB。共用NAS上既有Python3.12.3環境、模型與
+  clean `fac3c714`工程包可讀，不需重複搬模型或重建環境；這不等於137已跑過CUDA／模型。
+  2026-09-27重查GPU空閒，137真CUDA matmul／Qt offscreen預檢通過；封裝真跑已啟動。
+  134的歷史smoke、prepare及程序邊界證據保留134身分，不換標。
 - 保持已接受的UI／功能／資料語意、公開tools及研究判分政策。必要的相容修理和直接補測
   在已授權準備範圍內；新可見行為、contract或研究方法取捨集中提出，不偷偷改成容易通過。
 - 原兩線、main的使用者 `settings.json`、原始資料、共用環境／模型與B0／d0結果不動。
@@ -50,19 +53,22 @@ RAG 作法與庫內數量等基本合理性也須查證，不能把目前做法�
 
 | 階段 | 工作 | 出口／不可以冒稱的事 |
 | --- | --- | --- |
-| A. 版本與環境預檢 | 核对原兩線有無新修改、最終候選及適用gate；核對Windows共享環境與本機cache。134先查實際GPU負載、自有／他人程序、Python／lock／CUDA、既有五模型與embedding身分和容量。核對研究交接，不能假裝已聯絡不可見的獨立fork agent。 | 明確可用的執行環境與輸出位置；GPU空閒不等於已預約。不關閉別人的程序，不用silent fallback。缺資源先報具體缺項，不把登入成功當環境通過。 |
+| A. 版本與環境預檢 | 核对原兩線有無新修改、最終候選及適用gate；核對Windows共享環境與本機cache。137先查實際GPU負載、自有／他人程序、Python／lock／CUDA、既有五模型與embedding身分和容量。核對研究交接，不能假裝已聯絡不可見的獨立fork agent。 | 明確可用的執行環境與輸出位置；GPU空閒不等於已預約。不關閉別人的程序，不用silent fallback。缺資源先報具體缺項，不把登入成功當環境通過。 |
 | B. 完整工程回歸 | 依現有CI／runner執行產品、tests、scripts整體回歸、全專案typing、架構、docs與適用跨平台／視覺gates；完整Linux aggregate沿用既有coverage verifier。補同版本canonical source-diverse與本次階段驗收要求的完整代表性import catalog，使用現存資料、不重下載。 | 同head全部適用non-skipped checks成功，原失敗與skip理由保留。不同SHA不換標，同版本等價CI證據不在本機重跑。完整catalog以registry required membership為準，不把少數資料流程當全catalog。 |
 | C. Windows實際產品流程 | 原生Windows走Import／class／channel／montage → preprocess → epoch → split → training → Evaluation → Saliency；資料輸入與測試產物隔離，核對真資料副作用和結果，不只開視窗。涵蓋正常、取消、停止／重跑、重開結果及前輪已修路徑。 | 當前source的真操作／截圖及相鄰failure證據；Windows gate與必要100／125／150% DPI通過。Linux offscreen不代替Windows，代理操作不代替使用者最終手測。 |
 | D. 真模型Assistant | 使用現有精確產品模型及RAG，跑適用既有bounded model gate與正常ChatPanel真操作；涵蓋開窗、填參數、實際操作、缺資訊、不可執行、確認／取消、停止與錯誤回報。 | 完整模型輸入／原始輸出與實際結果可追查；既有模型限制如實保留，不調prompt／題目或反覆重抽來取得綠燈。GUI成功與raw model正確分開，既有bounded限制不冒稱Stable。 |
-| E. 實驗量測驗收 | 先完成下面的量測正反例，再於134從新封存的同source工程包實跑；沿用 `package → dev → pilot → condition` 及包內 `run.sh`，不是另寫簡化runner。 | 五模型固定20筆工程smoke、capture／判分／報告／cleanup可核對；可從包內啟動及離線重建／audit。不把「有報表」或「20題全對」當量測正確的替代證據。 |
+| E. 實驗量測驗收 | 先完成下面的量測正反例，再於137從新封存的同source工程包實跑；沿用 `package → dev → pilot → condition` 及包內 `run.sh`，不是另寫簡化runner。 | 五模型固定20筆工程smoke、capture／判分／報告／cleanup可核對；可從包內啟動及離線重建／audit。不把「有報表」或「20題全對」當量測正確的替代證據。 |
 | F. 修復與獨立覆核 | 真defect先重現、補測、最小修理，再驗受影響及必要相鄰流程；高風險owner／publication／async與量測邊界由非作者覆核。主代理核實實際diff及產物，不只收摘要。 | 無未處置的功能／量測blocking finding；已知模型錯答與產品bug分開。source變動後更新相依證據及最終CI，不因單組通過就提前交付。 |
-| G. 固定版本、集中手測 | 將Windows與134產物綁到最終clean／明確解釋的source；提供範圍清單、修正／限制、實驗報告入口及重跑命令。直接開Windows完整程式與一個PowerShell即時log，確認有回應後交回使用者。 | 使用者測的是代理已實機驗過的候選；附一行重啟命令。沒有額外Windows Live Log視窗，不自動merge、不持續監控手測，也不開始另一輪部件改善。 |
+| G. 固定版本、集中手測 | 將Windows與137產物綁到最終clean／明確解釋的source；提供範圍清單、修正／限制、實驗報告入口及重跑命令。直接開Windows完整程式與一個PowerShell即時log，確認有回應後交回使用者。 | 使用者測的是代理已實機驗過的候選；附一行重啟命令。沒有額外Windows Live Log視窗，不自動merge、不持續監控手測，也不開始另一輪部件改善。 |
 
 **C的必驗重點**：Split含subject模式與實際預期工作數，不只看第一個run啟動；training含停止
 與重跑。Evaluation核對fold／run／Summary、長標籤／圖表與scroll、實際結果及結果重開。
 Saliency核對真Compute／Recompute、SmoothGrad有界完成、背景時其他panel仍可用、游標恢復、
 fold／run／class／method切換、2D／3D及warning偏好、視窗縮放與結果重開；不把只顯示
 「背景計算」當成功。若契約明示某模型／方法不支援，驗正確blocked行為，不要求偷偷fallback。
+此處「結果重開」指同一工作階段離開／返回panel；磁碟EvalRecord讀回另由backend自動
+驗證涵蓋。目前沒有重啟程式後載入整個舊分析結果的GUI入口，不能把後端讀回當成此功能。
+程式關閉／再開只驗啟動、適用設定與cleanup，不新增session恢復功能。
 
 #### E的量測正確性：不只是腳本單元測試
 
@@ -81,7 +87,7 @@ fold／run／class／method切換、2D／3D及warning偏好、視窗縮放與結
   同source/runtime續跑、跨source拒絕、不重覆計分／覆寫；不強殺共享GPU工作。
   從封存包另開新run，執行report-only及原scorer audit，核對原inputs/raw不變；
   既有協定不支援搬移未完成run後無縫resume，不將其列作本輪新功能。
-- **134真跑邊界**：沿用protocol固定五模型各四題、共20筆 `engineering-smoke`，執行累積
+- **137真跑邊界**：沿用protocol固定五模型各四題、共20筆 `engineering-smoke`，執行累積
   60分鐘预算（不含資源複製），不是完成時間保證。真RAG／終態／capture／cleanup缺項不能算通過；
   有效模型錯答保留，不因分數重跑，不當正式DEV成績或模型排名。額外故障注入用隔離工程
   case／fixture，不污染這20筆，也不重跑整套正式題庫。需要超出預算先報原因，不暗中加碼。
@@ -94,41 +100,58 @@ fold／run／class／method切換、2D／3D及warning偏好、視窗縮放與結
 - 驗證命令、timeout與artifact政策由現有[驗證契約](../validation/README.md)、
   `scripts/dev/handoff_gate_spec.py`、CI及研究protocol擁有。本輪是完整功能驗收範圍，
   不是任意宣稱完整release dossier或Stable promotion；若宣稱full dossier須跑原完整manifest。
-- **交付門檻**：適用同版本CI成功、Windows產品／Assistant實機證據齊全、134量測正反例及
+- **交付門檻**：適用同版本CI成功、Windows產品／Assistant實機證據齊全、137量測正反例及
   真smoke／封存audit完成、獨立覆核無blocker、來源一致。Pending／stale／missing gate
   不算通過。使用者不需逐slice手測；修理後只重验受影響及必要相鄰範圍，最後一次集中交付。
 - **停止條件**：達到上述門檻且Windows程式已開啟有回應，交給使用者手測即停止主動操作。
   Compaction、單slice／commit完成或CI pending不是停止理由；缺新授權／必要資源才回報
   具體blocker。手測／merge另依明確批准，不自動把本計畫當merge授權。
-- **可達效果**：證明指定版本在Windows代表流程與134指定工程量測範圍可運作，量測輸入、
+- **可達效果**：證明指定版本在Windows代表流程與137指定工程量測範圍可運作，量測輸入、
   判分及計時可追查；留下雙線後續的共同起點。不能證明所有資料／硬體組合無bug、
   Saliency科學有效性、模型高準確率、研究統計效力或六部件設計／內容已全部打磨完成。
-- **目前next（2026-09-26）**：整合PR #147仍未merge；main為 `94328196`。先凍結下列
-  直接修理並取得新head CI，再執行同source完整catalog、D真模型及E134實跑。B–G尚未
-  完成；原失敗、環境失敗與部分結果均保留，不重標為最終source證據。
-  - 已修理研究warmup的舊worker存取、Python3.11 junction相容、Qt型別與過時契約測試；
-    已接受的visualization換行baseline已核實。Human-like evidence保留fully_visible真值，
-    另以真scroll驗四端可達、遮擋／壞scroll／label clipping拒絕，並保留失敗CI產物。
-  - `b09431f6` CI其餘適用檢查通過，仍有human-like窄圖表與三個意外platform skip，
-    aggregate依規則被擋。窄圖表已於native Windows重現：控制列height resize再排強制
-    重建，viewport振盪，把到底的vertical value110夾回73；不是僅量測時機。最小修理
-    只讓寬度變化排延後重排，維持UI設計；原生RED→直接13案GREEN、寬度／顯隱／文字
-    變動baseline及獨立覆核通過，原scroll反例不放寬。
-  - 三個Windows／WSL專屬案補平台標記，兩個Windows案納入既有platform shard，
-    不是只豁免skip。Windows兩案、真WSL→Windows child及runner routing直接組通過。
-    WSL interop是本機跨OS證據，不冒稱現有GitHub matrix已執行。
-  - C在clean `b09431f6`已有連續真wizard→三subject／三training jobs→結果重開、
-    真鍵盤1epoch／batch2、SmoothGrad／3D、四圖及12+2週期native stress；canonical
-    source-diverse四案無skip通過。完整catalog僅53／134通過後由主代理中止自有程序，
-    以免修source時繼續舊批次；保留原summary及中止說明，新source重跑不跨SHA resume。
-  - E既有361量測正反例、真Command clock直接14案及研究相容118案通過（重疊不加總）；
-    另補兩模型subset實際僅dispatch指定兩個真child的獨立oracle，受影響檔29案通過。
-    外部模型／source/cache仍隔離，不能取代134真模型證據。
-  - 134既有env／CUDA可用、不重建；b094隔離包prepare已完整校驗6資源77檔SHA，
-    未複製權重。其他使用者兩個GPU工作持續占用，禁止干擾；已向使用者詢問可用時段，
-    同時繼續未受阻工作。下一SHA建立新包，舊包不覆寫。
-    E仍缺最終20筆、SSH退出後真run存活／隔離中斷resume、真結果report-only／audit及
-    inputs/raw不變核對；D亦未啟動，不提前宣稱模型或量測驗收完成。
+- **目前next（2026-09-27，恢復修理完成，待新候選整合驗證）**：整合PR #147未merge；
+  下面已完成的大型驗證屬於舊候選 `fac3c714`。本次另修量測腳本，不改產品、模型或題目，
+  不把既有證據改標為新SHA；修理commit是後續候選，精確身分由Git／PR擁有。
+  該候選同head CI全綠，Linux彙整10,842 passed／82既定skip、line coverage88.048%；
+  canonical source-diverse四案、完整134個required代表匯入、Windows真產品流程及native
+  Saliency／3D stress均通過。真Assistant四步操作與五個確認／取消／Stop／錯誤情境
+  完成並獨立覆核；81題bounded通過，但不是81題全對或Stable，既知模型限制保持。
+  137 CUDA／runtime核對通過，原封裝的run `20260927-040225-001e867c` 在SSH退出後
+  繼續執行，前四模型16筆已保存。最後Gemma3在四題開始前觸發既有180秒啟動逾時；
+  第一權重分片約111秒，尚不能僅憑此判定NAS或量化為唯一成因。原失敗保留，不提高
+  timeout／重抽或把16筆當完整20筆。Next先完成report-only／audit、inputs/raw不變及
+  cleanup核對，獨立審查成因與必要處置；E未通過，不交付完整手測、不在134替代執行。
+  原執行沒有Gemma載入期CPU／I/O採樣；依獨立覆核，在剩餘60分鐘工程預算內僅做一次
+  同source／模型／量化／cache、原180秒上限的純載入診斷，新增自有PID資源觀測。
+  不生成題目、不另暖機、不改逾時或下載／複製模型；記錄可能的warm-cache影響，
+  診斷成功也不能代替缺少的四筆或自動授權重跑20筆。
+  診斷於原180秒內36.019秒載入成功；warm-state採樣有I/O等待，不能倒推原逾時唯一成因。
+  另經source與獨立覆核確認恢復缺口：condition初始化先建立第一case目錄，load失敗尚無
+  case結果，卻使同source、已certified cleanup的missing-case resume被既有目錄保護拒絕。
+  **直接修理slice**：依既有失敗恢復契約先RED，讓condition啟動／暖機證據留在condition
+  範圍，真正開始case才建立case輸出；保留未知目錄、未認證cleanup與有效錯答不得重跑的
+  guards。不刪／搬原失敗目錄、不新增owner或相容路徑，不改UI、prompt、scorer、模型或
+  180秒上限。Focused驗真啟動失敗→cleanup→同source missing-case續跑，及正常首題、
+  多題重用／報告capture路徑；最小diff另做獨立覆核。
+  修理已完成，script一檔+6/-10、product零改動；test一檔+145/-9。
+  原baseline42通過；RED重現三個提前建立目錄的失敗，未知目錄guard仍通過；
+  直接GREEN45、最終五組相鄰Windows測試156通過／0skip、exit0，Ruff及diff check通過，
+  獨立覆核無blocker。證據是real Qt／runtime／filesystem加受控external inference的
+  分段啟動失敗／cleanup／pending選取／新session首題，並非宣稱真模型完整resume已跑通。
+  修碼後需新clean source／同head CI及新工程run，不將原16筆接到新版本，也不把舊證據
+  改標。原905.615秒＋純載入診斷保守預留300秒，共1205.615秒；本輪後續真模型仍受
+  原3600秒累計工程預算約束（另有2394秒），不因新run重設額度，資源校驗另計。
+  若必要驗證超出此預算或需改runtime/cache政策，明示新決策；不以無限重跑取得綠燈。
+  共用NAS既有封裝可保留，但啟動前仍須canonical來源／資源校驗，且輸出記錄137真實身分。
+  未到集中手測門檻；完成E及獨立覆核後才開Windows交付。舊134證據不刪、不換標。
+  Windows手測checkout為 `D:\workspace_v2\projects\lab\xbrainlab-manual`，目前clean detached
+  `fac3c714`，尚未開啟交付；修理後須更新為最終候選並核對相依證據，不能仍交舊版。
+  共用既有Python與cache，不建立新環境。
+  Next：提交／push此最小修理與文件，取得新head CI；同head重建137工程包（新包預算2394秒），
+  新run固定20筆，保留fac3原失敗；補新候選尚未由CI提供的Windows、真Assistant／bounded及
+  required catalog證據，再独立核對交付。不能只用product tree相同豁免已約定exact-source
+  門檻，不另跑CI已提供的等價本機全套。Source凍結後進度存於既有ignored驗證報告，
+  不為每次進度再移動候選；手測及merge仍分別等待使用者明確確認。
 
 ### 目標、基線與文件分工
 

@@ -105,7 +105,18 @@ decision fields接合既有dialog，不恢復suggestions路徑。
 Windows focused 100 tests、實際題庫的題目／答案保留核對及獨立 review 通過。
 正式來源及版本見[研究規格](validation/thesis_protocol.md)；指定舊題庫時仍原樣複製，不隱式刪欄。
 
+目前量測腳本將啟動／暖機的UI觀測留在condition輸出，實際開始題目才建立case目錄。
+因此啟動失敗且cleanup已認證時，不會由預先占用的空case目錄阻擋同source缺題續跑；
+已開始／未知目錄、未認證cleanup及有效錯答的保護不放寬。原失敗condition證據保留，
+source或配置改變仍須另開run，不能用新程式接續舊版結果。此修理的整合驗收由Now擁有，
+不表示137五模型量測已通過。
+
 ### Linux 封存包與 evaluator 工程驗證（2026-09-23）
+
+2026-09-26使用者更正後續獲分配的工作站為137（`ws-4090-03`），不是134。
+本節及下方2026-09-22預檢均保留實際執行於134的歷史身分，不代表137驗收。
+137可讀共用NAS的既有環境／模型／工程包；實際GPU及模型驗證進度由
+[Now](planning/now.md#integrated-functional-acceptance)擁有。
 
 封存量測來源為 clean `b42cd81ee874d3054f5e1b1f69c045eb1bcf0157`，實際包位於
 `hxin@140.113.193.134:/mnt/home/2025/hxin/XBrainLab-experiments/engineering/工程 smoke b42cd81e`。

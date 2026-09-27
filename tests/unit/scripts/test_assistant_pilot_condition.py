@@ -2,6 +2,7 @@
 
 import copy
 import os
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -55,9 +56,8 @@ def test_condition_accepts_distinct_cases_with_one_runtime_identity():
     validate_condition_request(condition_request())
 
 
-def test_condition_warmup_uses_owned_engine_and_isolates_real_capture(
-    qtbot, monkeypatch, tmp_path
-):
+@pytest.fixture
+def controlled_condition_runtime(monkeypatch):
     import transformers
 
     from scripts.dev import assistant_pilot_condition as condition
@@ -73,14 +73,19 @@ def test_condition_warmup_uses_owned_engine_and_isolates_real_capture(
     from XBrainLab.llm.agent import controller, worker
     from XBrainLab.llm.core.backends import local
     from XBrainLab.llm.core.config import LLMConfig
-    from XBrainLab.llm.core.generation import (
-        GenerationProfile,
-        ResolvedGenerationOptions,
-    )
+    from XBrainLab.llm.core.generation import ResolvedGenerationOptions
 
     engines = []
+    control = {"engines": engines, "load_error": False}
 
     class CapturingEngine(_ControlledEngine):
+        def load_model(self):
+            if control["load_error"]:
+                self.load_started.set()
+                self.load_calls += 1
+                raise RuntimeError("Injected external model load failure")
+            super().load_model()
+
         def generate_stream(self, messages, *, profile):
             self.generated_messages.append(messages)
             self.generated_profiles.append(profile)
@@ -106,10 +111,19 @@ def test_condition_warmup_uses_owned_engine_and_isolates_real_capture(
         transformers, "TextIteratorStreamer", lambda *_a, **_k: _Streamer()
     )
     monkeypatch.setattr(local, "Thread", _ImmediateThread)
+    return control
+
+
+def test_condition_warmup_uses_owned_engine_and_isolates_real_capture(
+    qtbot, tmp_path, controlled_condition_runtime
+):
+    from XBrainLab.llm.core.generation import GenerationProfile
+
+    engines = controlled_condition_runtime["engines"]
     session = PilotConditionSession.__new__(PilotConditionSession)
     with patch.dict(os.environ):
         try:
-            session.__init__(request(), tmp_path, tmp_path / "first")
+            session.__init__(request(), tmp_path)
             assert len(engines) == 1
             assert engines[0].load_calls == 1
             assert engines[0].generated_messages == [
@@ -127,9 +141,130 @@ def test_condition_warmup_uses_owned_engine_and_isolates_real_capture(
             assert (captures[0].parent / "raw-output.txt").read_text() == "raw output"
             assert session.case_index == 0
             assert not session.runtime.turn_in_flight
+            assert not (tmp_path / "first").exists()
+            startup_capture = Path(session.driver._screenshot(session.window))
+            assert startup_capture.parent == tmp_path / "ui"
+            startup_bytes = startup_capture.read_bytes()
+            first = tmp_path / "first"
+            boundary = session._begin_case(request(), first)
+            assert boundary["runtime_reused"] is False
+            first_capture = Path(session.driver._screenshot(session.window))
+            assert first_capture.parent == first / "ui"
+            first_bytes = first_capture.read_bytes()
+            session.case_index = 1
+            second = tmp_path / "second"
+            boundary = session._begin_case(request(), second)
+            assert boundary["runtime_reused"] is True
+            second_capture = Path(session.driver._screenshot(session.window))
+            assert second_capture.parent == second / "ui"
+            assert startup_capture.read_bytes() == startup_bytes
+            assert first_capture.read_bytes() == first_bytes
+            assert len(list(session.prompt_root.glob("*/*/metadata.json"))) == 1
         finally:
             assert session.close()
     assert engines[0].close_called.is_set()
+
+
+@pytest.mark.parametrize("failure", ["load_error", "startup_timeout"])
+def test_unstarted_condition_cleanup_leaves_case_resumable(
+    qtbot, monkeypatch, tmp_path, controlled_condition_runtime, failure
+):
+    from scripts.dev import assistant_pilot_condition as condition
+    from scripts.dev import run_assistant_pilot as runner
+
+    payload = condition_request()
+    payload["jobs"] = payload["jobs"][:1]
+    job = payload["jobs"][0]
+    cases = tmp_path / "cases"
+    cases.mkdir()
+    failed_output = tmp_path / "failed-condition"
+    control = controlled_condition_runtime
+    control["load_error"] = failure == "load_error"
+    real_wait = PilotConditionSession.wait_until
+
+    def startup_deadline(session, predicate, seconds):
+        if seconds == 180:
+            qtbot.waitUntil(
+                lambda: bool(control["engines"])
+                and control["engines"][0].load_started.is_set()
+            )
+            raise TimeoutError("Injected elapsed startup deadline")
+        return real_wait(session, predicate, seconds)
+
+    with patch.dict(os.environ):
+        with monkeypatch.context() as failing_start:
+            if failure == "startup_timeout":
+                failing_start.setattr(
+                    PilotConditionSession, "wait_until", startup_deadline
+                )
+            result = condition.run_condition(payload, cases, failed_output)
+        assert result["status"] == "measurement_failed"
+        assert result["results"] == []
+        assert result["cleanup_ok"] is True
+        assert result["error_type"] == (
+            "RuntimeError" if failure == "load_error" else "TimeoutError"
+        )
+        assert control["engines"][0].close_called.is_set()
+        preserved_failure = (failed_output / "result.json").read_bytes()
+        assert not (cases / job["id"]).exists()
+        records = [
+            {"event": "condition_end", "cleanup_certified": True},
+            {"event": "session_end", "cleanup_certified": True},
+        ]
+        pending, invalid = runner._dev_pending_jobs([job], records, tmp_path, False)
+        assert not invalid and [item["id"] for item in pending] == [job["id"]]
+
+        control["load_error"] = False
+        resumed_output = tmp_path / "resumed-condition"
+        resumed_output.mkdir()
+        session = PilotConditionSession.__new__(PilotConditionSession)
+        try:
+            session.__init__(job["payload"], resumed_output)
+            boundary = session._begin_case(job["payload"], cases / job["id"])
+            assert boundary["runtime_reused"] is False
+            assert (cases / job["id"] / "ui").is_dir()
+        finally:
+            assert session.close()
+        assert control["engines"][-1].close_called.is_set()
+        assert (failed_output / "result.json").read_bytes() == preserved_failure
+
+
+def test_pending_jobs_rejects_unknown_case_directory_without_removing_it(tmp_path):
+    from scripts.dev import run_assistant_pilot as runner
+
+    job = condition_request()["jobs"][0]
+    unknown = tmp_path / "cases" / job["id"]
+    unknown.mkdir(parents=True)
+    marker = unknown / "unknown-partial.txt"
+    marker.write_text("preserve this unclassified evidence")
+    with pytest.raises(ValueError, match="Unresolved case directory"):
+        runner._dev_pending_jobs([job], [], tmp_path, False)
+    assert marker.read_text() == "preserve this unclassified evidence"
+
+
+def test_condition_rejects_existing_first_case_without_overwriting_evidence(
+    qtbot, tmp_path, controlled_condition_runtime
+):
+    from scripts.dev import assistant_pilot_condition as condition
+
+    payload = condition_request()
+    first = tmp_path / "cases" / payload["jobs"][0]["id"]
+    first.mkdir(parents=True)
+    result_path = first / "result.json"
+    original = b'{"status":"recorded","correct":false,"cleanup_ok":true}'
+    result_path.write_bytes(original)
+    with patch.dict(os.environ):
+        result = condition.run_condition(
+            payload, tmp_path / "cases", tmp_path / "condition"
+        )
+    assert result["status"] == "measurement_failed"
+    assert result["error_type"] == "FileExistsError"
+    assert result["results"] == [] and result["cleanup_ok"] is True
+    assert result_path.read_bytes() == original
+    assert not (first / "ui").exists()
+    engine = controlled_condition_runtime["engines"][0]
+    assert len(engine.generated_messages) == 1  # Warm-up only, no case resubmission.
+    assert engine.close_called.is_set()
 
 
 def test_condition_cannot_mix_candidates_even_with_the_same_model_and_repeat():
@@ -285,6 +420,7 @@ def test_first_case_boundary_records_product_string_pipeline_stage(tmp_path):
         current=SimpleNamespace(model_id="google/gemma-3-4b-it")
     )
     session.manager = SimpleNamespace(agent_controller=SimpleNamespace(history=[]))
+    session.driver = SimpleNamespace(begin_case=lambda path: path.mkdir())
     output = tmp_path / "case"
-    output.mkdir()
     assert session._begin_case({}, output)["pipeline_stage"] == "empty"
+    assert (output / "ui").is_dir()
