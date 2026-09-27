@@ -107,6 +107,7 @@ def _make_panel_mock():
     p.main_window = QMainWindow()
     p.update_panel = MagicMock()
     p.import_is_finishing.return_value = False
+    p.action_handler._data_interpretation.is_busy = False
     return p
 
 
@@ -172,6 +173,7 @@ class TestPreprocessSidebar:
         ):
             panel = _make_panel_mock()
             panel.action_handler = MagicMock()
+            panel.action_handler._data_interpretation.is_busy = False
             sidebar = sidebar_class(panel)
             qtbot.addWidget(sidebar)
             sidebars.append(sidebar)
@@ -2958,6 +2960,7 @@ class TestDatasetSidebar:
 
         panel = _make_panel_mock()
         panel.action_handler = MagicMock()
+        panel.action_handler._data_interpretation.is_busy = False
         sb = DatasetSidebar(panel)
         qtbot.addWidget(sb)
         return sb

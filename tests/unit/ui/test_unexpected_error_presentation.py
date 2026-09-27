@@ -668,6 +668,7 @@ def test_dataset_sidebar_electrode_layout_exception_returns_stable_outcome(
     from XBrainLab.ui.panels.dataset import sidebar as dataset_sidebar
 
     panel = MagicMock()
+    panel.action_handler._data_interpretation.is_busy = False
     panel.main_window = QMainWindow()
     qtbot.addWidget(panel.main_window)
     sidebar = dataset_sidebar.DatasetSidebar(panel)

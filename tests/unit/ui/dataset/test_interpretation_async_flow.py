@@ -98,35 +98,37 @@ class _InterpretationReviewRuntime:
         return self.review
 
 
-def test_interpretation_busy_surface_keeps_visible_cancel_enabled(qtbot) -> None:
+@pytest.mark.parametrize("table_enabled", [True, False])
+def test_interpretation_busy_surface_keeps_visible_cancel_enabled(
+    qtbot, table_enabled: bool
+) -> None:
     """A cancellable Apply cannot disable its own visible product control."""
-    panel = QWidget()
-    qtbot.addWidget(panel)
-    cancel = QPushButton("Cancel Import", panel)
-    import_bids = QPushButton("Import BIDS", panel)
-    reset = QPushButton("Reset Session", panel)
-    panel.table = QWidget(panel)
-    panel.sidebar = SimpleNamespace(
-        import_cancel_btn=cancel,
-        _action_buttons=(import_bids, cancel, reset),
-    )
-    handler = DatasetActionHandler(panel)
-    coordinator = handler._data_interpretation
+    from tests.integration.ui.data_import_wizard_harness import build_dataset_panel
 
-    coordinator.set_busy(True)
+    _host, panel, runtime = build_dataset_panel(qtbot)
+    coordinator = panel.action_handler._data_interpretation
+    cancel = panel.sidebar.import_cancel_btn
+    cancel.setEnabled(True)
+    panel.table.setEnabled(table_enabled)
+    try:
+        coordinator.set_busy(True)
+        coordinator.set_busy(True)
+        assert coordinator.is_busy
+        assert panel.isEnabled()
+        assert not panel.sidebar.import_btn.isEnabled()
+        assert not panel.table.isEnabled()
+        assert cancel.isEnabled()
 
-    assert panel.isEnabled()
-    assert import_bids.isEnabled() is False
-    assert reset.isEnabled() is False
-    assert panel.table.isEnabled() is False
-    assert cancel.isEnabled() is True
-
-    coordinator.set_busy(False)
-
-    assert import_bids.isEnabled() is True
-    assert reset.isEnabled() is True
-    assert panel.table.isEnabled() is True
-    assert cancel.isEnabled() is True
+        coordinator.set_busy(False)
+        coordinator.set_busy(False)
+        assert not coordinator.is_busy
+        assert panel.sidebar.import_btn.isEnabled()
+        assert not panel.sidebar.chan_select_btn.isEnabled()
+        assert panel.table.isEnabled() is table_enabled
+        assert cancel.isEnabled()
+    finally:
+        coordinator.set_busy(False)
+        runtime.close()
 
 
 def test_catalog_scan_publishes_owned_status_before_worker_is_scheduled(
@@ -138,7 +140,9 @@ def test_catalog_scan_publishes_owned_status_before_worker_is_scheduled(
     panel = QWidget(window)
     cancel = QPushButton("Cancel Import", panel)
     cast(Any, panel).main_window = window
-    cast(Any, panel).sidebar = SimpleNamespace(import_cancel_btn=cancel)
+    cast(Any, panel).sidebar = SimpleNamespace(
+        import_cancel_btn=cancel, update_sidebar=lambda: None
+    )
     cast(Any, panel).set_busy = lambda _busy: None
     qtbot.addWidget(window)
     window.show()
@@ -1040,6 +1044,7 @@ def _visible_apply_handler(qtbot):
     cast(Any, panel).sidebar = SimpleNamespace(
         import_cancel_btn=cancel,
         _action_buttons=(),
+        update_sidebar=lambda: None,
     )
     cast(Any, panel).set_busy = lambda _busy: None
     qtbot.addWidget(window)
@@ -2302,7 +2307,9 @@ def test_repreview_cancelled_worker_queues_exact_match_labels_reopen(
     window.show()
     cast(Any, panel).study = Study()
     cast(Any, panel).main_window = window
-    cast(Any, panel).sidebar = SimpleNamespace(import_cancel_btn=cancel)
+    cast(Any, panel).sidebar = SimpleNamespace(
+        import_cancel_btn=cancel, update_sidebar=lambda: None
+    )
     cast(Any, panel).set_busy = lambda _busy: None
     handler = DatasetActionHandler(panel)
     coordinator = handler._data_interpretation
