@@ -975,6 +975,30 @@
     "expected_tool_calls": [{"tool_name": "compute_saliency", "parameters": {}}]
   },
   {
+    "id": "apply_bandpass_filter_09",
+    "category": "preprocess",
+    "input": "Briefly explain bandpass filtering, then apply a bandpass from 2 to 35 Hz.",
+    "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 2, "high_freq": 35}}]
+  },
+  {
+    "id": "apply_notch_filter_09",
+    "category": "preprocess",
+    "input": "Why is a notch filter used for mains interference? Please also apply a 60 Hz notch filter.",
+    "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 60}}]
+  },
+  {
+    "id": "resample_data_08",
+    "category": "preprocess",
+    "input": "I would like to understand resampling. Resample the EEG to 200 Hz as well.",
+    "expected_tool_calls": [{"tool_name": "resample_data", "parameters": {"rate": 200}}]
+  },
+  {
+    "id": "normalize_data_08",
+    "category": "preprocess",
+    "input": "Tell me what min-max normalization does, and normalize the EEG with min-max.",
+    "expected_tool_calls": [{"tool_name": "normalize_data", "parameters": {"method": "min-max"}}]
+  },
+  {
     "id": "respond_concept_01",
     "category": "response_concept",
     "input": "What is the difference between a bandpass filter and a notch filter?",

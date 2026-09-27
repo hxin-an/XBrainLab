@@ -24,8 +24,8 @@ class RAGConfig:
     )
 
     GOLD_SET_SHA256 = (
-        "4fd337a4dfbb2bca8bef019f74d4d43f"  # pragma: allowlist secret
-        "d97c7964f8073518a16fe83538c8e04c"  # pragma: allowlist secret
+        "ebff58958f034332d272091809ab68bee"  # pragma: allowlist secret
+        "9eac8ee50785ff9a35f9fda737ca59a"  # pragma: allowlist secret
     )
     INDEX_SCHEMA_VERSION = 2
     VECTOR_SIZE = 384

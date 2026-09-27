@@ -42,6 +42,9 @@ corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測
   lifecycle保護。各slice記錄實際production +/-/net，不以LOC證明品質；小commit可回退。
 - 原gate不降低，不新增錯誤開窗／confirmation／execution，不注入不可用action。若合適示範
   已提供但model仍錯，定位責任，不無限增例；若無可辨識RAG收益，不宣稱效果已證實。
+- 正向選擇已有36/36的工程基準，不以顯著增分作為整理有價值或結案的必要條件。
+  分別評估既有能力不退步、混合／不操作要求、檢索資格與生命週期正確性，以及移除分流
+  規則後的可讀性和維護成本；架構整理價值不等於已證明準確率提升，新回歸仍須處置。
 - 完成獨立覆核及同版本適用驗證後，開Windows程式＋一個PowerShell log，附重啟指令，
   一次集中手測。Pending CI、commit或compaction不是停止理由；merge另待明確批准。
 - **進度／Next**：原main retrieval34/36，81題真模型原始輸出已保留（非全對）；
@@ -64,6 +67,15 @@ corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測
   PR #149 CI發現partial(custom兩參數target, hybrid_alpha)型別不符，及三個security fixture
   仍用retired get_dataset_info或缺少decision。修為explicit product-target binding、提前拒絕
   不支援的custom+alpha組合；fixture改合法response並保留原攻擊／隱私斷言。隨後同head重驗。
+- **bce55990內容覆核**：hybrid／dense／off各105題完成；原81題皆維持同樣結果，
+  paired hybrid／dense first22、final22，off first21、final22。逐題揭露交換：RAG修正
+  禁止開training settings，卻新增「說明再normalize」只說明未操作；兩邊都仍誤解模糊import
+  指涉。Evaluator的舊output_format標籤在這個normalize案例實為合法response選錯語意，
+  不可宣稱JSON壞掉或Host擋住了模糊import（harness只抑制實際副作用）。
+  獨立審查確認117個action示範完全沒有說明＋明確執行的類型；最後有界補齊4筆獨立
+  bandpass／notch／resample／min-max例，145筆上限（121操作／24回應）。Author未讀probes／
+  輸出，參數直述，不新增router／回合／tool。只承諾選對既有單一action，不宣稱同時完整解說。
+  Next重凍結、整批三條件與原gate比較；若合適例已取回仍錯，定位prompt／model，不再加同義句。
 
 ## Context — 單一 main 基線先穩定，再分產品與實驗兩線
 
