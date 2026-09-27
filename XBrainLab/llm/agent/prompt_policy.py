@@ -55,7 +55,6 @@ class StrictToolResponsePromptPolicy:
 
     def decision_instructions(
         self,
-        workflow_stage: str = "<exact backend workflow_stage>",
         *,
         include_preprocessing_guidance: bool = True,
     ) -> str:
@@ -107,14 +106,12 @@ class StrictToolResponsePromptPolicy:
             "8. Never claim that an action completed unless a trusted tool result "
             "confirms completion. A proposed call is not a completed action.\n"
             "9. Return exactly one DECISION ENVELOPE. The root object must contain "
-            "exactly workflow_stage, tool_name, and parameters, with no other "
-            "top-level fields. Copy workflow_stage as "
-            + workflow_stage
-            + ". Never wrap it in tool-call, tool_call, action, or function. For "
+            "exactly tool_name and parameters, with no other "
+            "top-level fields. Never wrap it in tool-call, tool_call, action, or "
+            "function. For "
             "respond_to_user use parameters containing only message, except the "
             "typed pending_action and "
-            "missing_inputs shape in rule 3. workflow_stage acknowledges the backend "
-            "publication; it does not grant permission.\n"
+            "missing_inputs shape in rule 3.\n"
             "The first non-whitespace character must be { and the last must be }. "
             "Never use a Markdown code fence or prose outside the object."
         )
@@ -125,13 +122,12 @@ class StrictToolResponsePromptPolicy:
             "FORMAT CORRECTION REQUIRED. Re-evaluate the original latest user "
             "request against the backend workflow stage and published tools. Return "
             "exactly one JSON object. The root object must be exactly "
-            '{"workflow_stage":"<exact backend workflow_stage>",'
-            '"tool_name":"<name>","parameters":{...}}. '
+            '{"tool_name":"<name>","parameters":{...}}. '
             "Use an exact enabled tool with only its supported parameters, or "
             "respond_to_user with parameters containing only message, or the typed "
             "pending_action and "
             "missing_inputs clarification shape for an exact direct preprocessing "
-            "action. Copy workflow_stage exactly. Add no prose or code fence: "
+            "action. Add no prose or code fence: "
             "begin with { and end with }. Never wrap it in tool-call, tool_call, "
             "action, or function. "
             "Never add wrappers, aliases, or Host-inferred values, and "

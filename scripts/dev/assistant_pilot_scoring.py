@@ -2,7 +2,7 @@
 
 Consumes a normalized non-Test bank case and one *actual* model response.
 It does not generate responses, infer side effects or certify product outcomes.
-Legacy synthetic calibration and frozen acceptance scoring remain unchanged.
+Case semantics remain frozen; model envelopes follow the current product contract.
 """
 
 from __future__ import annotations
@@ -90,7 +90,6 @@ def score_decision(
         "correct": False,
         "reason": "missing_response",
         "observed_tool": None,
-        "observed_stage": None,
     }
     actual_parameters = None
 
@@ -101,8 +100,6 @@ def score_decision(
             if reason in {"missing_response", "invalid_envelope"}:
                 mismatches.append(reason)
             else:
-                if result["observed_stage"] != stage:
-                    mismatches.append("workflow_stage")
                 if result["observed_tool"] != tool:
                     mismatches.append("tool")
                 if (
@@ -118,13 +115,12 @@ def score_decision(
                 ):
                     mismatches.append("parameters")
             scored["explanation"] = {
+                "expected_backend_workflow_stage": stage,
                 "expected": {
-                    "workflow_stage": stage,
                     "tool": tool,
                     "parameters": expected,
                 },
                 "observed": {
-                    "workflow_stage": result["observed_stage"],
                     "tool": result["observed_tool"],
                     "parameters": actual_parameters,
                 },
@@ -135,7 +131,6 @@ def score_decision(
     if not isinstance(response, str) or not response.strip():
         return finish("missing_response")
     parsed = CommandParser.parse_product(response)
-    result["observed_stage"] = parsed.workflow_stage
     if parsed.status not in {ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL}:
         return finish("invalid_envelope")
     if parsed.status is ToolEnvelopeStatus.NO_TOOL:
@@ -150,17 +145,12 @@ def score_decision(
             )
         ):
             return finish("invalid_envelope")
-        correct = (
-            category != "Action"
-            and parsed.workflow_stage == stage
-            and bool(parsed.message.strip())
-        )
+        correct = category != "Action" and bool(parsed.message.strip())
     else:
         actual_tool, actual_parameters = parsed.commands[0]
         result["observed_tool"] = actual_tool
         correct = (
             category == "Action"
-            and parsed.workflow_stage == stage
             and actual_tool == tool
             and validator.validate(actual_tool, actual_parameters).is_valid
             and _same_parameters(actual_parameters, expected)
@@ -273,7 +263,6 @@ def score_case_decisions(
                     "correct": False,
                     "reason": "model_error" if phase == "error" else "cancelled",
                     "observed_tool": None,
-                    "observed_stage": None,
                 }
             )
             attempts.append({"generation_id": identity, **result})
@@ -309,12 +298,12 @@ def score_case_decisions(
     return {
         **(
             {
-                "scorer_schema": "xbrainlab.assistant_decision_scores.v2",
                 "max_format_recovery_attempts": recovery_limit,
             }
             if max_format_recovery_attempts is not None
             else {}
         ),
+        "scorer_schema": "xbrainlab.assistant_decision_scores.v3",
         "measurement_valid": valid,
         "measurement_issues": list(dict.fromkeys(issues)),
         "execution_status": status,

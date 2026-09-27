@@ -86,8 +86,7 @@ def test_real_command_boundary_excludes_operation_and_late_poll_time(
         _release_initial_load(qtbot, harness)
         _load_tiny_raw_via_command_spine(harness.study, tmp_path)
         harness.engine.generation_output = (
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-            '"parameters":{"rate":64}}'
+            '{"tool_name":"resample_data","parameters":{"rate":64}}'
         )
         clock = [1_000_000_000]
 

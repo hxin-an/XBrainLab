@@ -1106,7 +1106,6 @@ class TestOnGenerationFinished:
         ctrl._turn_orchestrator.active_publication = PromptToolPublication.empty()
         ctrl.current_response = json.dumps(
             {
-                "workflow_stage": "unavailable",
                 "tool_name": "respond_to_user",
                 "parameters": {"message": "Just a regular reply, nothing special"},
             }
@@ -1131,7 +1130,6 @@ class TestOnGenerationFinished:
         ctrl._turn_orchestrator.active_publication = PromptToolPublication.empty()
         ctrl.current_response = json.dumps(
             {
-                "workflow_stage": "unavailable",
                 "tool_name": "respond_to_user",
                 "parameters": {"message": response_text},
             }
@@ -1149,7 +1147,7 @@ class TestOnGenerationFinished:
 
         ctrl._turn_orchestrator.active_publication = PromptToolPublication.empty()
         ctrl.current_response = (
-            '{"workflow_stage":"unavailable","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{'
             '"message":"Load EEG data before training."}}'
         )
@@ -1178,7 +1176,7 @@ class TestOnGenerationFinished:
             "required": ["low_freq", "high_freq"],
         }
         ctrl.current_response = (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"What low and high cutoffs should I use?",'
             '"pending_action":"apply_bandpass_filter",'
             '"missing_inputs":["low_freq"]}}'
@@ -1206,7 +1204,7 @@ class TestOnGenerationFinished:
             "required": ["rate"],
         }
         ctrl.current_response = (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"What resampling rate should I use?",'
             '"pending_action":"resample_data","missing_inputs":["rate"]}}'
         )
@@ -1384,7 +1382,7 @@ class TestOnGenerationFinished:
             "required": ["low_freq", "high_freq"],
         }
         ctrl.current_response = (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"What value should I use?",'
             '"pending_action":"apply_bandpass_filter",'
             '"missing_inputs":["unknown"]}}'
@@ -1436,8 +1434,7 @@ class TestOnGenerationFinished:
             backend_generation=17,
         )
         ctrl.current_response = (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
-            '"parameters":{"message":"Cancelled."}}'
+            '{"tool_name":"respond_to_user","parameters":{"message":"Cancelled."}}'
         )
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 123
@@ -1471,7 +1468,7 @@ class TestOnGenerationFinished:
         assert ctrl.pending_interactions.active_tool_input is None
         ctrl._execute_tool_attempt.assert_not_called()
 
-    def test_wrong_workflow_stage_retries_without_executing_or_presenting(self, ctrl):
+    def test_retired_workflow_stage_field_retries_without_presenting(self, ctrl):
         from XBrainLab.llm.agent.assembler import PromptToolPublication
 
         ctrl._turn_orchestrator.active_publication = PromptToolPublication.empty()
@@ -1577,7 +1574,7 @@ class TestOnGenerationFinished:
         self,
         ctrl,
     ):
-        malformed = '```json\n{"tool_name":"query_state","parameters":{}}\n```'
+        malformed = '```json\n{"tool_name":"query_state"}\n```'
         ctrl._generate_response = MagicMock()
         ctrl._process_tool_call = MagicMock()
         ctrl.is_processing = True
@@ -1614,7 +1611,7 @@ class TestOnGenerationFinished:
     @pytest.mark.parametrize(
         "response",
         [
-            '```json\n{"tool_name":"query_state","parameters":{}}\n```',
+            '```json\n{"tool_name":"query_state"}\n```',
             "query_state\nBlocked reasons: None.",
             '{"tool_name":"query_state","parameters":',
             '{"command":"query_state","parameters":{}}',
@@ -2921,8 +2918,7 @@ class TestExecuteDebugTool:
 
         ctrl._process_tool_call(
             ("resample_data", {"rate": 128}),
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-            '"parameters":{"rate":128}}',
+            '{"tool_name":"resample_data","parameters":{"rate":128}}',
         )
 
         executed = ctrl._execute_tool_attempt.call_args.args[0]
@@ -3030,7 +3026,7 @@ class TestExecuteDebugTool:
 
         ctrl._process_tool_call(
             ("import_eeg_data", {}),
-            '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}',
+            '{"tool_name":"import_eeg_data","parameters":{}}',
         )
 
         ctrl._execute_tool_attempt.assert_not_called()
@@ -3048,9 +3044,9 @@ class TestExecuteDebugTool:
             backend_generation=17,
         )
         ctrl.current_response = (
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+            '{"tool_name":"resample_data",'
             '"parameters":{"rate":128}}\n'
-            '{"workflow_stage":"data_loaded","tool_name":"apply_notch_filter",'
+            '{"tool_name":"apply_notch_filter",'
             '"parameters":{"freq":50}}'
         )
         ctrl.is_processing = True

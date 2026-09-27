@@ -40,7 +40,6 @@ from XBrainLab.llm.core.model_catalog import (
 )
 from XBrainLab.llm.tools.definitions.ui_control_def import BaseSwitchPanelTool
 
-_STRUCTURED_SMOKE_STAGE = "unavailable"
 _STRUCTURED_SMOKE_TOOL = "switch_panel"
 _STRUCTURED_SMOKE_PARAMETERS = {"panel_name": "dataset"}
 
@@ -320,8 +319,7 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
                         "role": "user",
                         "content": (
                             "The user asked to open the Dataset panel. Return exactly "
-                            '{"workflow_stage":"unavailable",'
-                            '"tool_name":"switch_panel",'
+                            '{"tool_name":"switch_panel",'
                             '"parameters":{"panel_name":"dataset"}}'
                         ),
                     },
@@ -357,7 +355,6 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
     target_matches = (
         _STRUCTURED_SMOKE_TOOL in model_tools
         and schema_result.is_valid
-        and envelope.workflow_stage == _STRUCTURED_SMOKE_STAGE
         and command_name == _STRUCTURED_SMOKE_TOOL
         and parameters == _STRUCTURED_SMOKE_PARAMETERS
     )

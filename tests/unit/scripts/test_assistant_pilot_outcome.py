@@ -245,7 +245,6 @@ def _rejected_typed_nonaction_trace():
             "```json\n"
             + json.dumps(
                 {
-                    "workflow_stage": "empty",
                     "tool_name": "respond_to_user",
                     "parameters": {
                         "message": "Load data first.",

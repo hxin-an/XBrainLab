@@ -313,7 +313,7 @@ def _case(
             )
             or result.get("seed") != 0
             or result.get("scores", {}).get("scorer_schema")
-            != "xbrainlab.assistant_decision_scores.v2"
+            != "xbrainlab.assistant_decision_scores.v3"
             or result.get("scores", {}).get("max_format_recovery_attempts")
             != experiment["max_format_recovery_attempts"]
         ):

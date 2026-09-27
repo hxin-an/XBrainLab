@@ -78,7 +78,6 @@ def test_generation_request_keeps_concept_question_on_strict_response_contract(
         messages[0]["content"].split("No-action envelope shape: ", 1)[1].splitlines()[0]
     )
     assert json.loads(example) == {
-        "workflow_stage": assembler.latest_tool_publication.workflow_stage,
         "tool_name": "respond_to_user",
         "parameters": {"message": "<answer or blocker explanation>"},
     }
@@ -509,7 +508,6 @@ def test_action_catalog_ends_with_one_short_output_reminder() -> None:
 
     contracts = assembler._format_tools(
         ["configure_training", "apply_bandpass_filter"],
-        workflow_stage="epoch_ready",
     )
 
     definitions = [
@@ -537,8 +535,7 @@ def test_action_catalog_ends_with_one_short_output_reminder() -> None:
 
     reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1]
     assert (
-        '{"workflow_stage":"epoch_ready","tool_name":"<exact enabled action '
-        'or respond_to_user>","parameters":{...}}'
+        '{"tool_name":"<exact enabled action or respond_to_user>","parameters":{...}}'
     ) in reminder
     assert "exact enabled action name or respond_to_user" in reminder
     assert "Add no prose outside the object" in reminder
@@ -552,7 +549,6 @@ def test_action_catalog_ends_with_action_first_reminder() -> None:
 
     contracts = assembler._format_tools(
         ["start_training"],
-        workflow_stage="epoch_ready",
     )
 
     assert contracts.rstrip().endswith(
@@ -1257,7 +1253,7 @@ def test_prompt_history_keeps_only_latest_visible_assistant_message() -> None:
         {
             "role": "assistant",
             "content": (
-                '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+                '{"tool_name":"respond_to_user",'
                 '"parameters":{"message":"internal action"}}'
             ),
         },
@@ -1791,7 +1787,7 @@ def test_assembler_does_not_replay_executed_action_envelopes_to_model() -> None:
         {
             "role": "internal",
             "content": (
-                '{"workflow_stage":"empty","tool_name":"scan_source","parameters":'
+                '{"tool_name":"scan_source","parameters":'
                 '{"source_path":"/data/S04.edf"}}'
             ),
         },
@@ -1819,8 +1815,8 @@ def test_assembler_does_not_replay_executed_action_envelopes_to_model() -> None:
             "Tool Output: is a literal label in your question.",
         ),
         (
-            '{"workflow_stage":"empty","tool_name":"switch_panel","parameters":{}}',
-            '{"workflow_stage":"empty","tool_name":"switch_panel","parameters":{}}',
+            '{"tool_name":"switch_panel","parameters":{}}',
+            '{"tool_name":"switch_panel","parameters":{}}',
         ),
     ],
 )

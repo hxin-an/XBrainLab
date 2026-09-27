@@ -29,10 +29,10 @@ def example(corpus, case_id):
     return copy.deepcopy(case), copy.deepcopy(observation)
 
 
-def response(tool="resample_data", parameters=None, stage="data_loaded"):
+def response(tool="resample_data", parameters=None, stage=None):
     return json.dumps(
         {
-            "workflow_stage": stage,
+            **({"workflow_stage": stage} if stage is not None else {}),
             "tool_name": tool,
             "parameters": {"rate": 128} if parameters is None else parameters,
         }
@@ -70,8 +70,7 @@ def test_checked_in_calibration_has_three_decisions_and_no_product_claim(corpus)
         response(parameters={}),
         "I will do it. " + response(),
         response() + response(),
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-        '"parameters":{"rate":128,"rate":64}}',
+        '{"tool_name":"resample_data","parameters":{"rate":128,"rate":64}}',
     ],
 )
 def test_wrong_raw_decision_is_not_rescued_by_correct_host_outcome(corpus, raw):

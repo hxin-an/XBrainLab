@@ -157,7 +157,7 @@ class TestStageBasedFiltering:
 
         assert (
             STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
-                "empty", include_preprocessing_guidance=False
+                include_preprocessing_guidance=False
             )
             in prompt
         )
@@ -260,9 +260,8 @@ class TestPromptContent:
         assert runtime_item["data"] == {"text": "RAG info"}
         assert runtime_item["source"] == {"kind": "assistant_runtime_context"}
 
-    def test_each_stage_acknowledges_its_exact_backend_value(self):
-        """Workflow state changes only the required stage acknowledgement."""
-        prompts = {}
+    def test_each_backend_stage_remains_in_context_not_model_output(self):
+        """The host supplies state; the model does not echo it in its decision."""
         for stage in PipelineStage:
             registry = ToolRegistry()
             with patch(
@@ -270,11 +269,18 @@ class TestPromptContent:
                 return_value=_prompt_policy_read(stage),
             ):
                 assembler = ContextAssembler(registry, Study())
-                prompt = assembler.build_system_prompt()
-            prompts[stage] = prompt
-        assert len(set(prompts.values())) == len(PipelineStage)
-        for stage, prompt in prompts.items():
-            assert f'"workflow_stage":"{stage.value}"' in prompt
+                messages = assembler.get_messages(
+                    [{"role": "user", "content": "Explain the current state."}]
+                )
+            context = json.loads(messages[1]["content"])
+            state_card = next(
+                item["data"]
+                for item in context["items"]
+                if item["type"] == "state_card"
+            )
+            assert state_card["workflow_stage"] == stage.value
+            assert assembler.latest_tool_publication.workflow_stage == stage.value
+            assert '"workflow_stage":' not in messages[0]["content"]
 
     def test_rule_6_only_listed_tools(self):
         """Prompt instructs LLM not to call unlisted tools."""

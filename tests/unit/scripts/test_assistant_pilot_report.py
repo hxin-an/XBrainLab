@@ -292,7 +292,7 @@ def _experiment_run(tmp_path):
             **identity, experiment=experiment, seed=0, case=case, case_id=job["case_id"]
         )
         result["scores"].update(
-            scorer_schema="xbrainlab.assistant_decision_scores.v2",
+            scorer_schema="xbrainlab.assistant_decision_scores.v3",
             max_format_recovery_attempts=1,
             first_decision_correct=job["repeat"] == 0,
             final_decision_correct=job["repeat"] != 1,
@@ -435,9 +435,17 @@ def test_experiment_report_keeps_repeat_and_candidate_denominators_separate(tmp_
     }
 
 
-def test_experiment_report_rejects_cross_repeat_saved_identity(tmp_path):
+@pytest.mark.parametrize("damage", ["cross_repeat", "old_three_field_scorer"])
+def test_experiment_report_rejects_incompatible_saved_identity(tmp_path, damage):
     root = _experiment_run(tmp_path)
-    _change_result(root, lambda result: result.update(repeat=2), index=0)
+
+    def mutate(result):
+        if damage == "cross_repeat":
+            result.update(repeat=2)
+        else:
+            result["scores"]["scorer_schema"] = "xbrainlab.assistant_decision_scores.v2"
+
+    _change_result(root, mutate, index=0)
     result = report.build_report(root)
     assert result["cases"][0]["decision_valid"] is False
     assert result["complete_selected_schedule"] is False

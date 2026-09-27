@@ -75,11 +75,8 @@ def test_prompt_policy_makes_the_action_root_shape_unambiguous() -> None:
     decision = policy.decision_instructions().lower()
     recovery = policy.recovery_instructions().lower()
 
-    assert (
-        "root object must contain exactly workflow_stage, tool_name, and parameters"
-        in decision
-    )
-    assert 'root object must be exactly {"workflow_stage":' in recovery
+    assert "root object must contain exactly tool_name and parameters" in decision
+    assert 'root object must be exactly {"tool_name":' in recovery
     for prompt in (decision, recovery):
         assert "never wrap it in tool-call, tool_call, action, or function" in prompt
         assert "tool-call branch" not in prompt

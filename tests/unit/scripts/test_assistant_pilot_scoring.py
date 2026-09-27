@@ -20,10 +20,10 @@ def case(decision="Action", tool="resample_data", parameters=None):
     }
 
 
-def response(tool="resample_data", parameters=None, stage="data_loaded"):
+def response(tool="resample_data", parameters=None, stage=None):
     return json.dumps(
         {
-            "workflow_stage": stage,
+            **({"workflow_stage": stage} if stage is not None else {}),
             "tool_name": tool,
             "parameters": {"rate": 128} if parameters is None else parameters,
         }
@@ -35,6 +35,15 @@ def non_action(decision):
         **case(decision, "respond_to_user"),
         "expected_parameters": None,
     }
+
+
+def test_two_field_output_scores_without_fabricating_model_stage():
+    raw = '{"tool_name":"resample_data","parameters":{"rate":128}}'
+    scored = score_decision(case(), raw, explain=True)
+    assert scored["correct"] is True
+    assert "observed_stage" not in scored
+    assert "workflow_stage" not in scored["explanation"]["observed"]
+    assert scored["explanation"]["expected_backend_workflow_stage"] == "data_loaded"
 
 
 def test_numeric_values_match_without_coercing_strings_or_booleans():
@@ -99,10 +108,8 @@ def test_string_enum_parameters_match_exactly_without_normalization():
         response(tool="unknown_tool"),
         "Some explanation " + response(),
         response() + response(),
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-        '"parameters":{"rate":128,"rate":64}}',
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-        '"parameters":{"rate":NaN}}',
+        '{"tool_name":"resample_data","parameters":{"rate":128,"rate":64}}',
+        '{"tool_name":"resample_data","parameters":{"rate":NaN}}',
         "null",
         "[]",
         "",
@@ -138,7 +145,7 @@ def test_optional_structured_pending_is_not_a_new_semantic_oracle(decision):
     assert score_decision(non_action(decision), raw)["correct"] is True
 
 
-def test_unavailable_model_stage_is_wrong_decision_not_a_measurement_exception():
+def test_retired_stage_echo_is_invalid_not_a_measurement_exception():
     raw = response(
         "respond_to_user",
         {
@@ -150,7 +157,7 @@ def test_unavailable_model_stage_is_wrong_decision_not_a_measurement_exception()
     )
     score = score_decision(non_action("Clarification"), raw)
     assert score["correct"] is False
-    assert score["observed_stage"] == "unavailable"
+    assert score["reason"] == "invalid_envelope"
 
 
 @pytest.mark.parametrize(
@@ -191,7 +198,6 @@ def test_invalid_typed_metadata_never_passes_on_nonempty_message(
             "pending_action": pending,
             "missing_inputs": missing,
         },
-        stage=stage,
     )
     assert score_decision(oracle, raw)["reason"] == "invalid_envelope"
 
@@ -218,7 +224,6 @@ def test_typed_metadata_reuses_direct_schema_and_accepts_required_subset(
             "pending_action": pending,
             "missing_inputs": missing,
         },
-        stage=stage,
     )
     assert score_decision(oracle, raw)["correct"] is True
 
@@ -258,7 +263,7 @@ def test_opening_tool_decision_does_not_claim_window_or_operation_completion():
         response("import_eeg_data", {}),
     )
     assert result["correct"] is True
-    assert set(result) == {"correct", "reason", "observed_tool", "observed_stage"}
+    assert set(result) == {"correct", "reason", "observed_tool"}
 
 
 @pytest.mark.parametrize(
@@ -426,7 +431,7 @@ def test_frozen_repair_policy_controls_measured_generation_budget(limit):
     result = score_case_decisions(case(), trace, max_format_recovery_attempts=limit)
     assert result["measurement_valid"] is True
     assert result["final_decision_correct"] is True
-    assert result["scorer_schema"] == "xbrainlab.assistant_decision_scores.v2"
+    assert result["scorer_schema"] == "xbrainlab.assistant_decision_scores.v3"
     assert result["max_format_recovery_attempts"] == limit
     excess = score_case_decisions(
         case(),
@@ -450,7 +455,7 @@ def test_new_score_explains_parameter_mismatch_without_changing_legacy_decision(
     trace = complete_trace([response(parameters={"rate": 64})])
     legacy = score_case_decisions(case(), trace)
     current = score_case_decisions(case(), trace, max_format_recovery_attempts=1)
-    assert "scorer_schema" not in legacy
+    assert legacy["scorer_schema"] == "xbrainlab.assistant_decision_scores.v3"
     assert (
         current["first_decision_correct"] == legacy["first_decision_correct"] is False
     )

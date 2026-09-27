@@ -3,26 +3,39 @@ import pytest
 from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 
 
+def test_product_parser_accepts_two_fields_without_model_stage_echo():
+    result = CommandParser.parse_product(
+        '{"tool_name":"resample_data","parameters":{"sampling_rate":128}}'
+    )
+    assert result.status is ToolEnvelopeStatus.VALID
+    assert result.commands == (("resample_data", {"sampling_rate": 128}),)
+
+
+def test_product_parser_rejects_old_stage_echo_as_extra_field():
+    result = CommandParser.parse_product(
+        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+        '"parameters":{"sampling_rate":128}}'
+    )
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert result.commands == ()
+
+
 def test_product_parser_accepts_one_complete_strict_envelope():
     text = (
-        '  {"workflow_stage":"empty","tool_name":"import_eeg_data",'
+        '  {"tool_name":"import_eeg_data",'
         '"parameters":{"file_paths":["/data/A.gdf"]}}\n'
     )
 
     result = CommandParser.parse_product(text)
 
     assert result.status is ToolEnvelopeStatus.VALID
-    assert result.workflow_stage == "empty"
     assert result.commands == (("import_eeg_data", {"file_paths": ["/data/A.gdf"]}),)
     assert result.error == ""
 
 
 @pytest.mark.parametrize("opening", ["```json\n", "```\n", "```json\r\n"])
 def test_product_parser_accepts_only_one_whole_response_json_fence(opening):
-    envelope = (
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-        '"parameters":{"sampling_rate":128}}'
-    )
+    envelope = '{"tool_name":"resample_data","parameters":{"sampling_rate":128}}'
     raw = " \n" + opening + envelope + "\n```\n "
 
     result = CommandParser.parse_product(raw)
@@ -35,7 +48,7 @@ def test_product_parser_accepts_only_one_whole_response_json_fence(opening):
 
 def test_product_parser_preserves_fenced_response_message_and_embedded_backticks():
     envelope = (
-        '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"The literal marker ``` is data."}}'
     )
     result = CommandParser.parse_product("```json\n" + envelope + "\n```")
@@ -61,10 +74,7 @@ def test_product_parser_preserves_fenced_response_message_and_embedded_backticks
     ],
 )
 def test_product_parser_rejects_non_whole_or_non_json_fences(wrapper):
-    body = (
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-        '"parameters":{"sampling_rate":128}}'
-    )
+    body = '{"tool_name":"resample_data","parameters":{"sampling_rate":128}}'
     result = CommandParser.parse_product(wrapper.format(body=body))
     assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
     assert result.commands == ()
@@ -73,41 +83,41 @@ def test_product_parser_rejects_non_whole_or_non_json_fences(wrapper):
 @pytest.mark.parametrize(
     "body,error_fragment",
     [
-        ('{"tool_name":"resample_data","parameters":{}}', "exactly"),
+        ('{"tool_name":"resample_data"}', "exactly"),
         (
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{},"extra":true}',
+            '{"tool_name":"resample_data","parameters":{},"extra":true}',
             "exactly",
         ),
         (
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data","tool_name":"reset_preprocessing","parameters":{}}',
+            '{"tool_name":"resample_data","tool_name":"reset_preprocessing","parameters":{}}',
             "duplicate",
         ),
         (
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{"sampling_rate":128,"sampling_rate":256}}',
+            '{"tool_name":"resample_data","parameters":{"sampling_rate":128,"sampling_rate":256}}',
             "duplicate",
         ),
         (
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{"sampling_rate":NaN}}',
+            '{"tool_name":"resample_data","parameters":{"sampling_rate":NaN}}',
             "non-standard",
         ),
         (
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{"sampling_rate":Infinity}}',
+            '{"tool_name":"resample_data","parameters":{"sampling_rate":Infinity}}',
             "non-standard",
         ),
         (
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{"sampling_rate":-Infinity}}',
+            '{"tool_name":"resample_data","parameters":{"sampling_rate":-Infinity}}',
             "non-standard",
         ),
         (
-            '[{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{}}]',
+            '[{"tool_name":"resample_data","parameters":{}}]',
             "top-level object",
         ),
         (
             '{"workflow_stage":"invented","tool_name":"resample_data","parameters":{}}',
-            "workflow_stage",
+            "exactly",
         ),
         (
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":',
+            '{"tool_name":"resample_data","parameters":',
             "complete JSON",
         ),
     ],
@@ -120,20 +130,19 @@ def test_fence_normalization_preserves_strict_envelope_validation(body, error_fr
 
 
 def test_fenced_multiple_objects_remain_non_executable():
-    body = (
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-        '"parameters":{"sampling_rate":128}}'
-    )
+    body = '{"tool_name":"resample_data","parameters":{"sampling_rate":128}}'
     result = CommandParser.parse_product("```json\n" + body + "\n" + body + "\n```")
     assert result.status is ToolEnvelopeStatus.MULTIPLE_OBJECTS
     assert result.commands == ()
 
 
-def test_product_parser_classifies_adjacent_complete_objects_without_commands():
+@pytest.mark.parametrize("separator", ["", "\n"])
+def test_product_parser_classifies_adjacent_complete_objects_without_commands(
+    separator,
+):
     result = CommandParser.parse_product(
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-        '"parameters":{"rate":128}}\n'
-        '{"workflow_stage":"data_loaded","tool_name":"apply_notch_filter",'
+        '{"tool_name":"resample_data",'
+        '"parameters":{"rate":128}}' + separator + '{"tool_name":"apply_notch_filter",'
         '"parameters":{"freq":50}}'
     )
 
@@ -143,37 +152,35 @@ def test_product_parser_classifies_adjacent_complete_objects_without_commands():
 
 def test_product_parser_keeps_top_level_arrays_on_the_general_format_error_path():
     result = CommandParser.parse_product(
-        '[{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-        '"parameters":{"rate":128}}]'
+        '[{"tool_name":"resample_data","parameters":{"rate":128}}]'
     )
 
     assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
 
 
-def test_product_parser_rejects_the_retired_two_field_root():
+def test_product_parser_rejects_backend_context_in_model_output():
     result = CommandParser.parse_product(
-        '{"tool_name":"scan_source","parameters":{"source_path":"/data/A.gdf"}}'
+        '{"backend_generation":42,"tool_name":"import_eeg_data","parameters":{}}'
     )
 
     assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
-    assert "workflow_stage" in result.error
+    assert "exactly" in result.error
 
 
 def test_product_parser_accepts_message_only_response_contract():
     result = CommandParser.parse_product(
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"Load EEG data before training."}}'
     )
 
     assert result.status is ToolEnvelopeStatus.NO_TOOL
-    assert result.workflow_stage == "data_loaded"
     assert result.message == "Load EEG data before training."
     assert result.missing_inputs == ()
 
 
 def test_product_parser_accepts_typed_direct_clarification_response_contract():
     result = CommandParser.parse_product(
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"What cutoffs should I use?",'
         '"pending_action":"apply_bandpass_filter",'
         '"missing_inputs":["low_freq","high_freq"]}}'
@@ -186,7 +193,7 @@ def test_product_parser_accepts_typed_direct_clarification_response_contract():
 
 def test_product_parser_rejects_retired_response_decision_fields():
     result = CommandParser.parse_product(
-        '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"decision":"blocked","message":"Blocked."}}'
     )
 
@@ -204,7 +211,7 @@ def test_product_parser_rejects_tool_call_wrapper_even_when_inner_shape_is_valid
 
     assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
     assert result.commands == ()
-    assert "exactly workflow_stage, tool_name, and parameters" in result.error
+    assert "exactly tool_name and parameters" in result.error
 
 
 def test_product_parser_rejects_wrapped_respond_to_user_envelope():
@@ -231,7 +238,7 @@ def test_product_parser_rejects_plain_text_at_strict_action_boundary():
 
 def test_product_parser_preserves_model_owned_blocked_message():
     text = (
-        '{"workflow_stage":"empty","tool_name":"respond_to_user","parameters":{'
+        '{"tool_name":"respond_to_user","parameters":{'
         '"message":"Load EEG data before training."}}'
     )
 
@@ -239,14 +246,13 @@ def test_product_parser_preserves_model_owned_blocked_message():
 
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.commands == ()
-    assert result.workflow_stage == "empty"
     assert result.missing_inputs == ()
     assert result.message == "Load EEG data before training."
 
 
 def test_product_parser_preserves_model_owned_clarification_message():
     text = (
-        '{"workflow_stage":"empty","tool_name":"respond_to_user","parameters":{'
+        '{"tool_name":"respond_to_user","parameters":{'
         '"message":"Please provide the EEG source path."}}'
     )
 
@@ -254,14 +260,13 @@ def test_product_parser_preserves_model_owned_clarification_message():
 
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.commands == ()
-    assert result.workflow_stage == "empty"
     assert result.missing_inputs == ()
     assert result.message == "Please provide the EEG source path."
 
 
 def test_product_parser_preserves_model_owned_answer_message():
     text = (
-        '{"workflow_stage":"preprocessed","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{'
         '"message":"An epoch is a window around an event."}}'
     )
@@ -270,16 +275,12 @@ def test_product_parser_preserves_model_owned_answer_message():
 
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.commands == ()
-    assert result.workflow_stage == "preprocessed"
     assert result.missing_inputs == ()
     assert result.message == "An epoch is a window around an event."
 
 
 def test_product_parser_keeps_direct_tool_decision_compact():
-    text = (
-        '{"workflow_stage":"empty","tool_name":"scan_source",'
-        '"parameters":{"source_path":"/data/A.gdf"}}'
-    )
+    text = '{"tool_name":"scan_source","parameters":{"source_path":"/data/A.gdf"}}'
 
     result = CommandParser.parse_product(text)
 
@@ -352,7 +353,7 @@ def test_product_parser_rejects_parameter_explanation_at_action_boundary():
             "entire response",
         ),
         (
-            '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```',
+            '```json\n{"tool_name":"import_eeg_data"}\n```',
             "exactly",
         ),
         ("import_eeg_data\nBlocked reasons: None.", "JSON object"),
@@ -363,11 +364,6 @@ def test_product_parser_rejects_parameter_explanation_at_action_boundary():
         (
             '[{"tool_name":"get_dataset_info","parameters":{}}]',
             "top-level object",
-        ),
-        (
-            '{"tool_name":"query_state","parameters":{}}'
-            '{"tool_name":"query_state","parameters":{}}',
-            "complete JSON",
         ),
         (
             '{"command":"import_eeg_data","parameters":{}}',
@@ -394,7 +390,7 @@ def test_product_parser_rejects_parameter_explanation_at_action_boundary():
             "non-standard",
         ),
         (
-            '{"workflow_stage":"empty","tool_name":"none","parameters":{}}',
+            '{"tool_name":"none","parameters":{}}',
             "normal text",
         ),
         ("evaluate\nBlocked reasons: None.", "entire response"),
@@ -413,24 +409,22 @@ def test_product_parser_rejects_non_contract_tool_outputs(text, error_fragment):
     [
         (
             '{"workflow_stage":false,"tool_name":"import_eeg_data","parameters":{}}',
-            "workflow_stage must be an exact backend stage value.",
+            "An assistant action must be exactly tool_name and parameters.",
         ),
         (
-            '{"workflow_stage":"empty","tool_name":"","parameters":{}}',
+            '{"tool_name":"","parameters":{}}',
             "tool_name must be a non-empty string.",
         ),
         (
-            '{"workflow_stage":"empty","tool_name":42,"parameters":{}}',
+            '{"tool_name":42,"parameters":{}}',
             "tool_name must be a non-empty string.",
         ),
         (
-            '{"workflow_stage":"empty","tool_name":"import_eeg_data",'
-            '"parameters":null}',
+            '{"tool_name":"import_eeg_data","parameters":null}',
             "parameters must be a JSON object.",
         ),
         (
-            '{"workflow_stage":"empty","tool_name":"import_eeg_data",'
-            '"parameters":"{}"}',
+            '{"tool_name":"import_eeg_data","parameters":"{}"}',
             "parameters must be a JSON object.",
         ),
     ],

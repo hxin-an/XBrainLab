@@ -22,7 +22,7 @@ from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 from XBrainLab.llm.agent.verifier import ToolSchemaValidator
 from XBrainLab.llm.tools import get_all_tools
 
-SCHEMA = "xbrainlab.assistant_benchmark_calibration.v1"
+SCHEMA = "xbrainlab.assistant_benchmark_calibration.v2"
 DEFAULT_CASES = Path(__file__).with_name("assistant_benchmark_calibration_cases.json")
 LAYERS = ("raw", "agent", "outcome")
 _CASE_FIELDS = {
@@ -213,7 +213,7 @@ def _decision_score(
         if envelope.status is ToolEnvelopeStatus.VALID
         else ("clarification" if envelope.pending_action else "no_call")
     )
-    passed = decision == case["decision"] and envelope.workflow_stage == case["stage"]
+    passed = decision == case["decision"]
     if decision == "action":
         tool, parameters = envelope.commands[0]
         passed = (

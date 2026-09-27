@@ -250,11 +250,7 @@ def test_structured_smoke_accepts_only_the_product_tool_envelope():
         patch("scripts.dev.inspect_local_assistant_runtime.LLMEngine") as engine_type,
     ):
         engine_type.return_value.generate_stream.return_value = iter(
-            [
-                '{"workflow_stage":"unavailable",'
-                '"tool_name":"switch_panel",'
-                '"parameters":{"panel_name":"dataset"}}'
-            ]
+            ['{"tool_name":"switch_panel","parameters":{"panel_name":"dataset"}}']
         )
 
         result = run_structured_output_smoke(config)
@@ -266,24 +262,20 @@ def test_structured_smoke_accepts_only_the_product_tool_envelope():
 @pytest.mark.parametrize(
     "response",
     [
-        ('{"workflow_stage":"unavailable","tool_name":"query_state","parameters":{}}'),
+        ('{"tool_name":"query_state","parameters":{}}'),
         (
-            '{"workflow_stage":"empty",'
+            '{"workflow_stage":"unavailable",'
             '"tool_name":"switch_panel",'
             '"parameters":{"panel_name":"dataset"}}'
         ),
+        ('{"tool_name":"switch_panel","parameters":{"panel_name":"dashboard"}}'),
         (
-            '{"workflow_stage":"unavailable",'
-            '"tool_name":"switch_panel",'
-            '"parameters":{"panel_name":"dashboard"}}'
-        ),
-        (
-            '{"workflow_stage":"unavailable",'
+            "{"
             '"tool_name":"switch_panel",'
             '"parameters":{"panel_name":"dataset","extra":true}}'
         ),
     ],
-    ids=("retired-tool", "wrong-stage", "invalid-panel", "extra-parameter"),
+    ids=("retired-tool", "retired-stage-echo", "invalid-panel", "extra-parameter"),
 )
 def test_structured_smoke_rejects_non_target_tool_call(response: str):
     config = LLMConfig()
@@ -298,7 +290,9 @@ def test_structured_smoke_rejects_non_target_tool_call(response: str):
         result = run_structured_output_smoke(config)
 
     assert result["status"] == "failed"
-    assert result["failure_type"] == "target_contract"
+    assert result["failure_type"] == (
+        "output_format" if "workflow_stage" in response else "target_contract"
+    )
     engine_type.return_value.close.assert_called_once_with()
 
 
@@ -309,7 +303,7 @@ def test_structured_smoke_rejects_legacy_arguments_and_prose_wrapped_code():
     for response in (
         '{"tool_name":"get_state","arguments":{}}',
         (
-            'Here is the action:\n```json\n{"workflow_stage":"unavailable",'
+            "Here is the action:\n```json\n{"
             '"tool_name":"switch_panel",'
             '"parameters":{"panel_name":"dataset"}}\n```'
         ),

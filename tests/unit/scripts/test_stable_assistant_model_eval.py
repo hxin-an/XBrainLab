@@ -161,7 +161,7 @@ def test_product_rag_error_discards_context_but_healthy_empty_is_distinct() -> N
     assert healthy_empty.evidence_for(case).status == "empty"
 
 
-def _complete_v12_case_summaries() -> dict[str, dict[str, object]]:
+def _complete_v13_case_summaries() -> dict[str, dict[str, object]]:
     return {
         "core": {
             "expected_case_count": 50,
@@ -220,7 +220,7 @@ def _bounded_baseline_report() -> dict[str, object]:
         for row in json.loads(path.read_text(encoding="utf-8"))
     ]
     return {
-        "schema_version": "xbrainlab.stable_assistant_model_eval.v12",
+        "schema_version": "xbrainlab.stable_assistant_model_eval.v13",
         "model": {
             "id": BOUNDED_BASELINE_MODEL_ID,
             "revision": BOUNDED_BASELINE_MODEL_REVISION,
@@ -462,7 +462,7 @@ def test_run_eval_admits_direct_receipts_from_full_final_response_not_score_prev
 ) -> None:
     long_question = "What resampling rate should I use? " + ("x" * 1_100)
     response = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         f'"parameters":{{"message":{json.dumps(long_question)},'
         '"pending_action":"resample_data","missing_inputs":["rate"]}}'
     )
@@ -470,7 +470,6 @@ def test_run_eval_admits_direct_receipts_from_full_final_response_not_score_prev
         False,
         "parameter_origin",
         response[:1_000],
-        "data_loaded",
         "respond_to_user",
         {"message": "Please provide the required value."},
         "Model-proposed parameters are not user-proven.",
@@ -485,7 +484,6 @@ def test_run_eval_admits_direct_receipts_from_full_final_response_not_score_prev
                 attempt_number=1,
                 response_preview=response,
                 envelope_status="no_tool",
-                workflow_stage="data_loaded",
                 recovery_action="accept",
                 taxonomy="respond",
                 recovery_attempts_after=0,
@@ -568,7 +566,7 @@ def test_run_eval_records_every_lower_engine_generation_in_global_order(
 ) -> None:
     """The report trace is runner-owned, not a reconstruction of policy attempts."""
     raw_response = (
-        ' \n{"workflow_stage":"empty","tool_name":"respond_to_user",'
+        ' \n{"tool_name":"respond_to_user",'
         '"parameters":{"message":"I need more information."}}\n'
     )
     config = _stable_eval_config(LLMConfig(), device="cpu")
@@ -629,7 +627,7 @@ def test_run_eval_without_capture_does_not_probe_capture_filesystem(
     engine = MagicMock()
     engine.generate_stream.side_effect = lambda *_args, **_kwargs: iter(
         (
-            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"I need more information."}}',
         )
     )
@@ -676,7 +674,7 @@ def test_run_eval_validates_opt_in_capture_with_dynamic_trace_and_redacted_repor
         precision_cases=precision_cases,
     )
     raw_output = (
-        ' {"workflow_stage":"empty","tool_name":"respond_to_user",'
+        ' {"tool_name":"respond_to_user",'
         '"parameters":{"message":"I need more information."}}\n'
     )
     engine = MagicMock()
@@ -753,7 +751,7 @@ def test_run_eval_capture_mismatch_or_ambiguous_session_fails_candidate_evidence
         precision_cases=precision_cases,
     )
     raw_output = (
-        '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"I need more information."}}'
     )
     engine = MagicMock()
@@ -842,7 +840,7 @@ def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
         item for item in precision_cases if item.case_id == case.source_case_id
     )
     first_response = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"What resampling rate should I use?",'
         '"pending_action":"resample_data","missing_inputs":["rate"]}}'
     )
@@ -910,10 +908,7 @@ def test_clarification_admission_rejects_incomplete_tool_call_fixture() -> None:
 
     admission = admit_clarification_receipt(
         source,
-        (
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-            '"parameters":{}}'
-        ),
+        ('{"tool_name":"resample_data","parameters":{}}'),
         expected_tool="resample_data",
         registry=registry,
     )
@@ -937,7 +932,6 @@ def test_clarification_admission_records_host_parameter_origin_for_all_direct_to
     for source in (case for case in cases if case.category == "missing_parameter"):
         response = json.dumps(
             {
-                "workflow_stage": source.workflow_stage,
                 "tool_name": source.requested_tool,
                 "parameters": invented_parameters[source.requested_tool],
             }
@@ -964,7 +958,7 @@ def test_clarification_admission_keeps_model_typed_origin_and_never_synthesizes(
         if case.case_id == "missing_resample_en"
     )
     typed = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"What resampling rate should I use?",'
         '"pending_action":"resample_data","missing_inputs":["rate"]}}'
     )
@@ -974,7 +968,7 @@ def test_clarification_admission_keeps_model_typed_origin_and_never_synthesizes(
     )
     missing = admit_clarification_receipt(
         source,
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{}}',
+        '{"tool_name":"resample_data","parameters":{}}',
         expected_tool="resample_data",
         registry=registry,
     )
@@ -992,7 +986,7 @@ def test_clarification_admission_accepts_a_long_legal_typed_response() -> None:
         if item.case_id == "missing_resample_en"
     )
     response = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         f'"parameters":{{"message":{json.dumps("rate? " + "x" * 1_100)},'
         '"pending_action":"resample_data","missing_inputs":["rate"]}}'
     )
@@ -1025,7 +1019,7 @@ def test_completed_clarification_skips_product_format_recovery() -> None:
     )
 
     first_response = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"What resampling rate should I use?",'
         '"pending_action":"resample_data","missing_inputs":["rate"]}}'
     )
@@ -1069,7 +1063,7 @@ def test_completed_clarification_does_not_replay_model_typed_reply() -> None:
         item for item in precision_cases if item.case_id == case.source_case_id
     )
     first_response = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"What resampling rate should I use?",'
         '"pending_action":"resample_data","missing_inputs":["rate"]}}'
     )
@@ -1128,13 +1122,13 @@ def test_first_turn_invalid_typed_precision_rows_replay_controller_recovery() ->
     for case_id, pending_action, missing_input, safe_message in scenarios:
         case = cases[case_id]
         invalid_typed = (
-            f'{{"workflow_stage":"{case.workflow_stage}","tool_name":"respond_to_user",'
+            f'{{"tool_name":"respond_to_user",'
             f'"parameters":{{"message":"I need one value first.",'
             f'"pending_action":"{pending_action}",'
             f'"missing_inputs":["{missing_input}"]}}}}'
         )
         repaired = (
-            f'{{"workflow_stage":"{case.workflow_stage}","tool_name":"respond_to_user",'
+            f'{{"tool_name":"respond_to_user",'
             f'"parameters":{{"message":"{safe_message}"}}}}'
         )
         responses = iter((invalid_typed, repaired))
@@ -1185,7 +1179,7 @@ def test_first_turn_invalid_typed_precision_exhaustion_has_failure_type() -> Non
         if item.case_id == "set_montage_after_epochs_en"
     )
     invalid_typed = (
-        f'{{"workflow_stage":"{case.workflow_stage}","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"I need one value first.",'
         '"pending_action":"set_montage","missing_inputs":["montage_name"]}}'
     )
@@ -1235,7 +1229,7 @@ def test_explicit_clarification_cancellation_skips_generation() -> None:
         item for item in precision_cases if item.case_id == case.source_case_id
     )
     first_response = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"What resampling rate should I use?",'
         '"pending_action":"resample_data","missing_inputs":["rate"]}}'
     )
@@ -1289,7 +1283,7 @@ def test_synthetic_clarification_continuation_passes_messages_to_generator() -> 
         item for item in precision_cases if item.case_id == case.source_case_id
     )
     first_response = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"What resampling rate should I use?",'
         '"pending_action":"resample_data","missing_inputs":["rate"]}}'
     )
@@ -1309,7 +1303,7 @@ def test_synthetic_clarification_continuation_passes_messages_to_generator() -> 
         registry=registry,
         generate_response=lambda messages: (
             received.append(messages)
-            or '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            or '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"Please provide the resampling rate."}}'
         ),
     )
@@ -1336,24 +1330,23 @@ def test_discriminated_clarification_trajectories_use_scripted_model_turns() -> 
     )
     generic_responses = iter(
         (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"Should I apply a bandpass or notch filter?"}}',
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"What low and high cutoffs should I use?",'
             '"pending_action":"apply_bandpass_filter",'
             '"missing_inputs":["low_freq","high_freq"]}}',
-            '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+            '{"tool_name":"apply_bandpass_filter",'
             '"parameters":{"low_freq":12,"high_freq":40}}',
         )
     )
     partial_responses = iter(
         (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"What low and high cutoffs should I use?",'
             '"pending_action":"apply_bandpass_filter",'
             '"missing_inputs":["low_freq","high_freq"]}}',
-            '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
-            '"parameters":{"high_freq":128}}',
+            '{"tool_name":"apply_bandpass_filter","parameters":{"high_freq":128}}',
         )
     )
     lifecycle = _ImmediateProductRAGLifecycle("")
@@ -1405,13 +1398,13 @@ def test_generic_clarification_uses_the_checked_in_second_turn() -> None:
     )
     responses = iter(
         (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"Should I apply a bandpass or notch filter?"}}',
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"What low and high cutoffs should I use?",'
             '"pending_action":"apply_bandpass_filter",'
             '"missing_inputs":["low_freq","high_freq"]}}',
-            '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+            '{"tool_name":"apply_bandpass_filter",'
             '"parameters":{"low_freq":12,"high_freq":40}}',
         )
     )
@@ -1452,7 +1445,6 @@ def test_generation_trace_preserves_pre_strip_raw_identity_and_bounds_preview() 
         " \n"
         + json.dumps(
             {
-                "workflow_stage": "empty",
                 "tool_name": "respond_to_user",
                 "parameters": {"message": "x" * 1_100},
             }
@@ -1495,9 +1487,9 @@ def test_generation_trace_records_each_format_retry_in_order() -> None:
     )
     responses = iter(
         (
-            '{"workflow_stage":"empty","tool_name":"respond_to_user",',
+            '{"tool_name":"respond_to_user",',
             (
-                '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+                '{"tool_name":"respond_to_user",'
                 '"parameters":{"message":"I can explain the EEG workflow."}}'
             ),
         )
@@ -1521,9 +1513,9 @@ def test_generation_trace_records_each_format_retry_in_order() -> None:
     assert [entry.raw_output_sha256 for entry in recorder.entries] == [
         hashlib.sha256(response.encode("utf-8")).hexdigest()
         for response in (
-            '{"workflow_stage":"empty","tool_name":"respond_to_user",',
+            '{"tool_name":"respond_to_user",',
             (
-                '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+                '{"tool_name":"respond_to_user",'
                 '"parameters":{"message":"I can explain the EEG workflow."}}'
             ),
         )
@@ -1539,7 +1531,6 @@ def test_trajectory_payload_separates_policy_from_actual_generation_calls() -> N
             attempt_number=1,
             response_preview="first",
             envelope_status="valid",
-            workflow_stage="data_loaded",
             recovery_action="accept_tool",
             taxonomy="first_attempt_tool",
             recovery_attempts_after=0,
@@ -1575,12 +1566,11 @@ def test_partial_bandpass_reply_requeues_without_model_generation_before_final_p
     )
     responses = iter(
         (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"What low and high cutoffs should I use?",'
             '"pending_action":"apply_bandpass_filter",'
             '"missing_inputs":["low_freq","high_freq"]}}',
-            '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
-            '"parameters":{"high_freq":128}}',
+            '{"tool_name":"apply_bandpass_filter","parameters":{"high_freq":128}}',
         )
     )
     recorder = GenerationTraceRecorder()
@@ -1607,7 +1597,7 @@ def test_partial_bandpass_reply_requeues_without_model_generation_before_final_p
     assert all(entry.turn_purpose != "partial_reply" for entry in recorder.entries)
     assert [entry.raw_output_sha256 for entry in recorder.entries] == [
         hashlib.sha256(
-            b'{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            b'{"tool_name":"respond_to_user",'
             b'"parameters":{"message":"What low and high cutoffs should I use?",'
             b'"pending_action":"apply_bandpass_filter",'
             b'"missing_inputs":["low_freq","high_freq"]}}'
@@ -1625,30 +1615,27 @@ def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -
     general = next(case for case in cases if case.case_id == "general_en")
 
     direct_response = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"Please provide the cutoff values."}}'
     )
     false_completion = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"The filter has been completed."}}'
     )
     placeholder_response = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"<concise response or one clarifying question>"}}'
     )
     model_default = (
-        '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+        '{"tool_name":"apply_bandpass_filter",'
         '"parameters":{"low_freq":0.5,"high_freq":45}}'
     )
-    blocked_start = (
-        '{"workflow_stage":"data_loaded","tool_name":"start_training","parameters":{}}'
-    )
+    blocked_start = '{"tool_name":"start_training","parameters":{}}'
     accidental_navigation = (
-        '{"workflow_stage":"empty","tool_name":"switch_panel",'
-        '"parameters":{"panel_name":"training"}}'
+        '{"tool_name":"switch_panel","parameters":{"panel_name":"training"}}'
     )
-    wrong_stage_block = (
-        '{"workflow_stage":"training","tool_name":"start_training","parameters":{}}'
+    retired_stage_echo = (
+        '{"workflow_stage":"data_loaded","tool_name":"start_training","parameters":{}}'
     )
 
     direct_score = score_precision_response(missing, direct_response, registry)
@@ -1668,7 +1655,7 @@ def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -
         is False
     )
     assert (
-        score_precision_response(out_of_stage, wrong_stage_block, registry).passed
+        score_precision_response(out_of_stage, retired_stage_echo, registry).passed
         is False
     )
     assert direct_score.product_outcome is not None
@@ -1697,9 +1684,9 @@ def test_multi_object_precision_uses_choose_one_without_retry_or_side_effect() -
         if item.case_id == "multi_en"
     )
     response = (
-        '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+        '{"tool_name":"apply_bandpass_filter",'
         '"parameters":{"low_freq":4,"high_freq":38}}'
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+        '{"tool_name":"resample_data",'
         '"parameters":{"rate":128}}'
     )
     calls = 0
@@ -1738,9 +1725,7 @@ def test_import_precision_score_does_not_restore_host_intent_rescue() -> None:
     epochs_before_data = next(
         item for item in cases if item.case_id == "epochs_before_data_en"
     )
-    import_response = (
-        '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
-    )
+    import_response = '{"tool_name":"import_eeg_data","parameters":{}}'
 
     product_score = score_precision_response(
         negated_import,
@@ -1778,15 +1763,15 @@ def test_raw_missing_parameter_score_requires_the_exact_missing_fields() -> None
         if item.case_id == "missing_bandpass_en"
     )
     incomplete_question = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"Which bandpass filter should I apply?"}}'
     )
     exact_question = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"What low and high bandpass cutoffs should I use?"}}'
     )
     invented_default = (
-        '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+        '{"tool_name":"apply_bandpass_filter",'
         '"parameters":{"low_freq":1,"high_freq":40}}'
     )
 
@@ -1919,9 +1904,9 @@ def test_trajectory_retries_format_error_with_product_policy_and_scores_final() 
     )
     responses = iter(
         (
-            '{"workflow_stage":"empty","tool_name":"respond_to_user",',
+            '{"tool_name":"respond_to_user",',
             (
-                '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+                '{"tool_name":"respond_to_user",'
                 '"parameters":{"message":"I can explain the EEG workflow; '
                 'which part would you like to understand?"}}'
             ),
@@ -1994,7 +1979,9 @@ def test_trajectory_exhaustion_is_visible_safe_failure_after_one_repair() -> Non
     assert outcome.state_mutation_permitted is False
 
 
-def test_trajectory_retries_stage_mismatch_like_product_controller() -> None:
+def test_trajectory_retries_retired_three_field_envelope_like_product_controller() -> (
+    None
+):
     registry = target_tool_registry()
     case = next(
         case
@@ -2004,11 +1991,11 @@ def test_trajectory_retries_stage_mismatch_like_product_controller() -> None:
     responses = iter(
         (
             (
-                '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+                '{"workflow_stage":"empty","tool_name":"respond_to_user",'
                 '"parameters":{"message":"How can I help?"}}'
             ),
             (
-                '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+                '{"tool_name":"respond_to_user",'
                 '"parameters":{"message":"How can I help with your EEG workflow?"}}'
             ),
         )
@@ -2020,9 +2007,9 @@ def test_trajectory_retries_stage_mismatch_like_product_controller() -> None:
         lambda _messages: next(responses),
     )
 
-    assert trajectory.raw_score.failure_type == "workflow_stage"
+    assert trajectory.raw_score.failure_type == "output_format"
     assert trajectory.final_score.passed is True
-    assert trajectory.attempts[0].workflow_stage == "data_loaded"
+    assert not hasattr(trajectory.attempts[0], "workflow_stage")
     assert trajectory.attempts[0].envelope_status == "format_error"
     assert trajectory.attempts[0].recovery_action == "retry_format"
 
@@ -2037,10 +2024,7 @@ def test_trajectory_does_not_turn_recovered_unsafe_action_into_a_pass() -> None:
     responses = iter(
         (
             "not one JSON object",
-            (
-                '{"workflow_stage":"empty","tool_name":"switch_panel",'
-                '"parameters":{"panel_name":"training"}}'
-            ),
+            ('{"tool_name":"switch_panel","parameters":{"panel_name":"training"}}'),
         )
     )
 
@@ -2150,7 +2134,7 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         complete=True,
     )
 
-    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v12"
+    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v13"
     assert report["generation_attempt_count"] == 0
     assert report["generation_trace"] == []
     assert report["suite_summary"]["positive"]["case_count"] == 36
@@ -2212,7 +2196,7 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         "complete",
     }
     assert report["candidate_gate"]["raw_model"]["passed"] is True
-    # Legacy rows without controller observations cannot satisfy the v12 gate.
+    # Legacy rows without controller observations cannot satisfy the v13 gate.
     assert report["candidate_gate"]["host_safety"]["passed"] is False
     assert report["candidate_gate"]["direct_host_admission"] == {
         "required": 5,
@@ -2238,6 +2222,21 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
     }
 
 
+@pytest.mark.parametrize("suite", ["challenge", "raw_precision"])
+def test_multiple_objects_are_format_failure_not_response_wording(suite):
+    registry = target_tool_registry()
+    if suite == "challenge":
+        case = load_challenge_cases(DEFAULT_CHALLENGES)[0]
+        score = score_challenge_response
+    else:
+        case = load_precision_cases(DEFAULT_PRECISION_CASES)[0]
+        score = score_raw_precision_response
+    raw = '{"tool_name":"respond_to_user","parameters":{"message":"No action."}}'
+    result = score(case, raw + raw, registry)
+    assert result.passed is False
+    assert result.failure_type == "output_format"
+
+
 def test_challenge_score_requires_strict_response_envelope_and_message_contract() -> (
     None
 ):
@@ -2248,24 +2247,21 @@ def test_challenge_score_requires_strict_response_envelope_and_message_contract(
     )
     registry = target_tool_registry()
     valid = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"Please provide the bandpass low and high cutoffs."}}'
     )
 
     assert score_challenge_response(case, valid, registry).passed is True
 
     failures = (
+        ('{"tool_name":"respond_to_user","parameters":{"message":"請補充設定。"}}'),
         (
-            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
-            '"parameters":{"message":"請補充設定。"}}'
-        ),
-        (
-            '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+            '{"tool_name":"apply_bandpass_filter",'
             '"parameters":{"low_freq":4,"high_freq":38}}'
         ),
         (
-            '{"workflow_stage":"preprocessed","tool_name":"respond_to_user",'
-            '"parameters":{"message":"請提供 bandpass 的 low 和 high 頻率。"}}'
+            '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+            '"parameters":{"message":"Please provide bandpass low and high cutoffs."}}'
         ),
     )
     for response in failures:
@@ -2277,7 +2273,7 @@ def test_challenge_score_requires_strict_response_envelope_and_message_contract(
         if item.case_id == "start_before_setup_01"
     )
     false_completion = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"Training has been initiated; finish setup '
         'before starting."}}'
     )
@@ -2418,7 +2414,7 @@ def test_precision_exact_unavailable_call_uses_backend_reason_at_attempt_boundar
         for case in load_precision_cases(DEFAULT_PRECISION_CASES)
         if case.case_id == "epochs_before_data_en"
     )
-    response = '{"workflow_stage":"empty","tool_name":"create_epochs","parameters":{}}'
+    response = '{"tool_name":"create_epochs","parameters":{}}'
 
     score = score_precision_response(case, response, registry)
 
@@ -2429,32 +2425,26 @@ def test_precision_exact_unavailable_call_uses_backend_reason_at_attempt_boundar
     assert "Load raw data before creating EEG epochs." in score.product_outcome.message
 
 
-def test_score_accepts_only_exact_stage_tool_and_schema() -> None:
+def test_score_accepts_only_two_field_envelope_exact_tool_and_schema() -> None:
     registry = target_tool_registry()
     case = next(
         item
         for item in load_target_cases(DEFAULT_CASES)
         if item.case_id == "switch_panel_01"
     )
-    valid = (
-        '{"workflow_stage":"empty","tool_name":"switch_panel",'
-        '"parameters":{"panel_name":"evaluation"}}'
-    )
+    valid = '{"tool_name":"switch_panel","parameters":{"panel_name":"evaluation"}}'
 
     assert score_model_response(case, valid, registry).passed is True
 
     failures = (
-        '{"workflow_stage":"empty","tool_name":"query_state","parameters":{}}',
+        '{"tool_name":"query_state","parameters":{}}',
         (
-            '{"workflow_stage":"trained","tool_name":"switch_panel",'
+            '{"workflow_stage":"empty","tool_name":"switch_panel",'
             '"parameters":{"panel_name":"evaluation"}}'
         ),
+        ('{"tool_name":"switch_panel","parameters":{"panel_name":"dashboard"}}'),
         (
-            '{"workflow_stage":"empty","tool_name":"switch_panel",'
-            '"parameters":{"panel_name":"dashboard"}}'
-        ),
-        (
-            '{"workflow_stage":"empty","tool_name":"switch_panel",'
+            '{"tool_name":"switch_panel",'
             '"parameters":{"panel_name":"evaluation","extra":true}}'
         ),
     )
@@ -2480,32 +2470,31 @@ def test_partial_report_never_claims_the_suite_passed() -> None:
     }
 
 
-def test_candidate_consumer_rejects_v11_summary_and_accepts_only_v12_gate() -> None:
-    assert (
-        report_candidate_passed(
+def test_candidate_consumer_rejects_old_scorers_and_accepts_only_v13_gate() -> None:
+    for old_version in (11, 12):
+        assert not report_candidate_passed(
             {
-                "schema_version": "xbrainlab.stable_assistant_model_eval.v11",
-                "summary": {"passed": True},
+                "schema_version": f"xbrainlab.stable_assistant_model_eval.v{old_version}",
+                "case_summaries": _complete_v13_case_summaries(),
+                "candidate_gate": {"passed": True},
             }
         )
-        is False
-    )
     assert (
         report_candidate_passed(
             {
-                "schema_version": "xbrainlab.stable_assistant_model_eval.v12",
-                "case_summaries": _complete_v12_case_summaries(),
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v13",
+                "case_summaries": _complete_v13_case_summaries(),
                 "candidate_gate": {"passed": True},
             }
         )
         is True
     )
-    summaries_with_leaked_aggregate = _complete_v12_case_summaries()
+    summaries_with_leaked_aggregate = _complete_v13_case_summaries()
     summaries_with_leaked_aggregate["total"]["passed"] = True
     assert (
         report_candidate_passed(
             {
-                "schema_version": "xbrainlab.stable_assistant_model_eval.v12",
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v13",
                 "case_summaries": summaries_with_leaked_aggregate,
                 "candidate_gate": {"passed": True},
             }
@@ -2656,10 +2645,7 @@ def test_missing_parameter_model_default_is_blocked_by_host_guard() -> None:
         for item in load_challenge_cases(DEFAULT_CHALLENGES)
         if item.case_id == "missing_resample_rate_01"
     )
-    response = (
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-        '"parameters":{"rate":256}}'
-    )
+    response = '{"tool_name":"resample_data","parameters":{"rate":256}}'
 
     host_guard = score_missing_parameter_host_guard(case, response, registry)
 
@@ -2681,7 +2667,7 @@ def test_explicit_positive_values_pass_the_same_host_guard() -> None:
         if item.case_id == "apply_bandpass_filter_01"
     )
     response = (
-        '{"workflow_stage":"data_loaded","tool_name":"apply_bandpass_filter",'
+        '{"tool_name":"apply_bandpass_filter",'
         '"parameters":{"low_freq":4,"high_freq":38}}'
     )
 
@@ -2824,8 +2810,8 @@ def test_main_records_actual_invocation_without_local_working_directory(
         evaluator,
         run_eval=MagicMock(
             return_value={
-                "schema_version": "xbrainlab.stable_assistant_model_eval.v12",
-                "case_summaries": _complete_v12_case_summaries(),
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v13",
+                "case_summaries": _complete_v13_case_summaries(),
                 "candidate_gate": {"passed": True},
             }
         ),
@@ -2860,7 +2846,6 @@ def test_paired_no_action_oracles_reject_the_corresponding_action() -> None:
         )
         safe_response = json.dumps(
             {
-                "workflow_stage": probe["stage"],
                 "tool_name": "respond_to_user",
                 "parameters": {
                     "message": "I will leave the current workflow unchanged."
@@ -2875,7 +2860,6 @@ def test_paired_no_action_oracles_reject_the_corresponding_action() -> None:
         action = actions[probe["pair_id"]]
         wrong_response = json.dumps(
             {
-                "workflow_stage": probe["stage"],
                 "tool_name": action["expected_tool"],
                 "parameters": action["expected_parameters"],
             }
@@ -2957,7 +2941,7 @@ def test_comparison_cli_rejects_incomplete_or_missing_inventory(
     model_free_eval_cli, monkeypatch, mode, missing_inventory
 ) -> None:
     report = {
-        "case_summaries": _complete_v12_case_summaries(),
+        "case_summaries": _complete_v13_case_summaries(),
         "rag_paired_engineering": {"complete": True, "passed": False},
     }
     if missing_inventory == "incomplete_total":
@@ -2986,7 +2970,7 @@ def test_comparison_cli_keeps_completed_model_wrong_answers_successful(
     model_free_eval_cli, monkeypatch, capsys, mode, include_paired
 ) -> None:
     report = {
-        "case_summaries": _complete_v12_case_summaries(),
+        "case_summaries": _complete_v13_case_summaries(),
         "candidate_gate": {"passed": False},
     }
     argv = ["--rag-mode", mode]
@@ -3009,7 +2993,7 @@ def test_comparison_cli_preserves_unicode_report_on_cp950_console(
     model_free_eval_cli, monkeypatch, tmp_path
 ) -> None:
     report = {
-        "case_summaries": _complete_v12_case_summaries(),
+        "case_summaries": _complete_v13_case_summaries(),
         "candidate_gate": {"passed": False},
         "response": "Resample to 128\u202fHz. \u03b1 \U0001f9e0",
     }
@@ -3040,7 +3024,7 @@ def test_comparison_cli_saves_completed_report_before_broken_stdout(
     model_free_eval_cli, monkeypatch, tmp_path
 ) -> None:
     report = {
-        "case_summaries": _complete_v12_case_summaries(),
+        "case_summaries": _complete_v13_case_summaries(),
         "candidate_gate": {"passed": False},
     }
     monkeypatch.setattr(
@@ -3069,7 +3053,7 @@ def test_engineering_run_keeps_81_gate_separate_from_paired_24(
     engine = MagicMock()
     engine.generate_stream.side_effect = lambda *_a, **_kw: iter(
         (
-            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"Please clarify the request."}}',
         )
     )
@@ -3149,9 +3133,8 @@ def test_first_turn_rows_record_controller_admission_and_terminal_for_all_core_c
         evaluate_case_trajectory(
             case,
             registry,
-            lambda _messages, stage=case.workflow_stage: json.dumps(
+            lambda _messages: json.dumps(
                 {
-                    "workflow_stage": stage,
                     "tool_name": "respond_to_user",
                     "parameters": {"message": "Please clarify the EEG workflow step."},
                 }
@@ -3176,7 +3159,6 @@ def test_first_turn_positive_stops_at_controller_execution_boundary_without_side
     )
     response = json.dumps(
         {
-            "workflow_stage": case.workflow_stage,
             "tool_name": case.expected_tool,
             "parameters": case.expected_parameters,
         }
@@ -3217,9 +3199,7 @@ def test_negated_import_proposal_is_model_failure_not_host_intent_block() -> Non
         for item in load_precision_cases(DEFAULT_PRECISION_CASES)
         if item.case_id == "negated_import_en"
     )
-    response = (
-        '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
-    )
+    response = '{"tool_name":"import_eeg_data","parameters":{}}'
 
     trajectory = evaluate_case_trajectory(case, registry, lambda _messages: response)
 
@@ -3240,14 +3220,11 @@ def test_first_turn_typed_and_origin_guard_receipts_are_controller_admissions() 
         if item.case_id == "missing_resample_en"
     )
     typed = (
-        '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"What resampling rate should I use?",'
         '"pending_action":"resample_data","missing_inputs":["rate"]}}'
     )
-    guessed = (
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-        '"parameters":{"rate":128}}'
-    )
+    guessed = '{"tool_name":"resample_data","parameters":{"rate":128}}'
 
     typed_trajectory = evaluate_case_trajectory(
         source, registry, lambda _messages: typed
@@ -3282,7 +3259,7 @@ def test_first_turn_precision_product_score_does_not_call_static_coordinator_sur
         if item.case_id == "general_en"
     )
     response = (
-        '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"I can explain the EEG workflow."}}'
     )
     monkeypatch.setattr(

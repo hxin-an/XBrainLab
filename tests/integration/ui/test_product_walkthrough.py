@@ -207,7 +207,7 @@ class _ImportEegToolWorker(AgentWorker):
         )
         self.generation_chunk_received.emit(
             generation_id,
-            '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}',
+            '{"tool_name":"import_eeg_data","parameters":{}}',
         )
         self.generation_finished.emit(generation_id, [])
 

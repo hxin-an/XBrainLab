@@ -1002,15 +1002,6 @@ class LLMController(QObject):
             return
 
         envelope = CommandParser.parse_product(response_text)
-        if (
-            envelope.status in {ToolEnvelopeStatus.NO_TOOL, ToolEnvelopeStatus.VALID}
-            and envelope.workflow_stage
-            != self._turn_orchestrator.active_publication.workflow_stage
-        ):
-            envelope = ToolEnvelopeParseResult.format_error(
-                "workflow_stage does not match the current backend publication."
-            )
-
         # Invalid tool-shaped output is never treated as user-facing prose and
         # never reaches verification or execution.
         if self._handle_tool_envelope_failure(envelope):
@@ -1104,7 +1095,6 @@ class LLMController(QObject):
             "envelope",
             status=envelope.status.value,
             error=envelope.error,
-            workflow_stage=envelope.workflow_stage,
             commands=envelope.commands,
             recovery_action=decision.action.value,
         )
@@ -2419,7 +2409,6 @@ class LLMController(QObject):
         self._turn_orchestrator.set_active_publication(publication)
         response_text = json.dumps(
             {
-                "workflow_stage": publication.workflow_stage,
                 "tool_name": MODEL_RESPONSE_TOOL_NAME,
                 "parameters": dict(params),
             },
@@ -2427,11 +2416,7 @@ class LLMController(QObject):
             separators=(",", ":"),
         )
         envelope = CommandParser.parse_product(response_text)
-        if (
-            envelope.status is not ToolEnvelopeStatus.NO_TOOL
-            or envelope.workflow_stage != publication.workflow_stage
-            or not envelope.message
-        ):
+        if envelope.status is not ToolEnvelopeStatus.NO_TOOL or not envelope.message:
             self._publish_response(
                 "The requested diagnostic response is invalid.",
                 kind=AssistantResponseKind.ERROR,

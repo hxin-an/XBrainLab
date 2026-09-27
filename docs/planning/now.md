@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-09-27`
+最後更新：`2026-09-28`
 
 ## Active — RAG 部件完整打磨，完成獨立覆核後一次集中手測
 
@@ -9,11 +9,33 @@
 `settings.json`、共用環境／模型、正式研究題庫或既有結果。這一輪包含 product、tests、scripts、
 corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測試通過當成完成。
 
-**目前狀態（優先於下方歷史Next）**：施工停在需要新的設計決策，不是已完成或等待CI。
-使用者同意的24題回答示範移除診斷已完成並經獨立覆核；不得採用全刪或刪單題來清分數。
-Next先討論是否將「概念知識」與「操作／不操作決策示範」區分用途及其有界施工出口。
-未經此決策不新增實驗條件、不再改prompt／corpus追24題分數，也不宣稱mixed-request回歸
-已解決。保留這輪結構整理、BM25、原門檻及失敗證據；PR #149尚不交付手測／merge。
+**目前狀態（優先於下方歷史Next）**：2026-09-28 使用者批准獨立遷移模型輸出契約：
+移除模型回填的 `workflow_stage`，只接受 `tool_name` 與 `parameters`；階段仍由後端提供給
+模型，publication generation、工具資格、參數來源與confirmation保護不變。先更新target，
+再以parser RED／既有execution baseline施工，接續focused與真模型／native驗證及獨立覆核。
+
+本切片證據：RAG提供兩欄decision片段，正式輸出要求三欄；controller只比對模型抄回的stage，
+真正stale admission由host保存的publication generation驗證。差異不是已證明的漏執行成因。
+Outcome是責任清楚且安全邊界不退步，不承諾模型語意準確率提高。UI無可見改動，使用者已確認。
+Scope包含product parser/prompt/controller/RAG consumer、直接測試、實驗runner/scorer與canonical
+文件；後端stage/state card、既有題意與oracle、BM25/門檻/排序、語料內容、模型與UI不改。
+刪除候選是model stage echo／mismatch分支；既有owner不增不減，不新增兼容三欄輸出或新控制層。
+歷史raw evidence不重寫，不把host stage冒充model輸出；新版scorer身分與舊結果分開記錄。
+先驗兩欄接受／舊三欄拒絕，再驗真tool admission、同stage換資料的stale拒絕、confirmation、
+format recovery、no-action與評分一致性。模型比較固定原81＋24題，分開格式與語意結果；
+不使用sealed研究題庫、不改失敗題追分。獨立覆核後檢查同head適用CI及Windows native journey。
+Stop condition為此切片安全／契約／evidence一致且必要驗證完成；不等同整輪RAG已解決。
+可獨立回退本契約切片；既有24題診斷與失敗證據保留，PR #149尚不交付手測／merge。
+
+2026-09-28切片進度：parser兩個新契約測試已RED→GREEN，全parser87、RAG邊界44、
+unit／真command／Qt整合556通過。五個production檔+22/-81/net-59，owner不變；獨立覆核
+確認host generation、confirmation及execution保護仍在。Script評分移除model echo並分別升版
+stable v13／pilot scores v3／synthetic calibration v2；保留backend案例情境與原81＋24題。
+另以RED補上raw scorer拒絕多JSON物件，避免移除stage比對後錯入內容評分。
+Next：完成script focused、獨立覆核最終diff，凍結commit跑一次hybrid105及Windows四步真模型
+journey，再檢查同head CI；不調語意prompt／corpus追分。額外直接typing檢查的product無診斷，
+scripts出現15項既有duck-typing／Optional診斷（canonical typing範圍原為XBrainLab），不宣稱全scripts
+typing乾淨；本切片沒有修改那些型別責任。
 
 ### 問題、outcome 與邊界
 

@@ -230,8 +230,8 @@ def _submit_user_turn(
 def test_malformed_tool_envelopes_stop_after_one_repair_without_execution(
     qtbot,
 ):
-    malformed = '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```'
-    valid = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    malformed = '```json\n{"tool_name":"import_eeg_data"}\n```'
+    valid = '{"tool_name":"import_eeg_data","parameters":{}}'
     controller, worker, coordinator = _controller_with_script(
         [malformed, malformed, valid]
     )
@@ -274,7 +274,7 @@ def test_malformed_tool_envelopes_stop_after_one_repair_without_execution(
 
 
 def test_multiple_objects_never_reach_execution_or_create_input_receipt(qtbot):
-    action = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    action = '{"tool_name":"import_eeg_data","parameters":{}}'
     controller, worker, coordinator = _controller_with_script([f"{action}\n{action}"])
 
     try:
@@ -295,8 +295,8 @@ def test_multiple_objects_never_reach_execution_or_create_input_receipt(qtbot):
 def test_recovered_valid_envelope_reaches_real_execution_coordinator(
     qtbot,
 ):
-    malformed = '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```'
-    valid = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    malformed = '```json\n{"tool_name":"import_eeg_data"}\n```'
+    valid = '{"tool_name":"import_eeg_data","parameters":{}}'
     controller, worker, coordinator = _controller_with_script([malformed, valid])
 
     try:
@@ -326,8 +326,8 @@ def test_parsed_import_handoff_executes_once_despite_recovery_or_duplicate_finis
     fenced: bool,
 ) -> None:
     """One parsed proposal cannot become a second tool execution in one turn."""
-    malformed = '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```'
-    valid = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    malformed = '```json\n{"tool_name":"import_eeg_data"}\n```'
+    valid = '{"tool_name":"import_eeg_data","parameters":{}}'
     if fenced:
         valid = f"```json\n{valid}\n```"
     controller, worker, coordinator = _controller_with_script(
@@ -376,7 +376,7 @@ def test_same_import_action_in_three_fresh_turns_never_accumulates_a_loop(
     qtbot,
 ) -> None:
     """Repeat across user turns is legal; each fresh turn still owns one action."""
-    valid = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    valid = '{"tool_name":"import_eeg_data","parameters":{}}'
     controller, worker, coordinator = _controller_with_script([valid, valid, valid])
     terminals = []
     controller.turn_finished.connect(terminals.append)
@@ -415,7 +415,7 @@ def test_same_import_action_in_three_fresh_turns_never_accumulates_a_loop(
 
 @pytest.mark.parametrize("fenced", (False, True))
 def test_adjacent_objects_never_execute_even_inside_one_fence(qtbot, fenced):
-    action = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    action = '{"tool_name":"import_eeg_data","parameters":{}}'
     multiple = f"{action}\n{action}"
     if fenced:
         multiple = f"```json\n{multiple}\n```"

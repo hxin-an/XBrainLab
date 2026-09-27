@@ -165,7 +165,6 @@ Action Contract Catalog (input definitions, never an output array):
         self,
         allowed_names: list[str],
         *,
-        workflow_stage: str = "unavailable",
         unavailable_actions: dict[str, str] | None = None,
     ) -> str:
         """Format request-scoped contracts without resembling model output.
@@ -221,32 +220,21 @@ Action Contract Catalog (input definitions, never an output array):
                 json.dumps(model_response_tool_contract(), indent=2),
             )
         )
-        sections.extend(
-            self._final_output_reminder(
-                workflow_stage=workflow_stage,
-            )
-        )
+        sections.extend(self._final_output_reminder())
         return "\n".join(sections)
 
     @staticmethod
-    def _final_output_reminder(
-        *,
-        workflow_stage: str,
-    ) -> tuple[str, ...]:
+    def _final_output_reminder() -> tuple[str, ...]:
         """Keep one short output reminder after the action schemas."""
         return (
             "Final output reminder:",
-            'Exact envelope shape: {"workflow_stage":"'
-            + workflow_stage
-            + '","tool_name":"<exact enabled action or respond_to_user>",'
+            'Exact envelope shape: {"tool_name":'
+            '"<exact enabled action or respond_to_user>",'
             '"parameters":{...}}',
-            "Return exactly one JSON object with workflow_stage '"
-            + workflow_stage
-            + "', an exact enabled action name or respond_to_user, and parameters "
+            "Return exactly one JSON object with an exact enabled action name "
+            "or respond_to_user, and parameters "
             "matching the selected contract. Add no prose outside the object.",
-            'No-action envelope shape: {"workflow_stage":"'
-            + workflow_stage
-            + '","tool_name":"respond_to_user",'
+            'No-action envelope shape: {"tool_name":"respond_to_user",'
             '"parameters":{"message":"<answer or blocker explanation>"}}',
             "For an informational answer or blocked action, put the explanation "
             "inside parameters.message. Any requested sentence length applies to "
@@ -376,7 +364,6 @@ Action Contract Catalog (input definitions, never an output array):
         )
         tools_str = self._format_tools(
             allowed_tools,
-            workflow_stage=workflow_stage,
             unavailable_actions=unavailable_actions,
         )
         self._latest_tool_publication = PromptToolPublication(
@@ -405,7 +392,6 @@ Action Contract Catalog (input definitions, never an output array):
 
         prompt = self._ACTION_SYSTEM_PROMPT
         prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
-            workflow_stage,
             include_preprocessing_guidance=any(
                 name in DIRECT_PARAMETER_TOOLS for name in allowed_tools
             ),

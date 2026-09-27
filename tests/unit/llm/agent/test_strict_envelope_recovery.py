@@ -13,7 +13,7 @@ from XBrainLab.llm.agent.strict_envelope_recovery import (
 def test_valid_tool_envelope_stops_recovery_and_preserves_tool_action():
     policy = StrictEnvelopeRecoveryPolicy(max_recovery_attempts=2)
     envelope = CommandParser.parse_product(
-        '{"workflow_stage":"empty","tool_name":"query_state","parameters":{}}'
+        '{"tool_name":"query_state","parameters":{}}'
     )
 
     decision = policy.decide(
@@ -31,9 +31,7 @@ def test_valid_tool_envelope_stops_recovery_and_preserves_tool_action():
 
 def test_format_error_builds_one_canonical_bounded_recovery_message():
     policy = StrictEnvelopeRecoveryPolicy(max_recovery_attempts=2)
-    envelope = CommandParser.parse_product(
-        '```json\n{"tool_name":"query_state","parameters":{}}\n```'
-    )
+    envelope = CommandParser.parse_product('```json\n{"tool_name":"query_state"}\n```')
 
     decision = policy.decide(
         StrictEnvelopeRecoveryRequest(
@@ -62,9 +60,7 @@ def test_format_error_builds_one_canonical_bounded_recovery_message():
 def test_default_policy_allows_exactly_one_format_recovery_attempt():
     assert DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.max_recovery_attempts == 1
 
-    envelope = CommandParser.parse_product(
-        '```json\n{"tool_name":"query_state","parameters":{}}\n```'
-    )
+    envelope = CommandParser.parse_product('```json\n{"tool_name":"query_state"}\n```')
     exhausted = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.decide(
         StrictEnvelopeRecoveryRequest(
             envelope=envelope,
@@ -95,9 +91,9 @@ def test_explicit_two_repair_policy_preserves_its_custom_budget():
 def test_adjacent_complete_objects_choose_one_without_a_format_retry() -> None:
     policy = StrictEnvelopeRecoveryPolicy(max_recovery_attempts=2)
     envelope = CommandParser.parse_product(
-        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+        '{"tool_name":"resample_data",'
         '"parameters":{"rate":128}}\n'
-        '{"workflow_stage":"data_loaded","tool_name":"apply_notch_filter",'
+        '{"tool_name":"apply_notch_filter",'
         '"parameters":{"freq":50}}'
     )
 
@@ -170,16 +166,16 @@ def test_recovery_taxonomy_accepts_each_structured_response_message() -> None:
     policy = StrictEnvelopeRecoveryPolicy(max_recovery_attempts=2)
     examples = {
         "blocked": (
-            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"Load data before training."}}'
         ),
         "missing_input": (
-            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{'
             '"message":"Please provide the source path."}}'
         ),
         "answer": (
-            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"An epoch is a time window."}}'
         ),
     }
@@ -205,7 +201,7 @@ def test_recovery_taxonomy_accepts_each_structured_response_message() -> None:
 def test_second_attempt_response_maps_to_recovered_plain_text_taxonomy() -> None:
     policy = StrictEnvelopeRecoveryPolicy(max_recovery_attempts=2)
     envelope = CommandParser.parse_product(
-        '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+        '{"tool_name":"respond_to_user",'
         '"parameters":{"message":"An epoch is a time window."}}'
     )
 

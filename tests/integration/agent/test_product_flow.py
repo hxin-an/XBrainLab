@@ -22,7 +22,11 @@ from tests.integration.data_interpretation_support import (
     import_recording_through_interpretation,
 )
 from tests.qt_lifecycle import close_controller_and_wait
-from XBrainLab.backend.application import get_application_service
+from XBrainLab.backend.application import (
+    PreprocessCommand,
+    PreprocessOperation,
+    get_application_service,
+)
 from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.assembler import PromptToolPublication
@@ -226,7 +230,6 @@ def _tool_json(name: str, parameters: dict) -> str:
 
     return json.dumps(
         {
-            "workflow_stage": "empty",
             "tool_name": name,
             "parameters": parameters,
         }
@@ -292,7 +295,6 @@ def test_current_user_prefix_cannot_authorize_previous_turn_parameters(
         "Resample to 128 Hz.",
         json.dumps(
             {
-                "workflow_stage": "data_loaded",
                 "tool_name": "respond_to_user",
                 "parameters": {"message": "No operation was performed."},
             }
@@ -307,7 +309,6 @@ def test_current_user_prefix_cannot_authorize_previous_turn_parameters(
         f"{prefix} Resample to 64 Hz.",
         json.dumps(
             {
-                "workflow_stage": "data_loaded",
                 "tool_name": "resample_data",
                 "parameters": {"rate": 128},
             }
@@ -345,7 +346,6 @@ def test_current_prefixed_request_executes_and_is_observed_with_its_own_paramete
         text,
         json.dumps(
             {
-                "workflow_stage": "data_loaded",
                 "tool_name": "resample_data",
                 "parameters": {"rate": 64},
             }
@@ -363,6 +363,73 @@ def test_current_prefixed_request_executes_and_is_observed_with_its_own_paramete
     assert admissions[0]["params"] == {"rate": 64}
     assert admissions[0]["generation_id"] == requests[0].generation_id
     assert controller._conversation.latest_user_request_text() == text
+
+
+def test_two_field_action_cannot_execute_after_same_stage_publication_changes(
+    product_harness, tmp_path
+) -> None:
+    """A valid model decision cannot substitute for the host's generation fence."""
+    controller = product_harness.controller
+    _load_tiny_raw_via_command_spine(controller.study, tmp_path)
+    service = get_application_service(controller.study)
+    assert service.execute(
+        PreprocessCommand(operation=PreprocessOperation.RESAMPLE, rate=128)
+    ).success
+    starts = []
+    controller.application_command_started.connect(lambda: starts.append(True))
+
+    product_harness.send("Resample to 64 Hz.")
+    product_harness.wait_for_generation_start()
+    publication = controller._turn_orchestrator.active_publication
+    generation_id = controller._turn_orchestrator.active_generation_id
+    assert generation_id is not None
+    assert "resample_data" in publication.tool_names
+    assert service.execute(
+        PreprocessCommand(operation=PreprocessOperation.RESAMPLE, rate=96)
+    ).success
+    changed = service.get_view_publication()
+    assert changed.state.pipeline_stage == publication.workflow_stage
+    assert changed.generation != publication.backend_generation
+
+    controller.current_response = _tool_json("resample_data", {"rate": 64})
+    controller._on_generation_finished(generation_id, [])
+
+    after = service.get_view_publication()
+    assert after.generation == changed.generation
+    assert after.revision == changed.revision
+    assert controller.study.preprocessed_data_list[0].get_sfreq() == 96
+    assert starts == []
+    assert controller._tool_attempt_session.execution_count == 0
+    assert any(
+        "Workflow state changed" in entry["content"]
+        for entry in controller.history
+        if entry["role"] == "internal"
+    )
+    assert not controller.is_processing
+
+
+def test_two_field_action_cannot_execute_an_unpublished_tool(product_harness):
+    controller = product_harness.controller
+    service = get_application_service(controller.study)
+    before = service.get_view_publication()
+    starts = []
+    controller.application_command_started.connect(lambda: starts.append(True))
+
+    product_harness.send(
+        "Resample to 64 Hz.", _tool_json("resample_data", {"rate": 64})
+    )
+
+    assert (
+        "resample_data" not in controller.assembler.latest_tool_publication.tool_names
+    )
+    after = service.get_view_publication()
+    assert after.generation == before.generation
+    assert after.revision == before.revision
+    assert starts == []
+    assert controller._tool_attempt_session.execution_count == 0
+    assert controller.pending_interactions.confirmation is None
+    assert not controller.is_processing
+    assert product_harness.visible_assistant_text
 
 
 def test_product_controller_executes_one_published_navigation_action(
@@ -578,7 +645,7 @@ def test_qt_chat_wiring_rejects_prose_prefixed_target_action_without_execution(
         controller._on_chunk_received(generation_id, "Sure, I will check.\n")
         controller._on_chunk_received(
             generation_id,
-            '{"workflow_stage":"empty","tool_name":"import_',
+            '{"tool_name":"import_',
         )
         controller._on_chunk_received(
             generation_id,
@@ -603,7 +670,7 @@ def test_qt_chat_wiring_rejects_prose_prefixed_target_action_without_execution(
             AssistantGenerationEvent(
                 generation_id=generation_id,
                 phase=AssistantGenerationEventPhase.CHUNK,
-                text='{"workflow_stage":"empty","tool_name":"import_',
+                text='{"tool_name":"import_',
             ),
             AssistantGenerationEvent(
                 generation_id=generation_id,

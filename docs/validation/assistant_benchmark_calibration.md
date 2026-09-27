@@ -1,6 +1,6 @@
 # Assistant Benchmark：第一輪判分校準
 
-最後更新：`2026-09-16`
+最後更新：`2026-09-28`
 
 依據[使用者的 Notion 計畫](https://app.notion.com/p/3ce4ab11187a81c0a30ade5cf08b1b52)，
 本輪先固定三種決策與三層判分，驗證 scorer 能區分明定正反例。
@@ -19,7 +19,9 @@ GUI-opening Action 各有一正一反例。另有 focused tests 變更觀察欄�
 案例的 `source` 必須是 `agent_authored_calibration`，不能標成人寫的 seed。
 這些案例不是完整工具覆蓋、真實 EEG 操作或真模型軌跡。
 
-既有 `run_stable_assistant_model_eval.py` v12 與 frozen 81 cases 保持原樣、原 gate 用途。
+`run_stable_assistant_model_eval.py` 現為v13，frozen 81 cases的題意與原gate用途不變。
+2026-09-28核准移除model stage echo；新版raw決策只評兩欄envelope，stage保留為backend情境。
+本校準資料升為v2以表達相同契約遷移，舊v1／v12 raw evidence不重寫、不用新版scorer冒充舊成績。
 `main@73acb83a` 盤點時，81 題中的 23 個第一輪輸入與 RAG gold 的輸入在空白／大小寫正規化後
 相同（positive 19、challenge 2、precision 2）；這不表示每次都檢索到答案，但它們不能被重新
 包裝成未見過的 sealed test。v12 抑制真實工具執行，因此舊分數也不能改名為 Product Outcome。
@@ -30,9 +32,9 @@ GUI-opening Action 各有一正一反例。另有 focused tests 變更觀察欄�
 
 | 決策 | Raw／Agent 決策判分 | Outcome 額外必要證據 |
 | --- | --- | --- |
-| `no_call` | 正確 stage 的 `respond_to_user`，無 pending action。 | 完成回覆、無 action proposal／執行／GUI／確認、無多餘 pending，狀態不變。 |
+| `no_call` | 合法兩欄 `respond_to_user`，無 pending action。 | 完成回覆、無 action proposal／執行／GUI／確認、無多餘 pending，狀態不變。 |
 | `clarification` | `respond_to_user` 帶正確 pending tool 與完整 missing-input 集合。 | 觀察到相符的 pending receipt，沒有執行，狀態不變。 |
-| `action` | 正確 stage、精確工具與符合產品 schema 的參數。 | Host 驗證成功、必要確認、依案例完成 GUI 或 backend 操作，結果及狀態符合預期。 |
+| `action` | 精確工具與符合產品 schema 的參數；不評模型stage回填。 | Host 驗證成功、必要確認、依案例完成 GUI 或 backend 操作，結果及狀態符合預期。 |
 
 - `raw`：第一次模型原始輸出的結構決策；不修復格式、不以關鍵字猜工具或缺少參數。
 - `agent`：Host 處理後最後被選定的決策 envelope；與 raw 使用同一決策 oracle。
@@ -53,10 +55,10 @@ GUI-opening Action 各有一正一反例。另有 focused tests 變更觀察欄�
 [研究規格](thesis_protocol.md)第 4 節為準，不以此處的 typed clarification／完整 Outcome
 契約覆蓋正式研究方法。它不改變目前產品工具、GUI 或 confirmation 契約。
 
-## v1 校準資料契約
+## v2 校準資料契約
 
 頂層固定為 `schema`、`cases`、`observations`、`expected_scores`；schema 值為
-`xbrainlab.assistant_benchmark_calibration.v1`。拒絕重複 JSON keys、NaN／Infinity、
+`xbrainlab.assistant_benchmark_calibration.v2`。拒絕重複 JSON keys、NaN／Infinity、
 重複 ID、空庫、缺少案例觀察、缺少或多出的標註。未知觀察欄位也不能通過 Outcome。
 
 Case 欄位：

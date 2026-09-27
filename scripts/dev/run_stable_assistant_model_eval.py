@@ -95,7 +95,7 @@ DEFAULT_PRECISION_CASES = (
 DEFAULT_CLARIFICATION_CASES = (
     ROOT / "scripts" / "dev" / "stable_assistant_clarification_cases.json"
 )
-REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v12"
+REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v13"
 PRECISION_CASE_COUNT = 24
 CLARIFICATION_CASE_COUNT = 7
 BOUNDED_BASELINE_FAILURE_CASE_IDS = frozenset(
@@ -205,7 +205,6 @@ class TargetEvalScore:
     passed: bool
     failure_type: str
     response: str
-    parsed_stage: str | None
     parsed_tool: str | None
     parsed_parameters: dict[str, Any] | None
     detail: str
@@ -387,7 +386,6 @@ class ModelGenerationAttempt:
     attempt_number: int
     response_preview: str
     envelope_status: str
-    workflow_stage: str | None
     recovery_action: str
     taxonomy: str
     recovery_attempts_after: int
@@ -1171,14 +1169,10 @@ class _EvaluatorControllerHarness:
         self,
         response: str,
         *,
-        workflow_stage: str,
         recovery_action: str,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Project the most recent controller replay without another policy path."""
-        envelope, _parsed_stage = _recovery_envelope(
-            response,
-            workflow_stage=workflow_stage,
-        )
+        envelope = CommandParser.parse_product(response)
         receipt = self.pending_interactions.tool_input
         action = (
             self._observed_decision.action.value
@@ -1598,14 +1592,13 @@ def score_model_response(
     response: str,
     registry: ToolRegistry,
 ) -> TargetEvalScore:
-    """Require exact JSON, stage, target tool, parameters, and registered schema."""
+    """Require exact JSON, target tool, parameters, and registered schema."""
     envelope = CommandParser.parse_product(response)
     if envelope.status is not ToolEnvelopeStatus.VALID:
         return TargetEvalScore(
             False,
             "output_format",
             response[:1000],
-            envelope.workflow_stage,
             None,
             None,
             envelope.error,
@@ -1626,17 +1619,13 @@ def score_model_response(
         )
 
     passed = bool(
-        envelope.workflow_stage == case.workflow_stage
-        and tool_name == case.expected_tool
+        tool_name == case.expected_tool
         and parameters == case.expected_parameters
         and schema_valid
     )
     if passed:
         failure_type = "none"
         detail = "Exact target action selected."
-    elif envelope.workflow_stage != case.workflow_stage:
-        failure_type = "workflow_stage"
-        detail = "Model did not acknowledge the exact target stage."
     elif tool_name != case.expected_tool:
         failure_type = "tool_selection"
         detail = "Model selected a different or retired tool."
@@ -1650,7 +1639,6 @@ def score_model_response(
         passed,
         failure_type,
         response[:1000],
-        envelope.workflow_stage,
         tool_name,
         parameters,
         detail,
@@ -1662,15 +1650,14 @@ def score_challenge_response(
     response: str,
     registry: ToolRegistry,
 ) -> TargetEvalScore:
-    """Require a strict, stage-correct response without tool execution."""
+    """Require a strict response without tool execution."""
     del registry
     envelope = CommandParser.parse_product(response)
-    if envelope.status is ToolEnvelopeStatus.FORMAT_ERROR:
+    if envelope.status not in {ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL}:
         return TargetEvalScore(
             False,
             "output_format",
             response[:1000],
-            envelope.workflow_stage,
             None,
             None,
             envelope.error,
@@ -1681,20 +1668,9 @@ def score_challenge_response(
             False,
             "unexpected_tool",
             response[:1000],
-            envelope.workflow_stage,
             tool_name,
             parameters,
             "Challenge required respond_to_user without executing a tool.",
-        )
-    if envelope.workflow_stage != case.workflow_stage:
-        return TargetEvalScore(
-            False,
-            "workflow_stage",
-            response[:1000],
-            envelope.workflow_stage,
-            "respond_to_user",
-            {"message": envelope.message},
-            "Model did not acknowledge the exact target stage.",
         )
 
     folded_message = envelope.message.casefold()
@@ -1711,7 +1687,6 @@ def score_challenge_response(
         passed,
         "none" if passed else "response_content",
         response[:1000],
-        envelope.workflow_stage,
         "respond_to_user",
         {"message": envelope.message},
         (
@@ -1832,7 +1807,6 @@ def score_precision_response(
             response[:RAW_OUTPUT_PREVIEW_CHAR_LIMIT],
             None,
             None,
-            None,
             (
                 "Host returned the trusted one-action-at-a-time boundary."
                 if passed
@@ -1848,21 +1822,9 @@ def score_precision_response(
             False,
             "output_format",
             response[:1000],
-            envelope.workflow_stage,
             None,
             None,
             envelope.error,
-            PrecisionProductOutcome("format_error", None),
-        )
-    if envelope.workflow_stage != case.workflow_stage:
-        return TargetEvalScore(
-            False,
-            "workflow_stage",
-            response[:1000],
-            envelope.workflow_stage,
-            None,
-            None,
-            "Model did not acknowledge the exact target stage.",
             PrecisionProductOutcome("format_error", None),
         )
     if envelope.status is ToolEnvelopeStatus.NO_TOOL:
@@ -1872,13 +1834,12 @@ def score_precision_response(
             passed,
             "none" if passed else "response_content",
             response[:1000],
-            envelope.workflow_stage,
             "respond_to_user",
             {"message": message},
             (
                 "Exact no-execution response selected."
                 if passed
-                else "No-action response had a wrong stage, empty message, or false completion claim."
+                else "No-action response had an empty message or false completion claim."
             ),
             PrecisionProductOutcome("respond", message),
         )
@@ -1966,7 +1927,6 @@ def score_precision_response(
         passed,
         "none" if passed else "unexpected_tool",
         response[:1000],
-        envelope.workflow_stage,
         tool_name,
         parameters,
         (
@@ -1986,25 +1946,14 @@ def score_raw_precision_response(
     """Score the model's no-action choice before any Host intervention."""
     del registry
     envelope = CommandParser.parse_product(response)
-    if envelope.status is ToolEnvelopeStatus.FORMAT_ERROR:
+    if envelope.status not in {ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL}:
         return TargetEvalScore(
             False,
             "output_format",
             response[:1000],
-            envelope.workflow_stage,
             None,
             None,
             envelope.error,
-        )
-    if envelope.workflow_stage != case.workflow_stage:
-        return TargetEvalScore(
-            False,
-            "workflow_stage",
-            response[:1000],
-            envelope.workflow_stage,
-            None,
-            None,
-            "Model did not acknowledge the exact target stage.",
         )
     if envelope.status is ToolEnvelopeStatus.VALID:
         tool_name, parameters = envelope.commands[0]
@@ -2012,7 +1961,6 @@ def score_raw_precision_response(
             False,
             "unexpected_tool",
             response[:1000],
-            envelope.workflow_stage,
             tool_name,
             parameters,
             "Model proposed a tool where the case requires a no-action response.",
@@ -2033,7 +1981,6 @@ def score_raw_precision_response(
         passed,
         "none" if passed else "response_content",
         response[:1000],
-        envelope.workflow_stage,
         "respond_to_user",
         {"message": message},
         (
@@ -2120,7 +2067,6 @@ def _score_precision_controller_terminal(
         passed,
         "none" if passed else failure_type,
         baseline.response,
-        baseline.parsed_stage,
         baseline.parsed_tool,
         baseline.parsed_parameters,
         (
@@ -2140,30 +2086,8 @@ def _score_precision_controller_terminal(
     )
 
 
-def _recovery_envelope(
-    response: str,
-    *,
-    workflow_stage: str,
-) -> tuple[ToolEnvelopeParseResult, str | None]:
-    """Apply the controller's exact stage check before recovery classification."""
-    parsed = CommandParser.parse_product(response)
-    parsed_stage = parsed.workflow_stage
-    if (
-        parsed.status in {ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL}
-        and parsed.workflow_stage != workflow_stage
-    ):
-        return (
-            ToolEnvelopeParseResult.format_error(
-                "workflow_stage does not match the current backend publication."
-            ),
-            parsed_stage,
-        )
-    return parsed, parsed_stage
-
-
 def _evaluate_trajectory(
     *,
-    workflow_stage: str,
     build_messages: Callable[[tuple[str, ...]], list[dict[str, str]]],
     score_response: Callable[[str], TargetEvalScore],
     score_raw_model_response: Callable[[str], TargetEvalScore],
@@ -2197,10 +2121,7 @@ def _evaluate_trajectory(
         if raw_score is None:
             raw_score = score_raw_model_response(response)
 
-        envelope, parsed_stage = _recovery_envelope(
-            response,
-            workflow_stage=workflow_stage,
-        )
+        envelope = CommandParser.parse_product(response)
         controller_action: StrictEnvelopeRecoveryAction | None = None
         controller_context: str | None = None
         if replay_controller_response is not None:
@@ -2225,7 +2146,6 @@ def _evaluate_trajectory(
                 attempt_number=len(attempts) + 1,
                 response_preview=response[:RAW_OUTPUT_PREVIEW_CHAR_LIMIT],
                 envelope_status=recovery_envelope.status.value,
-                workflow_stage=parsed_stage,
                 recovery_action=decision.action.value,
                 taxonomy=decision.taxonomy.value,
                 recovery_attempts_after=decision.recovery_attempts_after,
@@ -2297,7 +2217,6 @@ def evaluate_case_trajectory(
     )
     harness.begin_turn(case.user_input, prompt_publication)
     trajectory = _evaluate_trajectory(
-        workflow_stage=case.workflow_stage,
         build_messages=messages,
         score_response=lambda response: _score_case_response(
             case,
@@ -2316,7 +2235,6 @@ def evaluate_case_trajectory(
     )
     host_admission, product_terminal = harness.observed_controller_outcome(
         trajectory.final_response,
-        workflow_stage=case.workflow_stage,
         recovery_action=trajectory.attempts[-1].recovery_action,
     )
     final_score = (
@@ -2408,7 +2326,6 @@ def evaluate_clarification_trajectory(
             passed,
             "none" if passed else "clarification_collection",
             "",
-            source.workflow_stage,
             decision.command_name if decision is not None else None,
             parameters,
             (
@@ -2465,7 +2382,6 @@ def evaluate_clarification_trajectory(
         parameters = decision.params if decision is not None else None
         passed = bool(
             envelope.status is ToolEnvelopeStatus.VALID
-            and envelope.workflow_stage == source.workflow_stage
             and envelope.commands[0][0] == case.expected_tool
             and parameters == case.expected_parameters
             and decision is not None
@@ -2475,7 +2391,6 @@ def evaluate_clarification_trajectory(
             passed,
             "none" if passed else "clarification_continuation",
             response[:1000],
-            envelope.workflow_stage,
             envelope.commands[0][0]
             if envelope.status is ToolEnvelopeStatus.VALID
             else None,
@@ -2519,22 +2434,18 @@ def evaluate_clarification_trajectory(
                 False,
                 "output_format",
                 response[:1000],
-                envelope.workflow_stage,
                 None,
                 None,
                 envelope.error,
             )
         tool_name, parameters = envelope.commands[0]
         passed = bool(
-            envelope.workflow_stage == source.workflow_stage
-            and tool_name == case.expected_tool
-            and parameters == case.expected_parameters
+            tool_name == case.expected_tool and parameters == case.expected_parameters
         )
         return TargetEvalScore(
             passed,
             "none" if passed else "clarification_continuation",
             response[:1000],
-            envelope.workflow_stage,
             tool_name,
             parameters,
             (
@@ -2568,7 +2479,6 @@ def evaluate_clarification_trajectory(
 
     return replace(
         _evaluate_trajectory(
-            workflow_stage=source.workflow_stage,
             build_messages=build_messages,
             score_response=score,
             score_raw_model_response=raw_score,
@@ -2785,11 +2695,7 @@ def score_missing_parameter_host_guard(
         .validate(tool_name, parameters)
         .is_valid
     )
-    if (
-        envelope.workflow_stage != case.workflow_stage
-        or tool_name != expected_tool
-        or not schema_valid
-    ):
+    if tool_name != expected_tool or not schema_valid:
         return {
             "applicable": True,
             "passed": False,
@@ -3141,7 +3047,7 @@ def _build_report(
     challenge_rows = [row for row in results if row.get("suite") == "challenge"]
     challenge_critical_failures = sum(
         row.get("first_generation_score", row["score"]).get("failure_type")
-        in {"output_format", "workflow_stage", "unexpected_tool"}
+        in {"output_format", "unexpected_tool"}
         for row in challenge_rows
     )
     challenge_wording_failures = sum(
@@ -3380,7 +3286,7 @@ def _build_report(
 
 
 def report_candidate_passed(report: object) -> bool:
-    """Read only the v12 candidate gate; legacy report shapes fail closed."""
+    """Read only the v13 candidate gate; legacy report shapes fail closed."""
     if not isinstance(report, dict) or report.get("schema_version") != REPORT_SCHEMA:
         return False
     candidate_gate = report.get("candidate_gate")
@@ -4037,7 +3943,6 @@ def run_eval(
                         False,
                         "source_without_host_receipt",
                         "",
-                        source.workflow_stage,
                         None,
                         None,
                         "First turn did not produce the exact Host clarification receipt.",

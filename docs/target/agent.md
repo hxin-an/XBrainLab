@@ -208,11 +208,11 @@ publication產生。若 publication generation 在生成、repair、confirmation
 
 ## Strict model output contract
 
-每個受支援模型每次只能提出一個 JSON object，且 top level 恰有三個欄位：
+2026-09-28 使用者批准：每個受支援模型每次只能提出一個 JSON object，且 top level
+恰有兩個欄位。模型不再回填 `workflow_stage`：
 
 ```json
 {
-  "workflow_stage": "preprocessed",
   "tool_name": "create_epochs",
   "parameters": {}
 }
@@ -223,7 +223,10 @@ publication產生。若 publication generation 在生成、repair、confirmation
 不能從 prose、任意 code block 或多個候選中抽取指令；raw output 仍原樣保留。
 禁止前後 prose、array、多個 calls／code blocks、額外欄位、重複 key、非標準數值、
 寬鬆抽取與 legacy fallback。工具／參數仍受原 schema、publication、confirmation 約束。
-`workflow_stage` 是對 backend stage 的 acknowledgement，不是 authority。
+Workflow stage仍由backend publication提供於prompt/state card；host保存該次生成的publication
+與generation，在admission及confirmation／execution邊界驗證。不接受模型自報stage，也不由
+host補欄偽裝成模型輸出；舊三欄envelope不走兼容解析。實驗中的stage是backend context，
+不是模型輸出正確性項目；舊raw evidence與scorer結果保留原身分。
 
 只有 parser 能證明 raw output 含兩個以上相鄰、各自完整的 top-level JSON objects 時，它才是獨立的
 fail-closed classification：不得進入 first-command selection、format retry、receipt admission、confirmation、
@@ -235,7 +238,6 @@ strict format rejection／有限 repair budget；不能以 error-string heuristi
 
 ```json
 {
-  "workflow_stage": "data_loaded",
   "tool_name": "respond_to_user",
   "parameters": {"message": "..."}
 }
@@ -252,13 +254,13 @@ exact action。
 符合上述 typed clarification 的 response，或模型已提出缺少值的 direct tool 時，Host 可以在零 execution
 的具體追問旁建立 typed tool-input receipt。Receipt 只保存 exact tool ID、實際缺少欄位、
 可由 user 原文驗證的 values、bounded question evidence、prompt-time publication generation 與最多兩次
-parameter reply budget；不得保存或授權模型臆測的參數。它不是新的 model output branch，也不改變三欄
+parameter reply budget；不得保存或授權模型臆測的參數。它不是新的 model output branch，也不改變兩欄
 envelope。
 
 2026-09-21 正式基線準備採 initial generation 加最多一次 format repair；同一修復指示
 失敗後停止，不再送出第二次相同策略的生成。先前兩次 repair 的 Pilot 快照保持歷史身分。
 
-- 可 repair malformed JSON、wrong stage、unpublished tool、extra／invalid parameter。
+- 可 repair malformed JSON、unpublished tool、extra／invalid parameter；模型自報stage也是extra field。
 - 只有 user text 已含完整值時才能 repair parameter；不得發明缺少的科學或訓練值。
 - backend generation 改變時 discard proposal，重新讀取最新 publication。
 - backend blocked、confirmation cancel、GUI cancel／fail或任何 side effect 後不得 repair。
@@ -370,7 +372,7 @@ Engineering candidate的active suite固定為81個英文cases：36個positive ca
 用來暴露選定模型限制，不把Host拒絕冒充raw-model accuracy。中文intent／verifier可作未承諾相容基礎，
 不屬於active evidence。Candidate gates把raw model、Host safety與product outcome分開報告：
 
-Evaluator v11 保留第一次未受 Host collection／recovery 影響的 raw score，另將 post-recovery score 只作
+Evaluator v13 保留第一次未受 Host collection／recovery 影響的 raw score，另將 post-recovery score 只作
 diagnostic；candidate raw-model gate 只讀第一次 generation。candidate 判定仍必須走與產品相同的
 structured-decision token resolver、strict parser 及最多一次一般 format recovery（2026-09-21
 共同預算；舊兩次上限的 evidence 保留原身分）；proven
@@ -379,7 +381,7 @@ adjacent-complete-object multiple proposal 是直接 Host choose-one terminal，
 outcome 才是 product score。format
 recovery 只修 envelope，不得把 semantic tool-selection failure 重分類為通過。
 
-v11 report 固定保留 81 個英文 case（36 positive、14 challenge、24 precision、7 clarification）的
+v13 report 固定保留 81 個英文 case（36 positive、14 challenge、24 precision、7 clarification）的
 denominator、case identity 與既有 raw gate；不得用新增 Host rescue、替換 case 或降低 required count 改善分數。
 每個 row 必須以同一 controller/pending boundary 依序記錄：
 

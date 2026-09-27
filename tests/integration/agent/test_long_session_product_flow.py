@@ -199,7 +199,6 @@ class _DeterministicModelWorker(AgentWorker):
             parameters = {"message": response_text}
         response_text = json.dumps(
             {
-                "workflow_stage": _request_workflow_stage(request),
                 "tool_name": self.proposed_tool_name,
                 "parameters": parameters,
             },
@@ -387,13 +386,6 @@ def _request_workflow_stage(request: AssistantGenerationRequest) -> str:
         content = message.get("content")
         if not isinstance(content, str):
             continue
-        prompt_marker = 'root object must be exactly {"workflow_stage":"'
-        marker_index = content.find(prompt_marker)
-        if marker_index >= 0:
-            stage_start = marker_index + len(prompt_marker)
-            stage_end = content.find('"', stage_start)
-            if stage_end > stage_start:
-                return content[stage_start:stage_end]
         try:
             payload = json.loads(content)
         except json.JSONDecodeError:

@@ -1,5 +1,5 @@
 {
-  "schema": "xbrainlab.assistant_benchmark_calibration.v1",
+  "schema": "xbrainlab.assistant_benchmark_calibration.v2",
   "cases": [
     {
       "id": "explain", "family_id": "calibration.explain", "split": "development",
@@ -40,24 +40,24 @@
   "observations": [
     {
       "id": "explain.pass", "case_id": "explain",
-      "raw_response": "{\"workflow_stage\":\"data_loaded\",\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Resampling changes the sampling frequency.\"}}",
-      "agent_response": "{\"workflow_stage\":\"data_loaded\",\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Resampling changes the sampling frequency.\"}}",
+      "raw_response": "{\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Resampling changes the sampling frequency.\"}}",
+      "agent_response": "{\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Resampling changes the sampling frequency.\"}}",
       "complete": true, "host_verified": false, "terminal": "response",
       "before": {"generation": 1, "sampling_rate_hz": 256}, "after": {"generation": 1, "sampling_rate_hz": 256},
       "ui": {}, "effects": [], "pending": null, "errors": [], "execution": null
     },
     {
       "id": "explain.fail", "case_id": "explain",
-      "raw_response": "{\"workflow_stage\":\"data_loaded\",\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Resampling changes the sampling frequency.\"}}",
-      "agent_response": "{\"workflow_stage\":\"data_loaded\",\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Resampling changes the sampling frequency.\"}}",
+      "raw_response": "{\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Resampling changes the sampling frequency.\"}}",
+      "agent_response": "{\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Resampling changes the sampling frequency.\"}}",
       "complete": true, "host_verified": false, "terminal": "response",
       "before": {"generation": 1, "sampling_rate_hz": 256}, "after": {"generation": 1, "sampling_rate_hz": 256},
       "ui": {}, "effects": [], "pending": {"tool": "resample_data", "missing_inputs": ["rate"]}, "errors": [], "execution": null
     },
     {
       "id": "clarify.pass", "case_id": "clarify",
-      "raw_response": "{\"workflow_stage\":\"data_loaded\",\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Please provide both cutoffs.\",\"pending_action\":\"apply_bandpass_filter\",\"missing_inputs\":[\"low_freq\",\"high_freq\"]}}",
-      "agent_response": "{\"workflow_stage\":\"data_loaded\",\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Please provide both cutoffs.\",\"pending_action\":\"apply_bandpass_filter\",\"missing_inputs\":[\"low_freq\",\"high_freq\"]}}",
+      "raw_response": "{\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Please provide both cutoffs.\",\"pending_action\":\"apply_bandpass_filter\",\"missing_inputs\":[\"low_freq\",\"high_freq\"]}}",
+      "agent_response": "{\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Please provide both cutoffs.\",\"pending_action\":\"apply_bandpass_filter\",\"missing_inputs\":[\"low_freq\",\"high_freq\"]}}",
       "complete": true, "host_verified": false, "terminal": "clarification",
       "before": {"generation": 1, "sampling_rate_hz": 256}, "after": {"generation": 1, "sampling_rate_hz": 256},
       "ui": {}, "effects": [{"kind": "pending", "tool": "apply_bandpass_filter"}],
@@ -65,8 +65,8 @@
     },
     {
       "id": "clarify.fail", "case_id": "clarify",
-      "raw_response": "{\"workflow_stage\":\"data_loaded\",\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Which lower cutoff?\",\"pending_action\":\"apply_bandpass_filter\",\"missing_inputs\":[\"low_freq\"]}}",
-      "agent_response": "{\"workflow_stage\":\"data_loaded\",\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Which lower cutoff?\",\"pending_action\":\"apply_bandpass_filter\",\"missing_inputs\":[\"low_freq\"]}}",
+      "raw_response": "{\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Which lower cutoff?\",\"pending_action\":\"apply_bandpass_filter\",\"missing_inputs\":[\"low_freq\"]}}",
+      "agent_response": "{\"tool_name\":\"respond_to_user\",\"parameters\":{\"message\":\"Which lower cutoff?\",\"pending_action\":\"apply_bandpass_filter\",\"missing_inputs\":[\"low_freq\"]}}",
       "complete": true, "host_verified": false, "terminal": "clarification",
       "before": {"generation": 1, "sampling_rate_hz": 256}, "after": {"generation": 1, "sampling_rate_hz": 256},
       "ui": {}, "effects": [{"kind": "pending", "tool": "apply_bandpass_filter"}],
@@ -74,8 +74,8 @@
     },
     {
       "id": "resample.pass", "case_id": "resample",
-      "raw_response": "{\"workflow_stage\":\"data_loaded\",\"tool_name\":\"resample_data\",\"parameters\":{\"rate\":128}}",
-      "agent_response": "{\"workflow_stage\":\"data_loaded\",\"tool_name\":\"resample_data\",\"parameters\":{\"rate\":128}}",
+      "raw_response": "{\"tool_name\":\"resample_data\",\"parameters\":{\"rate\":128}}",
+      "agent_response": "{\"tool_name\":\"resample_data\",\"parameters\":{\"rate\":128}}",
       "complete": true, "host_verified": true, "terminal": "completed",
       "before": {"generation": 1, "sampling_rate_hz": 256}, "after": {"generation": 2, "sampling_rate_hz": 128},
       "ui": {}, "effects": [{"kind": "proposal", "tool": "resample_data"}, {"kind": "execution", "tool": "resample_data"}],
@@ -84,16 +84,16 @@
     },
     {
       "id": "resample.fail", "case_id": "resample",
-      "raw_response": "{\"workflow_stage\":\"data_loaded\",\"tool_name\":\"resample_data\",\"parameters\":{\"rate\":128}}",
-      "agent_response": "{\"workflow_stage\":\"data_loaded\",\"tool_name\":\"resample_data\",\"parameters\":{\"rate\":128}}",
+      "raw_response": "{\"tool_name\":\"resample_data\",\"parameters\":{\"rate\":128}}",
+      "agent_response": "{\"tool_name\":\"resample_data\",\"parameters\":{\"rate\":128}}",
       "complete": true, "host_verified": true, "terminal": "completed",
       "before": {"generation": 1, "sampling_rate_hz": 256}, "after": {"generation": 1, "sampling_rate_hz": 256},
       "ui": {}, "effects": [{"kind": "proposal", "tool": "resample_data"}], "pending": null, "errors": [], "execution": null
     },
     {
       "id": "open_import.pass", "case_id": "open_import",
-      "raw_response": "{\"workflow_stage\":\"empty\",\"tool_name\":\"import_eeg_data\",\"parameters\":{}}",
-      "agent_response": "{\"workflow_stage\":\"empty\",\"tool_name\":\"import_eeg_data\",\"parameters\":{}}",
+      "raw_response": "{\"tool_name\":\"import_eeg_data\",\"parameters\":{}}",
+      "agent_response": "{\"tool_name\":\"import_eeg_data\",\"parameters\":{}}",
       "complete": true, "host_verified": true, "terminal": "gui_ready",
       "before": {"generation": 0, "raw_count": 0}, "after": {"generation": 0, "raw_count": 0},
       "ui": {"surface": "import_eeg_data", "visible": true, "enabled": true},
@@ -102,8 +102,8 @@
     },
     {
       "id": "open_import.fail", "case_id": "open_import",
-      "raw_response": "{\"workflow_stage\":\"empty\",\"tool_name\":\"import_eeg_data\",\"parameters\":{}}",
-      "agent_response": "{\"workflow_stage\":\"empty\",\"tool_name\":\"import_eeg_data\",\"parameters\":{}}",
+      "raw_response": "{\"tool_name\":\"import_eeg_data\",\"parameters\":{}}",
+      "agent_response": "{\"tool_name\":\"import_eeg_data\",\"parameters\":{}}",
       "complete": true, "host_verified": true, "terminal": "gui_ready",
       "before": {"generation": 0, "raw_count": 0}, "after": {"generation": 0, "raw_count": 0},
       "ui": {"surface": "import_eeg_data", "visible": true, "enabled": false},

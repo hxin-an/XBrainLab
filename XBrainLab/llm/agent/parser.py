@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, TypeAlias
 
-from XBrainLab.backend.application.pipeline_stage import PipelineStage
-
 from .decision_contract import MODEL_RESPONSE_TOOL_NAME
 
 ToolCommand: TypeAlias = tuple[str, dict[str, Any]]
@@ -44,8 +42,7 @@ _TOOL_MARKER = re.compile(
     r'["\']?(?:decision|tool_name|tool_call|tool_calls|command)'
     r'["\']?\s*:',
 )
-_STRICT_TOOL_FIELDS = frozenset({"workflow_stage", "tool_name", "parameters"})
-_WORKFLOW_STAGES = frozenset(stage.value for stage in PipelineStage) | {"unavailable"}
+_STRICT_TOOL_FIELDS = frozenset({"tool_name", "parameters"})
 
 
 class ToolEnvelopeStatus(str, Enum):
@@ -64,7 +61,6 @@ class ToolEnvelopeParseResult:
     status: ToolEnvelopeStatus
     commands: tuple[ToolCommand, ...] = ()
     error: str = ""
-    workflow_stage: str | None = None
     pending_action: str = ""
     missing_inputs: tuple[str, ...] = ()
     message: str = ""
@@ -73,14 +69,12 @@ class ToolEnvelopeParseResult:
     def no_tool(
         cls,
         *,
-        workflow_stage: str | None = None,
         missing_inputs: tuple[str, ...] = (),
         pending_action: str = "",
         message: str = "",
     ) -> ToolEnvelopeParseResult:
         return cls(
             ToolEnvelopeStatus.NO_TOOL,
-            workflow_stage=workflow_stage,
             pending_action=pending_action,
             missing_inputs=missing_inputs,
             message=message,
@@ -90,13 +84,10 @@ class ToolEnvelopeParseResult:
     def valid(
         cls,
         command: ToolCommand,
-        *,
-        workflow_stage: str,
     ) -> ToolEnvelopeParseResult:
         return cls(
             ToolEnvelopeStatus.VALID,
             (command,),
-            workflow_stage=workflow_stage,
         )
 
     @classmethod
@@ -141,7 +132,7 @@ class CommandParser:
         """Classify a complete model response without recovering malformed calls.
 
         A product action is exactly one top-level JSON object with
-        ``workflow_stage``, ``tool_name`` and ``parameters``. One whole-response
+        ``tool_name`` and ``parameters``. One whole-response
         json or unlabeled Markdown fence is accepted as formatting only. Prose,
         wrappers, arrays, duplicate keys, partial JSON and multiple calls never
         reach execution; the caller's raw response remains unchanged.
@@ -198,20 +189,11 @@ class CommandParser:
         keys = frozenset(decoded)
         if keys != _STRICT_TOOL_FIELDS:
             return ToolEnvelopeParseResult.format_error(
-                "An assistant action must be exactly workflow_stage, tool_name, "
-                "and parameters.",
+                "An assistant action must be exactly tool_name and parameters.",
             )
 
-        workflow_stage = decoded["workflow_stage"]
         tool_name = decoded["tool_name"]
         parameters = decoded["parameters"]
-        if (
-            not isinstance(workflow_stage, str)
-            or workflow_stage not in _WORKFLOW_STAGES
-        ):
-            return ToolEnvelopeParseResult.format_error(
-                "workflow_stage must be an exact backend stage value.",
-            )
         if not isinstance(tool_name, str) or not tool_name.strip():
             return ToolEnvelopeParseResult.format_error(
                 "tool_name must be a non-empty string.",
@@ -225,14 +207,10 @@ class CommandParser:
                 "parameters must be a JSON object.",
             )
         if tool_name.strip() == MODEL_RESPONSE_TOOL_NAME:
-            return CommandParser._parse_model_response(
-                parameters,
-                workflow_stage=workflow_stage,
-            )
+            return CommandParser._parse_model_response(parameters)
 
         return ToolEnvelopeParseResult.valid(
             (tool_name, parameters),
-            workflow_stage=workflow_stage,
         )
 
     @staticmethod
@@ -264,8 +242,6 @@ class CommandParser:
     @staticmethod
     def _parse_model_response(
         parameters: dict[str, Any],
-        *,
-        workflow_stage: str,
     ) -> ToolEnvelopeParseResult:
         """Validate the reserved no-execution response envelope."""
         parameter_keys = frozenset(parameters)
@@ -313,7 +289,6 @@ class CommandParser:
             )
 
         return ToolEnvelopeParseResult.no_tool(
-            workflow_stage=workflow_stage,
             pending_action=pending_action,
             missing_inputs=missing_inputs,
             message=message.strip(),

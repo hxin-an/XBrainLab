@@ -51,9 +51,7 @@ def _verify_product_envelope(tool_name: str, params: dict) -> VerificationResult
 
     schemas = {tool.name: tool.parameters for tool in get_all_tools()}
     assert set(schemas) == set(_CURRENT_TOOL_PARAMETERS)
-    response = json.dumps(
-        {"workflow_stage": "empty", "tool_name": tool_name, "parameters": params}
-    )
+    response = json.dumps({"tool_name": tool_name, "parameters": params})
     envelope = CommandParser.parse_product(response)
     assert envelope.status is ToolEnvelopeStatus.VALID
     assert len(envelope.commands) == 1
@@ -109,7 +107,6 @@ def test_schema_valid_tool_inside_non_product_envelope_is_rejected(
 ) -> None:
     response = json.dumps(
         {
-            "workflow_stage": "empty",
             "tool_name": "configure_training",
             "parameters": {},
         }

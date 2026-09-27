@@ -138,7 +138,7 @@ Qt processing／closing admission。這些內部責任移交不新增工具或�
 - 組prompt：strict policy、stage-published target schemas、minimal state card、bounded RAG、最新user與
   最多上一則Assistant-visible訊息。
 - 讓 `AgentWorker` 在 background thread 生成回覆。
-- 用`CommandParser`接受exact三欄JSON envelope，可有整份回答單一 `json`／無語言 code fence；
+- 用`CommandParser`接受exact兩欄JSON envelope（`tool_name`、`parameters`），可有整份回答單一 `json`／無語言 code fence；
   只解除外框，原始輸出照存，不做散文抽取、寬鬆 schema 或 legacy fallback。
 - 初次生成最多加一次既有格式修復；同一修復仍失敗即停止，不重送第二次相同策略。
   多個完整物件維持 choose-one terminal，已交付操作、確認取消與執行失敗不由格式重試重送。
@@ -179,7 +179,7 @@ Controller 保留 missing-generation 拒絕與 Qt delivery。有效 proposal 只
 `AssistantGenerationRequest` 一律使用 structured-decision decoding；普通說明也由 strict
 `respond_to_user` envelope 呈現，沒有 bypass parser 的 natural-language selector。Core 的
 `INFORMATIONAL_TEXT` 仍供獨立 runtime inspection 使用，不是 Assistant turn 的第二條路徑。
-Parser 保留 status、commands、stage、error 與 clarification 的 message／pending_action／
+Parser 保留 status、commands、error 與 clarification 的 message／pending_action／
 missing_inputs，不另保存未使用的 intent／decision metadata。Recovery artifact 仍使用七個
 現行 taxonomy 字串；其中 `first_attempt_plain_text`／`recovered_plain_text` 指合法 structured
 回覆，不表示接受任意裸文字。已無 producer 的 blocked／missing-input／answer 六種舊分類已移除。
@@ -485,6 +485,10 @@ blocked reason 仍由 backend capability policy 產生。
 publication。ApplicationService capability不是另一個prompt router，而是在proposal後再次做authoritative
 admission。若state publication不可靠，prompt stage固定為`unavailable`且只保留`switch_panel`與
 `respond_to_user`。
+
+模型輸出只包含`tool_name`與`parameters`，不回填`workflow_stage`。Stage仍在backend-owned
+state card／publication中，host以保存的generation驗證proposal、confirmation及execution，
+而不是從模型JSON取得state。舊三欄輸出屬extra-field format error；沒有雙格式兼容路徑。
 
 RAG action examples受同一條18-tool與stage publication邊界約束，response examples則重用
 既有非執行決策契約。`example_policy.py`由實際action schemas或response parser判斷可索引內容，

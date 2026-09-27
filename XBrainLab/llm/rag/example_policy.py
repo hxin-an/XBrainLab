@@ -8,7 +8,6 @@ import math
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
-from XBrainLab.backend.application.pipeline_stage import PipelineStage
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.decision_contract import MODEL_RESPONSE_TOOL_NAME
 from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
@@ -77,10 +76,10 @@ def tool_calls_from_metadata(metadata: dict[str, Any] | None) -> list[dict[str, 
 def prompt_tool_call_from_metadata(
     metadata: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Return one schema-valid action/response fragment or reject the metadata.
+    """Return one schema-valid action/response envelope or reject the metadata.
 
-    RAG context contains the tool name and parameters, not a complete model
-    response envelope. A response uses the existing non-executing decision
+    RAG context uses the same two-field envelope as model output.
+    A response uses the existing non-executing decision
     contract; it does not become a callable action. Legacy, multi-action and
     malformed examples are unsuitable for the product prompt.
     """
@@ -106,7 +105,7 @@ def prompt_tool_call_from_metadata(
         # Reuse the actual response parser (the action validator intentionally
         # handles only action schemas, not this contract's oneOf branches).
         result = CommandParser.parse_product(
-            json.dumps({"workflow_stage": PipelineStage.EMPTY.value, **call}),
+            json.dumps(call),
         )
         return call if result.status is ToolEnvelopeStatus.NO_TOOL else None
     validator = _live_tool_schema_validator()

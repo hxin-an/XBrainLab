@@ -219,7 +219,6 @@ def test_format_retry_dispatch_uses_system_policy_and_resets_for_next_turn(
     assert controller._tool_attempt_session.retry_count == 1
     controller.current_response = json.dumps(
         {
-            "workflow_stage": controller.assembler.latest_tool_publication.workflow_stage,
             "tool_name": "respond_to_user",
             "parameters": {"message": "The workflow is awaiting input."},
         }

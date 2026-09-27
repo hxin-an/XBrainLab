@@ -129,7 +129,7 @@ class _InMemoryEngine:
     def generate_stream(self, _messages: list[dict[str, Any]], *, profile: Any):
         del profile
         yield (
-            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"Recovered assistant response."}}'
         )
 
@@ -305,7 +305,6 @@ def test_preprocess_generation_keeps_gui_responsive_until_real_terminal(
         del self, messages, profile
         yield json.dumps(
             {
-                "workflow_stage": controller.assembler.latest_tool_publication.workflow_stage,
                 "tool_name": "apply_bandpass_filter",
                 "parameters": {"low_freq": 4, "high_freq": 40},
             }
@@ -395,7 +394,7 @@ def test_moved_controller_stop_and_late_generation_cannot_finish_next_turn(
         entered[index].set()
         release[index].wait(timeout=3.0)
         yield (
-            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"Current response."}}'
         )
 
@@ -683,7 +682,7 @@ def test_manager_delivery_watchdog_fences_retry_until_terminal_exactly_once(
     ):
         del profile
         yield (
-            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"Transport recovered."}}'
         )
 

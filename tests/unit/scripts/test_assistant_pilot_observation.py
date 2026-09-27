@@ -1,5 +1,6 @@
 """Evidence collection never executes tools or converts missing evidence to success."""
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -248,7 +249,9 @@ def test_real_controller_rag_off_keeps_normal_assembly_and_observes_admission(qt
         )
         rag = next(item for item in decisions if item["kind"] == "rag")
         assert rag["enabled"] is False and rag["error"] == ""
-        controller.current_response = '{"workflow_stage":"empty","tool_name":"respond_to_user","parameters":{"message":"EEG explanation"}}'
+        controller.current_response = (
+            '{"tool_name":"respond_to_user","parameters":{"message":"EEG explanation"}}'
+        )
         controller._on_generation_finished(requests[0].generation_id, [])
         envelope = next(item for item in decisions if item["kind"] == "envelope")
         assert envelope["status"] == "no_tool"
@@ -258,8 +261,10 @@ def test_real_controller_rag_off_keeps_normal_assembly_and_observes_admission(qt
         close_controller_and_wait(controller, qtbot)
 
 
-@pytest.mark.parametrize("wrong_stage", [False, True])
-def test_real_host_rejection_is_recorded_not_recomputed_from_oracle(qtbot, wrong_stage):
+@pytest.mark.parametrize("retired_stage_echo", [False, True])
+def test_real_host_rejection_is_recorded_not_recomputed_from_oracle(
+    qtbot, retired_stage_echo
+):
     from tests.qt_lifecycle import close_controller_and_wait
     from XBrainLab.backend.study import Study
     from XBrainLab.llm.agent.controller import LLMController
@@ -273,17 +278,17 @@ def test_real_host_rejection_is_recorded_not_recomputed_from_oracle(qtbot, wrong
         controller.handle_user_turn(
             AssistantTurnRequest(AssistantTurnCorrelation(1, 1), "Resample to 128 Hz")
         )
-        stage = "data_loaded" if wrong_stage else "empty"
-        controller.current_response = (
-            '{"workflow_stage":"'
-            + stage
-            + '","tool_name":"resample_data","parameters":{"rate":128}}'
-        )
+        payload = {"tool_name": "resample_data", "parameters": {"rate": 128}}
+        if retired_stage_echo:
+            payload["workflow_stage"] = "empty"
+        controller.current_response = json.dumps(payload)
         controller._on_generation_finished(requests[0].generation_id, [])
-        if wrong_stage:
+        if retired_stage_echo:
             rejection = next(item for item in decisions if item["kind"] == "envelope")
             assert rejection["status"] == "format_error"
-            assert "workflow_stage" in rejection["error"]
+            assert rejection["error"] == (
+                "An assistant action must be exactly tool_name and parameters."
+            )
         else:
             rejection = next(item for item in decisions if item["kind"] == "admission")
             assert rejection["action"].endswith("blocked")
@@ -308,7 +313,7 @@ def test_observer_exception_and_mutation_do_not_change_owner_decision(qtbot):
 
     controller.decision_observed.connect(broken_observer)
     envelope = CommandParser.parse_product(
-        '{"workflow_stage":"empty","tool_name":"resample_data","parameters":{"rate":128}}'
+        '{"tool_name":"resample_data","parameters":{"rate":128}}'
     )
     try:
         assert controller._handle_tool_envelope_failure(envelope) is False
@@ -355,7 +360,7 @@ def test_observed_request_preserves_scoring_contract_without_defaulting_missing_
             if request_kind == "wrong_contract":
                 payload["response_contract"] = "natural_language"
             host.controller.sig_generate.emit(payload)
-        raw = '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{"rate":128}}'
+        raw = '{"tool_name":"resample_data","parameters":{"rate":128}}'
         for phase, text in [
             (AssistantGenerationEventPhase.STARTED, ""),
             (AssistantGenerationEventPhase.CHUNK, raw),

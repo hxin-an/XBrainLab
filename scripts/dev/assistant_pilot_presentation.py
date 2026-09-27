@@ -424,7 +424,7 @@ def _case_page(root: Path, output: Path, row: dict, detail: dict) -> None:
                 fields(
                     [
                         (
-                            "Workflow stage",
+                            "Backend workflow stage (case context)",
                             case.get("expected_workflow_stage", "unavailable"),
                         ),
                         ("Tool", case.get("expected_tool", "unavailable")),
@@ -435,7 +435,6 @@ def _case_page(root: Path, output: Path, row: dict, detail: dict) -> None:
                 '<section class="panel"><h2>Recorded final decision</h2>',
                 fields(
                     [
-                        ("Workflow stage", final.get("observed_stage", "unavailable")),
                         ("Tool", final.get("observed_tool", "unavailable")),
                         ("Score reason", final.get("reason", "unavailable")),
                     ]
