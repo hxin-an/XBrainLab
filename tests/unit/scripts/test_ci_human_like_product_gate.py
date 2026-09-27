@@ -23,6 +23,16 @@ def test_human_like_walkthrough_has_one_parallel_ci_owner() -> None:
     assert "scripts/dev/capture_human_like_product_walkthrough.py" in str(job)
     assert "build/dev-artifacts/human-like-product" in str(job)
     assert RETIRED_PYTEST_WRAPPER.exists() is False
+    upload = next(
+        step
+        for step in job["steps"]
+        if step.get("name") == "Upload human-like product evidence"
+    )
+    assert upload["if"] == "always()"
+    assert set(upload["with"]["path"].splitlines()) == {
+        "build/dev-artifacts/human-like-product",
+        "build/dev-artifacts/human-like-product-runs",
+    }
 
 
 def test_local_handoff_keeps_the_canonical_walkthrough_artifact_gate() -> None:

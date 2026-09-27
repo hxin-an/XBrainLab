@@ -138,13 +138,6 @@ class ControlSidebar(QWidget):
         layout.addSpacing(Stylesheets.SIDEBAR_GROUP_GAP)
         layout.addStretch()
 
-    def update_info(self):
-        """Refresh the aggregate info panel (delegated to InfoPanelService)."""
-        if not self.info_panel:
-            return
-
-        # Handled by InfoPanelService
-
     @staticmethod
     def _three_d_toggle_style() -> str:
         """Return the selected-state styling for 3D scene toggles."""

@@ -80,3 +80,44 @@ def test_greedy_controls_bar_ignores_hidden_trailing_width_and_reflows_on_show(
 
     assert refresh_count <= 4
     assert bar._settled_reflow_pending is False
+
+
+def test_greedy_controls_reflow_for_width_membership_and_explicit_refresh(qtbot):
+    model = ElidingComboBox()
+    model.setMinimumWidth(100)
+    first = QLabel("First action")
+    replacement = QLabel("Other action")
+    first.setMinimumWidth(120)
+    replacement.setMinimumWidth(120)
+    replacement.hide()
+    bar = ResponsiveControlsBar(
+        [("Model", model)], [first, replacement], greedy_wrap=True
+    )
+    qtbot.addWidget(bar)
+    bar.resize(420, 140)
+    bar.show()
+    qtbot.waitUntil(lambda: first.isVisible() and not bar.is_wrapped())
+
+    bar.resize(240, 140)
+    qtbot.waitUntil(bar.is_wrapped)
+    bar.resize(420, 140)
+    qtbot.waitUntil(lambda: not bar.is_wrapped())
+
+    # Same width and row count, but a different optional control must be packed.
+    first.hide()
+    replacement.show()
+    qtbot.waitUntil(lambda: replacement.parentWidget() is not bar)
+    assert not first.isVisible()
+    assert replacement.isVisible()
+    assert (
+        replacement.mapTo(bar, replacement.rect().topLeft()).x()
+        > model.mapTo(bar, model.rect().topRight()).x()
+    )
+
+    replacement.setText("A deliberately longer optional action requiring its own row")
+    bar.refresh_layout()
+    qtbot.waitUntil(bar.is_wrapped)
+    assert (
+        replacement.mapTo(bar, replacement.rect().topLeft()).y()
+        > model.mapTo(bar, model.rect().bottomLeft()).y()
+    )

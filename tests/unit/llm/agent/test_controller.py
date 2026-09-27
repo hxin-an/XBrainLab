@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import replace
 from typing import Any, cast
@@ -59,7 +60,6 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationEventPhase,
     AssistantGenerationStopAcknowledgement,
     AssistantGenerationStopRequest,
-    AssistantResponseContract,
     AssistantToolInputReceipt,
     AssistantTurnCorrelation,
     AssistantTurnDeliveryPhase,
@@ -79,10 +79,9 @@ from XBrainLab.llm.core.runtime_selection import (
 )
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailabilityContext,
-    ToolCommandResult,
 )
 from XBrainLab.llm.tools.result_contract import (
-    ToolResult,
+    ToolCommandResult,
     UiRequest,
     UiRequestKind,
 )
@@ -316,7 +315,6 @@ def _evaluate_policy(
         ToolAttemptRequest(
             command_name=tool_name,
             params=params or {},
-            confidence=0.9,
             publication=ctrl._turn_orchestrator.active_publication,
             latest_user_text=(
                 ctrl._conversation.latest_user_request_text() if text is None else text
@@ -920,11 +918,9 @@ class TestHandleUserInput:
         activity = ctrl.activity_changed.emit.call_args.args[0]
         assert activity.attention_kind is AssistantAttentionKind.ERROR
 
-    @pytest.mark.parametrize("stop_reason", ["ask_tool_limit", "retry_cap"])
     def test_terminal_recoverable_failure_does_not_start_host_retry(
         self,
         ctrl,
-        stop_reason,
     ) -> None:
         ctrl.history = [
             {"role": "user", "content": "Configure training for 20 epochs."}
@@ -933,12 +929,7 @@ class TestHandleUserInput:
             "Training configuration failed.",
             AssistantResponseKind.ERROR,
         )
-        ctrl._tool_attempt_coordinator.after_failure = MagicMock(
-            return_value=MagicMock(
-                continue_workflow=False,
-                reason=stop_reason,
-            )
-        )
+        ctrl._generate_response = MagicMock()
         ctrl._finalize_turn_after_tool = MagicMock()
         result = ToolCommandResult.failure(
             "configure_training",
@@ -947,79 +938,11 @@ class TestHandleUserInput:
             recoverable=True,
         )
 
-        ctrl._handle_tool_failure(None, result)
+        ctrl._handle_tool_failure(result)
 
         ctrl.response_presentation_ready.emit.assert_not_called()
-        ctrl._tool_attempt_coordinator.after_failure.assert_not_called()
+        ctrl._generate_response.assert_not_called()
         ctrl._finalize_turn_after_tool.assert_called_once_with("failed")
-
-    @pytest.mark.parametrize(
-        "error_type",
-        ["precondition", "confirmation_required", "stale_confirmation"],
-    )
-    def test_policy_and_precondition_failures_remain_blocked(
-        self,
-        ctrl,
-        error_type,
-    ) -> None:
-        result = ToolCommandResult.failure(
-            "configure_training",
-            "Review the current workflow before continuing.",
-            error_type=error_type,
-        )
-
-        assert (
-            ctrl._tool_result_response_kind(False, result)
-            is AssistantResponseKind.BLOCKED
-        )
-
-    @pytest.mark.parametrize(
-        "changed_state",
-        [
-            {},
-            {"training_changed": False},
-            {"training_changed": True},
-        ],
-    )
-    def test_completed_command_success_is_always_presented_as_completed(
-        self,
-        ctrl,
-        changed_state,
-    ):
-        result = ToolCommandResult(
-            ok=True,
-            tool_name="saliency",
-            command_name="saliency",
-            message="Saliency parameters are not configured yet.",
-            changed_state=changed_state,
-        )
-
-        ctrl._tool_attempt_session.last_tool_summary_kind = (
-            ctrl._tool_result_response_kind(
-                True,
-                result,
-            )
-        )
-
-        assert (
-            ctrl._tool_attempt_session.last_tool_summary_kind
-            is AssistantResponseKind.TOOL_RESULT
-        )
-
-    def test_pending_ui_request_is_not_presented_as_completed(self, ctrl):
-        request = UiRequest(
-            UiRequestKind.WORKFLOW_HANDOFF,
-            {
-                "tool_name": "import_eeg_data",
-                "command": CommandName.SCAN_SOURCE.value,
-                "decision_fields": (),
-            },
-        )
-
-        assert (
-            ctrl._tool_result_response_kind(True, request)
-            is AssistantResponseKind.MESSAGE
-        )
 
     def test_state_read_failure_is_handled_by_strict_model_turn(
         self,
@@ -1180,8 +1103,14 @@ class TestOnChunkReceived:
 # --- _on_generation_finished ---
 class TestOnGenerationFinished:
     def test_no_command_finalizes(self, ctrl):
-        ctrl.current_response = "Just a regular reply, nothing special"
-        ctrl._active_response_contract = AssistantResponseContract.NATURAL_LANGUAGE
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication.empty()
+        ctrl.current_response = json.dumps(
+            {
+                "workflow_stage": "unavailable",
+                "tool_name": "respond_to_user",
+                "parameters": {"message": "Just a regular reply, nothing special"},
+            }
+        )
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 10
         ctrl._on_generation_finished(10, [])
@@ -1199,8 +1128,14 @@ class TestOnGenerationFinished:
 
     def test_no_tool_text_is_published_as_opaque_typed_copy(self, ctrl):
         response_text = "Request: review the current EEG workflow."
-        ctrl.current_response = response_text
-        ctrl._active_response_contract = AssistantResponseContract.NATURAL_LANGUAGE
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication.empty()
+        ctrl.current_response = json.dumps(
+            {
+                "workflow_stage": "unavailable",
+                "tool_name": "respond_to_user",
+                "parameters": {"message": response_text},
+            }
+        )
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 11
 
@@ -1337,7 +1272,7 @@ class TestOnGenerationFinished:
         decision = ctrl._tool_attempt_coordinator.evaluate.call_args.args[0]
         assert decision.params == {"low_freq": 12, "high_freq": 40}
         ctrl._execute_tool_attempt.assert_called_once()
-        ctrl.assembler.build_system_prompt.assert_called_once_with("40")
+        ctrl.assembler.build_system_prompt.assert_called_once_with()
         decision = ctrl._execute_tool_attempt.call_args.args[0]
         assert decision.command_name == "apply_bandpass_filter"
         assert decision.params == {"low_freq": 12, "high_freq": 40}
@@ -1377,7 +1312,7 @@ class TestOnGenerationFinished:
 
         assert lifecycle.requests == []
         ctrl._generate_response.assert_not_called()
-        ctrl.assembler.build_system_prompt.assert_called_once_with("5")
+        ctrl.assembler.build_system_prompt.assert_called_once_with()
         decision = ctrl._tool_attempt_coordinator.evaluate.call_args.args[0]
         assert decision.params == {"low_freq": 5, "high_freq": 20}
         ctrl._execute_tool_attempt.assert_called_once()
@@ -1644,7 +1579,7 @@ class TestOnGenerationFinished:
     ):
         malformed = '```json\n{"tool_name":"query_state","parameters":{}}\n```'
         ctrl._generate_response = MagicMock()
-        ctrl._process_tool_calls = MagicMock()
+        ctrl._process_tool_call = MagicMock()
         ctrl.is_processing = True
 
         retry_limit = ctrl._strict_envelope_recovery_policy.max_recovery_attempts
@@ -1658,7 +1593,7 @@ class TestOnGenerationFinished:
 
         assert ctrl._generate_response.call_count == retry_limit
         ctrl.assembler.add_context.assert_not_called()
-        ctrl._process_tool_calls.assert_not_called()
+        ctrl._process_tool_call.assert_not_called()
 
     def test_prose_prefixed_tool_response_is_rejected_without_execution(self, ctrl):
         ctrl.current_response = (
@@ -1668,12 +1603,12 @@ class TestOnGenerationFinished:
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 30
         ctrl._generate_response = MagicMock()
-        ctrl._process_tool_calls = MagicMock()
+        ctrl._process_tool_call = MagicMock()
 
         ctrl._on_generation_finished(30, [])
 
         ctrl.response_presentation_ready.emit.assert_not_called()
-        ctrl._process_tool_calls.assert_not_called()
+        ctrl._process_tool_call.assert_not_called()
         ctrl._generate_response.assert_called_once()
 
     @pytest.mark.parametrize(
@@ -1691,11 +1626,11 @@ class TestOnGenerationFinished:
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 31
         ctrl._generate_response = MagicMock()
-        ctrl._process_tool_calls = MagicMock()
+        ctrl._process_tool_call = MagicMock()
 
         ctrl._on_generation_finished(31, [])
 
-        ctrl._process_tool_calls.assert_not_called()
+        ctrl._process_tool_call.assert_not_called()
         ctrl._generate_response.assert_called_once()
 
     def test_ignores_finish_from_stale_generation(self, ctrl):
@@ -1783,7 +1718,7 @@ class TestExecuteToolNoLoop:
 
     def test_success(self, ctrl):
         mock_tool = MagicMock()
-        mock_tool.execute.return_value = ToolResult(True, "ok")
+        mock_tool.execute.return_value = ToolCommandResult(True, "switch_panel", "ok")
         ctrl.registry.get_tool.return_value = mock_tool
         _allow_prompt_tools(ctrl)
         outcome = ctrl._execute_tool_no_loop("switch_panel", {"panel_name": "dataset"})
@@ -2013,32 +1948,9 @@ class TestHandleToolResultLogic:
         assert presentation.kind is AssistantResponseKind.BLOCKED
         assert "not available" in presentation.text
 
-    def test_confirm_montage(self, ctrl):
-        result = ctrl._handle_tool_result_logic(
-            UiRequest(
-                UiRequestKind.CONFIRM_MONTAGE,
-                {
-                    "montage_name": "standard_1020",
-                    "warning": "Review channel identities.",
-                },
-            )
-        )
-        assert result
-        request = ctrl.workflow_ui_handoff_requested.emit.call_args.args[0]
-        assert request.command is CommandName.APPLY_MONTAGE
-        assert request.suggestions == {
-            "montage_name": "standard_1020",
-            "warning": "Review channel identities.",
-        }
-        assert ctrl.pending_interactions.workflow_handoff is request
-        ctrl.panel_navigation_requested.emit.assert_not_called()
-        activity = ctrl.activity_changed.emit.call_args.args[0]
-        assert activity.decision_owner is AssistantDecisionOwner.GUI_DIALOG
-
-    def test_failure_waits_for_host_retry_policy_before_becoming_visible(self, ctrl):
+    def test_failure_is_presented_by_terminal_path_not_ui_handoff(self, ctrl):
         result = ctrl._handle_tool_result_logic(
             ToolCommandResult.failure("test", "some error"),
-            success=False,
         )
         assert not result
         ctrl.response_presentation_ready.emit.assert_not_called()
@@ -2081,28 +1993,25 @@ class TestHandleToolResultLogic:
         assert ctrl._tool_attempt_session.visible_response_sent is True
 
 
-# --- _process_tool_calls ---
+# --- _process_tool_call ---
 class TestProcessToolCalls:
-    def test_ask_executes_only_first_command_from_model_batch(self, ctrl):
-        context = _enabled_tool_context("first", generation=11)
-        context_reader = _set_context_reader(ctrl, return_value=context)
-        ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("ok"))
-        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+    @pytest.mark.parametrize(
+        ("execution_count", "cancelled"), [(0, True), (1, False), (2, False)]
+    )
+    def test_cancelled_or_spent_turn_never_evaluates_another_proposal(
+        self, ctrl, execution_count, cancelled
+    ):
+        ctrl._tool_attempt_session.execution_count = execution_count
+        ctrl._turn_orchestrator.cancelled = cancelled
+        ctrl._evaluate_tool_proposal = MagicMock()
+        ctrl._execute_tool_attempt = MagicMock()
         ctrl._finalize_turn_after_tool = MagicMock()
-        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
-        ctrl.registry.get_tool.return_value.requires_confirmation = False
 
-        ctrl._process_tool_calls(
-            [("first", {}), ("second", {})],
-            '{"tool_calls": ["first", "second"]}',
-        )
+        ctrl._process_tool_call(("resample_data", {"rate": 128}), "proposal")
 
-        ctrl._execute_tool_no_loop.assert_called_once_with(
-            "first",
-            {},
-            context=context,
-        )
-        context_reader.assert_called_once_with("first")
+        ctrl._evaluate_tool_proposal.assert_not_called()
+        ctrl._execute_tool_attempt.assert_not_called()
+        ctrl._finalize_turn_after_tool.assert_called_once_with()
 
     def test_ui_request_stops_before_workflow_continuation(self, ctrl):
         _allow_prompt_tools(ctrl)
@@ -2110,8 +2019,12 @@ class TestProcessToolCalls:
             return_value=ToolExecutionOutcome(
                 True,
                 UiRequest(
-                    UiRequestKind.CONFIRM_MONTAGE,
-                    {"montage_name": "standard_1020"},
+                    UiRequestKind.WORKFLOW_HANDOFF,
+                    {
+                        "tool_name": "set_montage",
+                        "command": "apply_montage",
+                        "decision_fields": (),
+                    },
                 ),
             )
         )
@@ -2120,8 +2033,8 @@ class TestProcessToolCalls:
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
         ctrl.registry.get_tool.return_value.requires_confirmation = False
 
-        ctrl._process_tool_calls(
-            [("set_montage", {"montage_name": "standard_1020"})],
+        ctrl._process_tool_call(
+            ("set_montage", {}),
             '{"tool_name": "set_montage"}',
         )
 
@@ -2144,9 +2057,9 @@ class TestProcessToolCalls:
         ctrl.registry.get_tool.return_value.requires_confirmation = False
         ctrl._refresh_execution_snapshot = MagicMock()
 
-        ctrl._process_tool_calls(
-            [("first", {}), ("discarded", {})],
-            '{"tool_calls": ["first", "discarded"]}',
+        ctrl._process_tool_call(
+            ("first", {}),
+            '{"tool_name":"first","parameters":{}}',
         )
 
         ctrl._execute_tool_no_loop.assert_called_once_with(
@@ -2176,7 +2089,7 @@ class TestProcessToolCalls:
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
         ctrl.registry.get_tool.return_value.requires_confirmation = False
 
-        ctrl._process_tool_calls([("cmd", {})], '{"tool_name":"cmd"}')
+        ctrl._process_tool_call(("cmd", {}), '{"tool_name":"cmd"}')
 
         ctrl._generate_response.assert_not_called()
         ctrl._finalize_turn_after_tool.assert_called_once_with("failed")
@@ -2185,7 +2098,7 @@ class TestProcessToolCalls:
         ctrl._refresh_execution_snapshot = MagicMock()
         ctrl._finalize_turn_after_tool = MagicMock()
 
-        ctrl._handle_tool_success(None, command_name="import_eeg_data")
+        ctrl._handle_tool_success(command_name="import_eeg_data")
 
         ctrl.workflow_ui_handoff_requested.emit.assert_not_called()
         ctrl._refresh_execution_snapshot.assert_not_called()
@@ -2199,7 +2112,7 @@ class TestProcessToolCalls:
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
         ctrl.registry.get_tool.return_value.requires_confirmation = False
 
-        ctrl._process_tool_calls([("cmd", {"a": 1})], '{"cmd": "cmd"}')
+        ctrl._process_tool_call(("cmd", {"a": 1}), '{"cmd": "cmd"}')
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_failure_without_reliable_state_finishes_without_retry(self, ctrl):
@@ -2213,7 +2126,7 @@ class TestProcessToolCalls:
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
         ctrl.registry.get_tool.return_value.requires_confirmation = False
 
-        ctrl._process_tool_calls([("cmd", {})], "json")
+        ctrl._process_tool_call(("cmd", {}), "json")
 
         ctrl._generate_response.assert_not_called()
         ctrl._finalize_turn_after_tool.assert_called_once()
@@ -2240,9 +2153,8 @@ class TestProcessToolCalls:
         ctrl._finalize_turn_after_tool = MagicMock()
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
         ctrl.registry.get_tool.return_value.requires_confirmation = False
-        ctrl._tool_attempt_session.tool_failure_count = 0
 
-        ctrl._process_tool_calls([("cmd", {})], "json")
+        ctrl._process_tool_call(("cmd", {}), "json")
 
         ctrl._execute_tool_no_loop.assert_called_once_with(
             "cmd",
@@ -2251,21 +2163,6 @@ class TestProcessToolCalls:
         )
         context_reader.assert_called_once_with("cmd")
         ctrl._generate_response.assert_not_called()
-        assert ctrl._tool_attempt_session.tool_failure_count == 1
-        ctrl._finalize_turn_after_tool.assert_called_once()
-
-    def test_max_failures_stops(self, ctrl):
-        _allow_prompt_tools(ctrl)
-        ctrl._tool_attempt_session.tool_failure_count = 2
-        ctrl._execute_tool_no_loop = MagicMock(
-            return_value=_tool_outcome("err", ok=False)
-        )
-        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
-        ctrl._finalize_turn_after_tool = MagicMock()
-        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
-        ctrl.registry.get_tool.return_value.requires_confirmation = False
-
-        ctrl._process_tool_calls([("cmd", {})], "json")
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_verification_rejected(self, ctrl):
@@ -2274,7 +2171,7 @@ class TestProcessToolCalls:
         )
         ctrl._generate_response = MagicMock()
         ctrl._handle_tool_attempt_blocked = MagicMock()
-        ctrl._process_tool_calls([("cmd", {})], "json")
+        ctrl._process_tool_call(("cmd", {}), "json")
         ctrl._handle_tool_attempt_blocked.assert_called_once()
         command_name, result = ctrl._handle_tool_attempt_blocked.call_args.args
         assert command_name == "cmd"
@@ -2288,7 +2185,6 @@ class TestProcessToolCalls:
     ):
         from XBrainLab.llm.agent.assembler import PromptToolPublication
 
-        ctrl._tool_attempt_session.tool_failure_count = 0
         ctrl._turn_orchestrator.active_publication = PromptToolPublication(
             tool_names=frozenset({"validate_interpretation"}),
             backend_generation=3,
@@ -2407,7 +2303,10 @@ def test_controller_preserves_exact_proposal_and_detaches_parameters(
 ):
     ctrl.history = [{"role": "user", "content": "Use a 1 to 40 Hz filter instead"}]
     original = dict(params)
-    proposal = ctrl._select_tool_proposal((name, params))
+    ctrl._evaluate_tool_proposal = MagicMock()
+    ctrl._present_tool_attempt_boundary = MagicMock(return_value=True)
+    ctrl._process_tool_call((name, params), "proposal")
+    proposal = ctrl._evaluate_tool_proposal.call_args.args[0]
     assert proposal == (name, original)
     assert proposal[1] is not params
     assert params == original
@@ -2420,7 +2319,7 @@ class TestStopGeneration:
         ctrl._turn_orchestrator.active_generation_id = 1
         ctrl.stop_generation()
         assert ctrl.is_processing
-        ctrl.worker.cancel_generation.assert_called_once_with(
+        ctrl.sig_cancel_generation.emit.assert_called_once_with(
             AssistantGenerationStopRequest(generation_id=1)
         )
         ctrl.processing_finished.emit.assert_not_called()
@@ -2440,7 +2339,7 @@ class TestStopGeneration:
         ctrl._turn_orchestrator.active_generation_id = 2
         ctrl.stop_generation()
 
-        ctrl.worker.cancel_generation.assert_called_once_with(
+        ctrl.sig_cancel_generation.emit.assert_called_once_with(
             AssistantGenerationStopRequest(generation_id=2)
         )
 
@@ -2472,7 +2371,7 @@ class TestStopGeneration:
         ctrl.stop_generation()
         ctrl.stop_generation()
 
-        assert ctrl.worker.cancel_generation.call_args_list == [
+        assert ctrl.sig_cancel_generation.emit.call_args_list == [
             call(request),
             call(request),
         ]
@@ -2674,7 +2573,7 @@ class TestStopGeneration:
 
         ctrl.stop_generation()
 
-        ctrl.worker.cancel_generation.assert_called_once_with(
+        ctrl.sig_cancel_generation.emit.assert_called_once_with(
             AssistantGenerationStopRequest(generation_id=41)
         )
         ctrl._on_generation_stop_finished(
@@ -2771,8 +2670,11 @@ class TestResetConversation:
         ctrl._tool_attempt_session.retry_count = 5
         ctrl._turn_orchestrator.host_turn_generation = None
         ctrl._turn_orchestrator.host_turn_id = None
-        ctrl._turn_orchestrator.admitted_command_name = CommandName.SCAN_SOURCE.value
-        ctrl._turn_orchestrator.admitted_publication_generation = 7
+        ctrl._turn_orchestrator.set_active_publication(
+            PromptToolPublication(
+                tool_names=frozenset({"import_eeg_data"}), backend_generation=7
+            )
+        )
         ctrl.pending_interactions.begin_tool_input(
             AssistantToolInputReceipt(
                 command_name="resample_data",
@@ -2785,8 +2687,9 @@ class TestResetConversation:
         ctrl.reset_conversation()
         assert ctrl.history == []
         assert ctrl._tool_attempt_session.retry_count == 0
-        assert ctrl._turn_orchestrator.admitted_command_name is None
-        assert ctrl._turn_orchestrator.admitted_publication_generation is None
+        assert (
+            ctrl._turn_orchestrator.active_publication == PromptToolPublication.empty()
+        )
         assert ctrl.pending_interactions.tool_input is None
         assert ctrl.pending_interactions.active_tool_input is None
         ctrl.assembler.clear_context.assert_called()
@@ -2856,7 +2759,7 @@ class TestExecuteDebugTool:
         acknowledgement = ctrl.execute_debug_tool(request)
 
         assert acknowledgement.phase is AssistantTurnDeliveryPhase.ACCEPTED
-        ctrl.assembler.build_system_prompt.assert_called_once_with("")
+        ctrl.assembler.build_system_prompt.assert_called_once_with()
         ctrl._execute_tool_no_loop.assert_not_called()
         ctrl.confirmation_requested.emit.assert_not_called()
         ctrl.panel_navigation_requested.emit.assert_not_called()
@@ -3016,8 +2919,8 @@ class TestExecuteDebugTool:
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
         ctrl._execute_tool_attempt = MagicMock()
 
-        ctrl._process_tool_calls(
-            [("resample_data", {"rate": 128})],
+        ctrl._process_tool_call(
+            ("resample_data", {"rate": 128}),
             '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
             '"parameters":{"rate":128}}',
         )
@@ -3044,7 +2947,7 @@ class TestExecuteDebugTool:
 
         assert lifecycle.requests[-1][1] == "fifty hertz"
         ctrl._execute_tool_attempt.assert_not_called()
-        assert ctrl.pending_interactions.confirmation_decision is None
+        assert ctrl.pending_interactions.confirmation is None
         assert ctrl.pending_interactions.active_tool_input is None
 
     def test_parameter_followup_response_does_not_rearm_receipt(self, ctrl):
@@ -3095,8 +2998,8 @@ class TestExecuteDebugTool:
         }
         ctrl._execute_tool_attempt = MagicMock()
 
-        ctrl._process_tool_calls(
-            [("resample_data", {"rate": 128})],
+        ctrl._process_tool_call(
+            ("resample_data", {"rate": 128}),
             '{"tool_name":"resample_data","parameters":{"rate":128}}',
         )
 
@@ -3125,8 +3028,8 @@ class TestExecuteDebugTool:
         ctrl._execute_tool_attempt = MagicMock()
         ctrl._request_tool_confirmation = MagicMock()
 
-        ctrl._process_tool_calls(
-            [("import_eeg_data", {})],
+        ctrl._process_tool_call(
+            ("import_eeg_data", {}),
             '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}',
         )
 
@@ -3153,7 +3056,7 @@ class TestExecuteDebugTool:
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 17
         ctrl._generate_response = MagicMock()
-        ctrl._process_tool_calls = MagicMock()
+        ctrl._process_tool_call = MagicMock()
         ctrl._execute_tool_attempt = MagicMock()
         ctrl._request_tool_confirmation = MagicMock()
         ctrl._tool_attempt_coordinator.evaluate = MagicMock()
@@ -3162,7 +3065,7 @@ class TestExecuteDebugTool:
 
         assert ctrl._tool_attempt_session.retry_count == 0
         ctrl._generate_response.assert_not_called()
-        ctrl._process_tool_calls.assert_not_called()
+        ctrl._process_tool_call.assert_not_called()
         ctrl._tool_attempt_coordinator.evaluate.assert_not_called()
         ctrl._execute_tool_attempt.assert_not_called()
         ctrl._request_tool_confirmation.assert_not_called()
@@ -3555,149 +3458,34 @@ class TestOnUserConfirmed:
             expected_publication_generation=context.generation,
         )
         context_reader.assert_called_once_with("reset_preprocess")
-        assert ctrl.pending_interactions.confirmation_decision is None
-        assert ctrl._tool_attempt_session.tool_failure_count == 0
+        assert ctrl.pending_interactions.confirmation is None
 
-    def test_approved_data_interpretation_apply_adds_confirmed_param(self, ctrl):
-        context = _enabled_tool_context("apply_interpretation", generation=32)
+    def test_approved_history_clear_adds_confirmed_param(self, ctrl):
+        context = _enabled_tool_context("clear_training_history", generation=32)
         context_reader = _set_context_reader(ctrl, return_value=context)
         _begin_confirmation(
             ctrl,
             _pending_decision(
-                "apply_interpretation",
-                {"candidate_id": "candidate-1"},
+                "clear_training_history",
+                {},
                 context=context,
             ),
         )
-        ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("Applied."))
+        ctrl._execute_tool_no_loop = MagicMock(
+            return_value=_tool_outcome("Training history cleared.")
+        )
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl.metrics.finish_turn = MagicMock()
 
         _resolve_confirmation(ctrl, approved=True)
 
         ctrl._execute_tool_no_loop.assert_called_once_with(
-            "apply_interpretation",
-            {"candidate_id": "candidate-1", "confirmed": True},
+            "clear_training_history",
+            {"confirmed": True},
             context=context,
             expected_publication_generation=context.generation,
         )
-        context_reader.assert_called_once_with("apply_interpretation")
-
-    def test_approved_resource_warning_replays_backend_receipt(self, ctrl):
-        context = _enabled_tool_context("apply_interpretation", generation=32)
-        _set_context_reader(ctrl, return_value=context)
-        _begin_confirmation(
-            ctrl,
-            _pending_decision(
-                "apply_interpretation",
-                {"candidate_id": "candidate-1"},
-                context=context,
-                confirmation_kind="resource_preflight",
-                resource_preflight_receipt=ResourceConfirmationChallenge(
-                    challenge_id="receipt-1",
-                    command_name="apply_interpretation",
-                    candidate_id="candidate-1",
-                    scope_fingerprint="scope-1",
-                    ttl_seconds=120.0,
-                ),
-            ),
-        )
-        ctrl._execute_tool_no_loop = MagicMock(
-            return_value=_tool_outcome(
-                "Interpretation applied.",
-                tool_name="apply_interpretation",
-            ),
-        )
-        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
-
-        _resolve_confirmation(ctrl, approved=True)
-
-        ctrl._execute_tool_no_loop.assert_called_once_with(
-            "apply_interpretation",
-            {
-                "candidate_id": "candidate-1",
-                "confirmed": True,
-                "resource_preflight_confirmed": True,
-                "resource_preflight_token": "receipt-1",
-            },
-            context=context,
-            expected_publication_generation=context.generation,
-        )
-
-    @pytest.mark.parametrize(
-        ("command_name", "params", "candidate_id", "token", "expected_params"),
-        [
-            (
-                "preview_interpretation",
-                {"choices": {"skip_labels": True}},
-                "scan-1",
-                "preview-receipt-1",
-                {
-                    "scan_id": "scan-1",
-                    "choices": {"skip_labels": True},
-                    "resource_preflight_confirmed": True,
-                    "resource_preflight_token": "preview-receipt-1",
-                },
-            ),
-            (
-                "reload_interpretation_recipe",
-                {"recipe_path": "/tmp/recipe.json"},
-                "recipe-1",
-                "reload-receipt-1",
-                {
-                    "recipe_path": "/tmp/recipe.json",
-                    "resource_preflight_confirmed": True,
-                    "resource_preflight_token": "reload-receipt-1",
-                },
-            ),
-        ],
-    )
-    def test_human_approval_replays_data_interpretation_receipt(
-        self,
-        ctrl,
-        command_name,
-        params,
-        candidate_id,
-        token,
-        expected_params,
-    ):
-        context = _enabled_tool_context(command_name, generation=32)
-        _set_context_reader(ctrl, return_value=context)
-        _begin_confirmation(
-            ctrl,
-            _pending_decision(
-                command_name,
-                params,
-                context=context,
-                command_confirmation=False,
-                confirmation_kind="resource_preflight",
-                resource_preflight_receipt=ResourceConfirmationChallenge(
-                    challenge_id=token,
-                    command_name=command_name,
-                    candidate_id=candidate_id,
-                    scope_fingerprint=f"{command_name}-scope-1",
-                    ttl_seconds=120.0,
-                    configuration_fingerprint=f"{command_name}-configuration-1",
-                    preflight_fingerprint=f"{command_name}-preflight-1",
-                ),
-            ),
-        )
-        ctrl._execute_tool_no_loop = MagicMock(
-            return_value=_tool_outcome(
-                "Interpretation command completed.",
-                tool_name=command_name,
-            ),
-        )
-        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
-
-        _resolve_confirmation(ctrl, approved=True)
-
-        ctrl._execute_tool_no_loop.assert_called_once_with(
-            command_name,
-            expected_params,
-            context=context,
-            expected_publication_generation=context.generation,
-        )
+        context_reader.assert_called_once_with("clear_training_history")
 
     def test_approved_training_resource_receipt_starts_exactly_once(self, ctrl):
         preflight = _training_resource_preflight()
@@ -3732,9 +3520,7 @@ class TestOnUserConfirmed:
             expected_publication_generation=context.generation,
         )
         ctrl._handle_tool_success.assert_called_once_with(
-            context.availability,
             command_name="start_training",
-            after_confirmation=True,
         )
 
     def test_changed_training_preflight_requests_fresh_confirmation(self, ctrl):
@@ -3771,7 +3557,7 @@ class TestOnUserConfirmed:
             context=context,
             expected_publication_generation=context.generation,
         )
-        refreshed = ctrl.pending_interactions.confirmation_decision
+        refreshed = ctrl.pending_interactions.confirmation.decision
         assert isinstance(refreshed, ToolAttemptDecision)
         assert refreshed.resource_preflight_receipt is not None
         assert refreshed.resource_preflight_receipt.challenge_id == "training-receipt-2"
@@ -3786,36 +3572,47 @@ class TestOnUserConfirmed:
         _resolve_confirmation(ctrl, approved=False)
 
         ctrl._execute_tool_no_loop.assert_not_called()
-        assert ctrl.pending_interactions.confirmation_decision is None
+        assert ctrl.pending_interactions.confirmation is None
+
+    def test_training_resource_approval_rejects_changed_publication(self, ctrl):
+        pending = _pending_training_resource_confirmation(ctrl)
+        context = _assert_training_resource_context(pending.context)
+        assert context.generation is not None
+        _set_context_reader(
+            ctrl, return_value=replace(context, generation=context.generation + 1)
+        )
+        _begin_confirmation(ctrl, pending)
+        ctrl._execute_tool_no_loop = MagicMock()
+        ctrl._handle_tool_attempt_blocked = MagicMock()
+
+        _resolve_confirmation(ctrl, approved=True)
+
+        ctrl._execute_tool_no_loop.assert_not_called()
+        blocked = ctrl._handle_tool_attempt_blocked.call_args.args[1]
+        assert blocked.error_type == "stale_confirmation"
+        assert ctrl.pending_interactions.confirmation is None
 
     def test_approved_action_pauses_for_backend_resource_confirmation_then_retries(
         self,
         ctrl,
     ):
-        context = _enabled_tool_context("apply_interpretation", generation=33)
+        context = _enabled_tool_context("start_training", generation=33)
         _set_context_reader(ctrl, return_value=context)
         resource_warning = ToolCommandResult(
             ok=False,
-            tool_name="apply_interpretation",
-            command_name="apply_interpretation",
+            tool_name="start_training",
+            command_name="start_training",
             message="Estimated RAM is near the available-memory limit.",
             error_type="confirmation_required",
             diagnostics={
-                "resource_preflight": {
-                    "risk_level": "warning",
-                    "requires_confirmation": True,
-                    "confirmation_token": "receipt-2",
-                    "candidate_id": "candidate-2",
-                    "scope_fingerprint": "scope-2",
-                    "confirmation_ttl_seconds": 120.0,
-                }
+                "resource_preflight": _training_resource_preflight(receipt_suffix="2")
             },
         )
         _begin_confirmation(
             ctrl,
             _pending_decision(
-                "apply_interpretation",
-                {"candidate_id": "candidate-2"},
+                "start_training",
+                {},
                 context=context,
             ),
         )
@@ -3823,8 +3620,8 @@ class TestOnUserConfirmed:
             side_effect=[
                 ToolExecutionOutcome(False, resource_warning),
                 _tool_outcome(
-                    "Interpretation applied.",
-                    tool_name="apply_interpretation",
+                    "Training started.",
+                    tool_name="start_training",
                 ),
             ]
         )
@@ -3834,16 +3631,16 @@ class TestOnUserConfirmed:
 
         _resolve_confirmation(ctrl, approved=True)
 
-        pending = ctrl.pending_interactions.confirmation_decision
+        pending = ctrl.pending_interactions.confirmation.decision
         assert isinstance(pending, ToolAttemptDecision)
         assert pending.confirmation_kind == "resource_preflight"
         assert pending.context is context
-        assert pending.params == {"candidate_id": "candidate-2"}
+        assert pending.params == {}
         assert pending.resource_preflight_receipt is not None
-        assert pending.resource_preflight_receipt.challenge_id == "receipt-2"
-        refreshed_request = ctrl.pending_interactions.confirmation_request
+        assert pending.resource_preflight_receipt.challenge_id == "training-receipt-2"
+        refreshed_request = ctrl.pending_interactions.confirmation.request
         assert isinstance(refreshed_request, AgentConfirmationRequest)
-        assert refreshed_request.command_name == "apply_interpretation"
+        assert refreshed_request.command_name == "start_training"
         assert refreshed_request.description == resource_warning.message
         ctrl.confirmation_requested.emit.assert_called_once_with(refreshed_request)
         ctrl._handle_tool_result_logic.assert_not_called()
@@ -3852,21 +3649,20 @@ class TestOnUserConfirmed:
 
         _resolve_confirmation(ctrl, approved=True)
 
-        assert ctrl.pending_interactions.confirmation_decision is None
+        assert ctrl.pending_interactions.confirmation is None
         assert ctrl._execute_tool_no_loop.call_args_list == [
             call(
-                "apply_interpretation",
-                {"candidate_id": "candidate-2", "confirmed": True},
+                "start_training",
+                {"confirmed": True},
                 context=context,
                 expected_publication_generation=context.generation,
             ),
             call(
-                "apply_interpretation",
+                "start_training",
                 {
-                    "candidate_id": "candidate-2",
                     "confirmed": True,
                     "resource_preflight_confirmed": True,
-                    "resource_preflight_token": "receipt-2",
+                    "resource_preflight_token": "training-receipt-2",
                 },
                 context=context,
                 expected_publication_generation=context.generation,
@@ -3874,9 +3670,7 @@ class TestOnUserConfirmed:
         ]
         ctrl._handle_tool_result_logic.assert_called_once()
         ctrl._handle_tool_success.assert_called_once_with(
-            context.availability,
-            command_name="apply_interpretation",
-            after_confirmation=True,
+            command_name="start_training",
         )
 
     def test_resource_warning_without_receipt_fails_closed_before_second_confirmation(
@@ -3968,39 +3762,41 @@ class TestOnUserConfirmed:
             _resolve_confirmation(ctrl, approved=True)
 
         assert execution_count == 1
-        assert ctrl.pending_interactions.confirmation_decision is None
+        assert ctrl.pending_interactions.confirmation is None
         navigation = ctrl.panel_navigation_requested.emit.call_args.args[0]
         assert navigation.target is AssistantPanelTarget.TRAINING
         assert navigation.correlation is None
         assert "command-bound receipt" in ctrl.history[-1]["content"]
         ctrl._generate_response.assert_not_called()
 
-    def test_approved_command_discards_original_batch_remainder(self, ctrl):
-        context = _enabled_tool_context("apply_interpretation", generation=33)
+    def test_approved_command_finishes_without_selecting_another_action(self, ctrl):
+        context = _enabled_tool_context("clear_training_history", generation=33)
         context_reader = _set_context_reader(ctrl, return_value=context)
         _begin_confirmation(
             ctrl,
             _pending_decision(
-                "apply_interpretation",
-                {"candidate_id": "candidate-1"},
+                "clear_training_history",
+                {},
                 context=context,
             ),
         )
-        ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("Applied."))
+        ctrl._execute_tool_no_loop = MagicMock(
+            return_value=_tool_outcome("Training history cleared.")
+        )
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
-        ctrl._process_tool_calls = MagicMock()
+        ctrl._process_tool_call = MagicMock()
         ctrl._finalize_turn_after_tool = MagicMock()
 
         _resolve_confirmation(ctrl, approved=True)
 
         ctrl._execute_tool_no_loop.assert_called_once_with(
-            "apply_interpretation",
-            {"candidate_id": "candidate-1", "confirmed": True},
+            "clear_training_history",
+            {"confirmed": True},
             context=context,
             expected_publication_generation=context.generation,
         )
-        ctrl._process_tool_calls.assert_not_called()
-        context_reader.assert_called_once_with("apply_interpretation")
+        ctrl._process_tool_call.assert_not_called()
+        context_reader.assert_called_once_with("clear_training_history")
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_rejected_appends_rejection(self, ctrl):
@@ -4012,7 +3808,7 @@ class TestOnUserConfirmed:
         request = _resolve_confirmation(ctrl, approved=False)
 
         ctrl._execute_tool_no_loop.assert_not_called()
-        assert ctrl.pending_interactions.confirmation_decision is None
+        assert ctrl.pending_interactions.confirmation is None
         assert any("rejected" in m["content"] for m in ctrl.history)
 
     def test_rejected_confirmation_emits_one_structured_terminal_outcome(self, ctrl):
@@ -4075,46 +3871,6 @@ class TestOnUserConfirmed:
             expected_publication_generation=context.generation,
         )
         ctrl._handle_tool_success.assert_called_once()
-
-    def test_navigation_to_existing_ui_releases_turn_without_claiming_completion(
-        self,
-        ctrl,
-    ):
-        request = WorkflowUiHandoffRequest.for_decision(
-            "evaluate",
-            decision_fields=("result_view",),
-        )
-        ctrl.pending_interactions.begin_workflow_handoff(request)
-        ctrl.is_processing = True
-
-        _resolve_ui_handoff(
-            ctrl,
-            WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI,
-            request=request,
-        )
-
-        assert ctrl.pending_interactions.workflow_handoff is None
-        assert ctrl.is_processing is False
-        assert not any("completed 'evaluate'" in m["content"] for m in ctrl.history)
-        assert ctrl._tool_attempt_session.last_tool_summary is None
-        outcome = ctrl.interaction_resolved.emit.call_args.args[0]
-        assert outcome.status is AgentInteractionStatus.DEFERRED_TO_UI
-        presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
-        assert presentation.text == (
-            "Evaluation is open in the main window. Review results there."
-        )
-        assert "completed" not in presentation.text.lower()
-
-        ctrl.handle_user_turn(
-            AssistantTurnRequest(
-                correlation=AssistantTurnCorrelation(generation=40, turn_id=40),
-                text="hello",
-            )
-        )
-
-        assert any(item["content"] == "hello" for item in ctrl.history)
-        admitted = ctrl.turn_finished.emit.call_args.args[0]
-        assert admitted.outcome != "rejected_busy"
 
     def test_pending_epoch_handoff_rejects_new_turn_until_terminal_completion(
         self,
@@ -4267,7 +4023,7 @@ class TestOnUserConfirmed:
         )
         ctrl.on_workflow_ui_handoff_resolved(resolution)
 
-        assert ctrl.pending_interactions.confirmation_decision is pending
+        assert ctrl.pending_interactions.confirmation.decision is pending
         ctrl._finalize_turn_after_tool.assert_not_called()
 
     def test_duplicate_workflow_handoff_resolution_finalizes_once(self, ctrl):
@@ -4362,14 +4118,10 @@ class TestOnUserConfirmed:
         assert outcome.request_id == request.request_id
         assert outcome.status is AgentInteractionStatus.FAILED
 
-    def test_montage_resolution_with_changed_suggestions_is_rejected(self, ctrl):
+    def test_montage_resolution_with_changed_fields_is_rejected(self, ctrl):
         current = WorkflowUiHandoffRequest.for_decision(
             CommandName.APPLY_MONTAGE,
             decision_fields=("channel_mapping",),
-            suggested_values={
-                "montage_name": "standard_1020",
-                "warning": "Review channel identities.",
-            },
         )
         ctrl.pending_interactions.begin_workflow_handoff(current)
         ctrl._finalize_turn_after_tool = MagicMock()
@@ -4377,8 +4129,7 @@ class TestOnUserConfirmed:
             request_id=current.request_id,
             command=current.command,
             status=WorkflowUiHandoffResolutionStatus.COMPLETED,
-            decision_fields=current.decision_fields,
-            suggested_values=(("montage_name", "standard_1005"),),
+            decision_fields=("other_field",),
         )
 
         ctrl.on_workflow_ui_handoff_resolved(mismatched)
@@ -4471,9 +4222,9 @@ class TestOnUserConfirmed:
 
         ctrl.on_user_confirmation_resolved(True)
 
-        assert ctrl.pending_interactions.confirmation_decision is pending
+        assert ctrl.pending_interactions.confirmation.decision is pending
         assert isinstance(
-            ctrl.pending_interactions.confirmation_request,
+            ctrl.pending_interactions.confirmation.request,
             AgentConfirmationRequest,
         )
         ctrl._execute_tool_no_loop.assert_not_called()
@@ -4507,8 +4258,8 @@ class TestOnUserConfirmed:
             )
         )
 
-        assert ctrl.pending_interactions.confirmation_decision is pending
-        assert ctrl.pending_interactions.confirmation_request is active_request
+        assert ctrl.pending_interactions.confirmation.decision is pending
+        assert ctrl.pending_interactions.confirmation.request is active_request
         ctrl._execute_tool_no_loop.assert_not_called()
 
     def test_confirmation_is_rejected_when_publication_generation_changes(self, ctrl):
@@ -4549,8 +4300,7 @@ class TestOnUserConfirmed:
         outcome = ctrl.interaction_resolved.emit.call_args.args[0]
         assert outcome.status is AgentInteractionStatus.BLOCKED
         assert outcome.request_id == request.request_id
-        assert ctrl.pending_interactions.confirmation_decision is None
-        assert ctrl.pending_interactions.confirmation_request is None
+        assert ctrl.pending_interactions.confirmation is None
 
     def test_duplicate_confirmation_cannot_execute_twice(self, ctrl):
         context = _enabled_tool_context("reset_preprocess", generation=55)
@@ -4575,8 +4325,8 @@ class TestOnUserConfirmed:
         ctrl._execute_tool_no_loop.assert_called_once()
         ctrl._handle_tool_success.assert_called_once()
 
-    def test_approved_failure_stops_in_ask_mode(self, ctrl):
-        """A confirmed Ask action cannot execute a second tool attempt."""
+    def test_confirmed_failure_finishes_without_another_generation(self, ctrl):
+        """A confirmed action failure ends this turn without model continuation."""
         context = _enabled_tool_context("start_training", generation=34)
         context_reader = _set_context_reader(ctrl, return_value=context)
         _begin_confirmation(
@@ -4589,8 +4339,6 @@ class TestOnUserConfirmed:
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._generate_response = MagicMock()
         ctrl._finalize_turn_after_tool = MagicMock()
-        ctrl._refresh_execution_snapshot = MagicMock()
-        ctrl._tool_attempt_session.tool_failure_count = 0
 
         _resolve_confirmation(ctrl, approved=True)
 
@@ -4600,10 +4348,8 @@ class TestOnUserConfirmed:
             context=context,
             expected_publication_generation=context.generation,
         )
-        assert ctrl._tool_attempt_session.tool_failure_count == 1
         context_reader.assert_called_once_with("start_training")
         ctrl._generate_response.assert_not_called()
-        ctrl._refresh_execution_snapshot.assert_not_called()
         ctrl._finalize_turn_after_tool.assert_called_once()
 
     def test_reset_conversation_clears_pending(self, ctrl):
@@ -4621,19 +4367,18 @@ class TestOnUserConfirmed:
         ctrl._turn_orchestrator.host_turn_generation = None
         ctrl._turn_orchestrator.host_turn_id = None
         ctrl.reset_conversation()
-        assert ctrl.pending_interactions.confirmation_decision is None
-        assert ctrl.pending_interactions.confirmation_request is None
+        assert ctrl.pending_interactions.confirmation is None
 
 
-# --- HITL: _process_tool_calls confirmation gate ---
+# --- HITL: _process_tool_call confirmation gate ---
 class TestProcessToolCallsConfirmation:
     def test_backend_resource_warning_without_receipt_stays_blocked(self, ctrl):
-        context = _enabled_tool_context("preview_interpretation", generation=39)
-        tool = MagicMock(description="Preview data interpretation")
+        context = _enabled_tool_context("start_training", generation=39)
+        tool = MagicMock(description="Start training")
         result = ToolCommandResult(
             ok=False,
-            tool_name="preview_interpretation",
-            command_name="preview_interpretation",
+            tool_name="start_training",
+            command_name="start_training",
             message="Estimated RAM is near the available-memory limit.",
             error_type="confirmation_required",
             diagnostics={
@@ -4650,17 +4395,19 @@ class TestProcessToolCallsConfirmation:
         ctrl._handle_tool_attempt_blocked = MagicMock()
         decision = ToolAttemptDecision(
             ToolAttemptAction.EXECUTE,
-            "preview_interpretation",
-            {"choices": {"selected_eeg_files": ["/data/eeg.fif"]}},
+            "start_training",
+            {},
             context=context,
             tool=tool,
         )
 
         ctrl._execute_tool_attempt(decision)
 
-        assert ctrl.pending_interactions.confirmation_decision is None
+        assert ctrl.pending_interactions.confirmation is None
         ctrl._handle_tool_result_logic.assert_not_called()
-        ctrl.panel_navigation_requested.emit.assert_not_called()
+        ctrl.confirmation_requested.emit.assert_not_called()
+        navigation = ctrl.panel_navigation_requested.emit.call_args.args[0]
+        assert navigation.target is AssistantPanelTarget.TRAINING
         ctrl._handle_tool_attempt_blocked.assert_called_once()
         blocked = ctrl._handle_tool_attempt_blocked.call_args.args[1]
         assert isinstance(blocked, ToolCommandResult)
@@ -4690,14 +4437,14 @@ class TestProcessToolCallsConfirmation:
         ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
         ctrl._execute_tool_no_loop = MagicMock()
 
-        ctrl._process_tool_calls([("review_choice", {})], "json")
+        ctrl._process_tool_call(("review_choice", {}), "json")
 
-        pending = ctrl.pending_interactions.confirmation_decision
+        pending = ctrl.pending_interactions.confirmation.decision
         assert isinstance(pending, ToolAttemptDecision)
         assert pending.command_name == "review_choice"
         assert pending.params == {}
         ctrl._execute_tool_no_loop.assert_not_called()
-        request = ctrl.pending_interactions.confirmation_request
+        request = ctrl.pending_interactions.confirmation.request
         assert isinstance(request, AgentConfirmationRequest)
         assert request.command_name == "review_choice"
         assert request.description == "Review choice"
@@ -4716,15 +4463,11 @@ class TestProcessToolCallsConfirmation:
         mock_tool.description = "Clear data"
         ctrl.registry.get_tool.return_value = mock_tool
 
-        with patch(
-            "XBrainLab.llm.agent.controller.estimate_confidence",
-            return_value=0.9,
-        ):
-            ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
-            ctrl._process_tool_calls(
-                [("reset_preprocess", {})],
-                '{"tool_name": "reset_preprocess"}',
-            )
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl._process_tool_call(
+            ("reset_preprocess", {}),
+            '{"tool_name": "reset_preprocess"}',
+        )
 
         pending = _assert_confirmation_prompt(
             ctrl,
@@ -4753,8 +4496,8 @@ class TestProcessToolCallsConfirmation:
         ctrl._handle_tool_result_logic = MagicMock(return_value=False)
         ctrl._handle_tool_success = MagicMock()
 
-        ctrl._process_tool_calls([("reset_preprocess", {})], "json")
-        pending = ctrl.pending_interactions.confirmation_decision
+        ctrl._process_tool_call(("reset_preprocess", {}), "json")
+        pending = ctrl.pending_interactions.confirmation.decision
         assert isinstance(pending, ToolAttemptDecision)
         assert pending.context is prompt_context
         _resolve_confirmation(ctrl, approved=True)
@@ -4802,8 +4545,8 @@ class TestProcessToolCallsConfirmation:
             "execute_application_tool_command",
             wraps=application_surface.execute_application_tool_command,
         ) as execute_surface:
-            ctrl._process_tool_calls([("start_training", {})], "json")
-            pending = ctrl.pending_interactions.confirmation_decision
+            ctrl._process_tool_call(("start_training", {}), "json")
+            pending = ctrl.pending_interactions.confirmation.decision
             assert isinstance(pending, ToolAttemptDecision)
             assert pending.context is attempt_context
 
@@ -4854,7 +4597,7 @@ class TestProcessToolCallsConfirmation:
         ctrl._handle_tool_attempt_blocked = MagicMock()
         ctrl._execute_tool_no_loop = MagicMock()
 
-        ctrl._process_tool_calls([("start_training", {})], "json")
+        ctrl._process_tool_call(("start_training", {}), "json")
 
         context_reader.assert_called_once_with("start_training")
         ctrl._execute_tool_no_loop.assert_not_called()
@@ -4881,15 +4624,11 @@ class TestProcessToolCallsConfirmation:
             decision_boundary="semantic_apply",
         )
         _set_context_reader(ctrl, return_value=_tool_context(availability))
-        with patch(
-            "XBrainLab.llm.agent.controller.estimate_confidence",
-            return_value=0.9,
-        ):
-            ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
-            ctrl._process_tool_calls(
-                [("start_training", {})],
-                '{"tool_name": "start_training"}',
-            )
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl._process_tool_call(
+            ("start_training", {}),
+            '{"tool_name": "start_training"}',
+        )
 
         _assert_confirmation_prompt(
             ctrl,
@@ -4912,21 +4651,19 @@ class TestProcessToolCallsConfirmation:
         mock_tool.requires_confirmation = False
         ctrl.registry.get_tool.return_value = mock_tool
 
-        with patch(
-            "XBrainLab.llm.agent.controller.estimate_confidence",
-            return_value=0.9,
-        ):
-            mock_tool.execute.return_value = ToolResult(True, "done")
-            ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
-            ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("done"))
-            ctrl._handle_tool_result_logic = MagicMock(return_value=False)
-            ctrl.metrics.finish_turn = MagicMock()
-            ctrl._process_tool_calls(
-                [("apply_bandpass_filter", {"low_freq": 4, "high_freq": 38})],
-                '{"tool_name": "apply_bandpass_filter"}',
-            )
+        mock_tool.execute.return_value = ToolCommandResult(
+            True, "apply_bandpass_filter", "done"
+        )
+        ctrl.verifier.verify_tool_call.return_value = MagicMock(is_valid=True)
+        ctrl._execute_tool_no_loop = MagicMock(return_value=_tool_outcome("done"))
+        ctrl._handle_tool_result_logic = MagicMock(return_value=False)
+        ctrl.metrics.finish_turn = MagicMock()
+        ctrl._process_tool_call(
+            ("apply_bandpass_filter", {"low_freq": 4, "high_freq": 38}),
+            '{"tool_name": "apply_bandpass_filter"}',
+        )
 
-        assert ctrl.pending_interactions.confirmation_decision is None
+        assert ctrl.pending_interactions.confirmation is None
         ctrl._execute_tool_no_loop.assert_called_once_with(
             "apply_bandpass_filter",
             {"low_freq": 4, "high_freq": 38},
@@ -5067,9 +4804,7 @@ class TestPipelineGate:
         assert result.message == "Load raw data before preprocessing."
         assert result.error_type == "precondition"
         assert result.capability is not None
-        payload = result.to_payload()
-        assert payload["ok"] is False
-        assert payload["capability"]["command_name"] == "preprocess"
+        assert result.capability["command_name"] == "preprocess"
 
     def test_unregistered_tool_is_rejected_by_action_contract(
         self,

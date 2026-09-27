@@ -58,16 +58,6 @@ class PendingConfirmation:
 
 
 @dataclass(frozen=True, slots=True)
-class PendingInteractionSnapshot:
-    """Pending values removed by an explicit clear/reset boundary."""
-
-    confirmation: PendingConfirmation | None
-    workflow_handoff: WorkflowUiHandoffRequest | None
-    tool_input: AssistantToolInputReceipt | None
-    active_tool_input: AssistantToolInputReceipt | None
-
-
-@dataclass(frozen=True, slots=True)
 class PendingConfirmationResolutionResult:
     """Exact host decision for one confirmation callback."""
 
@@ -86,10 +76,6 @@ class PendingWorkflowHandoffResolutionResult:
     resolution: WorkflowUiHandoffResolution | None = None
     outcome: AgentInteractionOutcome | None = None
 
-    @property
-    def terminal(self) -> bool:
-        return self.decision is PendingWorkflowHandoffDecision.TERMINAL
-
 
 class PendingInteractionCoordinator:
     """Own and resolve one pending confirmation or UI handoff at a time."""
@@ -107,24 +93,9 @@ class PendingInteractionCoordinator:
         return self._confirmation
 
     @property
-    def confirmation_decision(self) -> ToolAttemptDecision | None:
-        pending = self._confirmation
-        return pending.decision if pending is not None else None
-
-    @property
-    def confirmation_request(self) -> AgentConfirmationRequest | None:
-        pending = self._confirmation
-        return pending.request if pending is not None else None
-
-    @property
     def workflow_handoff(self) -> WorkflowUiHandoffRequest | None:
         pending = self._workflow_handoff
         return pending.request if pending is not None else None
-
-    @property
-    def workflow_handoff_session(self) -> WorkflowUiHandoffSession | None:
-        """Return the bounded phase owner for the current UI handoff."""
-        return self._workflow_handoff
 
     @property
     def tool_input(self) -> AssistantToolInputReceipt | None:
@@ -339,38 +310,24 @@ class PendingInteractionCoordinator:
             resolution,
         )
 
-    def clear_confirmation(self) -> PendingConfirmation | None:
-        """Remove an unresolved confirmation without marking it consumed."""
-        pending = self._confirmation
-        self._confirmation = None
-        return pending
-
     def clear_workflow_handoff(self) -> WorkflowUiHandoffRequest | None:
         """Remove an unresolved UI handoff without marking it consumed."""
         pending = self._workflow_handoff
         self._workflow_handoff = None
         return pending.request if pending is not None else None
 
-    def clear(self) -> PendingInteractionSnapshot:
+    def clear(self) -> None:
         """Remove all pending interactions while retaining duplicate memory."""
-        snapshot = PendingInteractionSnapshot(
-            confirmation=self._confirmation,
-            workflow_handoff=self.workflow_handoff,
-            tool_input=self._tool_input,
-            active_tool_input=self._active_tool_input,
-        )
         self._confirmation = None
         self._workflow_handoff = None
         self._tool_input = None
         self._active_tool_input = None
-        return snapshot
 
-    def reset(self) -> PendingInteractionSnapshot:
+    def reset(self) -> None:
         """Clear pending state and correlation history for a new conversation."""
-        snapshot = self.clear()
+        self.clear()
         self._last_confirmation_request_id = None
         self._last_workflow_handoff_request_id = None
-        return snapshot
 
     @staticmethod
     def _validated_confirmation(
@@ -409,12 +366,6 @@ class PendingInteractionCoordinator:
     ) -> PendingWorkflowHandoffResolutionResult:
         interaction_status = {
             WorkflowUiHandoffResolutionStatus.COMMAND_PENDING: (
-                AgentInteractionStatus.DEFERRED_TO_UI
-            ),
-            WorkflowUiHandoffResolutionStatus.NAVIGATED: (
-                AgentInteractionStatus.DEFERRED_TO_UI
-            ),
-            WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI: (
                 AgentInteractionStatus.DEFERRED_TO_UI
             ),
             WorkflowUiHandoffResolutionStatus.COMPLETED: (

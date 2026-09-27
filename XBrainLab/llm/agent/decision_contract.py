@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypeAlias
+from typing import Any
 
 MODEL_RESPONSE_TOOL_NAME = "respond_to_user"
-ToolDecision: TypeAlias = Literal["tool"]
-ModelDecision: TypeAlias = ToolDecision
 
 
 def _message_schema() -> dict[str, Any]:

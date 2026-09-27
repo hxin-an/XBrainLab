@@ -23,11 +23,14 @@ from scripts.dev.capture_chatpanel_local_walkthrough import (
     _assistant_setup_required,
     collect_executed_tools,
     collect_visible_messages,
+    completed_turn_response,
     has_raw_debug_text,
     is_nearly_black,
 )
 from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.inspect_local_assistant_runtime import classify_runtime
+from XBrainLab.llm.agent.response_presentation import AssistantResponsePresentation
+from XBrainLab.llm.agent.turn import AssistantTurnRequest, AssistantTurnTerminal
 from XBrainLab.llm.core.config import LLMConfig
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -135,6 +138,9 @@ def run_workflow(
     manager_ref: Any | None = None
     runtime_ref: Any | None = None
     cleanup_events: list[dict[str, Any]] = []
+    requests: list[AssistantTurnRequest] = []
+    responses: list[AssistantResponsePresentation] = []
+    terminals: list[AssistantTurnTerminal] = []
 
     started_at = time.monotonic()
     state: dict[str, Any] = {
@@ -309,6 +315,9 @@ def run_workflow(
             fail("Ready screenshot was blank or could not be saved.")
             return
         state["ready_screenshot"] = str(ready_path)
+        manager.assistant_runtime.dispatcher.input_requested.connect(requests.append)
+        controller.response_presentation_ready.connect(responses.append)
+        manager.assistant_runtime.turn_finished.connect(terminals.append)
         send_prompt(0)
 
     def send_prompt(index: int) -> None:
@@ -366,7 +375,19 @@ def run_workflow(
             controller and getattr(controller, "is_processing", False)
         )
 
-        if has_user and assistant_texts and not still_processing:
+        try:
+            response = completed_turn_response(
+                requests[index:], responses, terminals, prompt=prompt
+            )
+        except ValueError as exc:
+            fail(str(exc))
+            return
+        if (
+            has_user
+            and response is not None
+            and response.text.strip() in assistant_texts
+            and not still_processing
+        ):
             if has_raw_debug_text(assistant_texts):
                 fail("Visible assistant text exposed debug syntax.")
                 return
@@ -380,7 +401,7 @@ def run_workflow(
             )
             contract_failure = _turn_contract_failure(
                 index,
-                assistant_texts[-1],
+                response.text.strip(),
                 new_tools,
             )
             if contract_failure is not None:
@@ -391,7 +412,7 @@ def run_workflow(
                 lambda: capture_completed_turn(
                     index,
                     prompt,
-                    assistant_texts[-1],
+                    response.text.strip(),
                     list(new_tools),
                 ),
             )

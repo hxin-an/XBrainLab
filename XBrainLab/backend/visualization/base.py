@@ -1,4 +1,4 @@
-"""Base visualizer module for generating matplotlib figures from evaluation records."""
+"""Generate matplotlib figures from detached saliency render publications."""
 
 import contextlib
 from collections.abc import Mapping, Sequence
@@ -10,10 +10,6 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 
 from XBrainLab.backend.application.saliency_render import SaliencyRenderData
-
-from ..dataset import Epochs
-from ..training.record import EvalRecord
-from ..training.saliency_provenance import SaliencyArtifactContext
 
 
 @dataclass(frozen=True)
@@ -161,11 +157,10 @@ def resolve_saliency_class_identities(
 
 
 class Visualizer:
-    """Base class for visualizer that generate figures from evaluation record
+    """Base for figures rendered from application-validated, detached data.
 
     Attributes:
-        eval_record: evaluation record
-        epoch_data: original epoch data for providing dataset information
+        render_data: Immutable renderer metadata and one saliency method store.
         figsize: figure size
         dpi: figure dpi
         fig: figure to plot on. If None, a new figure will be created
@@ -176,8 +171,7 @@ class Visualizer:
 
     def __init__(
         self,
-        eval_record: EvalRecord | SaliencyRenderData,
-        epoch_data: Epochs | None = None,
+        render_data: SaliencyRenderData,
         figsize: tuple = (6.4, 4.8),
         dpi: int = 100,
         fig: Figure | None = None,
@@ -185,27 +179,16 @@ class Visualizer:
         """Initialise the visualizer.
 
         Args:
-            eval_record: Evaluation record containing model outputs and gradients.
-            epoch_data: Original epoch data providing dataset information.
+            render_data: Detached data published by the application boundary.
             figsize: Width and height of the figure in inches.
             dpi: Dots per inch for the figure.
             fig: Existing matplotlib ``Figure`` to draw on.  If ``None``, a new
                 figure is created on each call to :meth:`get_plt`.
 
         """
-        self.render_data: SaliencyRenderData | None
-        self.eval_record: EvalRecord | SaliencyRenderData
-        self.epoch_data: Epochs | SaliencyRenderData
-        if isinstance(eval_record, SaliencyRenderData):
-            self.render_data = eval_record
-            self.eval_record = eval_record
-            self.epoch_data = eval_record
-        else:
-            if epoch_data is None:
-                raise TypeError("epoch_data is required for an EvalRecord visualizer")
-            self.render_data = None
-            self.eval_record = eval_record
-            self.epoch_data = epoch_data
+        if not isinstance(render_data, SaliencyRenderData):
+            raise TypeError("render_data must be a SaliencyRenderData")
+        self.render_data = render_data
         self.figsize = figsize
         self.dpi = dpi
         self.fig = fig
@@ -242,39 +225,6 @@ class Visualizer:
                 self.fig = None
             raise
 
-    def get_saliency(self, saliency_name: str, label_index: int) -> np.ndarray:
-        """Return the saliency (gradient-based) array for a given class.
-
-        Args:
-            saliency_name: Name of the saliency method.  Supported values are
-                ``"Gradient"``, ``"Gradient * Input"``, ``"SmoothGrad"``,
-                ``"SmoothGrad_Squared"``, and ``"VarGrad"``.
-            label_index: Index of the target class label.
-
-        Returns:
-            np.ndarray: Saliency array computed by the requested method.
-
-        Raises:
-            NotImplementedError: If *saliency_name* is not a recognised method.
-            ValueError: If *saliency_name* is ``None``.
-
-        """
-        self._validated_saliency_context()
-        saliency_store = self._saliency_store(saliency_name)
-        resolved_key = self._resolve_saliency_key(
-            saliency_store,
-            label_index,
-            label_index,
-            label_index,
-        )
-        if resolved_key is None:
-            available = self._available_saliency_keys(saliency_store)
-            raise KeyError(
-                f"Cannot map label {label_index!r} to saliency results. "
-                f"Available saliency keys: {available}.",
-            )
-        return saliency_store[resolved_key]
-
     def iter_saliency_by_label(
         self,
         saliency_name: str,
@@ -287,22 +237,10 @@ class Visualizer:
         instead of assuming a zero-based range from the epoch label count.
         """
         saliency_store = self._saliency_store(saliency_name)
-        context = self._validated_saliency_context()
-        label_map = getattr(self.epoch_data, "label_map", {}) or {}
-        label_items = (
-            list(self.render_data.class_map)
-            if self.render_data is not None
-            else list(context.class_map)
-            if context is not None
-            else list(label_map.items())
-            if isinstance(label_map, dict)
-            else []
-        )
-        expected_class_count = self._expected_class_count()
         identities = resolve_saliency_class_identities(
             saliency_store,
-            label_items,
-            expected_class_count=expected_class_count,
+            self.render_data.class_map,
+            expected_class_count=self.render_data.expected_class_count,
         )
         mapped: list[tuple[object, str, np.ndarray]] = []
         missing_labels: list[str] = []
@@ -321,99 +259,15 @@ class Visualizer:
             )
         return mapped
 
-    def _validated_saliency_context(self) -> SaliencyArtifactContext | None:
-        """Validate scientific identity before interpreting saliency axes.
-
-        Artifact producers bind identity before publication. Renderers only
-        validate that immutable identity; they never assign meaning from the
-        dataset that happens to be active. Minimal fake objects remain usable
-        by old unit tests only when no persisted context is involved.
-        """
-        if self.render_data is not None:
-            return None
-        eval_record = cast(EvalRecord, self.eval_record)
-        epoch_data = cast(Epochs, self.epoch_data)
-        status = eval_record.saliency_context_status
-        if (
-            isinstance(epoch_data, Epochs)
-            or eval_record.saliency_context is not None
-            or status == "legacy_missing"
-        ):
-            return eval_record.validate_saliency_context(epoch_data)
-        return None
-
-    def _expected_class_count(self) -> int | None:
-        if self.render_data is not None:
-            return self.render_data.expected_class_count
-        output = np.asarray(getattr(self.eval_record, "output", np.array([])))
-        if output.ndim != 2 or output.shape[1] <= 0:
-            return None
-        return int(output.shape[1])
-
     def _saliency_store(self, saliency_name: str):
         if saliency_name is None:
             raise ValueError("Saliency name not provided")
-        if self.render_data is not None:
-            if saliency_name != self.render_data.method:
-                raise ValueError(
-                    f"Render publication contains {self.render_data.method}, "
-                    f"not {saliency_name}."
-                )
-            return self.render_data.saliency_by_class
-        eval_record = cast(EvalRecord, self.eval_record)
-        if saliency_name == "Gradient":
-            return eval_record.gradient
-        if saliency_name == "Gradient * Input":
-            return eval_record.gradient_input
-        if saliency_name == "SmoothGrad":
-            return eval_record.smoothgrad
-        if saliency_name == "SmoothGrad_Squared":
-            return eval_record.smoothgrad_sq
-        if saliency_name == "VarGrad":
-            return eval_record.vargrad
-        raise NotImplementedError
-
-    @staticmethod
-    def _resolve_saliency_key(
-        saliency_store,
-        label_key: object,
-        label_name: object,
-        order_index: int,
-    ) -> object | None:
-        candidates: list[object] = [label_key, label_name]
-        for value in (label_key, label_name):
-            if not isinstance(value, (str, bytes, int, np.integer)):
-                continue
-            with contextlib.suppress(TypeError, ValueError):
-                if isinstance(value, np.integer):
-                    candidates.append(int(cast(np.integer[Any], value).item()))
-                else:
-                    candidates.append(int(cast(str | bytes | int, value)))
-        candidates.append(order_index)
-
-        if isinstance(saliency_store, Mapping):
-            for candidate in candidates:
-                if candidate in saliency_store:
-                    return candidate
-                for available_key in saliency_store:
-                    if str(available_key) == str(candidate):
-                        return available_key
-            return None
-
-        try:
-            store_len = len(saliency_store)
-        except TypeError:
-            return None
-        for candidate in candidates:
-            if isinstance(candidate, int):
-                integer_candidate = candidate
-            elif isinstance(candidate, np.integer):
-                integer_candidate = int(cast(np.integer[Any], candidate).item())
-            else:
-                continue
-            if 0 <= integer_candidate < store_len:
-                return integer_candidate
-        return None
+        if saliency_name != self.render_data.method:
+            raise ValueError(
+                f"Render publication contains {self.render_data.method}, "
+                f"not {saliency_name}."
+            )
+        return self.render_data.saliency_by_class
 
     @staticmethod
     def _has_saliency_data(saliency) -> bool:
@@ -421,19 +275,3 @@ class Visualizer:
             return len(saliency) > 0
         except TypeError:
             return False
-
-    @staticmethod
-    def _iter_saliency_keys(saliency_store) -> list[object]:
-        if isinstance(saliency_store, Mapping):
-            return list(saliency_store.keys())
-        try:
-            return list(range(len(saliency_store)))
-        except TypeError:
-            return []
-
-    @staticmethod
-    def _available_saliency_keys(saliency_store) -> str:
-        keys = Visualizer._iter_saliency_keys(saliency_store)
-        if not keys:
-            return "none"
-        return ", ".join(map(str, keys))

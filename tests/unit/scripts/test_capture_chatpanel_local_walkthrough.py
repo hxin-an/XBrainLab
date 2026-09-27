@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import heapq
+from dataclasses import replace
 from itertools import count
 from types import SimpleNamespace
 
 import pytest
+from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QMainWindow, QPushButton
 
 from scripts.dev import capture_chatpanel_local_walkthrough as capture
@@ -14,15 +16,81 @@ from scripts.dev.capture_chatpanel_local_walkthrough import (
     has_raw_debug_text,
     render_markdown,
 )
+from XBrainLab.backend.controller.chat_controller import ChatController
 from XBrainLab.llm.agent.metrics import AgentMetricsTracker
+from XBrainLab.llm.agent.response_presentation import (
+    AssistantResponseKind,
+    AssistantResponsePresentation,
+    user_facing_generation_error,
+)
+from XBrainLab.llm.agent.turn import (
+    AssistantTurnCorrelation,
+    AssistantTurnRequest,
+    AssistantTurnTerminal,
+)
 from XBrainLab.ui.chat.panel import ChatPanel
+
+
+def test_visible_messages_follow_real_transcript_replacement_order(qtbot) -> None:
+    panel = ChatPanel()
+    qtbot.addWidget(panel)
+    history = ChatController()
+    user = history.add_user_message("  Inspect the EEG workflow.  ")
+    assistant = history.add_agent_message("Original explanation.")
+    blank = history.add_agent_message("   ")
+    hidden = history.add_agent_message("This row will be hidden.")
+    panel.connect_controller(history)
+    panel.resize(420, 780)
+    panel.show()
+    view = panel.transcript_view
+    qtbot.waitUntil(lambda: not view._history_rebuild_active)
+    original_bubble = view.message_bubbles()[1]
+
+    assert capture.collect_visible_messages(panel) == [
+        VisibleMessage("user", "Inspect the EEG workflow."),
+        VisibleMessage("assistant", "Original explanation."),
+        VisibleMessage("assistant", "This row will be hidden."),
+    ]
+
+    updated = replace(assistant, content="  Updated explanation.  ")
+    replacement = (updated, user, blank, hidden)
+    assert history.restore_history(
+        record.to_history_dict() for record in replacement
+    ) == len(replacement)
+    live = history.add_agent_message("Live tail during replacement.")
+    qtbot.waitUntil(lambda: not view._history_rebuild_active)
+    bubbles = view.message_bubbles()
+    assert [bubble.property("chatMessageId") for bubble in bubbles] == [
+        record.message_id for record in (*replacement, live)
+    ]
+    assert bubbles[0] is original_bubble
+    bubbles[3].hide()
+
+    assert capture.collect_visible_messages(panel) == [
+        VisibleMessage("assistant", "Updated explanation."),
+        VisibleMessage("user", "Inspect the EEG workflow."),
+        VisibleMessage("assistant", "Live tail during replacement."),
+    ]
+    panel.hide()
+    assert capture.collect_visible_messages(panel) == []
 
 
 @pytest.fixture
 def capture_with_delayed_runtime(monkeypatch, qtbot, tmp_path):
     """Exercise real composer enablement with virtual time and no model load."""
 
-    def run(*, ready_after, timeout=12, controller_after=None):
+    def run(
+        *,
+        ready_after,
+        timeout=12,
+        controller_after=None,
+        outcome="completed",
+        response_kind=AssistantResponseKind.MESSAGE,
+        response_text="Preprocessing prepares the EEG signal.",
+        stale_response=False,
+        stale_terminal=False,
+        terminal_delay=0,
+    ):
         clock = [0.0]
         pending = []
         sequence = count()
@@ -34,12 +102,30 @@ def capture_with_delayed_runtime(monkeypatch, qtbot, tmp_path):
         window = QMainWindow()
         window.setCentralWidget(panel)
         window.ai_btn = QPushButton(window)
-        controller = SimpleNamespace(is_processing=False, metrics=AgentMetricsTracker())
+
+        class Controller(QObject):
+            response_presentation_ready = pyqtSignal(object)
+
+            def __init__(self):
+                super().__init__()
+                self.is_processing = False
+                self.metrics = AgentMetricsTracker()
+
+        class Dispatcher(QObject):
+            input_requested = pyqtSignal(object)
+
+        class Runtime(QObject):
+            turn_finished = pyqtSignal(object)
+
+        controller = Controller()
+        runtime = Runtime()
+        runtime.dispatcher = Dispatcher()
         manager = SimpleNamespace(
             chat_panel=panel,
             chat_dock=panel,
             agent_controller=None,
             chat_controller=SimpleNamespace(is_processing=False),
+            assistant_runtime=runtime,
         )
         window.agent_manager = manager
         qtbot.addWidget(window)
@@ -65,13 +151,32 @@ def capture_with_delayed_runtime(monkeypatch, qtbot, tmp_path):
 
         def respond(prompt):
             sent.append((clock[0], prompt))
+            correlation = AssistantTurnCorrelation(generation=2, turn_id=1)
+            previous = AssistantTurnCorrelation(generation=1, turn_id=1)
+            runtime.dispatcher.input_requested.emit(
+                AssistantTurnRequest(text=prompt, correlation=correlation)
+            )
             messages.extend(
                 [
                     VisibleMessage("user", prompt),
-                    VisibleMessage(
-                        "assistant", "Preprocessing prepares the EEG signal."
-                    ),
+                    VisibleMessage("assistant", response_text),
                 ]
+            )
+            controller.response_presentation_ready.emit(
+                AssistantResponsePresentation(
+                    text=response_text,
+                    correlation=previous if stale_response else correlation,
+                    kind=response_kind,
+                )
+            )
+            schedule(
+                terminal_delay * 1000,
+                lambda: runtime.turn_finished.emit(
+                    AssistantTurnTerminal(
+                        correlation=previous if stale_terminal else correlation,
+                        outcome=outcome,
+                    )
+                ),
             )
 
         panel.send_message.connect(respond)
@@ -141,6 +246,61 @@ def test_capture_never_ready_expires_without_submission_or_ready_screenshot(
     assert sent == []
     assert all(shot[1] != capture.READY_SCREENSHOT for shot in screenshots)
     assert payload["elapsed_seconds"] <= 5.25
+
+
+@pytest.mark.parametrize(
+    ("outcome", "kind", "text"),
+    [
+        ("failed", AssistantResponseKind.ERROR, user_facing_generation_error("OOM")),
+        (
+            "completed",
+            AssistantResponseKind.ERROR,
+            user_facing_generation_error("failed"),
+        ),
+        ("cancelled", AssistantResponseKind.CANCELLED, "Request cancelled."),
+        ("blocked", AssistantResponseKind.BLOCKED, "Import EEG data first."),
+    ],
+)
+def test_capture_rejects_unsuccessful_correlated_response(
+    capture_with_delayed_runtime, outcome, kind, text
+):
+    payload, sent, screenshots = capture_with_delayed_runtime(
+        ready_after=0,
+        outcome=outcome,
+        response_kind=kind,
+        response_text=text,
+    )
+
+    assert payload["status"] == "failed"
+    assert "successful" in payload["failure_reason"]
+    assert len(sent) == 1
+    assert payload["visible_messages"][-1]["text"] == text
+    assert any(shot[1] == capture.RESPONSE_SCREENSHOT for shot in screenshots)
+
+
+@pytest.mark.parametrize("stale_field", ["stale_response", "stale_terminal"])
+def test_capture_never_credits_another_turns_response_or_terminal(
+    capture_with_delayed_runtime, stale_field
+):
+    payload, sent, _screenshots = capture_with_delayed_runtime(
+        ready_after=0, timeout=5, **{stale_field: True}
+    )
+
+    assert payload["status"] == "failed"
+    assert len(sent) == 1
+    assert payload["elapsed_seconds"] <= 6.0
+
+
+def test_capture_waits_for_terminal_even_after_text_and_idle(
+    capture_with_delayed_runtime,
+):
+    payload, sent, _screenshots = capture_with_delayed_runtime(
+        ready_after=0,
+        terminal_delay=3,
+    )
+
+    assert payload["status"] == "passed"
+    assert payload["elapsed_seconds"] >= sent[0][0] + 3
 
 
 def test_has_raw_debug_text_flags_tool_syntax() -> None:

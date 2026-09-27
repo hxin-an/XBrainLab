@@ -15,6 +15,7 @@ from XBrainLab.backend.utils.public_diagnostics import (
     public_diagnostic_text,
 )
 from XBrainLab.llm.agent.confirmation import AgentConfirmationResolution
+from XBrainLab.llm.agent.response_presentation import AssistantPanelNavigationRequest
 from XBrainLab.llm.agent.turn import (
     AssistantDebugToolRequest,
     AssistantTurnDeliveryAcknowledgement,
@@ -146,8 +147,8 @@ class _ControllerShutdownBridge(QObject):
         if self._shutdown_pending or self._shutdown_finished:
             return
         try:
-            close = getattr(self._controller, "close", None)
-            result = close() if callable(close) else True
+            # bind() already validates this controller-specific QObject method.
+            result = cast(Any, self._controller).close()
         except Exception:
             logger.exception("Assistant controller shutdown failed")
             self._finish(False, _CONTROLLER_SHUTDOWN_FAILURE_MESSAGE)
@@ -227,6 +228,7 @@ class AssistantCommandDispatcher(QObject):
         "reset_conversation",
         "on_user_confirmation_resolved",
         "on_workflow_ui_handoff_resolved",
+        "on_panel_navigation_resolved",
         "execute_debug_tool",
         "close",
     )
@@ -238,6 +240,7 @@ class AssistantCommandDispatcher(QObject):
     reset_requested = pyqtSignal()
     confirmation_requested = pyqtSignal(object)
     workflow_ui_handoff_resolved_requested = pyqtSignal(object)
+    panel_navigation_resolved_requested = pyqtSignal(object, bool)
     debug_requested = pyqtSignal(object)
     shutdown_requested = pyqtSignal()
     cleanup_finished = pyqtSignal(bool, str)
@@ -248,7 +251,6 @@ class AssistantCommandDispatcher(QObject):
         self._controller: Any | None = None
         self._command_thread: QThread | None = None
         self._shutdown_bridge: _ControllerShutdownBridge | None = None
-        self._queued = False
         self._state = AssistantCommandDispatcherState.OPEN
         self._shutdown_in_flight = False
 
@@ -271,22 +273,17 @@ class AssistantCommandDispatcher(QObject):
         return self._state is AssistantCommandDispatcherState.OPEN
 
     def bind(self, controller: Any) -> None:
-        """Bind one controller and create a dedicated command thread when possible."""
+        """Bind one Qt controller to its dedicated command thread."""
         if self._controller is not None:
             raise RuntimeError("Assistant command dispatcher is already bound.")
         if self._state is not AssistantCommandDispatcherState.OPEN:
             raise RuntimeError("Closed assistant command dispatcher cannot be rebound.")
         self._validate_controller_contract(controller)
-        self._controller = controller
-
-        runtime_thread = getattr(controller, "worker_thread", None)
         gui_thread = self.thread()
-        if (
-            not isinstance(controller, QObject)
-            or not isinstance(runtime_thread, QThread)
-            or gui_thread is None
-        ):
-            return
+        if not isinstance(controller, QObject) or gui_thread is None:
+            raise TypeError("Assistant dispatch requires a QObject controller.")
+
+        self._controller = controller
 
         command_thread = QThread(self)
         command_thread.setObjectName("AssistantCommandThread")
@@ -307,6 +304,9 @@ class AssistantCommandDispatcher(QObject):
         self.workflow_ui_handoff_resolved_requested.connect(
             qt_controller.on_workflow_ui_handoff_resolved
         )
+        self.panel_navigation_resolved_requested.connect(
+            qt_controller.on_panel_navigation_resolved
+        )
         self.debug_requested.connect(shutdown_bridge.deliver_debug)
         self.shutdown_requested.connect(shutdown_bridge.shutdown)
         shutdown_bridge.finished.connect(self._on_controller_shutdown_finished)
@@ -314,7 +314,6 @@ class AssistantCommandDispatcher(QObject):
 
         self._command_thread = command_thread
         self._shutdown_bridge = shutdown_bridge
-        self._queued = True
         command_thread.start()
 
     @classmethod
@@ -332,7 +331,7 @@ class AssistantCommandDispatcher(QObject):
             )
 
     def initialize(self, launch_spec: AssistantRuntimeLaunchSpec) -> bool:
-        return self._emit_or_call(
+        return self._emit_command(
             self.initialize_requested,
             "initialize",
             launch_spec,
@@ -342,22 +341,22 @@ class AssistantCommandDispatcher(QObject):
         """Queue an already-admitted turn; lifecycle owns busy state."""
         if not isinstance(request, AssistantTurnRequest):
             raise TypeError("Assistant submit requires a correlated turn request.")
-        return self._emit_or_call(self.input_requested, "handle_user_turn", request)
+        return self._emit_command(self.input_requested, "handle_user_turn", request)
 
     def stop(self) -> bool:
-        return self._emit_or_call(self.stop_requested, "stop_generation")
+        return self._emit_command(self.stop_requested, "stop_generation")
 
     def set_model(self, launch_spec: AssistantRuntimeLaunchSpec) -> bool:
-        return self._emit_or_call(self.model_requested, "set_model", launch_spec)
+        return self._emit_command(self.model_requested, "set_model", launch_spec)
 
     def reset(self) -> bool:
-        return self._emit_or_call(self.reset_requested, "reset_conversation")
+        return self._emit_command(self.reset_requested, "reset_conversation")
 
     def confirm(self, resolution: AgentConfirmationResolution) -> bool:
         """Dispatch one correlated assistant action resolution."""
         if not isinstance(resolution, AgentConfirmationResolution):
             raise TypeError("Assistant confirmation resolution must be typed.")
-        return self._emit_or_call(
+        return self._emit_command(
             self.confirmation_requested,
             "on_user_confirmation_resolved",
             resolution,
@@ -370,7 +369,7 @@ class AssistantCommandDispatcher(QObject):
         """Dispatch one correlated product-surface resolution."""
         if not isinstance(resolution, WorkflowUiHandoffResolution):
             raise TypeError("Workflow UI handoff resolution must be typed.")
-        return self._emit_or_call(
+        return self._emit_command(
             self.workflow_ui_handoff_resolved_requested,
             "on_workflow_ui_handoff_resolved",
             resolution,
@@ -379,13 +378,31 @@ class AssistantCommandDispatcher(QObject):
     def debug(self, request: AssistantDebugToolRequest) -> bool:
         if not isinstance(request, AssistantDebugToolRequest):
             raise TypeError("Assistant debug dispatch requires a correlated request.")
-        return self._emit_or_call(
+        return self._emit_command(
             self.debug_requested,
             "execute_debug_tool",
             request,
         )
 
-    def _emit_or_call(self, signal, method_name: str, *args: Any) -> bool:
+    def resolve_panel_navigation(
+        self,
+        request: AssistantPanelNavigationRequest,
+        *,
+        success: bool,
+    ) -> bool:
+        """Return a materialized panel outcome on the controller's command thread."""
+        if not isinstance(request, AssistantPanelNavigationRequest):
+            raise TypeError("Panel navigation resolution requires a typed request.")
+        if type(success) is not bool:
+            raise TypeError("Panel navigation success must be boolean.")
+        return self._emit_command(
+            self.panel_navigation_resolved_requested,
+            "on_panel_navigation_resolved",
+            request,
+            success,
+        )
+
+    def _emit_command(self, signal, method_name: str, *args: Any) -> bool:
         if self._controller is None:
             logger.warning(
                 "Assistant command '%s' rejected without a bound controller",
@@ -399,49 +416,32 @@ class AssistantCommandDispatcher(QObject):
                 self._state.value,
             )
             return False
-        if self._queued:
-            command_thread = self._command_thread
-            if (
-                command_thread is None
-                or sip.isdeleted(command_thread)
-                or not command_thread.isRunning()
-            ):
-                logger.error(
-                    "Assistant command '%s' has no running transport thread",
-                    method_name,
-                )
-                return False
-            try:
-                if self.receivers(signal) <= 0:
-                    logger.error(
-                        "Assistant command '%s' has no transport receiver",
-                        method_name,
-                    )
-                    return False
-                signal.emit(*args)
-            except Exception:
-                logger.exception(
-                    "Assistant command '%s' transport delivery failed",
-                    method_name,
-                )
-                return False
-            return True
-        method = getattr(self._controller, method_name, None)
-        if not callable(method):
+        command_thread = self._command_thread
+        if (
+            command_thread is None
+            or sip.isdeleted(command_thread)
+            or not command_thread.isRunning()
+        ):
             logger.error(
-                "Assistant controller handler '%s' is unavailable",
+                "Assistant command '%s' has no running transport thread",
                 method_name,
             )
             return False
         try:
-            callback_result = method(*args)
+            if self.receivers(signal) <= 0:
+                logger.error(
+                    "Assistant command '%s' has no transport receiver",
+                    method_name,
+                )
+                return False
+            signal.emit(*args)
         except Exception:
             logger.exception(
-                "Assistant controller handler '%s' rejected delivery",
+                "Assistant command '%s' transport delivery failed",
                 method_name,
             )
             return False
-        return callback_result is not False
+        return True
 
     def close(self) -> bool:
         """Start cleanup without blocking the GUI and report terminal ownership."""
@@ -455,14 +455,6 @@ class AssistantCommandDispatcher(QObject):
             return True
         if self._state is AssistantCommandDispatcherState.CONTROLLER_CLOSED:
             return self._finish_command_thread_cleanup()
-        if not self._queued:
-            close = getattr(controller, "close", None)
-            if callable(close) and close() is False:
-                return False
-            self._state = AssistantCommandDispatcherState.CONTROLLER_CLOSED
-            self._finish_close()
-            return True
-
         command_thread = self._command_thread
         shutdown_bridge = self._shutdown_bridge
         if command_thread is None or shutdown_bridge is None:
@@ -520,7 +512,6 @@ class AssistantCommandDispatcher(QObject):
 
     def _finish_close(self) -> None:
         """Release dispatcher ownership only after all cleanup has completed."""
-        self._queued = False
         self._shutdown_in_flight = False
         self._command_thread = None
         self._shutdown_bridge = None

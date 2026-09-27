@@ -11,14 +11,14 @@ from XBrainLab.backend.application import get_application_service
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.metrics import AgentMetricsTracker
 from XBrainLab.llm.agent.tool_execution_coordinator import ToolExecutionCoordinator
+from XBrainLab.llm.agent.tool_feedback import format_tool_output
 from XBrainLab.llm.tools.application_surface import (
     APPLICATION_COMMAND_TOOLS,
     TOOL_TO_COMMAND,
     ToolAvailability,
     ToolAvailabilityContext,
-    ToolCommandResult,
 )
-from XBrainLab.llm.tools.result_contract import ToolResult
+from XBrainLab.llm.tools.result_contract import ToolCommandResult
 
 
 class _Registry:
@@ -86,7 +86,7 @@ def test_unknown_tool_name_is_redacted_from_status_metrics_and_payload() -> None
     assert isinstance(outcome.result, ToolCommandResult)
     public_outputs = (
         statuses[0],
-        repr(outcome.result.to_payload()),
+        format_tool_output(outcome.result.tool_name, outcome.success, outcome.result),
         repr(current_turn),
     )
     for public_output in public_outputs:
@@ -106,7 +106,7 @@ def test_all_mapped_target_names_fail_closed_without_runtime(
     for tool_name in APPLICATION_COMMAND_TOOLS:
         command_name = TOOL_TO_COMMAND[tool_name]
         direct_execute = MagicMock(
-            return_value=ToolResult(True, "Unexpected execution")
+            return_value=ToolCommandResult(True, tool_name, "Unexpected execution")
         )
         registry: Any = _Registry(direct_execute)
         starts: list[bool] = []
@@ -146,7 +146,9 @@ def test_unclassified_tool_cannot_fall_through_to_direct_execution(
     tool_name: str,
 ) -> None:
     assert tool_name not in TOOL_TO_COMMAND
-    direct_execute = MagicMock(return_value=ToolResult(True, "Unexpected execution"))
+    direct_execute = MagicMock(
+        return_value=ToolCommandResult(True, tool_name, "Unexpected execution")
+    )
     registry: Any = _Registry(direct_execute)
     starts: list[bool] = []
     completions: list[ToolCommandResult] = []

@@ -7,10 +7,9 @@ from XBrainLab.backend.saliency_methods import (
     recommended_saliency_methods,
     supported_saliency_methods,
 )
-from .plot_type import PlotType, VisualizerType
+from .plot_type import VisualizerType
 
 __all__ = [
-    "PlotType",
     "VisualizerType",
     "all_saliency_methods",
     "recommended_saliency_methods",

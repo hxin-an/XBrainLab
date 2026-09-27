@@ -1,4 +1,4 @@
-"""Canonical agent action contracts and compatibility projections."""
+"""Agent action contracts and execution/publication projections."""
 
 from __future__ import annotations
 
@@ -12,8 +12,6 @@ from XBrainLab.backend.application.commands import CommandName
 class AgentUiAction(str, Enum):
     """Agent actions fulfilled by UI or read-only adapters, not backend commands."""
 
-    BROWSE_FILES = "browse_files"
-    QUERY_STATE = "query_state"
     NAVIGATE = "navigate"
 
 
@@ -27,16 +25,14 @@ class AgentExecutionKind(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class AgentActionContract:
-    """One canonical tool's backend/UI action and intent projection metadata."""
+    """One canonical tool's backend/UI action and execution metadata."""
 
     canonical_tool: str
     action: CommandName | AgentUiAction
     taxonomy: str
     execution_kind: AgentExecutionKind = AgentExecutionKind.APPLICATION_COMMAND
     capability_command: CommandName | None = None
-    intent_aliases: tuple[str, ...] = ()
     ui_decision_fields: tuple[str, ...] = ()
-    direct_action: bool = False
     model_facing: bool = True
 
     def __post_init__(self) -> None:
@@ -47,11 +43,6 @@ class AgentActionContract:
     def command(self) -> CommandName | None:
         """Return the capability command used by the backend policy."""
         return self.capability_command
-
-    @property
-    def action_name(self) -> str:
-        """Return the stable action key used by prompt policy."""
-        return self.action.value
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,16 +58,6 @@ class AgentActionContractRegistry:
             raise ValueError(
                 "Agent action contracts contain duplicate canonical tools: "
                 f"{', '.join(duplicate_tools)}"
-            )
-
-        intent_aliases = [
-            alias for contract in self.contracts for alias in contract.intent_aliases
-        ]
-        duplicate_aliases = _duplicates(intent_aliases)
-        if duplicate_aliases:
-            raise ValueError(
-                "Agent action contracts contain duplicate intent aliases: "
-                f"{', '.join(duplicate_aliases)}"
             )
 
         for contract in self.contracts:
@@ -110,18 +91,6 @@ class AgentActionContractRegistry:
                     "Read-only direct tools cannot declare a mutation capability: "
                     f"{contract.canonical_tool}"
                 )
-            if (
-                contract.execution_kind is not AgentExecutionKind.APPLICATION_COMMAND
-                and contract.intent_aliases
-            ):
-                raise ValueError(
-                    "Only application-command tools can map backend intent aliases: "
-                    f"{contract.canonical_tool}"
-                )
-            if any(
-                not alias or alias.strip() != alias for alias in contract.intent_aliases
-            ):
-                raise ValueError("Intent aliases must be non-empty and trimmed.")
             if (
                 contract.ui_decision_fields
                 and contract.execution_kind is not AgentExecutionKind.UI_REQUEST
@@ -222,28 +191,6 @@ class AgentActionContractRegistry:
             if (command := contract.command) is not None
         }
 
-    def intent_to_command(self) -> dict[str, CommandName]:
-        """Project the historical intent-to-command mapping."""
-        return {
-            alias: command
-            for contract in self.contracts
-            if (command := contract.command) is not None
-            for alias in contract.intent_aliases
-        }
-
-    def direct_action_tool_names(self) -> dict[str, frozenset[str]]:
-        """Project direct action names to every canonical tool implementing them."""
-        action_tools: dict[str, set[str]] = {}
-        for contract in self.contracts:
-            if contract.direct_action:
-                action_tools.setdefault(contract.action_name, set()).add(
-                    contract.canonical_tool
-                )
-        return {
-            action_name: frozenset(tool_names)
-            for action_name, tool_names in action_tools.items()
-        }
-
 
 def _duplicates(values: list[str]) -> tuple[str, ...]:
     return tuple(sorted(value for value, count in Counter(values).items() if count > 1))
@@ -256,14 +203,12 @@ AGENT_ACTION_CONTRACTS = AgentActionContractRegistry(
             AgentUiAction.NAVIGATE,
             taxonomy="UI Routing",
             execution_kind=AgentExecutionKind.UI_REQUEST,
-            direct_action=True,
         ),
         AgentActionContract(
             "import_eeg_data",
             CommandName.SCAN_SOURCE,
             taxonomy="GUI Completion",
             execution_kind=AgentExecutionKind.UI_REQUEST,
-            direct_action=True,
         ),
         AgentActionContract(
             "select_channels",
@@ -271,28 +216,24 @@ AGENT_ACTION_CONTRACTS = AgentActionContractRegistry(
             taxonomy="GUI Completion",
             execution_kind=AgentExecutionKind.UI_REQUEST,
             ui_decision_fields=("channels",),
-            direct_action=True,
         ),
         AgentActionContract(
             "set_montage",
             CommandName.APPLY_MONTAGE,
             taxonomy="GUI Completion",
             execution_kind=AgentExecutionKind.UI_REQUEST,
-            direct_action=True,
         ),
         AgentActionContract(
             "create_epochs",
             CommandName.CREATE_EPOCH,
             taxonomy="GUI Completion",
             execution_kind=AgentExecutionKind.UI_REQUEST,
-            direct_action=True,
         ),
         AgentActionContract(
             "configure_dataset_split",
             CommandName.CONFIGURE_DATASET_SPLIT,
             taxonomy="GUI Completion",
             execution_kind=AgentExecutionKind.UI_REQUEST,
-            direct_action=True,
         ),
         AgentActionContract(
             "select_model",
@@ -300,7 +241,6 @@ AGENT_ACTION_CONTRACTS = AgentActionContractRegistry(
             taxonomy="GUI Completion",
             execution_kind=AgentExecutionKind.UI_REQUEST,
             ui_decision_fields=("model",),
-            direct_action=True,
         ),
         AgentActionContract(
             "configure_training",
@@ -308,68 +248,57 @@ AGENT_ACTION_CONTRACTS = AgentActionContractRegistry(
             taxonomy="GUI Completion",
             execution_kind=AgentExecutionKind.UI_REQUEST,
             ui_decision_fields=("training_options",),
-            direct_action=True,
         ),
         AgentActionContract(
             "compute_saliency",
             CommandName.SALIENCY,
             taxonomy="Analysis Execution",
             execution_kind=AgentExecutionKind.UI_REQUEST,
-            direct_action=True,
         ),
         AgentActionContract(
             "apply_bandpass_filter",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
-            direct_action=True,
         ),
         AgentActionContract(
             "apply_notch_filter",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
-            direct_action=True,
         ),
         AgentActionContract(
             "resample_data",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
-            direct_action=True,
         ),
         AgentActionContract(
             "set_reference",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
-            direct_action=True,
         ),
         AgentActionContract(
             "normalize_data",
             CommandName.PREPROCESS,
             taxonomy="Data Transform",
-            direct_action=True,
         ),
         AgentActionContract(
             "start_training",
             CommandName.TRAIN,
             taxonomy="Execution",
-            direct_action=True,
         ),
         AgentActionContract(
             "stop_training",
             CommandName.STOP_TRAINING,
             taxonomy="Execution",
-            direct_action=True,
         ),
         AgentActionContract(
             "reset_preprocessing",
             CommandName.RESET_PREPROCESS,
             taxonomy="Lifecycle",
-            direct_action=True,
         ),
         AgentActionContract(
             "clear_training_history",
             CommandName.CLEAR_TRAINING_HISTORY,
             taxonomy="Lifecycle",
-            direct_action=True,
         ),
     )
 )

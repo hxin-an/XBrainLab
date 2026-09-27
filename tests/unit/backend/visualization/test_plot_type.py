@@ -1,32 +1,11 @@
-"""Unit tests for visualization/plot_type — PlotType and VisualizerType enums."""
+"""Visualizer names resolve to their concrete rendering implementations."""
 
-from XBrainLab.backend.visualization.plot_type import PlotType, VisualizerType
+from XBrainLab.backend.visualization.plot_type import VisualizerType
 from XBrainLab.backend.visualization.saliency_map import SaliencyMapViz
 from XBrainLab.backend.visualization.saliency_spectrogram_map import (
     SaliencySpectrogramMapViz,
 )
 from XBrainLab.backend.visualization.saliency_topomap import SaliencyTopoMapViz
-
-
-class TestPlotType:
-    def test_loss(self):
-        assert PlotType.LOSS.value == "get_loss_figure"
-
-    def test_accuracy(self):
-        assert PlotType.ACCURACY.value == "get_acc_figure"
-
-    def test_auc(self):
-        assert PlotType.AUC.value == "get_auc_figure"
-
-    def test_lr(self):
-        assert PlotType.LR.value == "get_lr_figure"
-
-    def test_confusion(self):
-        assert PlotType.CONFUSION.value == "get_confusion_figure"
-
-    def test_all_members(self):
-        members = list(PlotType)
-        assert len(members) == 5
 
 
 class TestVisualizerType:

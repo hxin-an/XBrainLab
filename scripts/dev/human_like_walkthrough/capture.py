@@ -14,6 +14,7 @@ from typing import Any, cast
 from unittest.mock import patch
 
 from PyQt6.QtCore import QSize, Qt, QTimer
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QApplication, QWidget
 
 from scripts.dev.capture_chatpanel_local_walkthrough import collect_visible_messages
@@ -50,7 +51,6 @@ from scripts.dev.human_like_walkthrough.evidence import (
     assistant_signal_path_evidence,
     chat_panel_geometry,
     evaluation_plot_readability_evidence,
-    workflow_handoff_product_copy_evidence,
 )
 from XBrainLab.backend.application import NewSessionCommand, QueryStateCommand
 from XBrainLab.llm.core.config import LLMConfig
@@ -574,6 +574,12 @@ def _drive_settings_recovery(
     if not evidence["save_observed"]:
         raise RuntimeError("Assistant Settings save did not preserve the test setting.")
 
+    deadline = time.monotonic() + 2.0
+    while (
+        _runtime_sequence_since_failure(controller) == ["failed"]
+        and time.monotonic() < deadline
+    ):
+        QTest.qWait(5)
     evidence["runtime_sequence"] = _runtime_sequence_since_failure(controller)
     if evidence["runtime_sequence"] != ["failed", "loading"]:
         raise RuntimeError("Settings save did not trigger assistant loading.")
@@ -657,6 +663,9 @@ def _capture_request_states(
 
     stop_message_start = len(manager.chat_controller.messages)
     click_assistant_control(cast(QWidget, panel.send_btn))
+    deadline = time.monotonic() + 2.0
+    while "processing:stop" not in controller.events and time.monotonic() < deadline:
+        QTest.qWait(5)
     app.processEvents()
     processing_phase["notes"]["stopping_state"] = assistant_processing_evidence(
         panel,
@@ -943,6 +952,10 @@ def _capture_confirmation_interactions(
         normalized = [" ".join(item.split()).lower() for item in terminal]
         return {
             "request_kind": "production_confirmation_card",
+            "command_name": controller_request.command_name
+            if controller_request
+            else "",
+            "execution_evidence": "scripted_presentation_only",
             "decision": decision,
             "destructive": bool(
                 controller.last_confirmation_request
@@ -1009,12 +1022,13 @@ def _capture_confirmation_interactions(
     scenario_start_count = reset_scenario("handoff")
     start_index = len(manager.chat_controller.messages)
     execution_before = controller.confirmed_execution_count
+    navigation_terminals_before = controller.navigation_terminal_count
     drive_assistant_request(app, manager, ASSISTANT_EXISTING_UI_REQUEST)
     app.processEvents()
     terminal = terminal_messages(start_index)
     normalized = [" ".join(item.split()).lower() for item in terminal]
-    request = controller.last_workflow_handoff
-    resolution = controller.last_workflow_resolution
+    request = controller.last_panel_navigation
+    resolution = controller.last_navigation_resolution
     main_window = manager.main_window
     main_window_handoff = assistant_main_window_handoff_evidence(
         main_window,
@@ -1029,51 +1043,50 @@ def _capture_confirmation_interactions(
         or not main_window_handoff["evaluation_nav_checked"]
     ):
         raise RuntimeError("Typed assistant handoff did not activate Evaluation.")
+    correlation = request.correlation if request is not None else None
+    resolved_request = resolution[0] if resolution is not None else None
+    resolved_correlation = (
+        resolved_request.correlation if resolved_request is not None else None
+    )
     handoff = {
-        "request_kind": "typed_workflow_ui_handoff",
-        "decision": "opened_in_main_window",
-        "handoff_kind": request.kind.value if request is not None else "",
-        "command_name": request.command_name if request is not None else "",
-        "request_id": request.request_id if request is not None else "",
-        "decision_fields": list(request.decision_fields) if request is not None else [],
-        "resolution_request_id": (
-            resolution.request_id if resolution is not None else ""
+        "request_kind": "correlated_panel_navigation",
+        "decision": "ready_in_main_window",
+        "target": request.target.value if request is not None else "",
+        "correlation": (
+            {"generation": correlation.generation, "turn_id": correlation.turn_id}
+            if correlation is not None
+            else {}
         ),
-        "resolution_command_name": (
-            resolution.command_name if resolution is not None else ""
+        "resolution_target": (
+            resolved_request.target.value if resolved_request is not None else ""
         ),
-        "resolution_status": (
-            resolution.status.value if resolution is not None else ""
+        "resolution_correlation": (
+            {
+                "generation": resolved_correlation.generation,
+                "turn_id": resolved_correlation.turn_id,
+            }
+            if resolved_correlation is not None
+            else {}
         ),
-        "resolution_decision_fields": (
-            list(resolution.decision_fields) if resolution is not None else []
-        ),
-        "resolution_message": resolution.message if resolution is not None else "",
+        "navigation_success": resolution[1] if resolution is not None else False,
         "request_resolution_correlated": bool(
             request is not None
-            and resolution is not None
-            and request.request_id == resolution.request_id
-            and request.command is resolution.command
-            and request.decision_fields == resolution.decision_fields
+            and resolved_request == request
+            and correlation is not None
         ),
+        "terminal_count": controller.navigation_terminal_count
+        - navigation_terminals_before,
         "terminal_messages": terminal,
         "confirmed_execution_count": (
             controller.confirmed_execution_count - execution_before
         ),
         "duplicate_terminal_message": len(normalized) != len(set(normalized)),
-        "typed_handoff_emitted": "handoff:typed_emitted:evaluate" in controller.events,
-        "typed_resolution_accepted": bool(
-            resolution is not None
-            and any(
-                event.startswith("handoff:resolution_accepted:")
-                for event in controller.events
-            )
-        ),
+        "typed_navigation_emitted": "navigation:typed_emitted:evaluation"
+        in controller.events,
         "scenario_start_message_count": scenario_start_count,
         "scenario_message_count": len(manager.chat_controller.messages),
         "scenario_isolated": scenario_start_count == 0,
         "main_window_handoff": main_window_handoff,
-        "product_copy": workflow_handoff_product_copy_evidence(),
     }
     _capture_phase(
         "assistant_existing_ui_handoff",
@@ -1189,9 +1202,13 @@ def _observed_full_window_status(
     if phase_name == "assistant_existing_ui_handoff":
         interaction = notes.get("assistant_interaction", {})
         interaction = interaction if isinstance(interaction, dict) else {}
-        handoff = interaction.get("main_window_handoff", {})
-        handoff = handoff if isinstance(handoff, dict) else {}
-        return str(handoff.get("workflow_status") or "not_opened")
+        return (
+            "ready"
+            if interaction.get("navigation_success") is True
+            and interaction.get("terminal_count") == 1
+            and interaction.get("request_resolution_correlated") is True
+            else "not_ready"
+        )
     return "unknown"
 
 

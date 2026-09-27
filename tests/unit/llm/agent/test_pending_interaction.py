@@ -181,20 +181,20 @@ def test_clear_removes_waiting_or_active_tool_input_receipt() -> None:
     waiting = _tool_input_receipt()
     waiting_session.begin_tool_input(waiting)
 
-    waiting_cleared = waiting_session.clear()
+    waiting_session.clear()
 
-    assert waiting_cleared.tool_input is waiting
     assert waiting_session.tool_input is None
+    assert waiting_session.active_tool_input is None
 
     active_session = PendingInteractionCoordinator()
     active = _tool_input_receipt()
     active_session.begin_tool_input(active)
     active_session.activate_tool_input()
 
-    active_cleared = active_session.clear()
+    active_session.clear()
 
-    assert active_cleared.active_tool_input is active
     assert active_session.active_tool_input is None
+    assert active_session.tool_input is None
 
 
 def test_confirmation_is_created_and_exposed_as_one_pair() -> None:
@@ -206,8 +206,6 @@ def test_confirmation_is_created_and_exposed_as_one_pair() -> None:
     assert session.confirmation is not None
     assert session.confirmation.decision is decision
     assert session.confirmation.request is request
-    assert session.confirmation_decision is decision
-    assert session.confirmation_request is request
     assert session.workflow_handoff is None
 
 
@@ -376,30 +374,14 @@ def test_nonterminal_workflow_handoff_update_does_not_consume_request() -> None:
     assert pending.outcome is not None
     assert pending.outcome.status.value == "deferred_to_ui"
     assert session.workflow_handoff is request
-    assert session.workflow_handoff_session is not None
-    assert (
-        session.workflow_handoff_session.status.value
-        == WorkflowUiHandoffResolutionStatus.COMMAND_PENDING.value
-    )
-
-
-def test_navigation_deferred_to_ui_consumes_pending_request() -> None:
-    session = PendingInteractionCoordinator()
-    request = WorkflowUiHandoffRequest.for_decision("evaluate")
-    session.begin_workflow_handoff(request)
-
-    resolved = session.resolve_workflow_handoff(
+    duplicate = session.resolve_workflow_handoff(
         WorkflowUiHandoffResolution.for_request(
             request,
-            status=WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI,
+            status=WorkflowUiHandoffResolutionStatus.COMMAND_PENDING,
         )
     )
-
-    assert resolved.decision is PendingWorkflowHandoffDecision.TERMINAL
-    assert resolved.request is request
-    assert resolved.outcome is not None
-    assert resolved.outcome.status.value == "deferred_to_ui"
-    assert session.workflow_handoff is None
+    assert duplicate.decision is PendingWorkflowHandoffDecision.DUPLICATE
+    assert session.workflow_handoff is request
 
 
 def test_terminal_workflow_handoff_callback_consumes_after_pending_update() -> None:
@@ -460,10 +442,10 @@ def test_clear_removes_pending_state_and_reset_forgets_duplicate_history() -> No
 
     decision, confirmation_request = _confirmation_pair()
     session.begin_confirmation(decision, confirmation_request)
-    cleared = session.clear()
+    session.clear()
 
-    assert cleared.confirmation is not None
-    assert cleared.workflow_handoff is None
+    assert session.confirmation is None
+    assert session.workflow_handoff is None
     assert session.has_pending is False
 
     session.reset()

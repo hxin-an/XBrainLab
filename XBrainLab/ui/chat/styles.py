@@ -104,13 +104,6 @@ SUGGESTION_CHEVRON_STYLE = f"""
     }}
 """
 
-SUGGESTION_ICON_STYLES = """
-    QLabel#AssistantSuggestionIcon {
-        background-color: transparent;
-        border: none;
-    }
-"""
-
 SEGMENTED_CONTROL_STYLE = f"""
     QWidget#AssistantSegmentedControl {{
         background: transparent;
@@ -447,31 +440,6 @@ RUNTIME_SECONDARY_ACTION_STYLE = f"""
     QPushButton:focus {{ border-color: {Theme.BLUE_FOCUS_BORDER}; }}
 """
 
-EMPTY_STATE_ACTION_STYLE = f"""
-    QToolButton#AssistantEmptyStateAction {{
-        min-height: 34px;
-        padding: 4px 12px;
-        color: {Theme.TEXT_MUTED};
-        background-color: {Theme.METRICS_TABLE_BG};
-        border: 1px solid {Theme.BORDER};
-        border-radius: 5px;
-        font-size: 13px;
-        font-weight: 600;
-        text-align: left;
-    }}
-    QToolButton#AssistantEmptyStateAction:hover {{
-        color: {Theme.TEXT_PRIMARY};
-        background-color: {Theme.BACKGROUND_MID};
-        border-color: {Theme.GRAY_LIGHT};
-    }}
-    QToolButton#AssistantEmptyStateAction:pressed {{
-        background-color: {Theme.BACKGROUND_DARK};
-    }}
-    QToolButton#AssistantEmptyStateAction:focus {{
-        border-color: {Theme.BLUE_FOCUS_BORDER};
-    }}
-"""
-
 ACTION_CARD_FRAME_STYLE = f"""
     QFrame#AssistantConfirmationCard {{
         background-color: {Theme.METRICS_TABLE_BG};
@@ -543,18 +511,6 @@ ACTION_CARD_PROPOSAL_ROW_STYLE = f"""
         border: none;
         font-size: 10px;
         font-weight: 600;
-    }}
-    QLabel#AssistantProposalCurrent {{
-        color: {Theme.TEXT_SECONDARY};
-        background: transparent;
-        border: none;
-        font-size: 13px;
-    }}
-    QLabel#AssistantProposalArrow {{
-        color: {Theme.GRAY_MUTED};
-        background: transparent;
-        border: none;
-        font-size: 13px;
     }}
     QLabel#AssistantProposalValue {{
         color: {Theme.TEXT_PRIMARY};

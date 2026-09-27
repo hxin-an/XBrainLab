@@ -18,23 +18,17 @@ from .example_policy import is_primary_workflow_example
 
 try:
     from langchain_core.documents import Document as _Document
-    from langchain_huggingface import HuggingFaceEmbeddings as _HuggingFaceEmbeddings
     from langchain_qdrant import Qdrant as _Qdrant
-    from qdrant_client import QdrantClient as _QdrantClient
     from qdrant_client.http import models as _rest
 except ImportError:
     _Document = None
-    _HuggingFaceEmbeddings = None
     _Qdrant = None
-    _QdrantClient = None
     _rest = None
 
 # Keep these runtime names patchable for dependency-isolation tests while
 # preventing optional-import unions from leaking into the typed API.
 Document: Any = _Document
-HuggingFaceEmbeddings: Any = _HuggingFaceEmbeddings
 Qdrant: Any = _Qdrant
-QdrantClient: Any = _QdrantClient
 rest: Any = _rest
 
 logger = logging.getLogger(__name__)
@@ -50,44 +44,14 @@ class RAGIndexer:
 
     Attributes:
         embeddings: The HuggingFace sentence-transformer embedding model.
-        storage_path: Absolute path to the Qdrant on-disk storage.
-        client: The ``QdrantClient`` instance.
+        client: The retriever-owned ``QdrantClient`` instance.
 
     """
 
-    def __init__(self, client=None, embeddings=None):
-        """Initializes the RAGIndexer with embedding model and Qdrant client.
-
-        Args:
-            client: Optional existing ``QdrantClient``. If ``None``, a new
-                one is created from ``RAGConfig``.
-            embeddings: Optional existing ``HuggingFaceEmbeddings``. If
-                ``None``, a new one is created from ``RAGConfig``.
-
-        """
-        if (embeddings is None and HuggingFaceEmbeddings is None) or (
-            client is None and QdrantClient is None
-        ):
-            raise ImportError(
-                "RAG dependencies not installed. "
-                "Install with: pip install langchain-community qdrant-client"
-            )
-        self._owns_client = client is None
-        if embeddings is None:
-            if not RAGConfig.embedding_cache_ready():
-                raise RuntimeError(
-                    "Pinned RAG embedding cache is unavailable; RAG remains disabled."
-                )
-            self.embeddings = HuggingFaceEmbeddings(
-                **RAGConfig.embedding_constructor_kwargs(),
-            )
-        else:
-            self.embeddings = embeddings
-        self.storage_path = RAGConfig.get_storage_path()
-
-        # Initialize Client
-        self.client = client or QdrantClient(path=self.storage_path)
-        logger.info("Initialized Qdrant at %s", self.storage_path)
+    def __init__(self, *, client, embeddings):
+        """Borrow the retriever's verified embedding and client without owning them."""
+        self.embeddings = embeddings
+        self.client = client
 
     def load_gold_set(self, json_path: str) -> list[_DocumentLike]:
         """Parses a gold-set JSON file into LangChain Documents.
@@ -386,11 +350,3 @@ class RAGIndexer:
     @staticmethod
     def _remove_manifest() -> None:
         RAGConfig.get_index_manifest_path().unlink(missing_ok=True)
-
-    def close(self):
-        """Closes the Qdrant client connection and releases resources.
-
-        Only closes the client if it was created internally (not passed in).
-        """
-        if self.client and self._owns_client:
-            self.client.close()

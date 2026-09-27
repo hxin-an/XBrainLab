@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -179,65 +179,6 @@ class TestToolDebugMode:
         assert not dbg.can_dispatch
         assert dbg.begin_call() is None
         assert not dbg.is_complete
-
-
-# --- visualization/base.py ---
-class TestVisualizer:
-    """Tests for Visualizer ??constructed via normal __init__ (not __new__)."""
-
-    @staticmethod
-    def _make_visualizer(**overrides):
-        from XBrainLab.backend.visualization.base import Visualizer
-
-        defaults = {"eval_record": MagicMock(), "epoch_data": MagicMock()}
-        defaults.update(overrides)
-        return Visualizer(**defaults)
-
-    def test_get_saliency_gradient(self):
-        v = self._make_visualizer()
-        eval_record = cast(Any, v.eval_record)
-        eval_record.gradient = {0: "g"}
-        assert v.get_saliency("Gradient", 0) == "g"
-
-    def test_get_saliency_gradient_input(self):
-        v = self._make_visualizer()
-        eval_record = cast(Any, v.eval_record)
-        eval_record.gradient_input = {0: "gi"}
-        assert v.get_saliency("Gradient * Input", 0) == "gi"
-
-    def test_get_saliency_smoothgrad(self):
-        v = self._make_visualizer()
-        eval_record = cast(Any, v.eval_record)
-        eval_record.smoothgrad = {0: "sg"}
-        assert v.get_saliency("SmoothGrad", 0) == "sg"
-
-    def test_get_saliency_smoothgrad_sq(self):
-        v = self._make_visualizer()
-        eval_record = cast(Any, v.eval_record)
-        eval_record.smoothgrad_sq = {0: "sgs"}
-        assert v.get_saliency("SmoothGrad_Squared", 0) == "sgs"
-
-    def test_get_saliency_vargrad(self):
-        v = self._make_visualizer()
-        eval_record = cast(Any, v.eval_record)
-        eval_record.vargrad = {0: "vg"}
-        assert v.get_saliency("VarGrad", 0) == "vg"
-
-    def test_get_saliency_unknown(self):
-        v = self._make_visualizer()
-        with pytest.raises(NotImplementedError):
-            v.get_saliency("Unknown", 0)
-
-    def test_get_saliency_none(self):
-        v = self._make_visualizer()
-        with pytest.raises(ValueError):
-            v.get_saliency(cast(str, None), 0)
-
-    def test_get_plt_releases_figure_when_rendering_fails(self):
-        v = self._make_visualizer()
-        with pytest.raises(NotImplementedError):
-            v.get_plt()
-        assert v.fig is None
 
 
 # --- logger.py ---

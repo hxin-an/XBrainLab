@@ -11,7 +11,8 @@ from XBrainLab.backend.application.commands import QueryStateCommand, VisualizeC
 from XBrainLab.backend.application.errors import map_exception
 from XBrainLab.backend.application.results import ChangedState, CommandResult, ErrorType
 from XBrainLab.backend.exceptions import SaliencyCancellationTimeoutError
-from XBrainLab.llm.tools.application_surface import ToolCommandResult
+from XBrainLab.llm.agent.tool_feedback import format_tool_output
+from XBrainLab.llm.tools.result_contract import ToolCommandResult
 
 
 class _MutableDomainObject:
@@ -50,20 +51,22 @@ def test_command_result_drops_mutable_domain_objects_instead_of_retaining_them()
     )
 
     public_payload = result.to_dict()
-    agent_payload = ToolCommandResult.from_command_result(
+    agent_result = ToolCommandResult.from_command_result(
         "query_state",
         result,
-    ).to_payload()
+    )
+    agent_payload = json.loads(format_tool_output("query_state", True, agent_result))
 
     assert public_payload["diagnostics"] == {
         "payload_type": "data_lists",
         "raw_count": 1,
     }
     assert "runtime" not in public_payload
-    assert agent_payload["diagnostics"] == public_payload["diagnostics"]
-    assert agent_payload["raw_result"] == public_payload
+    assert agent_result.diagnostics == public_payload["diagnostics"]
+    assert agent_payload["diagnostics"] == {"payload_type": "data_lists"}
+    assert agent_result.raw_result == public_payload
     assert "loaded_data_list" not in agent_payload["diagnostics"]
-    assert "runtime" not in agent_payload["raw_result"]
+    assert "raw_result" not in agent_payload
     json.dumps({"public": public_payload, "agent": agent_payload})
 
 

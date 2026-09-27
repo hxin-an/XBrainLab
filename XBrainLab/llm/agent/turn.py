@@ -20,20 +20,6 @@ from XBrainLab.chat_contract import (
 from XBrainLab.llm.core.generation import GenerationProfile
 
 
-class AssistantResponseContract(str, Enum):
-    """Output grammar expected from one model generation."""
-
-    NATURAL_LANGUAGE = "natural_language"
-    STRUCTURED_ACTION = "structured_action"
-
-    @property
-    def generation_profile(self) -> GenerationProfile:
-        """Return the decoding profile that protects this output grammar."""
-        if self is AssistantResponseContract.STRUCTURED_ACTION:
-            return GenerationProfile.STRUCTURED_DECISION
-        return GenerationProfile.INFORMATIONAL_TEXT
-
-
 class AssistantGenerationEventPhase(str, Enum):
     """Observable phases from one correlated model-generation request."""
 
@@ -120,7 +106,6 @@ class AssistantGenerationRequest:
     """Typed model request crossing the controller-to-worker boundary."""
 
     messages: tuple[tuple[tuple[str, Any], ...], ...]
-    response_contract: AssistantResponseContract
     generation_id: int = 0
 
     def __post_init__(self) -> None:
@@ -135,22 +120,17 @@ class AssistantGenerationRequest:
     def from_messages(
         cls,
         messages: Iterable[Mapping[str, Any]],
-        *,
-        response_contract: AssistantResponseContract,
     ) -> AssistantGenerationRequest:
         """Copy model messages so later history mutation cannot alter a turn."""
         frozen_messages = tuple(tuple(dict(message).items()) for message in messages)
         if not frozen_messages:
             raise ValueError("Assistant generation requires at least one message.")
-        return cls(
-            messages=frozen_messages,
-            response_contract=response_contract,
-        )
+        return cls(messages=frozen_messages)
 
     @property
     def generation_profile(self) -> GenerationProfile:
-        """Return the backend decoding profile for this response contract."""
-        return self.response_contract.generation_profile
+        """Use deterministic decoding for every Assistant response envelope."""
+        return GenerationProfile.STRUCTURED_DECISION
 
     def to_model_messages(self) -> list[dict[str, Any]]:
         """Return a fresh mutable payload for tokenizer/backend APIs."""

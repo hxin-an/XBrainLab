@@ -1,9 +1,12 @@
+from threading import Event
+
 import numpy as np
 import pytest
 import torch
 from captum.attr import NoiseTunnel, Saliency
 from torch.utils.data import DataLoader, TensorDataset
 
+from XBrainLab.backend.exceptions import StaleSaliencyUpdateError
 from XBrainLab.backend.model_base.EEGNet import EEGNet
 from XBrainLab.backend.training.evaluator import Evaluator
 from XBrainLab.backend.training.training_plan import to_holder
@@ -228,6 +231,82 @@ def test_eegnet_saliency_matches_captum_with_outer_no_grad():
             atol=1e-7,
         )
     assert all(parameter.grad is None for parameter in model.parameters())
+
+
+@pytest.mark.parametrize("cancel_after_forward", [0, 1, 2])
+def test_saliency_cancellation_does_not_start_later_batches_or_methods(
+    cancel_after_forward,
+):
+    model = _SignedLinearModel()
+    inputs = torch.ones(8, 3)
+    labels = torch.arange(8) % 2
+    loader = DataLoader(TensorDataset(inputs, labels), batch_size=2)
+    cancelled = Event()
+    forwards = []
+    if cancel_after_forward == 0:
+        cancelled.set()
+
+    def request_cancel(_model, _inputs, _output):
+        forwards.append(True)
+        if len(forwards) == cancel_after_forward:
+            cancelled.set()
+
+    hook = model.register_forward_hook(request_cancel)
+    try:
+        with pytest.raises(StaleSaliencyUpdateError):
+            Evaluator.evaluate_with_saliency(
+                model,
+                loader,
+                {"_methods": ["Gradient", "SmoothGrad", "VarGrad"]},
+                should_cancel=cancelled.is_set,
+            )
+    finally:
+        hook.remove()
+    assert len(forwards) == cancel_after_forward
+
+
+def test_saliency_non_cancelled_callback_preserves_all_numeric_outputs():
+    model = _SignedLinearModel()
+    inputs = torch.tensor(
+        [[1.0, 2.0, -3.0], [-2.0, 3.0, 1.0], [4.0, -1.0, 2.0], [2.0, 1.0, 3.0]]
+    )
+    labels = torch.tensor([0, 1, 1, 0])
+    params = {
+        "_methods": [
+            "Gradient",
+            "Gradient * Input",
+            "SmoothGrad",
+            "SmoothGrad_Squared",
+            "VarGrad",
+        ]
+    }
+    records = []
+    for kwargs in ({}, {"should_cancel": lambda: False}):
+        torch.manual_seed(20260923)
+        records.append(
+            Evaluator.evaluate_with_saliency(
+                model,
+                DataLoader(TensorDataset(inputs, labels), batch_size=2),
+                params,
+                **kwargs,
+            )
+        )
+    before, after = records
+    np.testing.assert_array_equal(before.label, after.label)
+    np.testing.assert_array_equal(before.output, after.output)
+    for name in (
+        "gradient",
+        "gradient_input",
+        "smoothgrad",
+        "smoothgrad_sq",
+        "vargrad",
+    ):
+        for label in (0, 1):
+            np.testing.assert_array_equal(
+                getattr(before, name)[label], getattr(after, name)[label]
+            )
+    assert before.saliency_method_parameters == after.saliency_method_parameters
+    assert before.saliency_noise_seeds == after.saliency_noise_seeds
 
 
 class _SignedLinearModel(torch.nn.Module):

@@ -113,14 +113,6 @@ def _payload(*, configured: str = "1.25", observed: float = 1.25) -> dict:
                 "checks": {"visible_text_fits": True},
                 "failures": [],
             },
-            {
-                "name": "narrow_setting_change_confirmation_max_content",
-                "file": "narrow-setting-change-confirmation-max-content.png",
-                "logical_size": [320, 780],
-                "pixel_size": physical([320, 780]),
-                "checks": {"visible_text_fits": True},
-                "failures": [],
-            },
             *content_screens,
         ],
         "failures": [],
@@ -162,7 +154,6 @@ def test_dpi_gate_covers_required_full_window_and_narrow_evidence() -> None:
     assert NARROW_CROP_SCREENSHOTS == (
         "responsive-320-idle.png",
         "narrow-message-content-boundaries.png",
-        "narrow-setting-change-confirmation-max-content.png",
     )
     assert (
         *FULL_WINDOW_DOCK_SCREENSHOTS,
@@ -198,10 +189,6 @@ def test_scale_payload_requires_full_window_dock_and_narrow_records() -> None:
         "narrow crop evidence is missing: narrow-message-content-boundaries.png"
         in failures
     )
-    assert (
-        "narrow crop evidence is missing: "
-        "narrow-setting-change-confirmation-max-content.png"
-    ) in failures
 
 
 def test_scale_payload_rejects_capture_size_that_ignores_observed_dpr() -> None:

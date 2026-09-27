@@ -33,10 +33,7 @@ from .prompt_policy import (
     PromptPolicyReadResult,
     read_prompt_policy,
 )
-from .turn import (
-    AssistantGenerationRequest,
-    AssistantResponseContract,
-)
+from .turn import AssistantGenerationRequest
 from .verifier import DIRECT_PARAMETER_TOOLS
 
 _MAX_CONTEXT_NOTES = 4
@@ -286,9 +283,8 @@ Action Contract Catalog (input definitions, never an output array):
             and name in policy_read.published_tools
         )
 
-    def rag_allowed_tool_names(self, latest_user_text: str) -> frozenset[str]:
+    def rag_allowed_tool_names(self) -> frozenset[str]:
         """Return backend-stage-published tools whose examples may enter RAG."""
-        del latest_user_text
         policy_read = read_prompt_policy(
             self.study_state,
             runtime=self.application_runtime,
@@ -338,7 +334,7 @@ Action Contract Catalog (input definitions, never an output array):
                 )
         return unavailable
 
-    def build_system_prompt(self, latest_user_text: str = "") -> str:
+    def build_system_prompt(self) -> str:
         """Construct the host-controlled policy and action-contract message.
 
         Runtime values are collected during this call but never interpolated
@@ -562,7 +558,6 @@ Action Contract Catalog (input definitions, never an output array):
             raise TypeError("Assistant history must be an exact list.")
         history_input_truncated = len(history) > _MAX_HISTORY_INPUT_ROWS
         clean_history = self._history_for_llm(history)
-        latest_user_text = self._latest_user_text(clean_history)
         latest_user_content = self._latest_user_content(clean_history)
         latest_user_index = self._latest_user_index(clean_history)
         prior_history = [
@@ -572,7 +567,7 @@ Action Contract Catalog (input definitions, never an output array):
         ]
         system_message = {
             "role": "system",
-            "content": self.build_system_prompt(latest_user_text),
+            "content": self.build_system_prompt(),
         }
         if format_recovery:
             system_message["content"] += (
@@ -624,16 +619,13 @@ Action Contract Catalog (input definitions, never an output array):
     ) -> AssistantGenerationRequest:
         """Build one typed request with an explicit response grammar."""
         messages = self.get_messages(history, format_recovery=format_recovery)
-        return AssistantGenerationRequest.from_messages(
-            messages,
-            response_contract=AssistantResponseContract.STRUCTURED_ACTION,
-        )
+        return AssistantGenerationRequest.from_messages(messages)
 
     def _history_for_llm(self, history: list) -> list[dict[str, Any]]:
         """Return exact built-in user-visible rows eligible for projection.
 
-        Internal tool feedback remains in controller history for metrics and
-        recovery, but it should not become workflow truth for the next LLM turn.
+        Source roles, never content prefixes or JSON shapes, distinguish visible
+        rows from internal trace. Internal feedback cannot become model authority.
         """
         if type(history) is not list:
             raise TypeError("Assistant history must be an exact list.")
@@ -647,12 +639,6 @@ Action Contract Catalog (input definitions, never an output array):
                 continue
             normalized_content = raw_content.strip()
             if role not in {"user", "assistant"} or not normalized_content:
-                continue
-            if normalized_content.startswith(("System:", "Tool Output:")):
-                continue
-            if role == "assistant" and self._is_internal_action_envelope(
-                normalized_content
-            ):
                 continue
             cleaned.append({"role": role, "content": raw_content})
         return cleaned
@@ -762,27 +748,6 @@ Action Contract Catalog (input definitions, never an output array):
             else:
                 high = candidate_cap - 1
         return best
-
-    @staticmethod
-    def _is_internal_action_envelope(content: str) -> bool:
-        """Return whether assistant text is an internal structured decision."""
-        if type(content) is not str:
-            return False
-        try:
-            payload = json.loads(content)
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return False
-        return (
-            type(payload) is dict
-            and set(payload) == {"workflow_stage", "tool_name", "parameters"}
-            and type(payload.get("workflow_stage")) is str
-            and type(payload.get("tool_name")) is str
-            and type(payload.get("parameters")) is dict
-        )
-
-    @staticmethod
-    def _latest_user_text(history: list[dict[str, Any]]) -> str:
-        return ContextAssembler._latest_user_content(history).strip()
 
     @staticmethod
     def _latest_user_content(history: list[dict[str, Any]]) -> str:

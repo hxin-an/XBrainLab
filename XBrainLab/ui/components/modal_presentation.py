@@ -12,6 +12,7 @@ from typing import Any
 
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QDialogButtonBox,
     QFrame,
     QHBoxLayout,
@@ -53,6 +54,7 @@ _SEVERITY_PIXMAPS = {
 
 _MODAL_MINIMUM_WIDTH = 420
 _MODAL_MAXIMUM_WIDTH = 640
+_HEADING_SPACING = 10
 _LONG_MESSAGE_CHARACTER_THRESHOLD = 700
 _LONG_MESSAGE_LINE_THRESHOLD = 14
 _LONG_MESSAGE_MAXIMUM_HEIGHT = 320
@@ -70,6 +72,7 @@ class ModalAlertDialog(BaseDialog):
         confirm_text: str | None = None,
         cancel_text: str = "Cancel",
         destructive: bool = False,
+        opt_out_text: str | None = None,
         parent: Any = None,
     ) -> None:
         self._severity = severity
@@ -77,6 +80,8 @@ class ModalAlertDialog(BaseDialog):
         self._confirm_text = confirm_text
         self._cancel_text = cancel_text
         self._destructive = destructive
+        self._opt_out_text = opt_out_text
+        self.opt_out_checkbox: QCheckBox | None = None
         self.message_label: QLabel
         self.message_scroll_area: QScrollArea | None = None
         self.severity_icon_label: QLabel | None = None
@@ -87,7 +92,9 @@ class ModalAlertDialog(BaseDialog):
         self.cancel_button: QPushButton | None = None
         super().__init__(parent=parent, title=title, width=_MODAL_MINIMUM_WIDTH)
         self.fit_to_content(
-            minimum_width=_MODAL_MINIMUM_WIDTH,
+            minimum_width=460
+            if self._opt_out_text is not None
+            else _MODAL_MINIMUM_WIDTH,
             maximum_width=_MODAL_MAXIMUM_WIDTH,
         )
         if not self.is_confirmation:
@@ -124,6 +131,8 @@ class ModalAlertDialog(BaseDialog):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 14, 18, 14)
+        if self._opt_out_text is not None:
+            layout.setContentsMargins(20, 20, 20, 18)
         layout.setSpacing(8)
 
         if self.is_confirmation and self._severity is not AlertSeverity.WARNING:
@@ -137,7 +146,7 @@ class ModalAlertDialog(BaseDialog):
                 self.severity_label = self._create_severity_label()
                 self.severity_label.hide()
                 heading_row = QHBoxLayout()
-                heading_row.setSpacing(10)
+                heading_row.setSpacing(_HEADING_SPACING)
                 heading_row.addWidget(
                     self._create_severity_icon_label(),
                     alignment=Qt.AlignmentFlag.AlignTop,
@@ -201,18 +210,34 @@ class ModalAlertDialog(BaseDialog):
             if self.confirm_button is None:
                 raise RuntimeError("Confirmation button was not created")
             self.acknowledge_button = self.confirm_button
-        layout.addWidget(button_box, alignment=Qt.AlignmentFlag.AlignRight)
+        if self._opt_out_text is not None:
+            layout.addSpacing(8)
+            footer = QHBoxLayout()
+            footer.setSpacing(12)
+            if self.severity_icon_label is not None:
+                footer.setContentsMargins(
+                    self.severity_icon_label.width() + _HEADING_SPACING, 0, 0, 0
+                )
+            self.opt_out_checkbox = QCheckBox(self._opt_out_text)
+            footer.addWidget(
+                self.opt_out_checkbox, alignment=Qt.AlignmentFlag.AlignVCenter
+            )
+            footer.addStretch(1)
+            footer.addWidget(button_box, alignment=Qt.AlignmentFlag.AlignRight)
+            layout.addLayout(footer)
+        else:
+            layout.addWidget(button_box, alignment=Qt.AlignmentFlag.AlignRight)
 
     def _add_acknowledgement_content(self, layout: QVBoxLayout) -> None:
         heading_row = QHBoxLayout()
-        heading_row.setSpacing(10)
+        heading_row.setSpacing(_HEADING_SPACING)
         heading_row.addWidget(
             self._create_severity_icon_label(),
             alignment=Qt.AlignmentFlag.AlignTop,
         )
 
         copy_column = QVBoxLayout()
-        copy_column.setSpacing(6)
+        copy_column.setSpacing(12 if self._opt_out_text is not None else 6)
         copy_column.setAlignment(Qt.AlignmentFlag.AlignTop)
         header_column = QVBoxLayout()
         header_column.setSpacing(2)

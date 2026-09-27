@@ -1,31 +1,31 @@
 # XBrainLab Agent Guide
 
-最後更新：`2026-09-07`
+最後更新：`2026-09-24`
 
 Repo 級不變量；產品、plan、gate 由 canonical source 擁有。
 
 ## 權威與讀取
 
-一般任務按需要讀取，不為了預防性審查把全部文件載入：
+按任務需要讀取，不預防性載入全部文件：
 
-- `docs/current.md`：目前能與不能宣稱的產品事實。
+- `docs/current.md`：產品事實與宣稱界線。
 - `docs/planning/now.md`：active priority 與 candidate。
 - `docs/architecture/`、`docs/target/`：current 與 target boundary。
 - `docs/validation/README.md`：evidence 與 claim contract。
 - `.agents/README.md`：repo-local skills、workflows 與 model dispatch。
 - `scripts/dev/handoff_gate_spec.py`：唯一 executable handoff gate registry。
 
-新工作階段先讀 active plan，再按任務查 current/validation 與 Git/PR。Git 擁有版本及
-dirty/worktree 事實；衝突文件須校準。舊聊天與歷史批准不授權新 source；缺少環境／權限時明示。
+新階段先讀active plan，再按任務查current/validation與Git/PR。版本、dirty/worktree以Git為準；
+校準衝突文件。舊聊天與歷史批准不授權新source；缺環境／權限須明示。
 
-Context compaction 不構成停止條件；依 `.agents/README.md` 接續未完成工作，不等使用者催促。
+Context compaction後依`.agents/README.md`續做，不因此停工等催促。
 
 ## 授權與 scope ceiling
 
 使用者要求、明定 acceptance 與直接必要依賴定義 **scope ceiling**；review/評估不擴大授權。
 
-- 回答、解釋、審查、診斷或規劃：唯讀診斷並回報，未被要求時不實作。
-- 修改、建立或修復：實作授權 scope 內的最小 coherent change 與直接驗證。
+- 回答、解釋、審查、診斷或規劃：唯讀診斷回報，未要求不實作。
+- 修改、建立或修復：實作授權scope內最小coherent change及直接驗證。
 - 未授權的外部寫入、破壞性操作、付費行為、public contract 決策或實質 scope 擴張：先取得確認。
 - 改變使用者可見 layout、文案、互動、狀態或流程時，實作前必須先取得使用者明確確認。`XBrainLab/ui/`
   內維持 presentation 的修正照已授權 scope 實作，不重複確認。
@@ -37,10 +37,10 @@ Adjacent finding 只因重現 defect、破壞 contract、安全／資料損失�
 
 ## Plan-first repair
 
-Product bug、feature或refactor開始實作前先更新唯一active plan `docs/planning/now.md`，涵蓋問題與證據、
-outcome、scope／non-goals、假設、修理步驟、focused validation、stop condition與UI確認狀態。
+Bug／feature／refactor實作前更新唯一active plan `docs/planning/now.md`：問題與證據、outcome、
+scope／non-goals、假設、步驟、focused validation、stop condition及UI確認狀態。
 
-施工中更新 next step/blocker；完成後移除 active slice，只把真實改變留在 canonical authority。
+施工更新next step/blocker；完成移除active slice，真實改變留在canonical authority。
 
 跨PR public contract 先核准target，source/tests不等於核准。Assistant tools 的名稱、membership、
 side effects、confirmation、visible results 都是 public contract。
@@ -60,14 +60,18 @@ side effects、confirmation、visible results 都是 public contract。
 
 ## 程式碼品質與複雜度
 
-先確保正確可靠，再讓責任與資料流清楚，最後消除不必要複雜度。行數、檔案數和抽象數不是
-品質目標；不得為縮短程式犧牲資料一致性、錯誤／取消處理或可讀性，也不把程式壓成難讀寫法。
+品質順序：正確可靠 → 責任與資料流清楚 → 消除不必要複雜度。行數、檔數、抽象數不是目標；
+不得為縮碼犧牲資料一致性、錯誤／取消處理或可讀性，也不壓成難讀寫法。
+
+成果回報按產品、測試／fixtures、腳本、文件、設定／其他列新增／刪除／淨行數與合計；註明
+基準與範圍，含未追蹤新增檔。二進位另列檔數、不算行數。本切片與分支累積分開，不混入
+既有修改；各類均說明審查／驗證與限制，不以production通過代表全部。
 
 先檢查既有 owner 能否重用。Owner 掌管 admission、mutation/publication、confirmation 或
 async lifecycle；DTO、parser、renderer、純函式不是 owner。
 
-下列情況先做 complexity review：說明 deletion candidates、owners before/after、
-production `+/-/net LOC`、必要性與拆分方案；數量是審查訊號，不是縮碼目標：
+下列情況先做complexity review：列deletion candidates、owners before/after、production `+/-/net LOC`、
+必要性與拆分方案；數量是審查訊號、非縮碼目標：
 
 - Bug fix 淨增超過 300 production LOC、觸及超過 8 個 production files，或新增 production
   module/public class。
@@ -77,17 +81,16 @@ production `+/-/net LOC`、必要性與拆分方案；數量是審查訊號，�
 - 任一 slice 超過 1,500 production LOC 必須拆 PR，或取得明確 architecture/user exception。
 - 新增 authoritative owner、state machine、receipt 或 compatibility path 不看行數，一律觸發。
 
-新 abstraction 必須改善實際責任邊界、移除重複 policy 或隔離必要 unsafe/external seam；
-一個 caller 也可能需要清楚結構，多個 caller 也不自動證明值得抽象。Receipt 只用於
-跨 turn/process/TOCTOU/trust boundary；compatibility path 必須有
-真實 migration 對象與移除條件。不建立汎用 complexity manifest 或新 control plane 來執行這些規則。
+新abstraction須改善責任邊界、移除重複policy或隔離必要unsafe/external seam；caller數不單獨
+決定是否值得抽象。Receipt只用於跨turn/process/TOCTOU/trust boundary；compatibility path須有
+真實migration對象與移除條件。不建汎用complexity manifest或新control plane執行這些規則。
 
-測試保護真實 defect、行為、state transition 或 side effect，不複述 helper。Source guard
-只保護穩定、可靜態判定且會重複違反的規則。Canonical docs 只因事實／決策／契約變化更新；
-不為每次測試建 receipt 或重複寫 implementation log 與 worklog。
+測試保護真實defect／行為／state transition／side effect，不複述helper。Source guard限穩定、
+可靜態判定且會重複違反的規則。Canonical docs僅隨事實／決策／契約更新；不逐次測試建receipt，
+不重複寫implementation log與worklog。
 
-依 `.agents/README.md` 的獨立性、成本與風險判準分工；不設 repo 人數或角色配額。
-每次修改都 review，高風險採獨立覆核；主 agent 可實作，並驗收實際 diff／證據，不能只信摘要。
+依`.agents/README.md`的獨立性、成本與風險判準分工，不設人數／角色配額。每次修改都review，
+高風險獨立覆核；主agent可實作，但須驗收實際diff／證據，不能只信摘要。
 
 ## 驗證與完成語意
 
@@ -97,8 +100,8 @@ production `+/-/net LOC`、必要性與拆分方案；數量是審查訊號，�
 - `handoff-ready`：只在 `.agents/workflows/handoff-candidate.md` 的所有 applicable gate 對同一
   clean/explained exact commit 通過後使用。
 
-日常只跑直接相關 focused checks；交付依 `docs/validation/README.md` 選 applicable evidence，
-同一 PR head 已成功的 CI 不在本機重跑等價全套。完整 manifest 只供明確的完整版本驗證需求。
+日常只驗直接相關範圍；交付證據依`docs/validation/README.md`。同PR head CI成功後不重跑
+等價本機全套；完整manifest限明確的完整版本驗證需求。
 可見變更仍需 changed-surface screenshot/walkthrough；deterministic widget/geometry/pixel checks
 處理可機械判斷的事實，模型只審設計與異常。Offscreen 不取代 Windows native acceptance。
 Data/import/label/epoch/training/evaluation/visualization 仍需同版本 source-diverse gate，可由 CI 提供。

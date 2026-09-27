@@ -100,8 +100,6 @@ class _PendingRetrieval:
 class ProcessRAGRetrieverLifecycle:
     """Own production RAG in a subprocess with hard timeout and cancellation."""
 
-    retriever = None
-
     def __init__(
         self,
         *,
@@ -144,7 +142,7 @@ class ProcessRAGRetrieverLifecycle:
             if self._closed:
                 return False
             process = self._process
-            if process is not None and process.is_alive():
+            if process is not None:
                 return False
             return self._spawn_locked()
 
@@ -200,7 +198,11 @@ class ProcessRAGRetrieverLifecycle:
             if self._closed or self._pending is not None:
                 return False
             process = self._process
-            if (process is None or not process.is_alive()) and not self._spawn_locked():
+            if process is not None and (
+                self._command_queue is None or not process.is_alive()
+            ):
+                return False
+            if process is None and not self._spawn_locked():
                 return False
             command_queue = self._command_queue
             if command_queue is None:
@@ -247,8 +249,7 @@ class ProcessRAGRetrieverLifecycle:
                 return False
             self._pending = None
             resources = self._detach_generation_locked()
-        self._stop_resources(*resources, graceful=False)
-        return True
+        return self._stop_resources(*resources, graceful=False)
 
     def _monitor(self, generation: int, process: Any, result_queue: Any) -> None:
         while True:
@@ -381,7 +382,8 @@ class ProcessRAGRetrieverLifecycle:
         command_queue = self._command_queue
         result_queue = self._result_queue
         self._generation += 1
-        self._process = None
+        # Keep the exact process handle until cleanup proves it stopped. A
+        # detached command queue fences new retrieval while cleanup is pending.
         self._command_queue = None
         self._result_queue = None
         self._monitor_thread = None
@@ -407,10 +409,6 @@ class ProcessRAGRetrieverLifecycle:
         if monitor is not None and monitor is not threading.current_thread():
             monitor.join(timeout=self._shutdown_wait_seconds)
             stopped = stopped and not monitor.is_alive()
-        if not stopped and resources[0] is not None:
-            with self._lock:
-                if self._process is None:
-                    self._process = resources[0]
         return stopped
 
     def _stop_resources(
@@ -421,22 +419,31 @@ class ProcessRAGRetrieverLifecycle:
         *,
         graceful: bool,
     ) -> bool:
-        if process is not None:
-            if graceful and command_queue is not None:
-                with suppress(BaseException):
-                    command_queue.put(("close",))
-            process.join(timeout=self._shutdown_wait_seconds if graceful else 0.05)
-            if process.is_alive():
-                process.terminate()
-                process.join(timeout=self._shutdown_wait_seconds)
-            if process.is_alive():
-                kill = getattr(process, "kill", None)
-                if callable(kill):
-                    kill()
+        try:
+            if process is not None:
+                if graceful and command_queue is not None:
+                    with suppress(BaseException):
+                        command_queue.put(("close",))
+                process.join(timeout=self._shutdown_wait_seconds if graceful else 0.05)
+                if process.is_alive():
+                    process.terminate()
                     process.join(timeout=self._shutdown_wait_seconds)
-        stopped = process is None or not process.is_alive()
-        self._close_queue(command_queue)
-        self._close_queue(result_queue)
+                if process.is_alive():
+                    process.kill()
+                    process.join(timeout=self._shutdown_wait_seconds)
+            stopped = process is None or not process.is_alive()
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger, exc, boundary="rag_process_lifecycle", operation="stop"
+            )
+            stopped = False
+        finally:
+            self._close_queue(command_queue)
+            self._close_queue(result_queue)
+        if stopped:
+            with self._lock:
+                if self._process is process:
+                    self._process = None
         return stopped
 
     @staticmethod

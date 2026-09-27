@@ -44,6 +44,20 @@ RETIRED_MODEL_IDS = (
 VALID_TEST_WEIGHT_BYTES = 1024
 
 
+def test_pinned_embedding_is_downloadable_but_not_a_generation_model(
+    tmp_path: Path,
+) -> None:
+    from XBrainLab.llm.rag.config import RAGConfig
+
+    model_id = RAGConfig.EMBEDDING_MODEL
+    assert model_id not in allowed_local_model_ids()
+    assert local_model_spec(model_id) is None
+    assert local_model_policy_error(model_id) is not None
+    plan = plan_model_download(model_id, str(tmp_path / "rag models"))
+    assert plan.ok, plan.message
+    assert plan.estimated_download_bytes == 100_000_000
+
+
 @pytest.fixture
 def small_weight_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     """Scale only opted-in artifact tests, retaining the real completeness checks."""
@@ -218,7 +232,6 @@ def test_primary_granite_catalog_metadata_is_truthful() -> None:
     assert primary.estimated_vram_gb == pytest.approx(8.0)
     assert primary.quantization.startswith("BF16 safetensors")
     assert "trust_remote_code" not in {field.name for field in fields(LocalModelSpec)}
-    assert primary.supports_system_role is True
     assert primary.preferred_cuda_dtype == "bfloat16"
     assert primary.source_url == (
         "https://huggingface.co/ibm-granite/granite-4.0-micro"

@@ -38,10 +38,6 @@ from XBrainLab.ui.components.assistant_status_projection import (
     AssistantWorkflowSurface,
     build_assistant_status_projection,
 )
-from XBrainLab.ui.components.workflow_surface_router import (
-    WorkflowSurfaceOutcome,
-    WorkflowSurfaceStatus,
-)
 
 
 @pytest.mark.parametrize(
@@ -170,22 +166,6 @@ def test_arbitrary_exception_text_is_never_reflected_to_user():
         assert "/private/runtime" not in rendered
 
 
-def test_legacy_cancelled_turn_copy_is_concise_and_actionable() -> None:
-    visible = AgentPresentationService.assistant_transcript_message(
-        "The assistant stopped this request. No further response or action will run."
-    )
-
-    assert visible == "Request cancelled. You can revise it or ask something else."
-
-
-def test_regular_assistant_copy_is_not_reclassified() -> None:
-    visible = AgentPresentationService.assistant_transcript_message(
-        "I need a folder path before I can list files."
-    )
-
-    assert visible == "I need a folder path before I can list files."
-
-
 @pytest.mark.parametrize(
     ("response_kind", "transcript_kind"),
     (
@@ -239,35 +219,6 @@ def test_chat_presentation_kind_preserves_typed_response_meaning(
 )
 def test_training_terminal_presentation_preserves_typed_copy(outcome, expected) -> None:
     assert AgentPresentationService.training_terminal_presentation(outcome) == expected
-
-
-@pytest.mark.parametrize(
-    ("status", "expected"),
-    [
-        (
-            WorkflowSurfaceStatus.CANCELLED,
-            "Evaluation review was cancelled. Your current workflow is unchanged.",
-        ),
-        (
-            WorkflowSurfaceStatus.COMPLETED,
-            "Evaluation review is ready in XBrainLab.",
-        ),
-        (
-            WorkflowSurfaceStatus.FAILED,
-            "XBrainLab could not open Evaluation. Try again from the main window.",
-        ),
-    ],
-)
-def test_evaluation_handoff_outcomes_use_natural_product_copy(status, expected):
-    outcome = WorkflowSurfaceOutcome(
-        status=status,
-        command_name="evaluate",
-        message="ignored backend detail",
-    )
-
-    assert (
-        AgentPresentationService.workflow_surface_outcome_message(outcome) == expected
-    )
 
 
 def _publication(
@@ -388,7 +339,6 @@ def test_status_projection_preserves_atomic_backend_workflow_truth(
     assert projection.blocked_reasons == backend_projection.blocked_reasons
     assert projection.decision_fields == backend_projection.decision_fields
     assert projection.existing_ui_surface is surface
-    assert projection.available_commands == (command_name,)
 
 
 def test_status_projection_leaves_raw_preparation_choice_open() -> None:
@@ -409,7 +359,6 @@ def test_status_projection_leaves_raw_preparation_choice_open() -> None:
     assert projection.recommended_command == backend_projection.recommended_command
     assert projection.decision_fields == ()
     assert projection.decision_fields == backend_projection.decision_fields
-    assert projection.available_commands == ()
 
 
 def test_epoch_settings_surface_uses_eeg_domain_language() -> None:
@@ -446,7 +395,7 @@ def test_status_projection_uses_recommended_command_blocker_not_train_blocker() 
     assert "Select a model before training." not in projection.tooltip
 
 
-def test_status_projection_exposes_stop_as_control_not_implicit_next_step() -> None:
+def test_status_projection_does_not_suggest_a_next_step_during_training() -> None:
     state = replace(
         ApplicationStateSnapshot.empty(),
         pipeline_stage="training",
@@ -467,7 +416,7 @@ def test_status_projection_exposes_stop_as_control_not_implicit_next_step() -> N
     projection = build_assistant_status_projection(_publication(state))
 
     assert projection.recommended_command is None
-    assert projection.available_commands == ("stop_training",)
+    assert "Suggested next action: none" in projection.tooltip
     assert projection.blocked_reasons == ()
     assert projection.blocked_reason is None
     assert "Action required" not in projection.footer_hint
@@ -497,7 +446,6 @@ def test_status_projection_fails_closed_for_unusable_publication(
     assert projection.publication_generation == 11
     assert projection.stage == "Workflow status unavailable"
     assert projection.recommended_command is None
-    assert projection.available_commands == ()
     assert projection.existing_ui_surface is None
     assert projection.blocked_reasons == (PUBLIC_VIEW_UNAVAILABLE_MESSAGE,)
     assert "private backend diagnostic" not in projection.tooltip
@@ -518,6 +466,5 @@ def test_status_projection_fails_closed_for_unreliable_state_payload() -> None:
     projection = build_assistant_status_projection(publication)
 
     assert projection.usable is False
-    assert projection.available_commands == ()
     assert projection.blocked_reasons == (PUBLIC_VIEW_UNAVAILABLE_MESSAGE,)
     assert "private state reconstruction failure" not in projection.tooltip

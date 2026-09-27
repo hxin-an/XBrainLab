@@ -8,7 +8,8 @@ from collections.abc import Mapping
 from typing import Any, cast
 
 import numpy as np
-from sklearn.metrics import roc_auc_score
+
+from XBrainLab.backend.saliency_methods import SALIENCY_METHOD_STORE_NAMES
 
 from ...utils.filesystem_identity import (
     FilesystemIdentityError,
@@ -16,7 +17,6 @@ from ...utils.filesystem_identity import (
 )
 from ...utils.logger import logger
 from ..saliency_artifact_integrity import (
-    SALIENCY_METHOD_STORE_NAMES,
     SaliencyArtifactIntegrityError,
     SaliencyIntegrityDiagnostic,
     SaliencyIntegrityReason,
@@ -199,6 +199,8 @@ class EvalRecord:
     _saliency_context_error: str | None
     _saliency_context_missing: bool
     _saliency_integrity_error: SaliencyArtifactIntegrityError | None
+    _saliency_method_parameters: Mapping[str, object]
+    _saliency_noise_seeds: Mapping[str, object]
     _saliency_integrity_manifest: Mapping[str, object] | None
 
     def __setattr__(self, name: str, value: object) -> None:
@@ -366,12 +368,10 @@ class EvalRecord:
         self._saliency_context_error = None
         self._saliency_context_missing = False
         self._saliency_integrity_error = None
-        self.saliency_method_parameters = copy.deepcopy(
-            dict(saliency_method_parameters or {})
-        )
-        self.saliency_noise_seeds = copy.deepcopy(dict(saliency_noise_seeds or {}))
+        self.saliency_method_parameters = dict(saliency_method_parameters or {})
+        self.saliency_noise_seeds = dict(saliency_noise_seeds or {})
         self.saliency_integrity_manifest = (
-            copy.deepcopy(dict(saliency_integrity_manifest))
+            dict(saliency_integrity_manifest)
             if saliency_integrity_manifest is not None
             else None
         )
@@ -833,11 +833,11 @@ class EvalRecord:
                 else None
             ),
             "saliency_method_parameters": copy.deepcopy(
-                self.saliency_method_parameters
+                self._saliency_method_parameters
             ),
-            "saliency_noise_seeds": copy.deepcopy(self.saliency_noise_seeds),
+            "saliency_noise_seeds": copy.deepcopy(self._saliency_noise_seeds),
             "saliency_integrity_manifest": copy.deepcopy(
-                self.saliency_integrity_manifest
+                self._saliency_integrity_manifest
             ),
         }
         write_json_npz_artifact(
@@ -882,22 +882,14 @@ class EvalRecord:
             )
             data = _decode_eval_artifact(payload, arrays)
             saliency_stores = {
-                attribute: (value if type(value) is dict else {})
+                attribute: cast(dict[int, np.ndarray], data[attribute])
                 for attribute in SALIENCY_METHOD_STORE_NAMES.values()
-                for value in (data.get(attribute, {}),)
             }
-            malformed_stores = tuple(
-                attribute
-                for attribute in SALIENCY_METHOD_STORE_NAMES.values()
-                if type(data.get(attribute, {})) is not dict
-            )
             integrity_stores = {
                 method: saliency_stores[attribute]
                 for method, attribute in SALIENCY_METHOD_STORE_NAMES.items()
             }
-            has_saliency = bool(malformed_stores) or any(
-                bool(value) for value in saliency_stores.values()
-            )
+            has_saliency = any(bool(value) for value in saliency_stores.values())
             raw_artifact_version = data.get("artifact_schema_version", 0)
             artifact_version = (
                 raw_artifact_version if type(raw_artifact_version) is int else 0
@@ -909,12 +901,6 @@ class EvalRecord:
             context: SaliencyArtifactContext | None = None
             context_error: str | None = None
             integrity_error: SaliencyArtifactIntegrityError | None = None
-            if malformed_stores:
-                integrity_error = SaliencyArtifactIntegrityError(
-                    SaliencyIntegrityReason.PARTIAL_COVERAGE,
-                    "Saliency class stores must be plain mappings: "
-                    f"{', '.join(malformed_stores)}.",
-                )
             if context_payload is None:
                 if has_saliency:
                     context_error = (
@@ -931,9 +917,7 @@ class EvalRecord:
                             "This legacy saliency identity schema is unsupported: "
                             f"{context_error}"
                         )
-            if integrity_error is not None:
-                pass
-            elif has_saliency and context_error is not None:
+            if has_saliency and context_error is not None:
                 integrity_error = SaliencyArtifactIntegrityError(
                     SaliencyIntegrityReason.PRODUCER_MISMATCH,
                     context_error,
@@ -1032,56 +1016,6 @@ class EvalRecord:
         if len(self.label) == 0:
             return 0.0
         return sum(self.output.argmax(axis=1) == self.label) / len(self.label)
-
-    def get_auc(self) -> float | None:
-        """Compute the AUC (Area Under the ROC Curve) score.
-
-        Handles both binary and multi-class scenarios using one-vs-rest.
-
-        Returns:
-            AUC score as a float, or ``None`` when it is undefined.
-
-        """
-        if len(self.label) == 0 or len(self.output) == 0:
-            return None
-        labels = np.asarray(self.label)
-        outputs = np.asarray(self.output)
-        if outputs.ndim != 2 or outputs.shape[0] != labels.shape[0]:
-            return None
-        unique_labels = np.unique(labels)
-        if unique_labels.size < 2 or outputs.shape[1] < 2:
-            return None
-        shifted_outputs = outputs - np.max(outputs, axis=1, keepdims=True)
-        exponentials = np.exp(shifted_outputs)
-        probabilities = exponentials / np.sum(exponentials, axis=1, keepdims=True)
-        if probabilities.shape[1] > 2 and unique_labels.size != probabilities.shape[1]:
-            return None
-        try:
-            if probabilities.shape[1] <= 2:
-                auc = roc_auc_score(labels, probabilities[:, -1])
-            else:
-                auc = roc_auc_score(labels, probabilities, multi_class="ovr")
-        except ValueError as exc:
-            logger.warning("Evaluation AUC is undefined: %s", exc)
-            return None
-        return None if np.isnan(auc) else float(auc)
-
-    def get_kappa(self) -> float:
-        """Compute Cohen's Kappa coefficient.
-
-        Returns:
-            The Kappa statistic as a float.
-
-        """
-        confusion = calculate_confusion(self.output, self.label)
-        class_num = len(confusion)
-        p0 = np.diagonal(confusion).sum() / confusion.sum()
-        pe = sum(
-            [confusion[:, i].sum() * confusion[i].sum() for i in range(class_num)],
-        ) / (confusion.sum() * confusion.sum())
-        if pe >= 1.0:
-            return 0.0
-        return (p0 - pe) / (1 - pe)
 
     def get_per_class_metrics(self) -> dict:
         """Get per-class precision, recall, f1-score, and support.

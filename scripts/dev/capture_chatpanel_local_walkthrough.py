@@ -14,6 +14,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -24,8 +25,12 @@ from PyQt6.QtWidgets import QApplication
 
 from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.inspect_local_assistant_runtime import classify_runtime
+from XBrainLab.llm.agent.response_presentation import (
+    AssistantResponseKind,
+    AssistantResponsePresentation,
+)
+from XBrainLab.llm.agent.turn import AssistantTurnRequest, AssistantTurnTerminal
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.ui.chat.message_bubble import MessageBubble
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_DIR = ROOT / "build" / "dev-artifacts" / "chatpanel-local"
@@ -53,6 +58,46 @@ class VisibleMessage:
 
     sender: str
     text: str
+
+
+def completed_turn_response(
+    requests: Sequence[AssistantTurnRequest],
+    responses: Sequence[AssistantResponsePresentation],
+    terminals: Sequence[AssistantTurnTerminal],
+    *,
+    prompt: str,
+) -> AssistantResponsePresentation | None:
+    """Wait for one exact successful turn; reject observed contract failures."""
+    if not requests:
+        return None
+    if len(requests) != 1 or requests[0].text != prompt:
+        raise ValueError(
+            "Assistant capture did not observe one exact submitted request."
+        )
+    correlation = requests[0].correlation
+    current_terminals = [
+        terminal for terminal in terminals if terminal.correlation == correlation
+    ]
+    if not current_terminals:
+        return None
+    if len(current_terminals) != 1 or current_terminals[0].outcome != "completed":
+        raise ValueError(
+            "Assistant turn did not finish with a successful terminal result."
+        )
+    current_responses = [
+        response for response in responses if response.correlation == correlation
+    ]
+    if any(
+        response.kind
+        in {
+            AssistantResponseKind.ERROR,
+            AssistantResponseKind.BLOCKED,
+            AssistantResponseKind.CANCELLED,
+        }
+        for response in current_responses
+    ):
+        raise ValueError("Assistant turn did not produce a successful response.")
+    return current_responses[-1] if current_responses else None
 
 
 def main() -> int:
@@ -113,6 +158,9 @@ def run_walkthrough(
     window.show()
 
     started_at = time.monotonic()
+    requests: list[AssistantTurnRequest] = []
+    responses: list[AssistantResponsePresentation] = []
+    terminals: list[AssistantTurnTerminal] = []
     state: dict[str, Any] = {
         "status": "running",
         "failure_reason": "",
@@ -201,6 +249,11 @@ def run_walkthrough(
             fail("Ready screenshot was blank or could not be saved.")
             return
         state["ready_screenshot"] = str(ready_path)
+        # Observe the existing product transport; the capture does not admit or
+        # finish a turn itself. Text and idle alone also occur after failures.
+        manager.assistant_runtime.dispatcher.input_requested.connect(requests.append)
+        controller.response_presentation_ready.connect(responses.append)
+        manager.assistant_runtime.turn_finished.connect(terminals.append)
         panel.send_btn.click()
         QTimer.singleShot(1000, wait_for_response)
 
@@ -233,7 +286,19 @@ def run_walkthrough(
             controller and getattr(controller, "is_processing", False)
         )
 
-        if has_user and assistant_texts and not still_processing:
+        try:
+            response = completed_turn_response(
+                requests, responses, terminals, prompt=prompt
+            )
+        except ValueError as exc:
+            fail(str(exc))
+            return
+        if (
+            has_user
+            and response is not None
+            and response.text.strip() in assistant_texts
+            and not still_processing
+        ):
             state["status"] = (
                 "failed" if has_raw_debug_text(assistant_texts) else "passed"
             )
@@ -300,14 +365,8 @@ def collect_executed_tools(metrics: Any) -> list[dict[str, Any]]:
 def collect_visible_messages(panel: Any) -> list[VisibleMessage]:
     """Collect visible chat bubbles in display order."""
     messages: list[VisibleMessage] = []
-    layout = getattr(panel, "chat_layout", None)
-    if layout is None:
-        return messages
-
-    for index in range(layout.count()):
-        item = layout.itemAt(index)
-        widget = item.widget() if item is not None else None
-        if not isinstance(widget, MessageBubble) or not widget.isVisible():
+    for widget in panel.transcript_view.message_bubbles():
+        if not widget.isVisible():
             continue
         text = widget.get_text().strip()
         if not text:

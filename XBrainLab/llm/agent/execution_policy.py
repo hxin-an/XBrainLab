@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, TypeVar
-
-_Command = TypeVar("_Command")
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -19,10 +16,6 @@ class ExecutionDecision:
 
 class HostExecutionPolicy:
     """Enforce one command and backend-owned confirmation per user turn."""
-
-    @staticmethod
-    def first_command(commands: Sequence[_Command]) -> _Command | None:
-        return commands[0] if commands else None
 
     @staticmethod
     def needs_confirmation(

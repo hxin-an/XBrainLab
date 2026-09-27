@@ -115,7 +115,11 @@ def test_projector_does_not_guess_partial_normalized_class_keys() -> None:
         gradient={0: np.ones((1, 2, 2), dtype=np.float32)},
     )
 
-    coverage = projector.project_method(eval_record, "Gradient")
+    coverage = next(
+        item
+        for item in projector.project_eval_record(eval_record)
+        if item.method == "Gradient"
+    )
 
     assert coverage.available is False
     assert [item.available for item in coverage.classes] == [False, False]
@@ -137,7 +141,11 @@ def test_projector_matches_partial_explicit_event_code_and_class_name() -> None:
         },
     )
 
-    coverage = projector.project_method(eval_record, "Gradient")
+    coverage = next(
+        item
+        for item in projector.project_eval_record(eval_record)
+        if item.method == "Gradient"
+    )
 
     assert coverage.complete is True
     assert [item.store_key for item in coverage.classes] == [769, "Right hand"]
@@ -164,14 +172,10 @@ def test_epoch_label_projection_and_coverage_preserve_behavior() -> None:
         eval_record,
         label_items=label_items,
     )
-    gradient = projector.project_method(
-        eval_record,
-        "Gradient",
-        label_items=label_items,
-    )
+    gradient = next(item for item in methods if item.method == "Gradient")
 
     assert label_items == [(7, "Left"), (8, "Right")]
-    assert gradient == methods[0]
+    assert methods[0].method == "Gradient"
     assert [item.display_name for item in gradient.classes] == ["Left", "Right"]
     assert gradient.complete is True
 
@@ -182,7 +186,11 @@ def test_projector_fails_closed_for_incompatible_context_with_arrays() -> None:
         "Saliency identity context failed its integrity check.",
     )
 
-    gradient = SaliencyCoverageProjector().project_method(record, "Gradient")
+    gradient = next(
+        item
+        for item in SaliencyCoverageProjector().project_eval_record(record)
+        if item.method == "Gradient"
+    )
 
     assert record.gradient
     assert gradient.available is False
@@ -206,7 +214,11 @@ def test_projector_rejects_explicit_integrity_failure_with_arrays() -> None:
         vargrad={},
     )
 
-    gradient = SaliencyCoverageProjector().project_method(record, "Gradient")
+    gradient = next(
+        item
+        for item in SaliencyCoverageProjector().project_eval_record(record)
+        if item.method == "Gradient"
+    )
 
     assert gradient.available is False
     assert gradient.complete is False
@@ -261,7 +273,11 @@ def test_projector_fails_closed_for_invalid_saliency_payload_contract(
         vargrad={},
     )
 
-    coverage = SaliencyCoverageProjector().project_method(record, "Gradient")
+    coverage = next(
+        item
+        for item in SaliencyCoverageProjector().project_eval_record(record)
+        if item.method == "Gradient"
+    )
 
     assert coverage.available is False
     assert coverage.complete is False

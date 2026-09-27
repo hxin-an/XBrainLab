@@ -6,10 +6,15 @@ from dataclasses import dataclass
 from enum import Enum
 
 from XBrainLab.llm.agent.assistant_activity import (
+    AssistantDecisionOwner,
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
 from XBrainLab.llm.agent.turn import AssistantTurnCorrelation, AssistantTurnTerminal
+from XBrainLab.llm.agent.ui_handoff import (
+    WorkflowUiHandoffKind,
+    WorkflowUiHandoffRequest,
+)
 
 
 class AssistantUiTurnPhase(str, Enum):
@@ -39,7 +44,6 @@ class AssistantUiTurnStateMachine:
     def __init__(self) -> None:
         self._generation = 0
         self._submission: AssistantUiTurnSubmission | None = None
-        self._provisional_events: list[tuple[str, object]] | None = None
         self._lease: AssistantTurnCorrelation | None = None
         self._phase = AssistantUiTurnPhase.IDLE
         self._last_activity: AssistantTurnActivity | None = None
@@ -71,64 +75,29 @@ class AssistantUiTurnStateMachine:
         self._generation += 1
         submission = AssistantUiTurnSubmission(self._generation)
         self._submission = submission
-        self._provisional_events = []
         return submission
 
     def reject_admission(self, submission: AssistantUiTurnSubmission) -> bool:
         if submission != self._submission:
             return False
         self._submission = None
-        self._provisional_events = None
         return True
 
     def complete_admission(
         self,
         submission: AssistantUiTurnSubmission,
         correlation: AssistantTurnCorrelation,
-    ) -> tuple[tuple[str, object], ...] | None:
-        """Commit one matching admission and return its ordered event batch.
-
-        ``None`` rejects an invalid or superseded admission.  An empty tuple is
-        a successful admission with no synchronous controller events.
-        """
+    ) -> bool:
+        """Commit the exact reservation before queued controller events arrive."""
         if not isinstance(correlation, AssistantTurnCorrelation):
-            return None
+            return False
         if submission != self._submission:
-            return None
+            return False
         if correlation.generation != submission.generation:
-            return None
-        events = tuple(self._provisional_events or ())
+            return False
         self._submission = None
-        self._provisional_events = None
         self._lease = correlation
         self._phase = AssistantUiTurnPhase.ACTIVE
-        return events
-
-    def defer_turn_event(
-        self,
-        event_kind: str,
-        payload: object,
-        correlation: AssistantTurnCorrelation | None,
-    ) -> bool:
-        """Queue a synchronous correlated event for its provisional generation."""
-        submission = self._submission
-        events = self._provisional_events
-        if (
-            events is None
-            or submission is None
-            or correlation is None
-            or correlation.generation != submission.generation
-        ):
-            return False
-        events.append((event_kind, payload))
-        return True
-
-    def defer_controller_event(self, event_kind: str, payload: object) -> bool:
-        """Queue a synchronous controller decision until admission has a lease."""
-        events = self._provisional_events
-        if events is None or self._submission is None:
-            return False
-        events.append((event_kind, payload))
         return True
 
     def set_prune_notice_pending(self, pending: bool) -> None:
@@ -170,6 +139,45 @@ class AssistantUiTurnStateMachine:
             return phase is AssistantTurnActivityPhase.STOPPING
         return self._phase is AssistantUiTurnPhase.ACTIVE
 
+    def accepts_confirmation(self, *, request_id: str, command_name: str) -> bool:
+        """Bind one confirmation card to the exact active UI/runtime turn."""
+        activity = self._last_activity
+        lease = self._lease
+        return bool(
+            lease is not None
+            and isinstance(activity, AssistantTurnActivity)
+            and activity.phase is AssistantTurnActivityPhase.WAITING_FOR_DECISION
+            and activity.decision_owner is AssistantDecisionOwner.CONFIRMATION_CARD
+            and activity.correlation == lease
+            and activity.request_id == request_id
+            and activity.command_name == command_name
+        )
+
+    def accepts_workflow_handoff(self, request: WorkflowUiHandoffRequest) -> bool:
+        """Bind one product-UI request to its exact active waiting lease."""
+        activity = self._last_activity
+        lease = self._lease
+        if request.kind is WorkflowUiHandoffKind.ACTION_REQUESTED:
+            phase_matches = bool(
+                isinstance(activity, AssistantTurnActivity)
+                and activity.phase is AssistantTurnActivityPhase.RUNNING_COMMAND
+                and activity.decision_owner is None
+            )
+        else:
+            phase_matches = bool(
+                isinstance(activity, AssistantTurnActivity)
+                and activity.phase is AssistantTurnActivityPhase.WAITING_FOR_DECISION
+                and activity.decision_owner is AssistantDecisionOwner.GUI_DIALOG
+            )
+        return bool(
+            lease is not None
+            and isinstance(activity, AssistantTurnActivity)
+            and phase_matches
+            and activity.correlation == lease
+            and activity.request_id == request.request_id
+            and activity.command_name == request.tool_name
+        )
+
     def accepts_response(
         self,
         correlation: AssistantTurnCorrelation | None,
@@ -206,7 +214,6 @@ class AssistantUiTurnStateMachine:
         if self._lease is not None or self._submission is not None:
             return False
         self._phase = AssistantUiTurnPhase.IDLE
-        self._provisional_events = None
         self.clear_prune_notice()
         self.clear_activity()
         return True

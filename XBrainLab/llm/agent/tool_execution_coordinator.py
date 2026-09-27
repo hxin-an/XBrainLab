@@ -24,12 +24,12 @@ from XBrainLab.llm.tools.application_surface import (
     TOOL_TO_COMMAND,
     ApplicationToolRuntime,
     ToolAvailabilityContext,
-    ToolCommandResult,
     execute_application_tool_command,
     normalize_tool_result,
 )
 from XBrainLab.llm.tools.result_contract import (
     SafeUnexpectedFailure,
+    ToolCommandResult,
     UiRequest,
     recover_authoritative_failure_state,
     redact_public_text,

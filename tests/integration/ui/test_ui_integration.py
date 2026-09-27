@@ -162,8 +162,9 @@ def test_visualization_page_empty_state_uses_command_blocked_reason(qtbot, study
     assert query_result.state == publication.state
     assert query_result.state is not publication.state
     assert query_result.diagnostics.get("exception_type") != "PreconditionError"
-    assert viz_panel.plan_combo.count() == 1
-    assert viz_panel.plan_combo.currentText() == "Select a fold"
+    assert viz_panel.plan_combo.count() == 0
+    assert viz_panel.plan_combo.placeholderText() == "Select a fold"
+    assert not viz_panel.plan_combo.isEnabled()
     assert viz_panel.run_combo.count() == 0
     assert viz_panel.tabs.tabText(0) == "Saliency Map"
     assert viz_panel.tabs.tabText(1) == "Spectrogram"

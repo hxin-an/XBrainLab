@@ -8,7 +8,7 @@ parameters.  Concrete (mock or real) implementations must override
 from typing import Any
 
 from ..base import BaseTool
-from ..result_contract import ToolExecutionResult
+from ..result_contract import ToolCommandResult
 
 
 class BaseStartTrainingTool(BaseTool):
@@ -38,7 +38,7 @@ class BaseStartTrainingTool(BaseTool):
         """Training is a long-running GPU operation and requires confirmation."""
         return True
 
-    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
+    def execute(self, study: Any, **kwargs) -> ToolCommandResult:
         raise NotImplementedError
 
 
@@ -61,5 +61,5 @@ class BaseStopTrainingTool(BaseTool):
             "additionalProperties": False,
         }
 
-    def execute(self, study: Any, **kwargs) -> ToolExecutionResult:
+    def execute(self, study: Any, **kwargs) -> ToolCommandResult:
         raise NotImplementedError

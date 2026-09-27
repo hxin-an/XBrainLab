@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtWidgets import QMainWindow
+from PyQt6.QtWidgets import QLabel, QMainWindow
 
 from XBrainLab.ui.chat.assistant_dock import AssistantDockView
 from XBrainLab.ui.components.agent_manager import AgentManager
@@ -119,9 +119,7 @@ def test_assistant_toolbar_narrow_layout_keeps_essential_actions_reachable(
     title_bar.layout().activate()
     qtbot.wait(10)
 
-    assert title_bar.status_indicator is None
-    assert title_bar.status_badge is None
-    assert title_bar.status_dot is None
+    assert title_bar.findChildren(QLabel) == [title_bar.title_label]
 
     essential = (
         _assistant_dock(assistant_manager).new_conversation_button,

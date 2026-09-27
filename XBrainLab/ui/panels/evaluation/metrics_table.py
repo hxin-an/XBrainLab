@@ -133,7 +133,11 @@ class MetricsTableWidget(QTableWidget):
         header = self.horizontalHeader()
         header_height = header.sizeHint().height() if header is not None else 0
         target_height = header_height + content_height + (self.frameWidth() * 2) + 2
-        self.setMinimumHeight(target_height)
+        # Keep the small-result cap, but let the parent allocate height. A long
+        # class list must scroll rather than force the plots above it to shrink.
+        self.setMinimumHeight(
+            header_height + default_row_height + self.frameWidth() * 2
+        )
         self.setMaximumHeight(target_height)
 
     def _clear_current_selection(self) -> None:
@@ -168,6 +172,7 @@ class MetricsTableWidget(QTableWidget):
 
         def create_item(text, is_bold=False):
             item = QTableWidgetItem(text)
+            item.setToolTip(text)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             if is_bold:
                 font = item.font()

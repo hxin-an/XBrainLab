@@ -8,9 +8,6 @@ from enum import Enum
 from uuid import uuid4
 
 from XBrainLab.backend.application.commands import CommandName
-from XBrainLab.backend.application.view_publication import (
-    InterpretationReviewIdentity,
-)
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS, AgentExecutionKind
 
 from .assistant_activity import AssistantDecisionOwner
@@ -27,7 +24,6 @@ class WorkflowUiHandoffSurfaceKind(str, Enum):
     """Existing product surface used to continue one assistant handoff."""
 
     DIALOG = "dialog"
-    PANEL = "panel"
     ACTION = "action"
 
 
@@ -37,7 +33,6 @@ class WorkflowUiHandoffPanel(str, Enum):
     DATASET = "dataset"
     PREPROCESS = "preprocess"
     TRAINING = "training"
-    EVALUATION = "evaluation"
     VISUALIZATION = "visualization"
 
 
@@ -45,16 +40,10 @@ class WorkflowUiHandoffRouteIdentity(str, Enum):
     """Stable host adapter identity, independent of command display text."""
 
     DATA_IMPORT_DIALOG = "data_import_dialog"
-    DATA_IMPORT_PANEL = "data_import_panel"
-    DATA_IMPORT_REVIEW_DIALOG = "data_import_review_dialog"
-    PREPROCESS_PANEL = "preprocess_panel"
     CHANNEL_SELECTION_DIALOG = "channel_selection_dialog"
     EPOCH_SETTINGS_DIALOG = "epoch_settings_dialog"
     DATASET_SPLIT_DIALOG = "dataset_split_dialog"
     TRAINING_SETTINGS_DIALOG = "training_settings_dialog"
-    TRAINING_PANEL = "training_panel"
-    EVALUATION_PANEL = "evaluation_panel"
-    VISUALIZATION_PANEL = "visualization_panel"
     SALIENCY_COMPUTE_ACTION = "saliency_compute_action"
     MONTAGE_SETTINGS_DIALOG = "montage_settings_dialog"
 
@@ -62,9 +51,7 @@ class WorkflowUiHandoffRouteIdentity(str, Enum):
 class WorkflowUiHandoffResolutionStatus(str, Enum):
     """How an existing product surface resolved one assistant handoff."""
 
-    NAVIGATED = "navigated"
     COMMAND_PENDING = "command_pending"
-    DEFERRED_TO_UI = "deferred_to_ui"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     BLOCKED = "blocked"
@@ -75,8 +62,6 @@ class WorkflowUiHandoffResolutionStatus(str, Enum):
     def is_terminal(self) -> bool:
         """Return whether this status can release the owning assistant turn."""
         return self in {
-            WorkflowUiHandoffResolutionStatus.NAVIGATED,
-            WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI,
             WorkflowUiHandoffResolutionStatus.COMPLETED,
             WorkflowUiHandoffResolutionStatus.CANCELLED,
             WorkflowUiHandoffResolutionStatus.BLOCKED,
@@ -148,35 +133,6 @@ def _validate_decision_fields(
             )
 
 
-def _validate_suggested_values(
-    value: object,
-    *,
-    contract: str,
-) -> None:
-    """Validate suggestions before callers can reach ``dict()`` conversion."""
-    if type(value) is not tuple:
-        raise TypeError(
-            f"Workflow UI handoff {contract} suggested_values must be a tuple."
-        )
-    for pair in value:
-        if type(pair) is not tuple or len(pair) != 2:
-            raise TypeError(
-                "Workflow UI handoff "
-                f"{contract} suggested_values entries must be key/value tuples."
-            )
-        key, suggested_value = pair
-        if type(key) is not str or type(suggested_value) is not str:
-            raise TypeError(
-                "Workflow UI handoff "
-                f"{contract} suggested_values keys and values must be strings."
-            )
-        if not key.strip() or not suggested_value.strip():
-            raise ValueError(
-                "Workflow UI handoff "
-                f"{contract} suggested_values cannot contain empty text."
-            )
-
-
 @dataclass(frozen=True, slots=True)
 class WorkflowUiHandoffRouteDescriptor:
     """Canonical route semantics shared by controller, host, and presentation."""
@@ -204,7 +160,6 @@ class WorkflowUiHandoffRouteDescriptor:
             )
         expected_owner = {
             WorkflowUiHandoffSurfaceKind.DIALOG: AssistantDecisionOwner.GUI_DIALOG,
-            WorkflowUiHandoffSurfaceKind.PANEL: AssistantDecisionOwner.PANEL_HANDOFF,
             WorkflowUiHandoffSurfaceKind.ACTION: None,
         }[self.surface_kind]
         if self.decision_owner is not expected_owner:
@@ -227,8 +182,6 @@ class WorkflowUiHandoffRouteDescriptor:
             object.__setattr__(self, field_name, normalized)
 
 
-_PANEL_DECISION_COPY = "Continue in the opened XBrainLab panel."
-
 _WORKFLOW_UI_HANDOFF_ROUTES = (
     WorkflowUiHandoffRouteDescriptor(
         command=CommandName.SCAN_SOURCE,
@@ -236,42 +189,6 @@ _WORKFLOW_UI_HANDOFF_ROUTES = (
         decision_owner=AssistantDecisionOwner.GUI_DIALOG,
         target_panel=WorkflowUiHandoffPanel.DATASET,
         route_identity=WorkflowUiHandoffRouteIdentity.DATA_IMPORT_DIALOG,
-        presentation_step="Continue in Import EEG Data",
-        decision_copy="Finish or cancel in the open Import EEG Data dialog.",
-    ),
-    WorkflowUiHandoffRouteDescriptor(
-        command=CommandName.REVIEW_INTERPRETATION,
-        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
-        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
-        target_panel=WorkflowUiHandoffPanel.DATASET,
-        route_identity=WorkflowUiHandoffRouteIdentity.DATA_IMPORT_PANEL,
-        presentation_step="Continue in Import EEG Data",
-        decision_copy=_PANEL_DECISION_COPY,
-    ),
-    WorkflowUiHandoffRouteDescriptor(
-        command=CommandName.PREVIEW_INTERPRETATION,
-        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
-        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
-        target_panel=WorkflowUiHandoffPanel.DATASET,
-        route_identity=WorkflowUiHandoffRouteIdentity.DATA_IMPORT_PANEL,
-        presentation_step="Continue in Import EEG Data",
-        decision_copy=_PANEL_DECISION_COPY,
-    ),
-    WorkflowUiHandoffRouteDescriptor(
-        command=CommandName.VALIDATE_INTERPRETATION,
-        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
-        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
-        target_panel=WorkflowUiHandoffPanel.DATASET,
-        route_identity=WorkflowUiHandoffRouteIdentity.DATA_IMPORT_PANEL,
-        presentation_step="Continue in Import EEG Data",
-        decision_copy=_PANEL_DECISION_COPY,
-    ),
-    WorkflowUiHandoffRouteDescriptor(
-        command=CommandName.APPLY_INTERPRETATION,
-        surface_kind=WorkflowUiHandoffSurfaceKind.DIALOG,
-        decision_owner=AssistantDecisionOwner.GUI_DIALOG,
-        target_panel=WorkflowUiHandoffPanel.DATASET,
-        route_identity=WorkflowUiHandoffRouteIdentity.DATA_IMPORT_REVIEW_DIALOG,
         presentation_step="Continue in Import EEG Data",
         decision_copy="Finish or cancel in the open Import EEG Data dialog.",
     ),
@@ -310,33 +227,6 @@ _WORKFLOW_UI_HANDOFF_ROUTES = (
         route_identity=WorkflowUiHandoffRouteIdentity.TRAINING_SETTINGS_DIALOG,
         presentation_step="Continue in Training Settings",
         decision_copy="Finish or cancel in the open Training Settings dialog.",
-    ),
-    WorkflowUiHandoffRouteDescriptor(
-        command=CommandName.TRAIN,
-        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
-        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
-        target_panel=WorkflowUiHandoffPanel.TRAINING,
-        route_identity=WorkflowUiHandoffRouteIdentity.TRAINING_PANEL,
-        presentation_step="Continue in Training",
-        decision_copy=_PANEL_DECISION_COPY,
-    ),
-    WorkflowUiHandoffRouteDescriptor(
-        command=CommandName.EVALUATE,
-        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
-        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
-        target_panel=WorkflowUiHandoffPanel.EVALUATION,
-        route_identity=WorkflowUiHandoffRouteIdentity.EVALUATION_PANEL,
-        presentation_step="Continue in Evaluation",
-        decision_copy=_PANEL_DECISION_COPY,
-    ),
-    WorkflowUiHandoffRouteDescriptor(
-        command=CommandName.VISUALIZE,
-        surface_kind=WorkflowUiHandoffSurfaceKind.PANEL,
-        decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
-        target_panel=WorkflowUiHandoffPanel.VISUALIZATION,
-        route_identity=WorkflowUiHandoffRouteIdentity.VISUALIZATION_PANEL,
-        presentation_step="Continue in Visualization",
-        decision_copy=_PANEL_DECISION_COPY,
     ),
     WorkflowUiHandoffRouteDescriptor(
         command=CommandName.SALIENCY,
@@ -431,8 +321,6 @@ class WorkflowUiHandoffRequest:
     request_id: str = field(default_factory=lambda: uuid4().hex)
     tool_name: str = ""
     decision_fields: tuple[str, ...] = ()
-    suggested_values: tuple[tuple[str, str], ...] = ()
-    interpretation_identity: InterpretationReviewIdentity | None = None
 
     def __post_init__(self) -> None:
         _require_typed_enum(
@@ -457,24 +345,11 @@ class WorkflowUiHandoffRequest:
             raise ValueError("Workflow UI handoff request tool name cannot be empty.")
         object.__setattr__(self, "tool_name", normalized_tool_name)
         _validate_decision_fields(self.decision_fields, contract="request")
-        _validate_suggested_values(self.suggested_values, contract="request")
-        if self.interpretation_identity is not None and not isinstance(
-            self.interpretation_identity,
-            InterpretationReviewIdentity,
-        ):
-            raise TypeError(
-                "Workflow UI handoff request interpretation identity must be typed."
-            )
 
     @property
     def command_name(self) -> str:
         """Return the stable ApplicationService command identifier."""
         return self.command.value
-
-    @property
-    def suggestions(self) -> dict[str, str]:
-        """Return immutable request suggestions as a fresh mapping."""
-        return dict(self.suggested_values)
 
     @classmethod
     def for_decision(
@@ -483,9 +358,7 @@ class WorkflowUiHandoffRequest:
         *,
         tool_name: str = "",
         decision_fields: Iterable[str] = (),
-        suggested_values: Mapping[str, object] | None = None,
         request_id: str | None = None,
-        interpretation_identity: InterpretationReviewIdentity | None = None,
     ) -> WorkflowUiHandoffRequest:
         """Build a decision handoff and reject unknown command text."""
         if isinstance(command_name, CommandName):
@@ -507,22 +380,12 @@ class WorkflowUiHandoffRequest:
         normalized_request_id = (
             uuid4().hex if request_id is None else str(request_id).strip()
         )
-        suggestions: list[tuple[str, str]] = []
-        seen_suggestion_keys: set[str] = set()
-        for raw_key, raw_value in (suggested_values or {}).items():
-            key = str(raw_key or "").strip()
-            value = " ".join(str(raw_value or "").split())
-            if key and value and key not in seen_suggestion_keys:
-                suggestions.append((key, value))
-                seen_suggestion_keys.add(key)
         return cls(
             kind=WorkflowUiHandoffKind.DECISION_REQUIRED,
             command=command,
             request_id=normalized_request_id,
             tool_name=tool_name,
             decision_fields=tuple(fields),
-            suggested_values=tuple(suggestions),
-            interpretation_identity=interpretation_identity,
         )
 
     @classmethod
@@ -564,8 +427,6 @@ class WorkflowUiHandoffResolution:
     status: WorkflowUiHandoffResolutionStatus
     tool_name: str = ""
     decision_fields: tuple[str, ...] = ()
-    suggested_values: tuple[tuple[str, str], ...] = ()
-    interpretation_identity: InterpretationReviewIdentity | None = None
     message: str = ""
 
     def __post_init__(self) -> None:
@@ -593,14 +454,6 @@ class WorkflowUiHandoffResolution:
             )
         object.__setattr__(self, "tool_name", normalized_tool_name)
         _validate_decision_fields(self.decision_fields, contract="resolution")
-        _validate_suggested_values(self.suggested_values, contract="resolution")
-        if self.interpretation_identity is not None and not isinstance(
-            self.interpretation_identity,
-            InterpretationReviewIdentity,
-        ):
-            raise TypeError(
-                "Workflow UI handoff resolution interpretation identity must be typed."
-            )
 
     @property
     def command_name(self) -> str:
@@ -615,8 +468,6 @@ class WorkflowUiHandoffResolution:
             and self.command is request.command
             and self.tool_name == request.tool_name
             and self.decision_fields == request.decision_fields
-            and self.suggested_values == request.suggested_values
-            and self.interpretation_identity == request.interpretation_identity
         )
 
     @classmethod
@@ -638,8 +489,6 @@ class WorkflowUiHandoffResolution:
             status=status,
             tool_name=request.tool_name,
             decision_fields=request.decision_fields,
-            suggested_values=request.suggested_values,
-            interpretation_identity=request.interpretation_identity,
             message=" ".join(str(message or "").split()),
         )
 
@@ -651,8 +500,6 @@ class WorkflowUiHandoffResolution:
             status=WorkflowUiHandoffResolutionStatus.FAILED,
             tool_name=self.tool_name,
             decision_fields=self.decision_fields,
-            suggested_values=self.suggested_values,
-            interpretation_identity=self.interpretation_identity,
             message=" ".join(str(message or "").split()),
         )
 
@@ -662,8 +509,6 @@ class WorkflowUiHandoffSession:
     """Bounded lifecycle for one exact UI handoff request.
 
     Asynchronous command scheduling is observable progress, not completion.
-    Navigation terminates explicitly as unverified manual continuation because
-    a panel-only route has no future correlated callback.
     """
 
     request: WorkflowUiHandoffRequest

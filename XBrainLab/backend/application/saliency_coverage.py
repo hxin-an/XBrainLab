@@ -6,23 +6,12 @@ from collections.abc import Iterable
 from importlib import import_module
 from typing import Any, cast
 
-from XBrainLab.backend.saliency_methods import all_saliency_methods
+from XBrainLab.backend.saliency_methods import SALIENCY_METHOD_STORE_NAMES
 
 from .state import (
     SaliencyClassCoverageSnapshot,
     SaliencyMethodCoverageSnapshot,
     SaliencyRunCoverageSnapshot,
-)
-
-_SALIENCY_STORE_BY_METHOD = {
-    "Gradient": "gradient",
-    "Gradient * Input": "gradient_input",
-    "SmoothGrad": "smoothgrad",
-    "SmoothGrad_Squared": "smoothgrad_sq",
-    "VarGrad": "vargrad",
-}
-_SALIENCY_METHOD_STORES: tuple[tuple[str, str], ...] = tuple(
-    (method, _SALIENCY_STORE_BY_METHOD[method]) for method in all_saliency_methods
 )
 
 
@@ -49,24 +38,8 @@ class SaliencyCoverageProjector:
                 record_reason=record_reason,
                 payloads_verified=payloads_verified,
             )
-            for method, store_name in _SALIENCY_METHOD_STORES
+            for method, store_name in SALIENCY_METHOD_STORE_NAMES.items()
         ]
-
-    def project_method(
-        self,
-        eval_record: Any,
-        method: str,
-        *,
-        label_items: Iterable[tuple[object, object]] | None = None,
-    ) -> SaliencyMethodCoverageSnapshot:
-        """Return coverage for one method using the shared projection policy."""
-        for coverage in self.project_eval_record(
-            eval_record,
-            label_items=label_items,
-        ):
-            if coverage.method == method:
-                return coverage
-        return SaliencyMethodCoverageSnapshot(method=method)
 
     def project_run(
         self,
@@ -129,7 +102,7 @@ def _saliency_classes(
             return [(index, index, str(index)) for index in range(class_count)]
 
     keys: list[object] = []
-    for _method, store_name in _SALIENCY_METHOD_STORES:
+    for store_name in SALIENCY_METHOD_STORE_NAMES.values():
         store = getattr(eval_record, store_name, None)
         for key, _value in _saliency_store_items(store):
             if not any(_saliency_identity_equal(key, known) for known in keys):

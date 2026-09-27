@@ -10,7 +10,7 @@ from typing import Any, TypeAlias
 
 from XBrainLab.backend.application.pipeline_stage import PipelineStage
 
-from .decision_contract import MODEL_RESPONSE_TOOL_NAME, ModelDecision
+from .decision_contract import MODEL_RESPONSE_TOOL_NAME
 
 ToolCommand: TypeAlias = tuple[str, dict[str, Any]]
 
@@ -65,8 +65,6 @@ class ToolEnvelopeParseResult:
     commands: tuple[ToolCommand, ...] = ()
     error: str = ""
     workflow_stage: str | None = None
-    decision: ModelDecision | None = None
-    intent: str = ""
     pending_action: str = ""
     missing_inputs: tuple[str, ...] = ()
     message: str = ""
@@ -76,7 +74,6 @@ class ToolEnvelopeParseResult:
         cls,
         *,
         workflow_stage: str | None = None,
-        intent: str = "",
         missing_inputs: tuple[str, ...] = (),
         pending_action: str = "",
         message: str = "",
@@ -84,7 +81,6 @@ class ToolEnvelopeParseResult:
         return cls(
             ToolEnvelopeStatus.NO_TOOL,
             workflow_stage=workflow_stage,
-            intent=intent,
             pending_action=pending_action,
             missing_inputs=missing_inputs,
             message=message,
@@ -96,14 +92,11 @@ class ToolEnvelopeParseResult:
         command: ToolCommand,
         *,
         workflow_stage: str,
-        intent: str = "",
     ) -> ToolEnvelopeParseResult:
         return cls(
             ToolEnvelopeStatus.VALID,
             (command,),
             workflow_stage=workflow_stage,
-            decision="tool",
-            intent=intent,
         )
 
     @classmethod
@@ -148,14 +141,21 @@ class CommandParser:
         """Classify a complete model response without recovering malformed calls.
 
         A product action is exactly one top-level JSON object with
-        ``workflow_stage``, ``tool_name`` and ``parameters``. Wrappers, prose,
-        code fences, aliases, arrays, duplicate keys, partial JSON and multiple
-        calls are contract failures and never reach execution.
+        ``workflow_stage``, ``tool_name`` and ``parameters``. One whole-response
+        json or unlabeled Markdown fence is accepted as formatting only. Prose,
+        wrappers, arrays, duplicate keys, partial JSON and multiple calls never
+        reach execution; the caller's raw response remains unchanged.
         """
 
         stripped = text.strip()
         if not stripped:
             return ToolEnvelopeParseResult.no_tool()
+
+        fence = re.fullmatch(
+            r"```(?:json)?[ \t]*\r?\n(.*)\r?\n```", stripped, re.DOTALL
+        )
+        if fence is not None:
+            stripped = fence.group(1).strip()
 
         try:
             decoded = json.loads(
@@ -181,7 +181,8 @@ class CommandParser:
             if stripped.startswith("```") or not stripped.startswith(("{", "[")):
                 message = (
                     "A tool proposal must occupy the entire response as one JSON "
-                    "object with no prose or code fence."
+                    "object, optionally inside one json or unlabeled code fence, "
+                    "with no surrounding prose."
                 )
             elif stripped.startswith("["):
                 message = "A tool proposal must be one top-level object, not an array."
@@ -313,7 +314,6 @@ class CommandParser:
 
         return ToolEnvelopeParseResult.no_tool(
             workflow_stage=workflow_stage,
-            intent="no_tool",
             pending_action=pending_action,
             missing_inputs=missing_inputs,
             message=message.strip(),

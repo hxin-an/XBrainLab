@@ -60,31 +60,6 @@ class SaliencyRenderWorkController:
             command_identity=_request_identity(request),
         )
 
-    def prepare(
-        self,
-        operation_id: str,
-        request: SaliencyRenderRequest,
-    ) -> SaliencyRenderPublication:
-        """Publish detached data while retaining ownership for native rendering."""
-        normalized = str(operation_id or "").strip()
-        self._registry.claim_start(
-            normalized,
-            kind=OwnedWorkKind.RENDER,
-            command_identity=_request_identity(request),
-        )
-        try:
-            with self._registry.bind(normalized):
-                owned_work_checkpoint("Preparing saliency render data")
-                publication = self._publish(request)
-                self._validate_publication(publication, request)
-                owned_work_checkpoint("Rendering saliency canvas")
-                return replace(publication, operation_id=normalized)
-        except OwnedOperationCancelledError:
-            raise
-        except BaseException as exc:
-            self._registry.fail(normalized, message=public_exception_message(exc))
-            raise
-
     def prepare_variants(
         self,
         operation_id: str,

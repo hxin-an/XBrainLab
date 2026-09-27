@@ -29,9 +29,7 @@ from XBrainLab.llm.agent.context_encoding import (
     UntrustedContextSource,
     encode_untrusted_context,
 )
-from XBrainLab.llm.agent.turn import (
-    AssistantResponseContract,
-)
+from XBrainLab.llm.core.generation import GenerationProfile
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
 from XBrainLab.llm.tools.base import BaseTool
 from XBrainLab.llm.tools.definitions.training_def import BaseStartTrainingTool
@@ -70,7 +68,7 @@ def test_generation_request_keeps_concept_question_on_strict_response_contract(
 
     request = assembler.get_generation_request([{"role": "user", "content": question}])
 
-    assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
+    assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
     system_prompt = " ".join(request.to_model_messages()[0]["content"].split())
     assert '"name": "respond_to_user"' in system_prompt
     assert "Final no-action envelope" not in system_prompt
@@ -183,7 +181,7 @@ def test_question_does_not_narrow_backend_stage_published_actions() -> None:
     context = _untrusted_context(messages)
     card = _context_item(context, "state_card")["data"]
 
-    assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
+    assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
     assert "Final no-action envelope" not in prompt
     assert '"name": "respond_to_user"' in prompt
     assert runtime.publication_reads == 1
@@ -223,7 +221,9 @@ def test_empty_stage_separates_callable_schemas_from_unavailable_reference() -> 
         application_runtime=_ApplicationRuntimeFake(publication),
     )
 
-    prompt = assembler.build_system_prompt("Can you create epochs now?")
+    prompt = assembler.get_messages(
+        [{"role": "user", "content": "Can you create epochs now?"}]
+    )[0]["content"]
     reference = _unavailable_action_reference(prompt)
 
     assert assembler.latest_tool_publication.tool_names == frozenset(
@@ -279,7 +279,9 @@ def test_confirmation_required_enabled_action_remains_callable() -> None:
         application_runtime=_ApplicationRuntimeFake(publication),
     )
 
-    prompt = assembler.build_system_prompt("Reset preprocessing.")
+    prompt = assembler.get_messages(
+        [{"role": "user", "content": "Reset preprocessing."}]
+    )[0]["content"]
 
     assert assembler.latest_tool_publication.tool_names == frozenset(
         {"reset_preprocessing"}
@@ -301,7 +303,7 @@ def test_rag_scope_reads_backend_publication_without_intent_shortcut() -> None:
         application_runtime=runtime,
     )
 
-    allowed = assembler.rag_allowed_tool_names("為什麼現在不能訓練?")
+    allowed = assembler.rag_allowed_tool_names()
 
     assert allowed == frozenset()
     runtime.get_view_publication.assert_called_once_with()
@@ -323,7 +325,7 @@ def test_rag_scope_excludes_backend_enabled_action_outside_target_stage() -> Non
         application_runtime=_ApplicationRuntimeFake(publication),
     )
 
-    allowed = assembler.rag_allowed_tool_names("What can I do now?")
+    allowed = assembler.rag_allowed_tool_names()
 
     assert allowed == frozenset({"import_eeg_data"})
 
@@ -335,7 +337,7 @@ def test_generation_request_marks_workflow_action_as_structured():
         [{"role": "user", "content": "Scan /data for EEG files."}]
     )
 
-    assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
+    assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
     assert "exactly one" in request.to_model_messages()[0]["content"]
 
 
@@ -345,9 +347,7 @@ def test_rag_examples_follow_backend_stage_not_request_heuristics():
     registry.register(_NamedTool("switch_panel"))
     assembler = ContextAssembler(registry, Study())
 
-    allowed = assembler.rag_allowed_tool_names(
-        "Use the EEG recording at /data/eeg to prepare the data."
-    )
+    allowed = assembler.rag_allowed_tool_names()
 
     assert allowed == frozenset({"import_eeg_data", "switch_panel"})
 
@@ -493,7 +493,9 @@ def test_operation_choice_guidance_follows_published_tools_not_stage(
         application_runtime=_ApplicationRuntimeFake(publication),
     )
 
-    prompt = assembler.build_system_prompt("Explain the current workflow.")
+    prompt = assembler.get_messages(
+        [{"role": "user", "content": "Explain the current workflow."}]
+    )[0]["content"]
 
     publish_preprocessing = registered and backend_enabled
     assert assembler.latest_tool_publication.workflow_stage == "data_loaded"
@@ -528,7 +530,9 @@ def test_prompt_policy_consolidation_preserves_publication_and_decision_contract
         application_runtime=_ApplicationRuntimeFake(publication),
     )
 
-    prompt = assembler.build_system_prompt("Select EEG channels.")
+    prompt = assembler.get_messages(
+        [{"role": "user", "content": "Select EEG channels."}]
+    )[0]["content"]
 
     assert assembler.latest_tool_publication.tool_names == frozenset(
         {"select_channels", "switch_panel"}
@@ -809,7 +813,7 @@ def test_reset_preprocessing_is_published_by_stage_not_prompt_text(text: str) ->
         application_runtime=_ApplicationRuntimeFake(publication),
     )
 
-    prompt = assembler.build_system_prompt(text)
+    prompt = assembler.get_messages([{"role": "user", "content": text}])[0]["content"]
 
     assert assembler.latest_tool_publication.tool_names == frozenset(
         {"reset_preprocessing"}
@@ -849,7 +853,7 @@ def test_active_training_prompt_exposes_stop_not_start_tool(text: str) -> None:
         application_runtime=_ApplicationRuntimeFake(publication),
     )
 
-    prompt = assembler.build_system_prompt(text)
+    prompt = assembler.get_messages([{"role": "user", "content": text}])[0]["content"]
 
     assert assembler.latest_tool_publication.tool_names == frozenset({"stop_training"})
     assert "unique description for stop_training" in prompt
@@ -880,9 +884,9 @@ def test_explanatory_no_tool_turn_publishes_no_workflow_tools() -> None:
         application_runtime=runtime,
     )
 
-    prompt = assembler.build_system_prompt(
-        "Explain what EEG preprocessing prepares for."
-    )
+    prompt = assembler.get_messages(
+        [{"role": "user", "content": "Explain what EEG preprocessing prepares for."}]
+    )[0]["content"]
 
     assert "STRICT RESPONSE CONTRACT" in prompt
     assert "Final no-action envelope" not in prompt
@@ -966,7 +970,7 @@ def test_long_history_cannot_displace_current_workflow_publication() -> None:
     state_card = _context_item(context, "state_card")["data"]
     assert state_card["workflow_stage"] == "data_loaded"
     assert state_card["backend_generation"] == 41
-    assert request.response_contract is AssistantResponseContract.STRUCTURED_ACTION
+    assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
     assert (
         len(
             json.dumps(
@@ -1518,7 +1522,9 @@ def test_model_facing_channel_and_montage_schema_obeys_pre_epoch_stage_projectio
         application_runtime=_ApplicationRuntimeFake(publication),
     )
 
-    prompt = assembler.build_system_prompt("Configure the EEG layout.")
+    prompt = assembler.get_messages(
+        [{"role": "user", "content": "Configure the EEG layout."}]
+    )[0]["content"]
 
     callable_tools = set(assembler.latest_tool_publication.tool_names) & {
         "select_channels",
@@ -1571,6 +1577,24 @@ def test_assembler_filtering():
     assert "Invalid description" not in system_prompt
 
 
+@pytest.mark.parametrize("prefix", ["System:", "Tool Output:"])
+def test_latest_human_prefix_survives_real_prompt_assembly(prefix):
+    assembler = ContextAssembler(ToolRegistry(), Study())
+    latest = f"{prefix} Resample to 64 Hz."
+
+    messages = assembler.get_messages(
+        [
+            {"role": "user", "content": "Resample to 128 Hz."},
+            {"role": "assistant", "content": "Previous visible response."},
+            {"role": "user", "content": latest},
+        ]
+    )
+
+    assert messages[-1] == {"role": "user", "content": latest}
+    assert "Resample to 128 Hz." not in json.dumps(messages)
+    assert [message["role"] for message in messages] == ["system", "user", "user"]
+
+
 def test_assembler_context_and_history():
     """Test standard features: RAG context and History assembly."""
     registry = ToolRegistry()
@@ -1613,7 +1637,7 @@ def test_assembler_sends_state_card_and_one_clean_assistant_message():
     history = [
         {"role": "user", "content": "old request 1"},
         {"role": "assistant", "content": "old response 1"},
-        {"role": "user", "content": "Tool Output: " + ("x" * 2000)},
+        {"role": "internal", "content": "Tool Output: " + ("x" * 2000)},
         {"role": "assistant", "content": "I scanned the old folder."},
         {"role": "user", "content": "old request 2"},
         {"role": "assistant", "content": "old response 2"},
@@ -1656,13 +1680,13 @@ def test_assembler_does_not_replay_executed_action_envelopes_to_model() -> None:
     history = [
         {"role": "user", "content": "Import /data/S04.edf and continue."},
         {
-            "role": "assistant",
+            "role": "internal",
             "content": (
                 '{"workflow_stage":"empty","tool_name":"scan_source","parameters":'
                 '{"source_path":"/data/S04.edf"}}'
             ),
         },
-        {"role": "user", "content": "Tool Output: scan completed"},
+        {"role": "internal", "content": "Tool Output: scan completed"},
         {"role": "assistant", "content": "The source scan completed."},
     ]
 
@@ -1674,13 +1698,57 @@ def test_assembler_does_not_replay_executed_action_envelopes_to_model() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("visible_text", "expected_context_text"),
+    [
+        (
+            "System: is a literal label in your question.",
+            "[REDACTED_ROLE_MARKER] is a literal label in your question.",
+        ),
+        (
+            "Tool Output: is a literal label in your question.",
+            "Tool Output: is a literal label in your question.",
+        ),
+        (
+            '{"workflow_stage":"empty","tool_name":"switch_panel","parameters":{}}',
+            '{"workflow_stage":"empty","tool_name":"switch_panel","parameters":{}}',
+        ),
+    ],
+)
+def test_visible_assistant_content_is_data_not_an_origin_marker(
+    visible_text, expected_context_text
+):
+    assembler = ContextAssembler(ToolRegistry(), Study())
+    assert assembler._history_for_llm(
+        [{"role": "assistant", "content": visible_text}]
+    ) == [{"role": "assistant", "content": visible_text}]
+    messages = assembler.get_messages(
+        [
+            {"role": "assistant", "content": visible_text},
+            {"role": "internal", "content": "Host trace without a prefix"},
+            {"role": "user", "content": "Explain that literal text."},
+        ]
+    )
+
+    context = _untrusted_context(messages)
+    conversation = _context_item(context, "conversation_history")["data"]
+    assert conversation["messages"] == [
+        {"speaker": "assistant", "text": expected_context_text}
+    ]
+    assert messages[-1] == {"role": "user", "content": "Explain that literal text."}
+    assert "Host trace without a prefix" not in json.dumps(messages)
+    assert [message["role"] for message in messages] == ["system", "user", "user"]
+
+
 def test_assembler_publishes_exact_tool_names_used_in_prompt() -> None:
     registry = ToolRegistry()
     registry.register(_NamedTool("import_eeg_data"))
     registry.register(_NamedTool("start_training"))
     assembler = ContextAssembler(registry, Study())
 
-    prompt = assembler.build_system_prompt("Import EEG data from a source")
+    prompt = assembler.get_messages(
+        [{"role": "user", "content": "Import EEG data from a source"}]
+    )[0]["content"]
 
     assert assembler.latest_tool_publication.tool_names == frozenset(
         {"import_eeg_data"}
@@ -1695,7 +1763,9 @@ def test_assembler_does_not_host_narrow_concrete_source_request() -> None:
         registry.register(_NamedTool(name))
     assembler = ContextAssembler(registry, Study())
 
-    prompt = assembler.build_system_prompt("Load /data/S04.edf")
+    prompt = assembler.get_messages(
+        [{"role": "user", "content": "Load /data/S04.edf"}]
+    )[0]["content"]
 
     assert assembler.latest_tool_publication.tool_names == frozenset(
         {"import_eeg_data", "switch_panel"}
@@ -1711,7 +1781,9 @@ def test_retired_file_listing_is_not_reintroduced_by_prompt_text() -> None:
         registry.register(_NamedTool(name))
     assembler = ContextAssembler(registry, Study())
 
-    prompt = assembler.build_system_prompt("List the files in /data/eeg")
+    prompt = assembler.get_messages(
+        [{"role": "user", "content": "List the files in /data/eeg"}]
+    )[0]["content"]
 
     assert assembler.latest_tool_publication.tool_names == frozenset(
         {"import_eeg_data", "switch_panel"}
@@ -1869,7 +1941,9 @@ def test_product_prompt_does_not_publish_unmapped_stage_tool() -> None:
         STAGE_CONFIG[PipelineStage.EMPTY],
         {"tools": ["unmapped_mutation"]},
     ):
-        prompt = assembler.build_system_prompt("Change the dataset")
+        prompt = assembler.get_messages(
+            [{"role": "user", "content": "Change the dataset"}]
+        )[0]["content"]
 
     assert "unique description for unmapped_mutation" not in prompt
     assert assembler.latest_tool_publication.tool_names == frozenset()

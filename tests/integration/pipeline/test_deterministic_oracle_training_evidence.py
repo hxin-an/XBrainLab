@@ -15,6 +15,7 @@ import mne
 import numpy as np
 import pytest
 import torch
+from sklearn.metrics import cohen_kappa_score, roc_auc_score
 
 from XBrainLab.backend.dataset import (
     DatasetGenerator,
@@ -35,6 +36,7 @@ from XBrainLab.backend.training import (
     TrainingOption,
     TrainingPlanHolder,
 )
+from XBrainLab.backend.training.evaluator import Evaluator
 from XBrainLab.backend.training.record import RecordKey, TrainRecordKey
 from XBrainLab.backend.training.record.artifact_store import load_model_state_dict
 from XBrainLab.backend.training_state_contract import TrainingOutcomeState
@@ -307,9 +309,10 @@ def test_deterministic_oracle_preserves_semantics_and_held_out_outputs(
     np.testing.assert_allclose(probabilities.sum(axis=1), 1.0, rtol=1e-6, atol=1e-6)
 
     accuracy = float(evaluation.get_acc())
-    auc = evaluation.get_auc()
-    kappa = float(evaluation.get_kappa())
+    auc = Evaluator.compute_auc(targets, torch.from_numpy(logits))
+    kappa = float(cohen_kappa_score(targets, logits.argmax(axis=1)))
     assert auc is not None
+    assert auc == pytest.approx(roc_auc_score(targets, probabilities[:, 1]))
     assert np.isfinite(np.asarray([accuracy, auc, kappa], dtype=float)).all()
     per_class_metrics = evaluation.get_per_class_metrics()
     assert all(

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import Any, Protocol, cast
 
 from XBrainLab.backend.application import (
@@ -17,7 +15,6 @@ from XBrainLab.backend.application import (
     ResetPreprocessCommand,
     StopTrainingCommand,
     TrainCommand,
-    TrainingRecommendationField,
     get_application_service,
 )
 from XBrainLab.backend.application.capabilities import (
@@ -29,31 +26,20 @@ from XBrainLab.backend.application.view_publication import (
     PUBLIC_VIEW_UNAVAILABLE_MESSAGE,
     ApplicationViewPublication,
 )
-from XBrainLab.backend.model_base.model_catalog import get_model_spec
 from XBrainLab.backend.study import Study
 from XBrainLab.backend.training.input_contract import (
-    REQUIRED_TRAINING_FIELDS,
     TrainingInputContractError,
     normalize_strict_boolean,
-)
-from XBrainLab.backend.utils.public_diagnostics import (
-    PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES,
-    PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER,
-    PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
-    DiagnosticTextLayout,
-    public_diagnostic_text,
-    public_diagnostic_value,
 )
 from XBrainLab.llm.action_contracts import (
     AGENT_ACTION_CONTRACTS,
     AgentExecutionKind,
 )
 
+from . import result_contract
 from .result_contract import (
     APPLICATION_TOOL_RUNTIME_REQUIRED_FAILURE,
-    ToolResult,
     UiRequest,
-    public_safe_result_projection,
 )
 
 
@@ -61,279 +47,8 @@ class CapabilityPolicyUnavailableError(RuntimeError):
     """Raised when no application runtime can provide capability policy."""
 
 
-class HostAuthorizedToolParameter(str):
-    """Marker for values created by host policy rather than model JSON."""
-
-
-class UserProvidedTrainingOutputDir(HostAuthorizedToolParameter):
-    """Output directory authorized against the current user-authored turn."""
-
-
-class AuthoritativeConfirmationParameter(HostAuthorizedToolParameter):
+class AuthoritativeConfirmationParameter(str):
     """Display-only confirmation value projected from backend state."""
-
-
-@dataclass(frozen=True, slots=True)
-class AssistantSettingConfirmation:
-    """Host-only evidence that one exact setting proposal was approved."""
-
-    tool_name: str
-    params_fingerprint: str
-    publication_generation: int
-    edited_recommendation_fields: tuple[TrainingRecommendationField, ...] = ()
-
-    def __post_init__(self) -> None:
-        if type(self.tool_name) is not str or not self.tool_name.strip():
-            raise ValueError("Setting confirmation tool name cannot be empty.")
-        if type(self.params_fingerprint) is not str or not self.params_fingerprint:
-            raise ValueError("Setting confirmation fingerprint cannot be empty.")
-        if (
-            type(self.publication_generation) is not int
-            or self.publication_generation < 0
-        ):
-            raise ValueError(
-                "Setting confirmation publication generation must be non-negative."
-            )
-        if any(
-            not isinstance(field, TrainingRecommendationField)
-            for field in self.edited_recommendation_fields
-        ):
-            raise TypeError("Edited recommendation fields must be typed values.")
-
-    def matches(
-        self,
-        tool_name: str,
-        params: dict[str, Any],
-        publication_generation: int,
-    ) -> bool:
-        """Match only the reviewed proposal from the reviewed publication."""
-        return bool(
-            self.tool_name == tool_name
-            and self.params_fingerprint
-            == _assistant_setting_proposal_fingerprint(tool_name, params)
-            and self.publication_generation == publication_generation
-        )
-
-
-SETTING_CHANGE_CONFIRMATION_KIND = "setting_change"
-_ASSISTANT_SETTING_CONFIRMATION_PARAM = "assistant_setting_confirmation"
-_ASSISTANT_HIGH_IMPACT_SETTING_TOOLS = frozenset(
-    {"configure_dataset_split", "configure_training", "set_model"}
-)
-_RECOMMENDATION_PARAM_FIELDS = {
-    "epoch": TrainingRecommendationField.EPOCHS,
-    "batch_size": TrainingRecommendationField.BATCH_SIZE,
-    "learning_rate": TrainingRecommendationField.LEARNING_RATE,
-    "optimizer": TrainingRecommendationField.OPTIMIZER,
-    "evaluation_option": TrainingRecommendationField.EVALUATION_STRATEGY,
-}
-_NON_PROPOSAL_CONFIRMATION_PARAMS = frozenset(
-    {
-        _ASSISTANT_SETTING_CONFIRMATION_PARAM,
-        "confirmed",
-        "resource_preflight_confirmed",
-        "resource_preflight_token",
-    }
-)
-
-
-def authorize_assistant_setting_change(
-    tool_name: str,
-    params: dict[str, Any],
-    *,
-    publication_generation: int,
-    edited_recommendation_fields: tuple[TrainingRecommendationField, ...] | None = None,
-) -> dict[str, Any]:
-    """Attach host-only approval evidence without mutating model parameters."""
-    edited_fields = (
-        assistant_edited_recommendation_fields(tool_name, params)
-        if edited_recommendation_fields is None
-        else tuple(edited_recommendation_fields)
-    )
-    authorized = setting_confirmation_params(tool_name, params)
-    authorized[_ASSISTANT_SETTING_CONFIRMATION_PARAM] = AssistantSettingConfirmation(
-        tool_name=tool_name,
-        params_fingerprint=_assistant_setting_proposal_fingerprint(
-            tool_name,
-            authorized,
-        ),
-        publication_generation=publication_generation,
-        edited_recommendation_fields=edited_fields,
-    )
-    return authorized
-
-
-def assistant_edited_recommendation_fields(
-    tool_name: str,
-    params: dict[str, Any],
-) -> tuple[TrainingRecommendationField, ...]:
-    """Return recommendation fields explicitly present in a tool proposal."""
-    return tuple(
-        field
-        for key, field in _RECOMMENDATION_PARAM_FIELDS.items()
-        if tool_name == "configure_training"
-        and key in params
-        and params[key] is not None
-    )
-
-
-def assistant_setting_params_fingerprint(params: dict[str, Any]) -> str:
-    """Return the canonical identity of one normalized setting proposal."""
-    payload = json.dumps(
-        _canonical_confirmation_value(params),
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
-
-
-def _canonical_confirmation_value(value: Any) -> Any:
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, dict):
-        return {
-            str(key): _canonical_confirmation_value(item)
-            for key, item in sorted(value.items(), key=lambda item: str(item[0]))
-        }
-    if isinstance(value, (list, tuple)):
-        return [_canonical_confirmation_value(item) for item in value]
-    if isinstance(value, (set, frozenset)):
-        normalized = [_canonical_confirmation_value(item) for item in value]
-        return sorted(normalized, key=lambda item: json.dumps(item, sort_keys=True))
-    enum_value = getattr(value, "value", None)
-    if isinstance(enum_value, (str, int, float, bool)):
-        return enum_value
-    return repr(value)
-
-
-def setting_confirmation_params(
-    tool_name: str,
-    params: dict[str, Any],
-) -> dict[str, Any]:
-    """Project the complete effective setting proposal shown for approval."""
-    projected = dict(params)
-    if tool_name == "configure_dataset_split":
-        if all(
-            field in projected and projected[field] is not None
-            for field in ("split_strategy", "training_mode")
-        ):
-            projected.setdefault("test_ratio", 0.2)
-            projected.setdefault("val_ratio", 0.2)
-        return projected
-    if tool_name != "configure_training" or not all(
-        field in projected and projected[field] is not None
-        for field in REQUIRED_TRAINING_FIELDS
-    ):
-        return projected
-    projected.setdefault("repeat", 1)
-    projected.setdefault("device", "cpu")
-    projected.setdefault("optimizer", "adam")
-    projected.setdefault("evaluation_option", "last_epoch")
-    projected.setdefault("save_checkpoints_every", 0)
-    return projected
-
-
-def _assistant_setting_proposal_fingerprint(
-    tool_name: str,
-    params: dict[str, Any],
-) -> str:
-    proposal = {
-        key: value
-        for key, value in params.items()
-        if key not in _NON_PROPOSAL_CONFIRMATION_PARAMS
-    }
-    return assistant_setting_params_fingerprint(
-        setting_confirmation_params(tool_name, proposal)
-    )
-
-
-def assistant_setting_change_requires_confirmation(
-    tool_name: str,
-    params: dict[str, Any],
-    state: dict[str, Any] | None,
-) -> bool:
-    """Return whether a complete proposal changes authoritative settings."""
-    if tool_name == "configure_dataset_split":
-        return all(
-            isinstance(params.get(field), str) and bool(params[field].strip())
-            for field in ("split_strategy", "training_mode")
-        )
-
-    training = state.get("training") if isinstance(state, dict) else None
-    if not isinstance(training, dict):
-        return tool_name in _ASSISTANT_HIGH_IMPACT_SETTING_TOOLS
-
-    if tool_name == "set_model":
-        proposed_model = params.get("model_name")
-        if not isinstance(proposed_model, str) or not proposed_model.strip():
-            return False
-        current_model = training.get("model_name")
-        return not _same_model_setting(current_model, proposed_model)
-
-    if tool_name != "configure_training" or not all(
-        field in params and params[field] is not None
-        for field in REQUIRED_TRAINING_FIELDS
-    ):
-        return False
-    if not training.get("has_training_option"):
-        return True
-    current_option = training.get("training_option")
-    if not isinstance(current_option, dict):
-        return True
-
-    proposed = setting_confirmation_params(tool_name, params)
-    if "model_name" in proposed and not _same_model_setting(
-        training.get("model_name"),
-        proposed["model_name"],
-    ):
-        return True
-    current_fields = {
-        "epoch": current_option.get("epoch"),
-        "batch_size": current_option.get("batch_size"),
-        "learning_rate": current_option.get("learning_rate"),
-        "repeat": current_option.get("repeat"),
-        "device": current_option.get("device"),
-        "optimizer": current_option.get("optimizer"),
-        "evaluation_option": current_option.get("evaluation_option"),
-        "save_checkpoints_every": current_option.get("checkpoint_epoch"),
-    }
-    return any(
-        not _same_training_setting(field, current_fields[field], proposed[field])
-        for field in current_fields
-    )
-
-
-def _same_model_setting(current: object, proposed: object) -> bool:
-    if not isinstance(current, str) or not isinstance(proposed, str):
-        return False
-    try:
-        spec = get_model_spec(proposed)
-    except (ImportError, ValueError):
-        return current.strip().casefold() == proposed.strip().casefold()
-    identities = {spec.model_id.casefold(), spec.display_name.casefold()}
-    return current.strip().casefold() in identities
-
-
-def _same_training_setting(field: str, current: object, proposed: object) -> bool:
-    if field == "device":
-        current_device = str(current or "").strip().casefold()
-        proposed_device = str(proposed or "").strip().casefold()
-        if proposed_device == "cuda":
-            return current_device.startswith("cuda:")
-        return current_device == proposed_device
-    if field == "optimizer":
-        return str(current or "").strip().casefold() == str(proposed).casefold()
-    if field == "evaluation_option":
-        aliases = {
-            "best validation loss": "val_loss",
-            "best validation auc": "val_auc",
-            "best validation performance": "val_acc",
-            "last epoch": "last_epoch",
-        }
-        current_value = str(current or "").strip().casefold()
-        return aliases.get(current_value, current_value) == str(proposed).casefold()
-    return current == proposed
 
 
 @dataclass(frozen=True, slots=True)
@@ -500,77 +215,6 @@ class ToolAvailabilityContext:
     capabilities: CapabilityPolicy | None = None
 
 
-_PUBLIC_TOOL_IDENTIFIER_MAX_BYTES = 1024
-_PUBLIC_TOOL_MESSAGE_MAX_BYTES = 64 * 1024
-_PUBLIC_TOOL_METADATA_MAX_BYTES = 4096
-
-
-def _bounded_public_text(value: str, max_bytes: int) -> str:
-    encoded = value.encode("utf-8")
-    if len(encoded) <= max_bytes:
-        return value
-    marker = PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER.encode("utf-8")
-    prefix = encoded[: max(0, max_bytes - len(marker))].decode(
-        "utf-8",
-        errors="ignore",
-    )
-    return f"{prefix}{PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER}"
-
-
-def _public_text_field(
-    value: object,
-    *,
-    max_bytes: int,
-    fallback: str,
-    layout: DiagnosticTextLayout = DiagnosticTextLayout.SINGLE_LINE,
-) -> str:
-    if type(value) is not str:
-        return fallback
-    return _bounded_public_text(
-        public_diagnostic_text(
-            value,
-            layout=layout,
-        ),
-        max_bytes,
-    )
-
-
-def _public_optional_text_field(
-    value: object,
-    *,
-    max_bytes: int = _PUBLIC_TOOL_METADATA_MAX_BYTES,
-) -> str | None:
-    if value is None or type(value) is not str:
-        return None
-    return _public_text_field(value, max_bytes=max_bytes, fallback="")
-
-
-def _public_mapping_field(
-    value: object,
-    *,
-    none_allowed: bool,
-) -> dict[str, Any] | None:
-    if value is None and none_allowed:
-        return None
-    if type(value) is not dict:
-        return None if none_allowed else {}
-    projected = public_diagnostic_value(value)
-    if type(projected) is not dict:
-        return None if none_allowed else {}
-    return projected
-
-
-def _public_changed_state_field(value: object) -> dict[str, bool]:
-    projected = _public_mapping_field(value, none_allowed=False)
-    if type(projected) is not dict:
-        return {}
-    return {
-        key: item
-        for key, item in dict.items(projected)
-        if type(key) is str and type(item) is bool
-    }
-
-
 def _public_unsupported_result_type(value: object) -> str:
     value_type = type(value)
     for supported_type, public_name in (
@@ -590,323 +234,32 @@ def _public_unsupported_result_type(value: object) -> str:
     return "unsupported"
 
 
-def _serialized_public_payload_size(payload: dict[str, Any]) -> int:
-    return len(
-        json.dumps(
-            payload,
-            ensure_ascii=False,
-            separators=(",", ":"),
-        ).encode("utf-8")
+def blocked_tool_result(
+    tool_name: str,
+    availability: ToolAvailability,
+    state: dict[str, Any] | None = None,
+    diagnostics: dict[str, Any] | None = None,
+) -> result_contract.ToolCommandResult:
+    """Build a failed result from a shared capability-policy block."""
+    reason = availability.reason_text or "Tool is not available right now."
+    message = (
+        f"Tool '{tool_name}' is blocked by ApplicationService "
+        f"command '{availability.command_name}': {reason}"
+        if availability.command_name
+        else f"Tool '{tool_name}' is blocked: {reason}"
     )
-
-
-def _fit_public_tool_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    if _serialized_public_payload_size(payload) <= PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES:
-        return payload
-
-    replacements: tuple[tuple[str, Any], ...] = (
-        ("raw_result", PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER),
-        ("diagnostics", {}),
-        ("state", None),
-        ("capability", None),
-        ("changed_state", {}),
-        ("blocked_reason", None),
+    return result_contract.ToolCommandResult(
+        ok=False,
+        tool_name=tool_name,
+        command_name=availability.command_name,
+        message=message,
+        error_type="precondition",
+        recoverable=True,
+        blocked_reason=reason,
+        state=state,
+        capability=availability.to_dict(),
+        diagnostics=(dict.copy(diagnostics) if type(diagnostics) is dict else {}),
     )
-    for field_name, replacement in replacements:
-        payload[field_name] = replacement
-        if (
-            _serialized_public_payload_size(payload)
-            <= PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES
-        ):
-            return payload
-
-    payload["message"] = _bounded_public_text(
-        payload["message"],
-        _PUBLIC_TOOL_METADATA_MAX_BYTES,
-    )
-    return payload
-
-
-@dataclass(frozen=True)
-class ToolCommandResult:
-    """Agent-facing structured result for ApplicationService-backed tools."""
-
-    ok: bool
-    tool_name: str
-    message: str
-    command_name: str | None = None
-    raw_result: Any = None
-    error_type: str | None = None
-    error_code: str | None = None
-    recovery_action: str | None = None
-    recoverable: bool = True
-    blocked_reason: str | None = None
-    state: dict[str, Any] | None = None
-    capability: dict[str, Any] | None = None
-    diagnostics: dict[str, Any] = field(default_factory=dict)
-    changed_state: dict[str, bool] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "ok", self.ok if type(self.ok) is bool else False)
-        object.__setattr__(
-            self,
-            "tool_name",
-            _public_text_field(
-                self.tool_name,
-                max_bytes=_PUBLIC_TOOL_IDENTIFIER_MAX_BYTES,
-                fallback=PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
-            ),
-        )
-        object.__setattr__(
-            self,
-            "command_name",
-            _public_optional_text_field(
-                self.command_name,
-                max_bytes=_PUBLIC_TOOL_IDENTIFIER_MAX_BYTES,
-            ),
-        )
-        object.__setattr__(
-            self,
-            "message",
-            _public_text_field(
-                self.message,
-                max_bytes=_PUBLIC_TOOL_MESSAGE_MAX_BYTES,
-                fallback=PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
-                layout=DiagnosticTextLayout.PRESERVE_LINES,
-            ),
-        )
-        for field_name in ("error_type", "error_code", "recovery_action"):
-            object.__setattr__(
-                self,
-                field_name,
-                _public_optional_text_field(getattr(self, field_name)),
-            )
-        object.__setattr__(
-            self,
-            "recoverable",
-            self.recoverable if type(self.recoverable) is bool else False,
-        )
-        object.__setattr__(
-            self,
-            "blocked_reason",
-            _public_optional_text_field(
-                self.blocked_reason,
-                max_bytes=_PUBLIC_TOOL_MESSAGE_MAX_BYTES,
-            ),
-        )
-        object.__setattr__(
-            self,
-            "changed_state",
-            _public_changed_state_field(self.changed_state),
-        )
-        if self.ok is True:
-            return
-        projection = public_safe_result_projection(
-            message=self.message,
-            blocked_reason=self.blocked_reason,
-        )
-        object.__setattr__(self, "message", projection.message)
-        object.__setattr__(self, "blocked_reason", projection.blocked_reason)
-
-    def __str__(self) -> str:
-        return self.message
-
-    @property
-    def user_correctable(self) -> bool:
-        """Whether user input is the next useful step instead of LLM retry."""
-        return self.error_type in {"input", "precondition", "confirmation_required"}
-
-    @classmethod
-    def blocked(
-        cls,
-        tool_name: str,
-        availability: ToolAvailability,
-        state: dict[str, Any] | None = None,
-        diagnostics: dict[str, Any] | None = None,
-    ) -> ToolCommandResult:
-        """Build a failed result from a shared capability-policy block."""
-        reason = availability.reason_text or "Tool is not available right now."
-        message = (
-            f"Tool '{tool_name}' is blocked by ApplicationService "
-            f"command '{availability.command_name}': {reason}"
-            if availability.command_name
-            else f"Tool '{tool_name}' is blocked: {reason}"
-        )
-        return cls(
-            ok=False,
-            tool_name=tool_name,
-            command_name=availability.command_name,
-            message=message,
-            error_type="precondition",
-            recoverable=True,
-            blocked_reason=reason,
-            state=state,
-            capability=availability.to_dict(),
-            diagnostics=(dict.copy(diagnostics) if type(diagnostics) is dict else {}),
-        )
-
-    @classmethod
-    def failure(
-        cls,
-        tool_name: str,
-        message: str,
-        command_name: str | None = None,
-        state: dict[str, Any] | None = None,
-        capability: dict[str, Any] | None = None,
-        raw_result: Any = None,
-        error_type: str = "runtime",
-        error_code: str | None = None,
-        recovery_action: str | None = None,
-        recoverable: bool = True,
-        diagnostics: dict[str, Any] | None = None,
-        changed_state: dict[str, bool] | None = None,
-    ) -> ToolCommandResult:
-        """Build a failed structured tool result."""
-        return cls(
-            ok=False,
-            tool_name=tool_name,
-            command_name=command_name,
-            message=message,
-            raw_result=raw_result,
-            error_type=error_type,
-            error_code=error_code,
-            recovery_action=recovery_action,
-            recoverable=recoverable,
-            state=state,
-            capability=capability,
-            diagnostics=(dict.copy(diagnostics) if type(diagnostics) is dict else {}),
-            changed_state=(
-                dict.copy(changed_state) if type(changed_state) is dict else {}
-            ),
-        )
-
-    @classmethod
-    def from_command_result(
-        cls,
-        tool_name: str,
-        result: CommandResult,
-        capability: dict[str, Any] | None = None,
-    ) -> ToolCommandResult:
-        """Convert a backend :class:`CommandResult` into an agent result."""
-        return cls(
-            ok=result.ok,
-            tool_name=tool_name,
-            command_name=result.command_name,
-            message=result.message,
-            raw_result=result.to_dict(),
-            error_type=result.error_type.value,
-            recoverable=result.recoverable,
-            blocked_reason=result.error_message if result.failed else None,
-            state=(
-                result.state.to_dict()
-                if hasattr(result.state, "to_dict")
-                else dict(result.state)
-                if isinstance(result.state, dict)
-                else None
-            ),
-            capability=capability,
-            diagnostics=result.diagnostics,
-            changed_state=result.changed_state.to_dict(),
-        )
-
-    @classmethod
-    def from_tool_result(
-        cls,
-        tool_name: str,
-        result: ToolResult,
-        availability: ToolAvailability | None = None,
-        state: dict[str, Any] | None = None,
-    ) -> ToolCommandResult:
-        """Convert an explicit non-ApplicationService tool result."""
-        diagnostics = (
-            dict.copy(result.diagnostics) if type(result.diagnostics) is dict else {}
-        )
-        if not diagnostics and type(result.payload) is dict:
-            diagnostics = dict.copy(result.payload)
-        return cls(
-            ok=result.ok,
-            tool_name=tool_name,
-            command_name=result.command_name
-            or (
-                availability.command_name
-                if availability
-                else _command_name_for_tool(tool_name)
-            ),
-            message=result.message,
-            raw_result=result.payload,
-            error_type=result.error_type,
-            error_code=result.error_code,
-            recovery_action=result.recovery_action,
-            recoverable=result.recoverable,
-            blocked_reason=None if result.ok else result.message,
-            state=result.state if result.state is not None else state,
-            capability=(
-                result.capability
-                if result.capability is not None
-                else availability.to_dict()
-                if availability
-                else None
-            ),
-            diagnostics=diagnostics,
-            changed_state=(
-                dict.copy(result.changed_state)
-                if type(result.changed_state) is dict
-                else {}
-            ),
-        )
-
-    def to_payload(self) -> dict[str, Any]:
-        """Return JSON-friendly payload for the next agent turn."""
-        projection = public_safe_result_projection(
-            message=self.message,
-            blocked_reason=self.blocked_reason,
-            raw_result=self.raw_result,
-            state=self.state,
-            capability=self.capability,
-            diagnostics=self.diagnostics,
-        )
-        payload = {
-            "ok": self.ok,
-            "tool_name": self.tool_name,
-            "command_name": self.command_name,
-            "message": projection.message,
-            "error_type": self.error_type,
-            "error_code": self.error_code,
-            "recovery_action": self.recovery_action,
-            "recoverable": self.recoverable,
-            "blocked_reason": projection.blocked_reason,
-            "state": projection.state,
-            "capability": projection.capability,
-            "diagnostics": projection.diagnostics,
-            "changed_state": self.changed_state,
-            "raw_result": projection.raw_result,
-        }
-        safe_payload = public_diagnostic_value(payload)
-        if type(safe_payload) is not dict:
-            safe_payload = {}
-        contract_payload: dict[str, Any] = {}
-        for field_name, default in (
-            ("ok", False),
-            ("tool_name", PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER),
-            ("command_name", None),
-            ("message", PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER),
-            ("error_type", None),
-            ("error_code", None),
-            ("recovery_action", None),
-            ("recoverable", False),
-            ("blocked_reason", None),
-            ("state", None),
-            ("capability", None),
-            ("diagnostics", {}),
-            ("changed_state", {}),
-            ("raw_result", PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER),
-        ):
-            contract_payload[field_name] = dict.get(
-                safe_payload,
-                field_name,
-                default,
-            )
-        return _fit_public_tool_payload(contract_payload)
 
 
 def build_agent_tool_policy(
@@ -1020,9 +373,9 @@ def normalize_tool_result(
     state: dict[str, Any] | None = None,
     *,
     runtime: ApplicationToolRuntime | None = None,
-) -> ToolCommandResult | UiRequest:
+) -> result_contract.ToolCommandResult | UiRequest:
     """Convert a real tool return value into a structured agent result."""
-    if type(raw_result) is ToolCommandResult:
+    if type(raw_result) is result_contract.ToolCommandResult:
         return raw_result
     if type(raw_result) is UiRequest:
         return raw_result
@@ -1038,39 +391,21 @@ def normalize_tool_result(
             availability = None
 
     capability = availability.to_dict() if availability else None
-    if type(raw_result) is CommandResult:
-        return ToolCommandResult.from_command_result(
-            tool_name,
-            raw_result,
-            capability=capability,
-        )
-
-    if type(raw_result) is not ToolResult:
-        return ToolCommandResult.failure(
-            tool_name,
-            "The assistant tool returned an invalid result contract.",
-            command_name=(
-                availability.command_name
-                if availability
-                else _command_name_for_tool(tool_name)
-            ),
-            state=(
-                state
-                if state is not None
-                else _state_snapshot_dict(study, runtime=runtime)
-            ),
-            capability=capability,
-            error_type="contract",
-            recoverable=False,
-            diagnostics={"returned_type": _public_unsupported_result_type(raw_result)},
-        )
-    return ToolCommandResult.from_tool_result(
+    return result_contract.ToolCommandResult.failure(
         tool_name,
-        raw_result,
-        availability=availability,
+        "The assistant tool returned an invalid result contract.",
+        command_name=(
+            availability.command_name
+            if availability
+            else _command_name_for_tool(tool_name)
+        ),
         state=(
             state if state is not None else _state_snapshot_dict(study, runtime=runtime)
         ),
+        capability=capability,
+        error_type="contract",
+        recoverable=False,
+        diagnostics={"returned_type": _public_unsupported_result_type(raw_result)},
     )
 
 
@@ -1082,7 +417,7 @@ def execute_application_tool_command(
     state: dict[str, Any] | None = None,
     *,
     runtime: ApplicationToolRuntime | None = None,
-) -> ToolCommandResult | None:
+) -> result_contract.ToolCommandResult | None:
     """Execute a tool through ApplicationService when a direct command exists.
 
     ``None`` is reserved for tools outside the mapped product surface and for
@@ -1103,7 +438,7 @@ def execute_application_tool_command(
                 f"Application tool '{tool_name}' has no capability command."
             )
         failure = APPLICATION_TOOL_RUNTIME_REQUIRED_FAILURE
-        return ToolCommandResult.failure(
+        return result_contract.ToolCommandResult.failure(
             tool_name,
             failure.message,
             command_name=mapped_command.value,
@@ -1120,17 +455,6 @@ def execute_application_tool_command(
         )
 
     command_params = dict(params)
-    setting_confirmation = command_params.pop(
-        _ASSISTANT_SETTING_CONFIRMATION_PARAM,
-        None,
-    )
-    setting_publication: ApplicationViewPublication | None = None
-    if tool_name in _ASSISTANT_HIGH_IMPACT_SETTING_TOOLS:
-        setting_publication = application_runtime.get_view_publication()
-        state = setting_publication.state.to_dict()
-        availability = _build_agent_tool_policy_from_publication(
-            setting_publication
-        ).get(tool_name)
     input_error: str | None = None
     try:
         command = _command_for_tool(tool_name, command_params)
@@ -1155,7 +479,7 @@ def execute_application_tool_command(
                 return None
 
         if not availability.enabled:
-            return ToolCommandResult.blocked(
+            return blocked_tool_result(
                 tool_name,
                 availability,
                 state=(
@@ -1165,7 +489,7 @@ def execute_application_tool_command(
                 ),
             )
 
-        return ToolCommandResult.failure(
+        return result_contract.ToolCommandResult.failure(
             tool_name,
             input_error or "Required inputs are missing for this workflow command.",
             command_name=mapped_command.value,
@@ -1178,70 +502,6 @@ def execute_application_tool_command(
             error_type="input",
             recoverable=True,
         )
-
-    if setting_publication is not None:
-        confirmation_matches = bool(
-            type(setting_confirmation) is AssistantSettingConfirmation
-            and setting_confirmation.matches(
-                tool_name,
-                command_params,
-                setting_publication.generation,
-            )
-        )
-        if (
-            assistant_setting_change_requires_confirmation(
-                tool_name,
-                command_params,
-                state,
-            )
-            and not confirmation_matches
-        ):
-            setting_availability = (
-                replace(
-                    availability,
-                    confirmation_required=True,
-                    requires_confirmation=True,
-                    can_auto_execute=False,
-                    decision_boundary="high_impact_setting_change",
-                )
-                if availability is not None
-                else None
-            )
-            return ToolCommandResult.failure(
-                tool_name,
-                (
-                    "Changing data splitting settings requires confirmation."
-                    if tool_name == "configure_dataset_split"
-                    else "Changing training settings requires confirmation."
-                ),
-                command_name=(
-                    contract.capability_command.value
-                    if contract.capability_command is not None
-                    else None
-                ),
-                state=state,
-                capability=(
-                    setting_availability.to_dict()
-                    if setting_availability is not None
-                    else None
-                ),
-                error_type="confirmation_required",
-                recoverable=True,
-                diagnostics={"decision_boundary": "high_impact_setting_change"},
-            )
-        if confirmation_matches and tool_name == "configure_training":
-            confirmed_command = _command_for_tool(
-                tool_name,
-                {
-                    **command_params,
-                    _ASSISTANT_SETTING_CONFIRMATION_PARAM: setting_confirmation,
-                },
-            )
-            if confirmed_command is None:
-                raise RuntimeError(
-                    "Confirmed training settings could not be reconstructed."
-                )
-            command = confirmed_command
 
     if availability is None:
         try:
@@ -1263,7 +523,7 @@ def execute_application_tool_command(
             mapped_command,
             capability,
         )
-    return ToolCommandResult.from_command_result(
+    return result_contract.ToolCommandResult.from_command_result(
         tool_name,
         result,
         capability=result_availability.to_dict() if result_availability else None,

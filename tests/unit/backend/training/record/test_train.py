@@ -299,31 +299,6 @@ def eval_record():
     return EvalRecord(label, output, gradient, {}, {}, {}, {})
 
 
-def test_train_record_test_confusion_figure(train_record, eval_record):
-    assert train_record.get_confusion_figure() is None
-    train_record.set_eval_record(eval_record)
-    figure = train_record.get_confusion_figure()
-    assert len(figure.axes[0].images) == 1
-    plt.close("all")
-
-
-def test_train_record_confusion_percentage_normalizes_each_class_row(
-    train_record,
-    eval_record,
-):
-    train_record.set_eval_record(eval_record)
-
-    figure = train_record.get_confusion_figure(show_percentage=True)
-
-    assert figure is not None
-    image_data = np.asarray(figure.axes[0].images[0].get_array())
-    np.testing.assert_allclose(image_data.sum(axis=1), np.ones(CLASS_NUM))
-    annotation_text = [text.get_text() for text in figure.axes[0].texts]
-    assert len(annotation_text) == CLASS_NUM**2
-    assert all(text.endswith("%") for text in annotation_text)
-    plt.close(figure)
-
-
 def test_train_record_empty_figures_do_not_leave_open_matplotlib_handles(
     train_record,
 ):
@@ -333,18 +308,14 @@ def test_train_record_empty_figures_do_not_leave_open_matplotlib_handles(
     assert train_record.get_acc_figure() is None
     assert train_record.get_auc_figure() is None
     assert train_record.get_lr_figure() is None
-    assert train_record.get_confusion_figure() is None
 
     assert plt.get_fignums() == []
 
 
-@pytest.mark.parametrize(
-    "func_name", ["get_acc", "get_auc", "get_kappa", "get_eval_record"]
-)
-def test_train_record_eval_record_getter(train_record, eval_record, func_name):
-    assert getattr(train_record, func_name)() is None
+def test_train_record_eval_record_getter(train_record, eval_record):
+    assert train_record.get_eval_record() is None
     train_record.set_eval_record(eval_record)
-    assert getattr(train_record, func_name)() is not None
+    assert train_record.get_eval_record() is eval_record
 
 
 @pytest.mark.parametrize("key", list(RecordKey()))

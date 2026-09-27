@@ -5,12 +5,6 @@ from types import SimpleNamespace
 from XBrainLab.llm.agent.execution_policy import HostExecutionPolicy
 
 
-def test_only_first_model_proposal_is_eligible_for_execution() -> None:
-    policy = HostExecutionPolicy()
-
-    assert policy.first_command([("one", {}), ("two", {})]) == ("one", {})
-
-
 def test_every_turn_is_limited_to_one_action() -> None:
     policy = HostExecutionPolicy()
 

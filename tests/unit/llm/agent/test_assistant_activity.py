@@ -83,7 +83,7 @@ def test_non_waiting_activity_rejects_a_decision_owner() -> None:
     with pytest.raises(ValueError, match="only valid while waiting"):
         AssistantTurnActivity(
             AssistantTurnActivityPhase.THINKING,
-            decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
+            decision_owner=AssistantDecisionOwner.GUI_DIALOG,
         )
 
 

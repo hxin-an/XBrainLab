@@ -21,8 +21,8 @@ from XBrainLab.llm.agent.verifier import VerificationResult
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
     ToolAvailabilityContext,
-    ToolCommandResult,
 )
+from XBrainLab.llm.tools.result_contract import ToolCommandResult
 
 
 @dataclass(frozen=True)
@@ -44,15 +44,13 @@ class _Registry:
 class _Verifier:
     def __init__(self, *, valid: bool = True) -> None:
         self.valid = valid
-        self.calls: list[tuple[tuple[str, dict[str, Any]], float]] = []
+        self.calls: list[tuple[str, dict[str, Any]]] = []
 
     def verify_tool_call(
         self,
         tool_call: tuple[str, dict[str, Any]],
-        *,
-        confidence: float,
     ) -> VerificationResult:
-        self.calls.append((tool_call, confidence))
+        self.calls.append(tool_call)
         return VerificationResult(
             self.valid,
             None if self.valid else "schema mismatch",
@@ -95,12 +93,10 @@ def _request(
     text: str,
     publication: PromptToolPublication | None = None,
     tool_input_receipt: AssistantToolInputReceipt | None = None,
-    single_proposal: bool = True,
 ) -> ToolAttemptRequest:
     return ToolAttemptRequest(
         command_name=tool_name,
         params=params or {},
-        confidence=0.9,
         publication=publication
         or PromptToolPublication(
             tool_names=frozenset({tool_name}),
@@ -108,7 +104,6 @@ def _request(
         ),
         latest_user_text=text,
         tool_input_receipt=tool_input_receipt,
-        single_proposal=single_proposal,
     )
 
 
@@ -244,14 +239,14 @@ def test_stale_prompt_generation_blocks_immediate_execution() -> None:
 
 def test_published_tool_is_not_reclassified_from_host_text() -> None:
     coordinator, source, verifier = _coordinator(
-        _context("set_model", command_name="configure_training")
+        _context("select_model", command_name="configure_training")
     )
 
-    decision = coordinator.evaluate(_request("set_model", text="Start training"))
+    decision = coordinator.evaluate(_request("select_model", text="Start training"))
 
-    assert decision.action is ToolAttemptAction.CONFIRMATION_REQUIRED
-    assert source.reads == ["set_model"]
-    assert verifier.calls == [(("set_model", {}), 0.9)]
+    assert decision.action is ToolAttemptAction.EXECUTE
+    assert source.reads == ["select_model"]
+    assert verifier.calls == [("select_model", {})]
 
 
 def test_explicit_continue_request_authorizes_current_backend_candidate() -> None:
@@ -277,7 +272,7 @@ def test_explicit_continue_request_authorizes_current_backend_candidate() -> Non
 
     assert decision.action is ToolAttemptAction.EXECUTE
     assert source.reads == ["preview_interpretation"]
-    assert verifier.calls == [(("preview_interpretation", {}), 0.9)]
+    assert verifier.calls == [("preview_interpretation", {})]
 
 
 def test_explicit_direct_parameter_value_reaches_execution_boundary() -> None:
@@ -295,7 +290,7 @@ def test_explicit_direct_parameter_value_reaches_execution_boundary() -> None:
 
     assert decision.action is ToolAttemptAction.EXECUTE
     assert source.reads == ["resample_data"]
-    assert verifier.calls == [(("resample_data", {"rate": 128}), 0.9)]
+    assert verifier.calls == [("resample_data", {"rate": 128})]
 
 
 @pytest.mark.parametrize(
@@ -454,7 +449,7 @@ def test_inadmissible_partial_bandpass_keeps_schema_rejection() -> None:
 
     assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
     assert observed_verifier.calls == [
-        (("apply_bandpass_filter", {"high_freq": 20, "unexpected": 1}), 0.9)
+        ("apply_bandpass_filter", {"high_freq": 20, "unexpected": 1})
     ]
 
 
@@ -478,7 +473,7 @@ def test_model_mapped_reversed_bandpass_reaches_schema_validation() -> None:
 
     assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
     assert observed_verifier.calls == [
-        (("apply_bandpass_filter", {"low_freq": 40, "high_freq": 10}), 0.9)
+        ("apply_bandpass_filter", {"low_freq": 40, "high_freq": 10})
     ]
 
 
@@ -502,56 +497,48 @@ def test_word_number_frequency_creates_no_verified_value_in_the_receipt() -> Non
 
 
 @pytest.mark.parametrize(
-    ("tool_name", "params", "text", "single_proposal"),
+    ("tool_name", "params", "text"),
     (
-        ("resample_data", {"rate": 128}, "Do not resample the EEG data.", True),
-        ("resample_data", {"rate": 128}, "What is resampling?", True),
-        ("normalize_data", {"method": "z-score"}, "What is normalization?", True),
-        ("set_reference", {"method": "average"}, "What reference should I use?", True),
-        ("resample_data", {"rate": 128}, "Apply a notch filter.", True),
-        ("resample_data", {"rate": 128}, "Open the visualization panel.", True),
-        ("resample_data", {"rate": 128}, "Resample the EEG data.", False),
+        ("resample_data", {"rate": 128}, "Do not resample the EEG data."),
+        ("resample_data", {"rate": 128}, "What is resampling?"),
+        ("normalize_data", {"method": "z-score"}, "What is normalization?"),
+        ("set_reference", {"method": "average"}, "What reference should I use?"),
+        ("resample_data", {"rate": 128}, "Apply a notch filter."),
+        ("resample_data", {"rate": 128}, "Open the visualization panel."),
         (
             "apply_notch_filter",
             {"freq": 50},
             "Tell me how to apply a notch filter.",
-            True,
         ),
         (
             "apply_notch_filter",
             {"freq": 50},
             "Never apply a notch filter.",
-            True,
         ),
         (
             "apply_notch_filter",
             {"freq": 50},
             "Would you use a notch filter?",
-            True,
         ),
         (
             "apply_notch_filter",
             {"freq": 50},
             "Avoid applying a notch filter.",
-            True,
         ),
         (
             "apply_notch_filter",
             {"freq": 50},
             "Do you recommend applying a notch filter?",
-            True,
         ),
         (
             "apply_notch_filter",
             {"freq": 50},
             "Skip applying a notch filter.",
-            True,
         ),
         (
             "apply_notch_filter",
             {"freq": 50},
             "Please apply a notch filter without changing the reference.",
-            True,
         ),
     ),
 )
@@ -559,7 +546,6 @@ def test_direct_receipt_admission_does_not_parse_user_english_intent(
     tool_name: str,
     params: dict[str, Any],
     text: str,
-    single_proposal: bool,
 ) -> None:
     coordinator, _source, _verifier = _coordinator(
         _context(tool_name, command_name="preprocess"),
@@ -571,15 +557,11 @@ def test_direct_receipt_admission_does_not_parse_user_english_intent(
             tool_name,
             params=params,
             text=text,
-            single_proposal=single_proposal,
         )
     )
 
     assert decision.action is ToolAttemptAction.RESPOND
-    if single_proposal:
-        assert decision.tool_input_receipt is not None
-    else:
-        assert decision.tool_input_receipt is None
+    assert decision.tool_input_receipt is not None
     assert decision.action not in {
         ToolAttemptAction.EXECUTE,
         ToolAttemptAction.CONFIRMATION_REQUIRED,
@@ -615,7 +597,7 @@ def test_import_eeg_data_proposal_is_not_blocked_by_host_english_intent_gate() -
 
     assert decision.action is ToolAttemptAction.EXECUTE
     assert source.reads == ["import_eeg_data"]
-    assert verifier.calls == [(("import_eeg_data", {}), 0.9)]
+    assert verifier.calls == [("import_eeg_data", {})]
 
 
 @pytest.mark.parametrize(
@@ -670,7 +652,7 @@ def test_complete_receipt_rebuilds_verified_values_without_model_parameters() ->
     assert rebuilt.params == {"rate": 128}
     assert source.reads == ["resample_data"]
     assert verifier.calls == [
-        (("resample_data", {"rate": 128}), 0.9),
+        ("resample_data", {"rate": 128}),
     ]
 
 
@@ -716,7 +698,7 @@ def test_same_tool_clarification_reply_reaches_execution_boundary(
 
     assert decision.action is ToolAttemptAction.EXECUTE
     assert source.reads == [tool_name]
-    assert verifier.calls == [((tool_name, params), 0.9)]
+    assert verifier.calls == [(tool_name, params)]
 
 
 @pytest.mark.parametrize(
@@ -780,7 +762,7 @@ def test_clarification_reply_still_passes_schema_verification_first() -> None:
     )
 
     assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
-    assert verifier.calls == [(("resample_data", {"rate": 128}), 0.9)]
+    assert verifier.calls == [("resample_data", {"rate": 128})]
 
 
 def test_published_command_is_admitted_for_continue_wording() -> None:
@@ -806,7 +788,7 @@ def test_published_command_is_admitted_for_continue_wording() -> None:
 
     assert decision.action is ToolAttemptAction.EXECUTE
     assert source.reads == ["apply_interpretation"]
-    assert verifier.calls == [(("apply_interpretation", {}), 0.9)]
+    assert verifier.calls == [("apply_interpretation", {})]
 
 
 def test_explicit_dataset_info_request_authorizes_normalized_query_state() -> None:
@@ -830,26 +812,6 @@ def test_explicit_dataset_info_request_authorizes_normalized_query_state() -> No
     assert decision.action is ToolAttemptAction.EXECUTE
     assert source.reads == ["query_state"]
     assert len(verifier.calls) == 1
-
-
-def test_unapproved_path_is_blocked_before_schema_verification() -> None:
-    coordinator, source, verifier = _coordinator(_context("configure_training"))
-
-    decision = coordinator.evaluate(
-        _request(
-            "configure_training",
-            params={"output_dir": "/tmp/model-invented-output"},
-            text="Configure training",
-        )
-    )
-
-    assert decision.action is ToolAttemptAction.PROVENANCE_BLOCKED
-    assert decision.result is not None
-    assert decision.result.error_type == "input"
-    assert decision.result.diagnostics["policy"] == "path_provenance"
-    assert decision.result.diagnostics["publication_generation"] == 21
-    assert source.reads == ["configure_training"]
-    assert verifier.calls == []
 
 
 def test_long_running_capability_requires_confirmation_from_single_context() -> None:
@@ -890,43 +852,52 @@ def test_disabled_capability_returns_generation_bound_block_result() -> None:
 
 def test_confirmation_fields_are_owned_by_coordinator() -> None:
     coordinator, _source, _verifier = _coordinator(_context("start_training"))
+    params = {"append": True}
     assert coordinator.confirmed_params(
-        "apply_interpretation",
-        {"candidate_id": "candidate-1"},
+        "start_training",
+        params,
         confirmation_kind="resource_preflight",
         resource_preflight_receipt=ResourceConfirmationChallenge(
             challenge_id="receipt-1",
-            command_name="apply_interpretation",
-            candidate_id="candidate-1",
+            command_name="start_training",
+            configuration_fingerprint="configuration-1",
+            preflight_fingerprint="preflight-1",
             scope_fingerprint="scope-1",
             ttl_seconds=120.0,
         ),
     ) == {
-        "candidate_id": "candidate-1",
+        "append": True,
         "confirmed": True,
         "resource_preflight_confirmed": True,
         "resource_preflight_token": "receipt-1",
     }
+    assert params == {"append": True}
 
 
-def test_resource_warning_becomes_candidate_bound_typed_confirmation() -> None:
-    coordinator, _source, _verifier = _coordinator(_context("apply_interpretation"))
+def test_resource_warning_becomes_training_bound_typed_confirmation() -> None:
+    coordinator, source, verifier = _coordinator(
+        _context("start_training", command_name="train", long_running=True)
+    )
     initial = coordinator.evaluate(
         _request(
-            "apply_interpretation",
-            params={"candidate_id": "candidate-1"},
-            text="Apply the reviewed import",
+            "start_training",
+            params={"append": True},
+            text="Start training",
         )
     )
+    assert initial.action is ToolAttemptAction.CONFIRMATION_REQUIRED
     warning = ToolCommandResult.failure(
-        "apply_interpretation",
-        "Import may exceed available RAM.",
+        "start_training",
+        "Training may exceed available GPU memory.",
+        command_name="train",
         error_type="confirmation_required",
         diagnostics={
             "resource_preflight": {
                 "requires_confirmation": True,
                 "confirmation_token": "receipt-1",
-                "candidate_id": "candidate-1",
+                "confirmation_command": "start_training",
+                "configuration_fingerprint": "configuration-1",
+                "preflight_fingerprint": "preflight-1",
                 "scope_fingerprint": "scope-1",
                 "confirmation_ttl_seconds": 120.0,
             },
@@ -940,13 +911,20 @@ def test_resource_warning_becomes_candidate_bound_typed_confirmation() -> None:
     assert confirmation.confirmation_kind == "resource_preflight"
     assert confirmation.resource_preflight_receipt == ResourceConfirmationChallenge(
         challenge_id="receipt-1",
-        command_name="apply_interpretation",
-        candidate_id="candidate-1",
+        command_name="start_training",
+        configuration_fingerprint="configuration-1",
+        preflight_fingerprint="preflight-1",
         scope_fingerprint="scope-1",
         ttl_seconds=120.0,
     )
+    assert confirmation.command_name == "start_training"
+    assert confirmation.params == initial.params == {"append": True}
     assert confirmation.context is initial.context
+    assert confirmation.context is not None
+    assert confirmation.context.generation == 21
     assert confirmation.message == warning.message
+    assert source.reads == ["start_training"]
+    assert verifier.calls == [("start_training", {"append": True})]
 
 
 def test_resource_warning_without_backend_receipt_fails_closed() -> None:

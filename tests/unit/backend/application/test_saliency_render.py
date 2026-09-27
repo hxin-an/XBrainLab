@@ -303,7 +303,7 @@ def test_cross_fold_choices_require_matching_verified_runs_and_split() -> None:
     assert len(choices) == 1
     choice = choices[0]
     assert choice.display_name == "All Folds"
-    assert choice.run_label == "Run 1 (Summary)"
+    assert choice.run_label == "Run 1"
     assert choice.source_split == "test"
     assert choice.methods == ("Gradient",)
     assert [item.display_name for item in choice.classes] == ["Left", "Right"]

@@ -7,22 +7,14 @@ import re
 import unicodedata
 from typing import Any
 
-from XBrainLab.llm.tools.application_surface import ToolCommandResult
 from XBrainLab.llm.tools.result_contract import (
+    ToolCommandResult,
     UiRequest,
     UiRequestKind,
     public_safe_result_projection,
     redact_public_text,
 )
 from XBrainLab.product_language import tool_action_label, tool_availability_label
-
-_INTERPRETATION_DECISION_SUMMARIES: dict[str, str] = {
-    "safe": "Data interpretation is ready to apply.",
-    "needs_confirmation": (
-        "Review and confirm the data interpretation before applying it."
-    ),
-    "blocked": "Data interpretation needs changes before it can be applied.",
-}
 
 
 def _safe_feedback_text(value: str, *, limit: int) -> str:
@@ -65,8 +57,6 @@ def summarize_tool_result(
         field_name="Tool summary command name",
     )
     if isinstance(result, UiRequest):
-        if result.kind is UiRequestKind.CONFIRM_MONTAGE:
-            return "Montage setup needs confirmation in the app."
         if result.kind is UiRequestKind.SWITCH_PANEL:
             return "I opened the requested workspace panel."
         return "The app needs input before this action can continue."
@@ -87,7 +77,6 @@ def summarize_tool_result(
     tool_name = result_tool_name or command_name
     label = tool_action_label(tool_name)
     text = message.strip()
-    lower_text = text.lower()
 
     if not success:
         reason = (projection.blocked_reason or projection.message or "").strip()
@@ -116,23 +105,6 @@ def summarize_tool_result(
             "The action completed, but there is nothing to show yet. Ask what is "
             "ready or choose the next workflow step."
         )
-    if "requires ui confirmation" in lower_text or "backendfacade legacy path" in (
-        lower_text
-    ):
-        return f"{label} needs confirmation in the app before it can continue."
-    # Project the typed diagnostics independently. Large state/raw-result payloads
-    # must not consume the shared public-projection budget before the user-facing
-    # decision payload is reached.
-    structured_diagnostics = public_safe_result_projection(
-        message="",
-        diagnostics=result.diagnostics,
-    ).diagnostics
-    structured_summary = _structured_success_summary(
-        result,
-        diagnostics=structured_diagnostics or projection.diagnostics,
-    )
-    if structured_summary is not None:
-        return structured_summary
     return text
 
 
@@ -188,75 +160,6 @@ def _precondition_summary(
     return f"{subject} can't {action} yet.\n\n**Required first:** {cleaned_requirement}"
 
 
-def _structured_success_summary(
-    result: ToolCommandResult,
-    *,
-    diagnostics: dict[str, Any] | None = None,
-) -> str | None:
-    """Present known typed backend payloads without exposing internal tokens."""
-    safe_diagnostics = diagnostics if diagnostics is not None else result.diagnostics
-    payload_type = safe_diagnostics.get("payload_type")
-    if payload_type != "validation_decision":
-        return None
-
-    decision_payload = safe_diagnostics.get("validation_decision")
-    if not isinstance(decision_payload, dict):
-        return "Data interpretation review is ready."
-    decision = decision_payload.get("decision")
-    if not isinstance(decision, str):
-        return "Data interpretation review is ready."
-    normalized_decision = decision.strip().lower()
-    if normalized_decision in {"needs_confirmation", "blocked"}:
-        action_summary = _interpretation_action_summary(
-            decision_payload,
-            blocked=normalized_decision == "blocked",
-        )
-        if action_summary is not None:
-            return action_summary
-    return _INTERPRETATION_DECISION_SUMMARIES.get(
-        normalized_decision,
-        "Data interpretation review is ready.",
-    )
-
-
-def _interpretation_action_summary(
-    decision_payload: dict[str, Any],
-    *,
-    blocked: bool,
-) -> str | None:
-    raw_items = decision_payload.get("action_items")
-    if not isinstance(raw_items, list):
-        return None
-    issues: list[str] = []
-    accepted_severities = (
-        {"blocked"}
-        if blocked
-        else {
-            "blocked",
-            "needs_confirmation",
-        }
-    )
-    for item in raw_items:
-        if not isinstance(item, dict):
-            continue
-        severity = str(item.get("severity") or "").strip().lower()
-        issue = _safe_feedback_text(str(item.get("issue") or ""), limit=180)
-        if severity not in accepted_severities or not issue or issue in issues:
-            continue
-        issues.append(issue)
-    if not issues:
-        return None
-    visible = issues[:3]
-    lines = [
-        "Import review is blocked:" if blocked else "Import review needs your input:",
-        *(f"- {issue}" for issue in visible),
-    ]
-    if len(issues) > len(visible):
-        lines.append(f"- {len(issues) - len(visible)} more item(s)")
-    lines.append("Use the open Import EEG Data window to review these choices.")
-    return "\n".join(lines)
-
-
 def clean_reason(reason: str) -> str:
     """Remove developer prefixes from a reason shown in chat."""
     cleaned = reason.strip()
@@ -268,7 +171,6 @@ def clean_reason(reason: str) -> str:
         "The workflow requires a file or folder path.",
     )
     cleaned = cleaned.replace("ApplicationService", "the workflow")
-    cleaned = cleaned.replace("legacy facade path", "app confirmation path")
     cleaned = cleaned.replace(
         "paths list cannot be empty.",
         "a file or folder path is required.",
@@ -291,7 +193,7 @@ def format_tool_output(
     success: bool,
     result: ToolCommandResult | UiRequest,
 ) -> str:
-    """Serialize compact tool output for the next local-model turn."""
+    """Serialize compact tool output for the internal conversation trace."""
     command_name = _require_exact_feedback_text(
         command_name,
         field_name="Tool output command name",
@@ -315,7 +217,7 @@ def format_tool_output(
 
 
 def compact_tool_payload(result: ToolCommandResult) -> dict[str, Any]:
-    """Return tool feedback compact enough for the next local-model turn."""
+    """Return bounded tool feedback for the internal conversation trace."""
     tool_name = _require_exact_feedback_text(
         result.tool_name,
         field_name="Tool result name",

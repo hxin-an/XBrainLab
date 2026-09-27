@@ -31,14 +31,8 @@ class StrictEnvelopeRecoveryTaxonomy(str, Enum):
     """Stable artifact taxonomy for one strict-envelope generation path."""
 
     FIRST_ATTEMPT_TOOL = "first_attempt_tool"
-    FIRST_ATTEMPT_BLOCKED = "first_attempt_blocked"
-    FIRST_ATTEMPT_MISSING_INPUT = "first_attempt_missing_input"
-    FIRST_ATTEMPT_ANSWER = "first_attempt_answer"
     FIRST_ATTEMPT_PLAIN_TEXT = "first_attempt_plain_text"
     RECOVERED_TOOL = "recovered_tool"
-    RECOVERED_BLOCKED = "recovered_blocked"
-    RECOVERED_MISSING_INPUT = "recovered_missing_input"
-    RECOVERED_ANSWER = "recovered_answer"
     RECOVERED_PLAIN_TEXT = "recovered_plain_text"
     FORMAT_ERROR_RETRY = "format_error_retry"
     FORMAT_RECOVERY_EXHAUSTED = "format_recovery_exhausted"
@@ -68,10 +62,6 @@ class StrictEnvelopeRecoveryDecision:
     taxonomy: StrictEnvelopeRecoveryTaxonomy
     recovery_attempts_after: int
     message: StrictEnvelopeRecoveryMessage | None = None
-
-    @property
-    def should_retry(self) -> bool:
-        return self.action is StrictEnvelopeRecoveryAction.RETRY_FORMAT
 
 
 @dataclass(frozen=True)
@@ -109,9 +99,10 @@ class StrictEnvelopeRecoveryPolicy:
             )
 
         if status is ToolEnvelopeStatus.NO_TOOL:
-            taxonomy = self._accepted_no_tool_taxonomy(
-                request.envelope,
-                recovered=attempts_used > 0,
+            taxonomy = (
+                StrictEnvelopeRecoveryTaxonomy.FIRST_ATTEMPT_PLAIN_TEXT
+                if attempts_used == 0
+                else StrictEnvelopeRecoveryTaxonomy.RECOVERED_PLAIN_TEXT
             )
             return StrictEnvelopeRecoveryDecision(
                 action=StrictEnvelopeRecoveryAction.ACCEPT_NO_TOOL,
@@ -144,31 +135,6 @@ class StrictEnvelopeRecoveryPolicy:
                 content=STRICT_TOOL_RESPONSE_PROMPT_POLICY.recovery_instructions()
             ),
         )
-
-    @staticmethod
-    def _accepted_no_tool_taxonomy(
-        envelope: ToolEnvelopeParseResult,
-        *,
-        recovered: bool,
-    ) -> StrictEnvelopeRecoveryTaxonomy:
-        """Preserve the parser's accepted response branch in artifacts."""
-        if recovered:
-            return {
-                "blocked": StrictEnvelopeRecoveryTaxonomy.RECOVERED_BLOCKED,
-                "missing_input": (
-                    StrictEnvelopeRecoveryTaxonomy.RECOVERED_MISSING_INPUT
-                ),
-                "answer": StrictEnvelopeRecoveryTaxonomy.RECOVERED_ANSWER,
-                None: StrictEnvelopeRecoveryTaxonomy.RECOVERED_PLAIN_TEXT,
-            }[envelope.decision]
-        return {
-            "blocked": StrictEnvelopeRecoveryTaxonomy.FIRST_ATTEMPT_BLOCKED,
-            "missing_input": (
-                StrictEnvelopeRecoveryTaxonomy.FIRST_ATTEMPT_MISSING_INPUT
-            ),
-            "answer": StrictEnvelopeRecoveryTaxonomy.FIRST_ATTEMPT_ANSWER,
-            None: StrictEnvelopeRecoveryTaxonomy.FIRST_ATTEMPT_PLAIN_TEXT,
-        }[envelope.decision]
 
 
 DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY = StrictEnvelopeRecoveryPolicy()

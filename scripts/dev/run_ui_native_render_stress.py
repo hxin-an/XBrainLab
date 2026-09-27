@@ -33,6 +33,11 @@ from scripts.dev.capture_config import isolated_capture_config
 
 def _native_qt_platform(platform_name: str) -> str:
     """Select the stable Qt plugin for native lifecycle coverage on each OS."""
+    if (
+        platform_name == "win32"
+        and os.environ.get("QT_QPA_PLATFORM", "").strip().lower() == "windows"
+    ):
+        return "windows"
     return "cocoa" if platform_name == "darwin" else "offscreen"
 
 
@@ -333,13 +338,6 @@ class _NativeStressApplicationRuntime(Observable):
     ) -> OwnedOperationSnapshot:
         self.render_operations_started += 1
         return self._saliency_render_work.begin(request)
-
-    def prepare_saliency_render(
-        self,
-        operation_id: str,
-        request: SaliencyRenderRequest,
-    ) -> SaliencyRenderPublication:
-        return self._saliency_render_work.prepare(operation_id, request)
 
     def prepare_saliency_render_variants(
         self,
@@ -861,11 +859,23 @@ def _exercise_one_active_3d_worker_deletion(
             ),
             timeout_seconds=3.0,
         )
-        heartbeat_before_delete = heartbeat_ticks
         view.deleteLater()
         _pump_until(app, lambda target=view: sip.isdeleted(target))
-        _pump_events(app, 12)
-        gui_remained_responsive = heartbeat_ticks > heartbeat_before_delete
+        heartbeat_after_delete = heartbeat_ticks
+        try:
+            _pump_until(
+                app,
+                lambda: (
+                    heartbeat_ticks > heartbeat_after_delete
+                    and not sip.isdeleted(owner)
+                    and owner.active_worker_count == 1
+                ),
+                timeout_seconds=1.0,
+            )
+        except RuntimeError:
+            gui_remained_responsive = False
+        else:
+            gui_remained_responsive = True
     finally:
         release.set()
 

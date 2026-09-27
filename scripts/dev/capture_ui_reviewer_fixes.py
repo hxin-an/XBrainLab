@@ -123,7 +123,7 @@ TRAINING_SETTING_RESOURCE_PREVIEW_SURFACES = {
     125: "training-setting-125-percent-resource-preview.png",
     150: "training-setting-150-percent-resource-preview.png",
 }
-LEGACY_REVIEWER_FIX_SURFACES = (
+REVIEWER_FIX_SURFACES = (
     "preprocess-no-data.png",
     "preprocess-loaded.png",
     "preprocess-loaded-psd.png",
@@ -149,17 +149,11 @@ LEGACY_REVIEWER_FIX_SURFACES = (
     "import-report-ready.png",
     "import-review-will-save.png",
     "import-review-loaded-recipe.png",
-)
-EXTENDED_REVIEW_SURFACES = (
     "saliency-setting-empty.png",
     "saliency-setting-single-method.png",
     "saliency-setting-multi-method.png",
     "data-splitting-step-2-ratio.png",
     "data-splitting-step-2-cross-validation.png",
-)
-REVIEWER_FIX_SURFACES = (
-    *LEGACY_REVIEWER_FIX_SURFACES,
-    *EXTENDED_REVIEW_SURFACES,
 )
 
 

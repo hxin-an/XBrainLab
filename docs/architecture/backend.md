@@ -1,6 +1,6 @@
 # Backend architecture
 
-最後更新：`2026-09-12`
+最後更新：`2026-09-23`
 
 這份文件說明目前 source 的 backend 邊界與責任，不是功能清單、歷史改造紀錄或本次施工的
 驗收紀錄。可對外宣稱的產品能力以 [current.md](../current.md) 為準；正在施工的範圍、
@@ -118,6 +118,19 @@ saved test record; Evaluation may use a matching primary fallback. Analysis, sta
 these named queries, preserving both artifact format and publication ownership. Evaluation, visualization
 and saliency publish detached artifacts only when their source identity is current; their numerical or
 scientific validity is outside this architecture contract.
+
+Saliency renderers consume only detached `SaliencyRenderData`, not live `EvalRecord` or `Epochs`
+objects. `SaliencyRenderPublisher` owns artifact/context validation and source identity checks;
+the render work controller prepares the requested variants and retains cancellation/commit fences.
+Renderer class resolution and numerical plotting remain presentation responsibilities, not a second
+artifact admission path. Model/data provenance, semantic artifact integrity and filesystem transport
+integrity protect different boundaries and are intentionally retained.
+
+Saliency cancellation remains owned by the training manager. The holder passes its existing
+cancellation predicate into the evaluator, which checks before work, between batches and attribution
+methods, and before result assembly. In-flight Torch/Captum calls are not preempted. The holder still
+releases the model in `finally`, and current-job checks plus batch publication prevent partial or
+cancelled updates from replacing previously published results.
 
 ## Persistence and artifact filesystem boundary
 

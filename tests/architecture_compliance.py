@@ -187,16 +187,6 @@ UI_CONTROLLER_DIRECT_CALL_ALLOWLIST = {
             frozenset({"clear_conversation"}),
         ),
         ControllerDirectCallAllowance(
-            "_resolve",
-            "self.agent_controller",
-            frozenset({"on_panel_navigation_resolved"}),
-        ),
-        ControllerDirectCallAllowance(
-            "handle_panel_navigation",
-            "self.agent_controller",
-            frozenset({"on_panel_navigation_resolved"}),
-        ),
-        ControllerDirectCallAllowance(
             "on_assistant_activity_changed",
             "self.chat_controller",
             frozenset({"set_processing"}),
@@ -373,13 +363,11 @@ ASSISTANT_RUNTIME_SELECTION_POLICY_CALLS = frozenset(
         "allowed_local_model_ids",
         "apply_runtime_selection",
         "assistant_runtime_selection",
-        "assistant_runtime_selection_from",
         "available_local_model_id",
         "default_local_model_id",
         "local_backend_ready",
         "local_backend_status_message",
         "local_model_policy_error",
-        "normalize_backend_mode",
     }
 )
 ASSISTANT_RUNTIME_STARTUP_FUNCTIONS = frozenset(
@@ -5566,7 +5554,7 @@ def check_concrete_llm_tool_result_contracts(root_dir: Path) -> list[str]:
     """Reject concrete assistant tools that expose stringly execute results."""
     violations: list[str] = []
     tools_root = root_dir / "XBrainLab" / "llm" / "tools"
-    allowed_markers = ("ToolResult", "UiRequest", "ToolExecutionResult")
+    allowed_markers = ("ToolCommandResult", "UiRequest")
 
     for implementation_dir in (tools_root / "real", tools_root / "mock"):
         if not implementation_dir.exists():
@@ -5583,7 +5571,7 @@ def check_concrete_llm_tool_result_contracts(root_dir: Path) -> list[str]:
                 if not any(marker in annotation for marker in allowed_markers):
                     violations.append(
                         f"{path.relative_to(root_dir)}:{node.lineno} concrete execute "
-                        "must return ToolResult or UiRequest, not an implicit/string result."
+                        "must return ToolCommandResult or UiRequest, not an implicit/string result."
                     )
                 for child in ast.walk(node):
                     if not isinstance(child, ast.Return):
@@ -5594,7 +5582,7 @@ def check_concrete_llm_tool_result_contracts(root_dir: Path) -> list[str]:
                     ):
                         violations.append(
                             f"{path.relative_to(root_dir)}:{child.lineno} returns raw "
-                            "text from execute; wrap it in ToolResult."
+                            "text from execute; wrap it in ToolCommandResult."
                         )
     return violations
 
@@ -5981,14 +5969,14 @@ def check_typed_montage_ui_handoff_boundary(root_dir: Path) -> list[str]:
         if not all(
             token in controller_source
             for token in (
-                "CommandName.APPLY_MONTAGE",
-                "WorkflowUiHandoffRequest.for_decision",
-                "suggested_values",
+                "build_tool_workflow_handoff(result.params)",
+                "begin_workflow_handoff(workflow_request)",
+                "workflow_ui_handoff_requested.emit(workflow_request)",
             )
         ):
             violations.append(
                 f"{MONTAGE_HANDOFF_CONTROLLER} must publish a correlated "
-                "APPLY_MONTAGE WorkflowUiHandoffRequest with suggested values."
+                "registry-validated WorkflowUiHandoffRequest through the pending owner."
             )
 
         host_source = (

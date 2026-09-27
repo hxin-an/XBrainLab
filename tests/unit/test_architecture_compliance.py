@@ -1828,10 +1828,9 @@ def open_montage_picker_dialog(self):
         "XBrainLab/llm/agent/controller.py",
         """
 def request_montage(self):
-    return WorkflowUiHandoffRequest.for_decision(
-        CommandName.APPLY_MONTAGE,
-        suggested_values=(),
-    )
+    workflow_request = build_tool_workflow_handoff(result.params)
+    self.pending_interactions.begin_workflow_handoff(workflow_request)
+    self.workflow_ui_handoff_requested.emit(workflow_request)
 """,
     )
     _write_product_file(
@@ -1859,10 +1858,9 @@ def test_montage_handoff_guard_accepts_canonical_registry_adapter(
         "XBrainLab/llm/agent/controller.py",
         """
 def request_montage(self):
-    return WorkflowUiHandoffRequest.for_decision(
-        CommandName.APPLY_MONTAGE,
-        suggested_values=(),
-    )
+    workflow_request = build_tool_workflow_handoff(result.params)
+    self.pending_interactions.begin_workflow_handoff(workflow_request)
+    self.workflow_ui_handoff_requested.emit(workflow_request)
 """,
     )
     _write_product_file(
@@ -1899,10 +1897,9 @@ def test_montage_handoff_guard_rejects_registry_without_host_adapter(
         "XBrainLab/llm/agent/controller.py",
         """
 def request_montage(self):
-    return WorkflowUiHandoffRequest.for_decision(
-        CommandName.APPLY_MONTAGE,
-        suggested_values=(),
-    )
+    workflow_request = build_tool_workflow_handoff(result.params)
+    self.pending_interactions.begin_workflow_handoff(workflow_request)
+    self.workflow_ui_handoff_requested.emit(workflow_request)
 """,
     )
     _write_product_file(
@@ -2272,8 +2269,8 @@ class DemoTool:
     violations = check_concrete_llm_tool_result_contracts(tmp_path)
 
     assert len(violations) == 2
-    assert "must return ToolResult or UiRequest" in violations[0]
-    assert "wrap it in ToolResult" in violations[1]
+    assert "must return ToolCommandResult or UiRequest" in violations[0]
+    assert "wrap it in ToolCommandResult" in violations[1]
 
 
 def test_concrete_llm_tool_result_guard_allows_typed_contract(tmp_path: Path) -> None:
@@ -2282,8 +2279,8 @@ def test_concrete_llm_tool_result_guard_allows_typed_contract(tmp_path: Path) ->
     path.write_text(
         """
 class DemoTool:
-    def execute(self, study, **kwargs) -> ToolResult:
-        return ToolResult(True, "Loaded")
+    def execute(self, study, **kwargs) -> ToolCommandResult:
+        return ToolCommandResult(True, "demo", "Loaded")
 """,
         encoding="utf-8",
     )
@@ -3156,7 +3153,7 @@ def test_agent_manager_runtime_lifecycle_has_one_focused_owner():
         "load_config",
         "activate",
         "start",
-        "switch_model",
+        "activate_persisted",
         "close",
     } <= lifecycle_methods
 
@@ -3335,7 +3332,7 @@ def test_assistant_runtime_selection_guard_rejects_duplicate_runtime_policy(
         """
 def initialize_agent(self):
     config = LLMConfig.load_from_file()
-    selection = LLMConfig.assistant_runtime_selection_from(config)
+    selection = config.assistant_runtime_selection()
     return config.available_local_model_id(selection.model_id)
 """,
     )
@@ -3361,7 +3358,7 @@ def readiness(config):
 
     assert any("worker.py" in item and "load_from_file" in item for item in violations)
     assert any(
-        "worker.py" in item and "assistant_runtime_selection_from" in item
+        "worker.py" in item and "assistant_runtime_selection" in item
         for item in violations
     )
     assert any(
@@ -5204,6 +5201,23 @@ def forged_callsite(self, presentation_id):
 
     assert len(violations) == 1
     assert "controller.consume_response_actions" in violations[0]
+
+
+@pytest.mark.parametrize("method", ["_resolve", "handle_panel_navigation"])
+def test_agent_navigation_must_not_bypass_queued_runtime_transport(tmp_path, method):
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/components/agent_manager.py",
+        f"""
+def {method}(self, request):
+    self.agent_controller.on_panel_navigation_resolved(request, True)
+""",
+    )
+
+    violations = check_ui_direct_controller_mutations(tmp_path)
+
+    assert len(violations) == 1
+    assert "controller.on_panel_navigation_resolved" in violations[0]
 
 
 def test_direct_controller_mutation_guard_rejects_named_fallback_helper_without_gate(

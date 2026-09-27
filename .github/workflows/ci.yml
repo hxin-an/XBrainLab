@@ -441,7 +441,9 @@ jobs:
         if: always()
         with:
           name: human-like-product-walkthrough
-          path: build/dev-artifacts/human-like-product
+          path: |
+            build/dev-artifacts/human-like-product
+            build/dev-artifacts/human-like-product-runs
           if-no-files-found: error
 
   platform-test:

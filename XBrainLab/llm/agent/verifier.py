@@ -1,24 +1,22 @@
 """Verification layer for validating proposed tool calls.
 
 Provides safety checks between the LLM output parser and the tool
-execution engine, including structure validation, confidence gating,
-and parameter-level semantic validation via pluggable strategies.
+execution engine, including structure validation and parameter-level
+semantic validation via pluggable strategies.
 """
 
 from __future__ import annotations
 
 import logging
 import math
-import os
 import re
 import unicodedata
 from abc import ABC, abstractmethod
 from decimal import Decimal, InvalidOperation
-from typing import Any, ClassVar, NamedTuple
+from typing import Any, NamedTuple
 
 from XBrainLab.llm.tools.application_surface import (
     AuthoritativeConfirmationParameter,
-    UserProvidedTrainingOutputDir,
     start_training_confirmation_truth,
 )
 from XBrainLab.llm.tools.result_contract import redact_public_text
@@ -383,20 +381,11 @@ class ValidatorStrategy(ABC):
 class FrequencyRangeValidator(ValidatorStrategy):
     """Reject bandpass where low_freq >= high_freq or non-positive."""
 
-    TOOLS: ClassVar[set[str]] = {
-        "apply_bandpass_filter",
-        "apply_standard_preprocess",
-    }
-
     def validate(self, name: str, params: dict[str, Any]) -> VerificationResult:
-        if name not in self.TOOLS:
+        if name != "apply_bandpass_filter":
             return VerificationResult(is_valid=True)
 
-        # Determine parameter names (standard_preprocess uses l_freq/h_freq)
-        if name == "apply_standard_preprocess":
-            lo, hi = params.get("l_freq"), params.get("h_freq")
-        else:
-            lo, hi = params.get("low_freq"), params.get("high_freq")
+        lo, hi = params.get("low_freq"), params.get("high_freq")
 
         if lo is not None and hi is not None:
             try:
@@ -469,12 +458,6 @@ class ToolSchemaValidator(ValidatorStrategy):
         param_name: str,
         value: Any,
     ) -> bool:
-        if (
-            tool_name == "configure_training"
-            and param_name == "output_dir"
-            and isinstance(value, UserProvidedTrainingOutputDir)
-        ):
-            return True
         return bool(
             tool_name == "start_training"
             and param_name in {"output_directory", "checkpoint_policy"}
@@ -684,158 +667,23 @@ class ToolSchemaValidator(ValidatorStrategy):
         return VerificationResult(is_valid=True)
 
 
-def _is_absolute_user_path(value: str) -> bool:
-    text = value.strip().strip("\"'")
-    return os.path.isabs(text) or bool(re.match(r"^[A-Za-z]:[\\/]", text))
-
-
-class PathProvenanceVerifier:
-    """Preserve training host parameters without authorizing model file access."""
-
-    def validate(
-        self,
-        name: str,
-        params: dict[str, Any],
-        *,
-        latest_user_text: str,
-        state: dict[str, Any] | None,
-    ) -> VerificationResult:
-        if name == "configure_training":
-            output_dir = params.get("output_dir")
-            if (
-                isinstance(output_dir, str)
-                and output_dir.strip()
-                and not self._user_text_contains_path(
-                    output_dir.strip(), latest_user_text
-                )
-            ):
-                return self._rejection()
-        self._apply_host_authorization(name, params, state=state)
-        return VerificationResult(is_valid=True)
-
-    @staticmethod
-    def _apply_host_authorization(
-        name: str,
-        params: dict[str, Any],
-        *,
-        state: dict[str, Any] | None,
-    ) -> None:
-        if name == "configure_training":
-            output_dir = params.get("output_dir")
-            if isinstance(output_dir, str) and not isinstance(
-                output_dir,
-                UserProvidedTrainingOutputDir,
-            ):
-                params["output_dir"] = UserProvidedTrainingOutputDir(output_dir)
-            return
-        if name != "start_training":
-            return
-
-        truth = start_training_confirmation_truth(state)
-        if truth is None:
-            return
-        params.pop("output_directory", None)
-        params.pop("checkpoint_policy", None)
-        params.update(truth.as_host_parameters())
-
-    @classmethod
-    def _user_text_contains_path(cls, path: str, text: str) -> bool:
-        candidate = path.strip().strip("\"'")
-        if not _is_absolute_user_path(candidate):
-            return False
-        if re.match(r"^[A-Za-z]:[\\/]", candidate):
-            candidate = candidate.casefold()
-            text = text.casefold()
-        for match in re.finditer(re.escape(candidate), text):
-            before = text[match.start() - 1] if match.start() else ""
-            after = text[match.end()] if match.end() < len(text) else ""
-            before_ok = not before or before.isspace() or before in "`'\"([{=:"
-            after_ok = not after or after.isspace() or after in "`'\",;)]}.?!:"
-            if before_ok and after_ok:
-                return True
-        return False
-
-    @staticmethod
-    def _rejection() -> VerificationResult:
-        return VerificationResult(
-            is_valid=False,
-            error_message=(
-                "The requested path was not provided in this turn or selected "
-                "by the current data workflow. Choose a file or folder in the "
-                "app, or paste the exact path."
-            ),
-        )
-
-
-class PlaceholderArgumentValidator(ValidatorStrategy):
-    """Reject tool calls where the model invented a placeholder path."""
-
-    PLACEHOLDER_MARKERS: ClassVar[tuple[str, ...]] = (
-        "/path/to/",
-        "/path/with/",
-        "path_to_",
-        "<path",
-        "{path",
-        "your/eeg",
-        "your_eeg",
-        "please provide",
-        "provide the absolute path",
-        "path/to/your",
-        "your/recipe",
-        "placeholder",
-        "replace_with",
-        "replace/",
-        "missing saved",
-        "current replacement",
-        "replacement eeg file path",
-        "replacement label",
-        "path/name",
-    )
-    PLACEHOLDER_EXACT: ClassVar[set[str]] = {
-        "",
-        "empty",
-        "path",
-        "path_to_dataset",
-        "path_to_eeg_dataset",
-        "path_to_recipe.json",
-    }
-
-    def validate(self, name: str, params: dict[str, Any]) -> VerificationResult:
-        path = params.get("output_dir") if name == "configure_training" else None
-        if not isinstance(path, str):
-            return VerificationResult(is_valid=True)
-        if self._looks_like_placeholder_path(path):
-            return VerificationResult(
-                is_valid=False,
-                error_message=(
-                    "Required training output directory must be an actual path "
-                    f"provided by the user, got placeholder {path!r}."
-                ),
-            )
-        text = path.strip().strip("\"'")
-        if text and not _is_absolute_user_path(text):
-            return VerificationResult(
-                is_valid=False,
-                error_message=(
-                    "Required training output directory must be an actual "
-                    "absolute path "
-                    f"provided by the user, got relative path {text!r}."
-                ),
-            )
-        return VerificationResult(is_valid=True)
-
-    @classmethod
-    def _looks_like_placeholder_path(cls, value: str) -> bool:
-        text = value.strip().strip("\"'").lower()
-        if text in cls.PLACEHOLDER_EXACT:
-            return True
-        return any(marker in text for marker in cls.PLACEHOLDER_MARKERS)
+def add_start_training_confirmation_details(
+    params: dict[str, Any],
+    *,
+    state: dict[str, Any] | None,
+) -> None:
+    """Replace model-proposed display values with authoritative training state."""
+    truth = start_training_confirmation_truth(state)
+    if truth is None:
+        return
+    params.pop("output_directory", None)
+    params.pop("checkpoint_policy", None)
+    params.update(truth.as_host_parameters())
 
 
 # Default validators applied to every tool call
 DEFAULT_VALIDATORS: list[ValidatorStrategy] = [
     FrequencyRangeValidator(),
-    PlaceholderArgumentValidator(),
 ]
 
 
@@ -873,29 +721,23 @@ def _json_enum_matches(value: Any, enum_values: list[Any]) -> bool:
 class VerificationLayer:
     """Safety guard between LLM output and tool execution.
 
-    Validates the structure of proposed tool calls, optionally gates
-    execution based on a confidence threshold, and runs pluggable
+    Validates the structure of proposed tool calls and runs pluggable
     ``ValidatorStrategy`` checks against tool parameters.
 
     Attributes:
-        confidence_threshold: Minimum confidence score (0.0-1.0) required
-            for a tool call to pass verification.
         validators: List of ``ValidatorStrategy`` instances to run on
-            each tool call after structure/confidence checks pass.
+            each tool call after structure checks pass.
 
     """
 
     def __init__(
         self,
-        confidence_threshold: float = 0.5,
         validators: list[ValidatorStrategy] | None = None,
         tool_schemas: dict[str, dict[str, Any]] | None = None,
     ):
         """Initializes the VerificationLayer.
 
         Args:
-            confidence_threshold: Minimum confidence score required for a
-                tool call to be considered valid. Defaults to ``0.5``.
             validators: Optional list of ``ValidatorStrategy``
                 instances.  Defaults to :data:`DEFAULT_VALIDATORS`.
             tool_schemas: Optional registered tool schemas used to validate
@@ -903,7 +745,6 @@ class VerificationLayer:
                 unknown tool names before execution.
 
         """
-        self.confidence_threshold = confidence_threshold
         self.validators: list[ValidatorStrategy] = []
         if tool_schemas is not None:
             self.validators.append(ToolSchemaValidator(tool_schemas))
@@ -914,21 +755,15 @@ class VerificationLayer:
     def verify_tool_call(
         self,
         tool_call: tuple[str, dict],
-        confidence: float | None = None,
     ) -> VerificationResult:
         """Verifies a proposed tool call before execution.
 
-        Checks structural validity (correct tuple format and types),
-        optionally rejects calls whose confidence falls below the
-        configured threshold, and then runs all registered
-        ``ValidatorStrategy`` checks.
+        Checks structural validity (correct tuple format and types), then
+        runs all registered ``ValidatorStrategy`` checks.
 
         Args:
             tool_call: A ``(tool_name, parameters)`` tuple representing
                 the proposed tool invocation.
-            confidence: Optional confidence score in the range 0.0-1.0.
-                If provided and below ``confidence_threshold``, the call
-                is rejected.
 
         Returns:
             A ``VerificationResult`` indicating whether the call is valid.
@@ -948,17 +783,7 @@ class VerificationLayer:
                 error_message="Tool call elements must be (str, dict)",
             )
 
-        # 2. Confidence Gating
-        if confidence is not None and confidence < self.confidence_threshold:
-            return VerificationResult(
-                is_valid=False,
-                error_message=(
-                    f"Confidence too low ({confidence:.2f} < "
-                    f"{self.confidence_threshold})"
-                ),
-            )
-
-        # 3. Parameter Validation Strategies
+        # 2. Parameter Validation Strategies
         for validator in self.validators:
             result = validator.validate(name, params)
             if not result.is_valid:

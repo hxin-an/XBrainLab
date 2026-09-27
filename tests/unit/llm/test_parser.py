@@ -17,6 +17,118 @@ def test_product_parser_accepts_one_complete_strict_envelope():
     assert result.error == ""
 
 
+@pytest.mark.parametrize("opening", ["```json\n", "```\n", "```json\r\n"])
+def test_product_parser_accepts_only_one_whole_response_json_fence(opening):
+    envelope = (
+        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+        '"parameters":{"sampling_rate":128}}'
+    )
+    raw = " \n" + opening + envelope + "\n```\n "
+
+    result = CommandParser.parse_product(raw)
+
+    assert result == CommandParser.parse_product(envelope)
+    assert result.status is ToolEnvelopeStatus.VALID
+    assert result.commands == (("resample_data", {"sampling_rate": 128}),)
+    assert raw == " \n" + opening + envelope + "\n```\n "
+
+
+def test_product_parser_preserves_fenced_response_message_and_embedded_backticks():
+    envelope = (
+        '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+        '"parameters":{"message":"The literal marker ``` is data."}}'
+    )
+    result = CommandParser.parse_product("```json\n" + envelope + "\n```")
+    assert result.status is ToolEnvelopeStatus.NO_TOOL
+    assert result.message == "The literal marker ``` is data."
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    [
+        "Prose before.\n```json\n{body}\n```",
+        "```json\n{body}\n```\nProse after.",
+        "```json\n{body}\n```\n```json\n{body}\n```",
+        "```json\n```json\n{body}\n```\n```",
+        "```python\n{body}\n```",
+        "```JSON\n{body}\n```",
+        "```json extra\n{body}\n```",
+        "````json\n{body}\n````",
+        "```json{body}```",
+        "~~~json\n{body}\n~~~",
+        "```json\n{body}",
+        "{body}\n```",
+    ],
+)
+def test_product_parser_rejects_non_whole_or_non_json_fences(wrapper):
+    body = (
+        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+        '"parameters":{"sampling_rate":128}}'
+    )
+    result = CommandParser.parse_product(wrapper.format(body=body))
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert result.commands == ()
+
+
+@pytest.mark.parametrize(
+    "body,error_fragment",
+    [
+        ('{"tool_name":"resample_data","parameters":{}}', "exactly"),
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{},"extra":true}',
+            "exactly",
+        ),
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"resample_data","tool_name":"reset_preprocessing","parameters":{}}',
+            "duplicate",
+        ),
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{"sampling_rate":128,"sampling_rate":256}}',
+            "duplicate",
+        ),
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{"sampling_rate":NaN}}',
+            "non-standard",
+        ),
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{"sampling_rate":Infinity}}',
+            "non-standard",
+        ),
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{"sampling_rate":-Infinity}}',
+            "non-standard",
+        ),
+        (
+            '[{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{}}]',
+            "top-level object",
+        ),
+        (
+            '{"workflow_stage":"invented","tool_name":"resample_data","parameters":{}}',
+            "workflow_stage",
+        ),
+        (
+            '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":',
+            "complete JSON",
+        ),
+    ],
+)
+def test_fence_normalization_preserves_strict_envelope_validation(body, error_fragment):
+    result = CommandParser.parse_product("```json\n" + body + "\n```")
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert result.commands == ()
+    assert error_fragment in result.error
+
+
+def test_fenced_multiple_objects_remain_non_executable():
+    body = (
+        '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
+        '"parameters":{"sampling_rate":128}}'
+    )
+    result = CommandParser.parse_product("```json\n" + body + "\n" + body + "\n```")
+    assert result.status is ToolEnvelopeStatus.MULTIPLE_OBJECTS
+    assert result.commands == ()
+
+
 def test_product_parser_classifies_adjacent_complete_objects_without_commands():
     result = CommandParser.parse_product(
         '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
@@ -56,7 +168,6 @@ def test_product_parser_accepts_message_only_response_contract():
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.workflow_stage == "data_loaded"
     assert result.message == "Load EEG data before training."
-    assert result.decision is None
     assert result.missing_inputs == ()
 
 
@@ -107,7 +218,6 @@ def test_product_parser_rejects_wrapped_respond_to_user_envelope():
 
     assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
     assert result.commands == ()
-    assert result.decision is None
     assert result.missing_inputs == ()
 
 
@@ -130,8 +240,6 @@ def test_product_parser_preserves_model_owned_blocked_message():
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.commands == ()
     assert result.workflow_stage == "empty"
-    assert result.decision is None
-    assert result.intent == "no_tool"
     assert result.missing_inputs == ()
     assert result.message == "Load EEG data before training."
 
@@ -147,8 +255,6 @@ def test_product_parser_preserves_model_owned_clarification_message():
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.commands == ()
     assert result.workflow_stage == "empty"
-    assert result.decision is None
-    assert result.intent == "no_tool"
     assert result.missing_inputs == ()
     assert result.message == "Please provide the EEG source path."
 
@@ -165,8 +271,6 @@ def test_product_parser_preserves_model_owned_answer_message():
     assert result.status is ToolEnvelopeStatus.NO_TOOL
     assert result.commands == ()
     assert result.workflow_stage == "preprocessed"
-    assert result.decision is None
-    assert result.intent == "no_tool"
     assert result.missing_inputs == ()
     assert result.message == "An epoch is a window around an event."
 
@@ -181,8 +285,6 @@ def test_product_parser_keeps_direct_tool_decision_compact():
 
     assert result.status is ToolEnvelopeStatus.VALID
     assert result.commands == (("scan_source", {"source_path": "/data/A.gdf"}),)
-    assert result.decision == "tool"
-    assert result.intent == ""
     assert result.missing_inputs == ()
     assert result.message == ""
 
@@ -251,7 +353,7 @@ def test_product_parser_rejects_parameter_explanation_at_action_boundary():
         ),
         (
             '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```',
-            "entire response",
+            "exactly",
         ),
         ("import_eeg_data\nBlocked reasons: None.", "JSON object"),
         (

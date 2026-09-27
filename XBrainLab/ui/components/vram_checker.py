@@ -11,16 +11,18 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from XBrainLab.llm.agent.runtime_state import AssistantRuntimeSnapshot
-from XBrainLab.ui.components.modal_presentation import AlertSeverity, show_alert
+from XBrainLab.ui.components.modal_presentation import AlertSeverity, ModalAlertDialog
 from XBrainLab.ui.panel_navigation import (
     PANEL_VISUALIZATION,
     VISUALIZATION_TAB_3D_PLOT,
 )
+from XBrainLab.ui.qt_settings import application_settings
 
 if TYPE_CHECKING:
     from typing import Any
 
 logger = logging.getLogger(__name__)
+_SUPPRESS_ADVISORY_KEY = "warnings/suppress_local_assistant_3d"
 
 
 class VRAMConflictChecker:
@@ -74,16 +76,27 @@ class VRAMConflictChecker:
 
         is_3d_active = self._is_3d_active(switching_to_3d)
         if is_local and is_3d_active:
-            show_alert(
-                self.main_window,
+            settings = application_settings()
+            if settings.value(_SUPPRESS_ADVISORY_KEY, False, type=bool):
+                return
+            dialog = ModalAlertDialog(
+                parent=self.main_window,
                 severity=AlertSeverity.WARNING,
-                title="VRAM Warning",
+                title="GPU Memory Usage",
                 message=(
-                    "This requires significant VRAM (Video Memory). "
-                    "If you experience crashes or lag, please close the 3D view "
-                    "before using the assistant."
+                    "Using the local Assistant with 3D Plot may increase "
+                    "GPU memory use."
+                    " If the app slows down, try using one at a time."
                 ),
+                opt_out_text="Don't show this again",
             )
+            if (
+                dialog.exec() == dialog.DialogCode.Accepted
+                and dialog.opt_out_checkbox is not None
+                and dialog.opt_out_checkbox.isChecked()
+            ):
+                settings.setValue(_SUPPRESS_ADVISORY_KEY, True)
+                settings.sync()
 
     # ------------------------------------------------------------------
     # Internal helpers

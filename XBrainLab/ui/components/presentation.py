@@ -146,7 +146,10 @@ class ResponsiveControlsBar(QWidget):
         super().resizeEvent(event)
         width = event.size().width() if event is not None else self.width()
         self._apply_layout(width)
-        if self._greedy_wrap and not self._settled_reflow_pending:
+        width_changed = event is None or width != event.oldSize().width()
+        # Rebuilding rows changes our height. Do not schedule another forced
+        # rebuild for that same-width resize and repeatedly clamp sibling scrolls.
+        if self._greedy_wrap and width_changed and not self._settled_reflow_pending:
             self._settled_reflow_pending = True
             QTimer.singleShot(0, self._refresh_settled_layout)
 

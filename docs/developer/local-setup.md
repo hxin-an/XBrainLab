@@ -44,7 +44,7 @@ poetry sync -E cpu
 
 這是 source/developer bootstrap，**不是 signed installer**。若電腦沒有 CPython 3.12 x64，bootstrap 會先以
 WinGet 安裝該小型 prerequisite；其後顯示計畫並只詢問一次。回答 `Y` 才會下載 Poetry 2.3.4、建立 repository-root
-`.venv`、同步相依套件及下載 local model。它不會更新 Git、覆寫 `settings.json`、安裝／更新 NVIDIA driver，或在
+`.venv`、同步相依套件及下載 local model 和 RAG embedding。它不會更新 Git、覆寫 `settings.json`、安裝／更新 NVIDIA driver，或在
 確認前建立／替換 project environment。
 
 Bootstrap 以 NVIDIA driver major version 判斷：R580 或更新版本選取 CUDA 13.0 的 `+cu130` PyTorch wheels；沒有
@@ -52,6 +52,21 @@ Bootstrap 以 NVIDIA driver major version 判斷：R580 或更新版本選取 CU
 6.82 GB，cache 目的地是 `%LOCALAPPDATA%\XBrainLab\models`；若使用者現有設定已選另一個支援模型，會保留該模型。
 `.venv` 位於 checkout root，Poetry cache、model cache 與 setup log 不在 checkout 內。首次安裝通常還需要數 GB
 給 `.venv` 和 wheel cache，請先確認磁碟空間。
+
+RAG 另使用固定版本 `sentence-transformers/all-MiniLM-L6-v2`（Apache-2.0；revision
+`1110a243fdf4706b3f48f1d95db1a4f5529b4d41`），不是另一個生成模型。Setup 顯示来源、版本、約
+0.10 GB 的下載預算與目的地；只取必要 FP32 safetensors／tokenizer／pooling 檔案，不下載其他
+權重格式或執行模型庫程式。預設 cache 是 `%LOCALAPPDATA%\XBrainLab\cache\rag\models`，
+可用 `XBRAINLAB_RAG_CACHE_DIR` 指定 RAG root（其下分 `models` 與 `vectors`）。
+生成模型與 embedding 在 setup 前後共用 20 GB 合計上限檢查；既有下載 owner 仍監控單一
+cache 的下載消耗，這不是跨程序原子磁碟配額。中斷留下的下載可重試，setup 不自行刪除 cache。
+
+成功啟動前，setup 另以 CPU／離線子程序載入真 embedding，驗證 bundled corpus、建立或
+重用本機索引並取回已知範例；失敗會終止 setup，不顯示完成或啟動 GUI。這是安裝 readiness
+smoke，不是模型準確率或論文效果證據，也不取代 `verify_rag.py --strict` 的 source-bound
+工程 gate。一般 Assistant 執行期間不會自動下載 embedding；缺 cache 時可不使用 RAG，
+但不能據此宣稱「RAG 實驗通過」。要求 RAG 的實驗須先通過離線 gate 並檢查實際 retrieval
+evidence，不能把 degraded／缺模型結果當成有效的 RAG 條件。
 
 成功後會啟動 XBrainLab。重跑同一命令會檢查並重用有效 `.venv` 和完整 model cache，而不是重複下載；若 `.venv`
 不完整，會在確認後以可辨識的 `.venv.invalid-<timestamp>` 名稱保留，再重新建立。可用的參數如下：
@@ -73,6 +88,8 @@ Bootstrap 以 NVIDIA driver major version 判斷：R580 或更新版本選取 CU
 清理只針對確定不再需要的 local state：關閉 XBrainLab 後可刪除 checkout 的 `.venv` 來重建環境；刪除
 `%LOCALAPPDATA%\XBrainLab\models` 會使下次 setup 重新下載模型；Poetry cache 與 `%LOCALAPPDATA%\XBrainLab\logs`
 可依磁碟需求清理。不要從 WSL 刪除 Windows `.venv`，也不要刪除 dataset、training outputs 或使用者設定。
+RAG cache 的 `models` 移除後須重跑 setup；`vectors` 可由保留的 embedding 與 bundled corpus
+重建。先關閉使用中的 Assistant／驗證程序，確認實際 cache 路徑後再清理，不刪整個使用者目錄。
 
 ### Windows advanced recovery：手動 Poetry
 

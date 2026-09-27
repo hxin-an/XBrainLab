@@ -18,7 +18,6 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationRequest,
     AssistantGenerationStopAcknowledgement,
     AssistantGenerationStopRequest,
-    AssistantResponseContract,
 )
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.runtime_process import LocalRuntimeLoadError
@@ -48,6 +47,8 @@ class _StreamingEngine:
         self._chunks = chunks
         self._error = error
         self.config = SimpleNamespace(timeout=1)
+        self.active_backend = self
+        self.restart_required = False
         self.requests: list[tuple[list[dict[str, object]], object]] = []
 
     def generate_stream(self, messages, *, profile):
@@ -60,22 +61,23 @@ class _StreamingEngine:
 class _OwnedProcessEngine:
     """Small process-owner seam for real RuntimeLoadThread delivery."""
 
-    uses_owned_process = True
-
     def __init__(self, config, error: Exception | None = None) -> None:
         self.config = config
         self.error = error
         self.load_calls = 0
         self.close_calls = 0
+        self.active_backend = None
 
     def load_model(self) -> None:
         self.load_calls += 1
         if self.error is not None:
             raise self.error
+        self.active_backend = object()
 
     def close(self, *, wait_timeout: float = 5.0) -> bool:
         del wait_timeout
         self.close_calls += 1
+        self.active_backend = None
         return True
 
 
@@ -91,7 +93,6 @@ def _request(
 ) -> AssistantGenerationRequest:
     request = AssistantGenerationRequest.from_messages(
         [{"role": "user", "content": text}],
-        response_contract=AssistantResponseContract.STRUCTURED_ACTION,
     )
     return request.correlated(generation_id)
 
@@ -267,7 +268,9 @@ class TestInitializeAgent:
         engine = _OwnedProcessEngine(spec.build_config())
         snapshots = []
         owned_worker.runtime_snapshot_changed.connect(snapshots.append)
-        with patch("XBrainLab.llm.agent.worker.LLMEngine", return_value=engine):
+        with patch(
+            "XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner", return_value=engine
+        ):
             owned_worker.initialize_agent(spec)
             qtbot.waitUntil(
                 lambda: owned_worker.runtime_load_thread is None, timeout=2_000
@@ -303,7 +306,7 @@ class TestInitializeAgent:
         spec = _launch_spec()
         engine = _OwnedProcessEngine(spec.build_config())
         with patch(
-            "XBrainLab.llm.agent.worker.LLMEngine", return_value=engine
+            "XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner", return_value=engine
         ) as factory:
             owned_worker.initialize_agent(spec)
             qtbot.waitUntil(
@@ -316,7 +319,7 @@ class TestInitializeAgent:
         assert launch_config.temperature == spec.settings.temperature
 
     def test_untyped_runtime_selection_fails_closed(self, worker):
-        with patch("XBrainLab.llm.agent.worker.LLMEngine") as engine:
+        with patch("XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner") as engine:
             worker.initialize_agent("invalid")
 
         engine.assert_not_called()
@@ -336,7 +339,9 @@ class TestInitializeAgent:
         engine = _OwnedProcessEngine(spec.build_config())
         logs = []
         owned_worker.log.connect(logs.append)
-        with patch("XBrainLab.llm.agent.worker.LLMEngine", return_value=engine):
+        with patch(
+            "XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner", return_value=engine
+        ):
             owned_worker.initialize_agent(spec)
             qtbot.waitUntil(
                 lambda: owned_worker.runtime_load_thread is None, timeout=2_000
@@ -347,7 +352,7 @@ class TestInitializeAgent:
 
     def test_error_on_failure(self, worker):
         with patch(
-            "XBrainLab.llm.agent.worker.LLMEngine",
+            "XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner",
             side_effect=RuntimeError("boom"),
         ):
             worker.initialize_agent(_launch_spec())
@@ -363,7 +368,7 @@ class TestInitializeAgent:
         working_engine = _OwnedProcessEngine(spec.build_config())
         with (
             patch(
-                "XBrainLab.llm.agent.worker.LLMEngine",
+                "XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner",
                 side_effect=[failed_engine, working_engine],
             ),
         ):
@@ -399,7 +404,7 @@ class TestInitializeAgent:
         snapshots = []
         owned_worker.runtime_snapshot_changed.connect(snapshots.append)
         with patch(
-            "XBrainLab.llm.agent.worker.LLMEngine",
+            "XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner",
             side_effect=[failed_engine, working_engine],
         ):
             owned_worker.initialize_agent(spec)
@@ -654,7 +659,6 @@ class TestGenerateFromMessages:
         worker.engine = MagicMock()
         request = AssistantGenerationRequest.from_messages(
             [{"role": "user", "content": "test"}],
-            response_contract=AssistantResponseContract.STRUCTURED_ACTION,
         )
 
         worker.generate_from_messages(request)
@@ -677,6 +681,7 @@ class TestGenerateFromMessages:
         worker.engine = engine
         running_thread = MagicMock()
         running_thread.isRunning.return_value = True
+        running_thread.wait.return_value = False
         worker.generation_thread = running_thread
 
         with (
@@ -690,7 +695,7 @@ class TestGenerateFromMessages:
 
         thread_class.assert_not_called()
         load_config.assert_not_called()
-        engine.switch_backend.assert_not_called()
+        engine.close.assert_not_called()
         assert worker.generation_thread is running_thread
         worker.error.emit.assert_not_called()
         worker.generation_error.emit.assert_called_once()
@@ -724,7 +729,7 @@ class TestGenerateFromMessages:
             ),
         ):
             worker.generate_from_messages(_request("test"))
-            engine.switch_backend.assert_not_called()
+            engine.close.assert_not_called()
             assert engine.config.model_name == active_model
             assert engine.config.inference_mode == "local"
             assert engine.config.temperature == 1.25
@@ -758,7 +763,7 @@ class TestGenerateFromMessages:
         ):
             worker.generate_from_messages(_request("test"))
 
-        engine.switch_backend.assert_not_called()
+        engine.close.assert_not_called()
         assert engine.config.model_name == active_model
         assert engine.active_backend is stale_backend
 
@@ -792,7 +797,7 @@ class TestGenerateFromMessages:
         ):
             worker.generate_from_messages(_request("test"))
 
-        engine.switch_backend.assert_not_called()
+        engine.close.assert_not_called()
         assert engine.config.inference_mode == "local"
         assert engine.config.active_mode == "local"
         assert engine.config.model_name == active_model
@@ -867,6 +872,7 @@ class TestOnTimeout:
     def test_emits_correlated_error_only_after_generation_thread_exits(self, worker):
         gt = MagicMock()
         gt.isRunning.return_value = True
+        gt.wait.return_value = False
         worker.generation_thread = gt
         worker._active_generation_id = 41
         worker._is_timed_out = False
@@ -960,7 +966,7 @@ class TestReinitializeAgent:
         with patch.object(LLMConfig, "save_to_file") as save_config:
             worker.reinitialize_agent(spec)
 
-        save_config.assert_called_once_with()
+        save_config.assert_not_called()  # Selection is saved only after load succeeds.
         worker.initialize_agent.assert_called_once_with(spec)
 
     def test_model_switch_is_rejected_while_generation_is_running(self, worker):
@@ -977,7 +983,7 @@ class TestReinitializeAgent:
         )
         worker.reinitialize_agent(request)
 
-        engine.switch_backend.assert_not_called()
+        engine.close.assert_not_called()
         running_thread.requestInterruption.assert_not_called()
         worker.error.emit.assert_called_once()
         assert "generation" in worker.error.emit.call_args.args[0].lower()
@@ -986,24 +992,35 @@ class TestReinitializeAgent:
         assert snapshot.activation_id == 31
         assert "generation" in snapshot.error.lower()
 
-    def test_successful_switch_publishes_terminal_for_same_activation(self, worker):
+    def test_successful_switch_publishes_terminal_for_same_activation(
+        self, owned_worker, qtbot
+    ):
         initial_spec = _launch_spec(LLMConfig.default_local_model_id())
         request = _activation_request(
             LLMConfig.default_local_model_id(),
             activation_id=32,
         )
-        engine = MagicMock()
-        engine.config = initial_spec.build_config()
-        engine.active_backend = object()
-        worker.engine = engine
-        worker._runtime_launch_spec = initial_spec
+        engine = _OwnedProcessEngine(initial_spec.build_config())
+        replacement = _OwnedProcessEngine(request.build_config())
+        owned_worker.engine = engine
+        owned_worker._runtime_launch_spec = initial_spec
+        snapshots = []
+        owned_worker.runtime_snapshot_changed.connect(snapshots.append)
 
-        with patch.object(LLMConfig, "save_to_file"):
-            worker.reinitialize_agent(request)
+        with (
+            patch.object(LLMConfig, "save_to_file", return_value=True),
+            patch(
+                "XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner",
+                return_value=replacement,
+            ),
+        ):
+            owned_worker.reinitialize_agent(request)
+            qtbot.waitUntil(
+                lambda: owned_worker.runtime_load_thread is None, timeout=2_000
+            )
 
-        snapshots = [
-            call.args[0] for call in worker.runtime_snapshot_changed.emit.call_args_list
-        ]
+        assert engine.close_calls == 1
+        assert owned_worker.engine is replacement
         assert [snapshot.phase for snapshot in snapshots] == [
             AssistantRuntimePhase.LOADING,
             AssistantRuntimePhase.READY,
@@ -1019,7 +1036,7 @@ class TestReinitializeAgent:
         engine = MagicMock()
         engine.config = initial_spec.build_config()
         engine.active_backend = object()
-        engine.switch_backend.side_effect = RuntimeError("model load failed")
+        engine.close.side_effect = RuntimeError("model close failed")
         worker.engine = engine
         worker._runtime_launch_spec = initial_spec
 
@@ -1029,45 +1046,48 @@ class TestReinitializeAgent:
         assert terminal.phase is AssistantRuntimePhase.FAILED
         assert terminal.activation_id == 33
         assert terminal.error == SAFE_UNEXPECTED_FAILURE_MESSAGE
-        assert "model load failed" not in terminal.error
+        assert "model close failed" not in terminal.error
+        assert worker.engine is engine
 
-    def test_double_switch_failure_marks_runtime_uninitialized(self, worker):
-        from XBrainLab.llm.core.engine import LLMEngine
-
-        config = LLMConfig()
-        old_model_id = config.model_name
-        old_spec = _launch_spec(old_model_id)
+    def test_replacement_load_failure_marks_runtime_uninitialized(
+        self, owned_worker, qtbot
+    ):
+        old_spec = _launch_spec()
         target_spec = replace(
             old_spec,
             requested_model_id="test/local-replacement",
             model_id="test/local-replacement",
         )
-        engine = LLMEngine(config)
-        old_backend = MagicMock()
-        old_backend.config = config
-        old_backend.load.side_effect = RuntimeError("rollback load failed")
-        engine.backends["local"] = old_backend
-        engine._backend_model_ids["local"] = old_model_id
-        engine.active_backend = old_backend
-        worker.engine = engine
-        worker._runtime_launch_spec = old_spec
-        replacement = MagicMock()
-        replacement.load.side_effect = RuntimeError("replacement load failed")
+        engine = _OwnedProcessEngine(old_spec.build_config())
+        replacement = _OwnedProcessEngine(
+            target_spec.build_config(), RuntimeError("replacement load failed")
+        )
+        owned_worker.engine = engine
+        owned_worker._runtime_launch_spec = old_spec
+        snapshots = []
+        errors = []
+        owned_worker.runtime_snapshot_changed.connect(snapshots.append)
+        owned_worker.error.connect(errors.append)
 
         with patch(
-            "XBrainLab.llm.core.backends.local.LocalBackend",
+            "XBrainLab.llm.agent.worker.LocalRuntimeProcessOwner",
             return_value=replacement,
         ):
-            worker.reinitialize_agent(target_spec)
+            owned_worker.reinitialize_agent(target_spec)
+            qtbot.waitUntil(
+                lambda: owned_worker.runtime_load_thread is None, timeout=2_000
+            )
 
-        assert worker.engine is None
-        snapshot = worker.runtime_snapshot_changed.emit.call_args.args[0]
+        assert owned_worker.engine is None
+        assert engine.close_calls == 1
+        assert replacement.close_calls == 1
+        snapshot = snapshots[-1]
         assert snapshot.phase is AssistantRuntimePhase.FAILED
         assert snapshot.initialized is False
         assert snapshot.model_id == target_spec.model_id
         assert snapshot.error == SAFE_UNEXPECTED_FAILURE_MESSAGE
         assert "previous model" not in snapshot.error
-        worker.error.emit.assert_called_once()
+        assert len(errors) == 1
 
     def test_legacy_remote_mode_is_rejected(self, worker):
         engine = MagicMock()
@@ -1076,7 +1096,7 @@ class TestReinitializeAgent:
         worker.engine = engine
         with patch.object(engine.config, "save_to_file") as mock_save:
             worker.reinitialize_agent("Gemini")
-        engine.switch_backend.assert_not_called()
+        engine.close.assert_not_called()
         mock_save.assert_not_called()
         worker.error.emit.assert_called_once()
         assert engine.config.active_mode == "local"
@@ -1089,7 +1109,7 @@ class TestReinitializeAgent:
         worker.engine = engine
         with patch.object(engine.config, "save_to_file") as mock_save:
             worker.reinitialize_agent("Local")
-        engine.switch_backend.assert_not_called()
+        engine.close.assert_not_called()
         mock_save.assert_not_called()
         worker.error.emit.assert_called_once()
         assert engine.config.active_mode == "gemini"
@@ -1101,7 +1121,7 @@ class TestReinitializeAgent:
         worker.engine = engine
         with patch.object(engine.config, "save_to_file") as mock_save:
             worker.reinitialize_agent("gpt-4o")
-        engine.switch_backend.assert_not_called()
+        engine.close.assert_not_called()
         mock_save.assert_not_called()
         worker.error.emit.assert_called_once()
         assert engine.config.active_mode == "local"
@@ -1117,7 +1137,7 @@ class TestReinitializeAgent:
         engine = MagicMock()
         old_spec = _launch_spec()
         engine.config = old_spec.build_config()
-        engine.switch_backend.side_effect = RuntimeError("fail")
+        engine.close.side_effect = RuntimeError("fail")
         worker.engine = engine
         worker._runtime_launch_spec = old_spec
         worker.reinitialize_agent(_launch_spec(LLMConfig.default_local_model_id()))

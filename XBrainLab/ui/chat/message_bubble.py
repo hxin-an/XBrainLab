@@ -271,18 +271,10 @@ class _MessageContentView(QWidget):
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(8)
-        self._compat_text_view = self._new_text_view()
-        self._compat_text_view.hide()
         self.set_content(text)
-
-    @property
-    def primary_text_view(self) -> QTextBrowser:
-        """Expose a compatibility text view for callers inspecting plain text."""
-        return self.text_views[0] if self.text_views else self._compat_text_view
 
     def set_text_style(self, style: str) -> None:
         self._text_style = style
-        self._compat_text_view.setStyleSheet(style)
         for view in self.text_views:
             view.setStyleSheet(style)
             self._sync_text_view_font(view)
@@ -293,7 +285,7 @@ class _MessageContentView(QWidget):
         if margin == self._prose_vertical_margin:
             return
         self._prose_vertical_margin = margin
-        for view in (self._compat_text_view, *self.text_views):
+        for view in self.text_views:
             view.setViewportMargins(0, margin, 0, margin)
 
     def set_content(self, text: str) -> None:
@@ -310,9 +302,8 @@ class _MessageContentView(QWidget):
                     self.code_blocks[code_index].set_streaming_text(block.text)
                     code_index += 1
             self._blocks = blocks
-            self._compat_text_view.setMarkdown(text)
             return
-        self._rebuild(blocks, text)
+        self._rebuild(blocks)
 
     def natural_content_width(self) -> float:
         widths: list[float] = []
@@ -369,7 +360,6 @@ class _MessageContentView(QWidget):
     def _rebuild(
         self,
         blocks: tuple[_MessageContentBlock, ...],
-        raw_text: str,
     ) -> None:
         common_prefix = 0
         for old, new in zip(self._blocks, blocks, strict=False):
@@ -416,7 +406,6 @@ class _MessageContentView(QWidget):
             view for view in self._views if isinstance(view, _CodeBlockView)
         ]
         self._blocks = blocks
-        self._compat_text_view.setMarkdown(raw_text)
 
     def _new_text_view(self) -> QTextBrowser:
         view = QTextBrowser(self)
@@ -463,14 +452,14 @@ class _MessageContentView(QWidget):
 class MessageBubble(QWidget):
     """A chat message bubble widget.
 
-    Contains a ``QFrame`` bubble container with a ``QTextBrowser`` for
+    Contains a ``QFrame`` with separate prose and code widgets for
     rich text display. Supports dynamic width adjustment on window resize,
     Markdown rendering, and confirmed HTTPS links.
 
     Attributes:
         is_user: Whether this bubble represents a user message.
         bubble_frame: The styled QFrame container for the bubble.
-        text_edit: The QTextBrowser displaying the message content.
+        content_view: The composite renderer for prose and code blocks.
 
     """
 
@@ -501,7 +490,6 @@ class MessageBubble(QWidget):
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.is_user = is_user
         self.bubble_frame: QFrame
-        self.text_edit: QTextBrowser
         self.content_view: _MessageContentView
         self.kind_label: QLabel
         self._raw_text = text  # Store raw text to preserve fidelity
@@ -547,7 +535,6 @@ class MessageBubble(QWidget):
         bubble_layout.addWidget(self.kind_label)
 
         self.content_view = _MessageContentView(text, self._on_link_clicked)
-        self.text_edit = self.content_view.primary_text_view
         for view in (*self.content_view.text_views, *self.content_view.code_blocks):
             view.installEventFilter(self)
         bubble_layout.addWidget(self.content_view)
@@ -641,7 +628,7 @@ class MessageBubble(QWidget):
         """Adjust bubble width based on container and content size.
 
         Calculates optimal width and height dynamically, capping at
-        80% of the container width.
+        84% of the container width, up to 720 pixels.
 
         Args:
             container_width: The available width in pixels from the
@@ -708,7 +695,6 @@ class MessageBubble(QWidget):
         """
         self._raw_text = text
         self.content_view.set_content(text)
-        self.text_edit = self.content_view.primary_text_view
         for view in (*self.content_view.text_views, *self.content_view.code_blocks):
             view.installEventFilter(self)
         if self.isVisible():

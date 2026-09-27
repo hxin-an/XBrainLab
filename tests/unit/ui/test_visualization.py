@@ -7,9 +7,9 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 from PyQt6 import sip
 from PyQt6.QtCore import QObject, Qt
-from PyQt6.QtGui import QStandardItemModel
 from PyQt6.QtWidgets import QLabel, QPushButton
 
 from XBrainLab.backend.application.saliency_render import (
@@ -22,11 +22,6 @@ from XBrainLab.backend.application.saliency_render import (
 from XBrainLab.backend.application.state import (
     SaliencyClassCoverageSnapshot,
     SaliencyMethodCoverageSnapshot,
-)
-from XBrainLab.backend.training_state_contract import (
-    PostTrainingSaliencyPhase,
-    PostTrainingSaliencyStatus,
-    TrainingRunIdentity,
 )
 
 
@@ -55,6 +50,7 @@ def _render_publication(
     *,
     method: str = "Gradient",
     class_names: tuple[str, ...] = ("left",),
+    class_keys: tuple[object, ...] | None = None,
     generation: int = 2,
 ) -> SaliencyRenderPublication:
     request = SaliencyRenderRequest(
@@ -65,11 +61,10 @@ def _render_publication(
         ),
         method=method,
     )
+    keys = tuple(range(len(class_names))) if class_keys is None else class_keys
     data = SaliencyRenderData(
         method=method,
-        saliency_by_class={
-            index: np.ones((1, 1, 3)) for index, _name in enumerate(class_names)
-        },
+        saliency_by_class={key: np.ones((1, 1, 3)) for key in keys},
         class_map=tuple(enumerate(class_names)),
         event_ids={name: index for index, name in enumerate(class_names)},
         channel_names=("C3",),
@@ -219,19 +214,21 @@ class TestSaliency3DEngine:
             engine = Saliency3DEngine()
             engine.head_mesh = MeshStub()
             engine.brain_mesh = MeshStub()
-            eval_record = MagicMock()
-            eval_record.gradient = {0: np.ones((2, 3, 5))}
-            epoch_data = MagicMock()
-            epoch_data.normalized = False
-            epoch_data.event_id = {"769": 769}
-            epoch_data.get_montage_position.return_value = [
-                (0.0, 0.0, 0.0),
-                (0.01, 0.02, 0.03),
-                (0.02, 0.03, 0.04),
-            ]
-            epoch_data.get_channel_names.return_value = ["Cz", "C3", "C4"]
-
-            channel_count = engine.process_data(eval_record, epoch_data, "769")
+            data = SaliencyRenderData(
+                method="Gradient",
+                saliency_by_class={0: np.ones((2, 3, 5))},
+                class_map=((769, "769"),),
+                event_ids={"769": 769},
+                channel_names=("Cz", "C3", "C4"),
+                channel_positions=(
+                    (0.0, 0.0, 0.0),
+                    (0.01, 0.02, 0.03),
+                    (0.02, 0.03, 0.04),
+                ),
+                sfreq=128.0,
+                tmin=0.0,
+            )
+            channel_count = engine.process_data(data, "769")
 
         assert channel_count == 3
         assert engine.pos_on_3d is not None
@@ -271,9 +268,7 @@ class TestSaliency3DEngine:
             engine = Saliency3DEngine()
             engine.head_mesh = MeshStub()
             engine.brain_mesh = MeshStub()
-            eval_record = MagicMock()
-            eval_record.gradient = {0: np.full((2, 3, 5), 99.0)}
-            eval_record.vargrad = {
+            values = {
                 0: np.array(
                     [
                         [[-1, -2, -3, -4, -5]] * 3,
@@ -282,19 +277,22 @@ class TestSaliency3DEngine:
                     dtype=float,
                 )
             }
-            epoch_data = MagicMock()
-            epoch_data.normalized = False
-            epoch_data.event_id = {"769": 769}
-            epoch_data.get_montage_position.return_value = [
-                (0.0, 0.0, 0.0),
-                (0.01, 0.02, 0.03),
-                (0.02, 0.03, 0.04),
-            ]
-            epoch_data.get_channel_names.return_value = ["Cz", "C3", "C4"]
-
+            data = SaliencyRenderData(
+                method="VarGrad",
+                saliency_by_class=values,
+                class_map=((769, "769"),),
+                event_ids={"769": 769},
+                channel_names=("Cz", "C3", "C4"),
+                channel_positions=(
+                    (0.0, 0.0, 0.0),
+                    (0.01, 0.02, 0.03),
+                    (0.02, 0.03, 0.04),
+                ),
+                sfreq=128.0,
+                tmin=0.0,
+            )
             engine.process_data(
-                eval_record,
-                epoch_data,
+                data,
                 "769",
                 method="VarGrad",
                 absolute=True,
@@ -304,6 +302,8 @@ class TestSaliency3DEngine:
         assert np.allclose(engine.saliency[0], np.array([1.5, 2.5, 3.5, 4.5, 5.5]))
         assert engine.scalar_bar_range == [0.0, 5.5]
         assert engine.cmap_name == "Reds"
+        with pytest.raises(ValueError, match="contains VarGrad, not Gradient"):
+            engine.process_data(data, "769", method="Gradient")
 
 
 # ============ SaliencyMapWidget ============
@@ -688,6 +688,55 @@ class TestSaliencyTopographicMapWidget:
 
 
 class TestSaliency3DPlotWidget:
+    def test_prepared_scene_uses_owned_plotter_and_sidebar_toggles(self, qtbot):
+        from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head import (
+            Saliency3D,
+        )
+        from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+            Saliency3DPlotWidget,
+        )
+
+        engine = SimpleNamespace(
+            cmap_name="coolwarm",
+            pos_on_3d=None,
+            head_scaled=object(),
+            update_scalars=lambda _index: None,
+        )
+        plotter = MagicMock()
+        with (
+            patch.object(Saliency3D, "prepare_engine") as prepare,
+            patch(
+                "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_head.pv.Plotter"
+            ) as new_plotter,
+        ):
+            scene = Saliency3D(
+                plotter=plotter,
+                prepared_engine=cast(Any, engine),
+                prepared_channel_count=0,
+            )
+        prepare.assert_not_called()
+        new_plotter.assert_not_called()
+        assert scene.engine is engine
+        assert scene.plotter is plotter
+        plotter.clear.assert_called_once_with()
+
+        widget = Saliency3DPlotWidget(parent=None)
+        qtbot.addWidget(widget)
+        widget._saliency_scene = scene
+        electrode = MagicMock()
+        scene.channelActor = [electrode]
+        widget._toggle_electrodes(False)
+        electrode.SetVisibility.assert_called_with(False)
+        widget._toggle_electrodes(True)
+        electrode.SetVisibility.assert_called_with(True)
+        head_actor = scene.headActor
+        widget._toggle_head(False)
+        plotter.remove_actor.assert_called_once_with(head_actor)
+        assert scene.headActor is None
+        widget._toggle_head(True)
+        assert scene.headActor is not None
+        assert plotter.add_mesh.call_count == 2
+
     def test_creates(self, qtbot):
         with patch(
             "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
@@ -894,18 +943,23 @@ class TestSaliency3DPlotWidget:
             ]
 
             widget.select_class_key("right-run")
-            widget._sync_class_selector(classes, method="Gradient")
-
-            assert [
-                widget.class_combo.itemText(index)
-                for index in range(widget.class_combo.count())
-            ] == ["motor", "motor"]
-            assert [
-                widget.class_combo.itemData(index)
-                for index in range(widget.class_combo.count())
-            ] == ["left-run", "right-run"]
-            assert widget.class_combo.currentData() == "right-run"
-            assert cast(Any, widget)._class_coverage[repr("right-run")] == classes[1]
+            widget.set_saliency_coverage(
+                SaliencyMethodCoverageSnapshot(
+                    method="Gradient", available=True, complete=True, classes=classes
+                )
+            )
+            publication = _render_publication(
+                class_names=("motor", "motor"),
+                class_keys=("left-run", "right-run"),
+            )
+            with (
+                patch.object(
+                    widget, "_interactive_3d_runtime_available", return_value=(True, "")
+                ),
+                patch.object(widget, "_start_3d_engine_worker") as start_engine,
+            ):
+                widget.update_plot(publication, False)
+            assert start_engine.call_args.args[1] == "right-run"
 
     def test_update_plot_blocks_offscreen_before_qtinteractor(self, qtbot, monkeypatch):
         monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
@@ -933,9 +987,6 @@ class TestSaliency3DPlotWidget:
             assert any(
                 "interactive OpenGL desktop session" in text for text in visible_labels
             )
-            assert w.class_combo.count() == 1
-            assert w.class_combo.currentText() == "left"
-            assert w.class_controls.isHidden()
 
     def test_3d_class_selector_restarts_render_for_selected_class(self, qtbot):
         with patch(
@@ -959,17 +1010,18 @@ class TestSaliency3DPlotWidget:
                 patch.object(w, "_start_3d_engine_worker") as start_engine,
             ):
                 w.update_plot(publication, False)
-                w.class_combo.setCurrentIndex(1)
+                w.select_class_key(1)
+                w.update_plot(publication, False)
 
-            assert w.class_combo.itemText(0) == "left"
-            assert w.class_combo.itemText(1) == "right"
             assert start_engine.call_count == 2
             assert start_engine.call_args_list[0].args[1] == 0
             assert start_engine.call_args_list[1].args[1] == 1
 
-    def test_3d_class_selector_blocks_missing_saliency_class_without_rendering(
+    @pytest.mark.parametrize("requested_key", [None, 1, "missing"])
+    def test_3d_shared_selection_falls_back_to_available_class(
         self,
         qtbot,
+        requested_key,
     ):
         with patch(
             "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
@@ -982,6 +1034,8 @@ class TestSaliency3DPlotWidget:
             qtbot.addWidget(w)
             w.set_saliency_coverage(_published_method_coverage(left=True, right=False))
             publication = _render_publication(class_names=("left", "right"))
+            if requested_key is not None:
+                w.select_class_key(requested_key)
 
             with (
                 patch.object(
@@ -992,30 +1046,12 @@ class TestSaliency3DPlotWidget:
                 patch.object(w, "_start_3d_engine_worker") as start_engine,
             ):
                 w.update_plot(publication, False)
-                assert start_engine.call_count == 1
-                assert w.class_combo.currentData() == 0
-
-                right_index = w.class_combo.findData(1)
-                assert right_index >= 0
-                right_item = cast(
-                    QStandardItemModel,
-                    w.class_combo.model(),
-                ).item(right_index)
-                assert right_item is not None
-                assert right_item.isEnabled() is False
-                assert "Recompute" in right_item.toolTip()
-
-                w.class_combo.setCurrentIndex(right_index)
 
             assert start_engine.call_count == 1
-            visible_messages = [
-                label.text()
-                for label in w.findChildren(QLabel)
-                if not label.isHidden() and label.text()
-            ]
-            assert any("Recompute saliency" in message for message in visible_messages)
+            assert start_engine.call_args.args[1] == 0
 
             w.set_saliency_coverage(_published_method_coverage(left=True, right=True))
+            w.select_class_key(1)
             with (
                 patch.object(
                     Saliency3DPlotWidget,
@@ -1025,63 +1061,9 @@ class TestSaliency3DPlotWidget:
                 patch.object(w, "_start_3d_engine_worker") as recompute_engine,
             ):
                 w.update_plot(publication, False)
-                refreshed_right = cast(
-                    QStandardItemModel,
-                    w.class_combo.model(),
-                ).item(right_index)
-                assert refreshed_right is not None
 
-            assert refreshed_right.isEnabled() is True
             assert recompute_engine.call_count == 1
-
-    def test_3d_partial_class_uses_published_running_status(self, qtbot):
-        with patch(
-            "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
-        ):
-            from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
-                Saliency3DPlotWidget,
-            )
-
-            widget = Saliency3DPlotWidget(parent=None)
-            qtbot.addWidget(widget)
-            widget.set_saliency_coverage(
-                _published_method_coverage(left=True, right=False)
-            )
-            running = PostTrainingSaliencyStatus.pending(
-                generation=2,
-                run=TrainingRunIdentity(trainer_id="trainer-3d", run_id=1),
-                training_generation=4,
-                methods=("Gradient",),
-            ).transition(
-                generation=2,
-                phase=PostTrainingSaliencyPhase.RUNNING,
-                message="Automatic saliency is being computed.",
-            )
-            widget.set_post_training_saliency_status(running)
-            publication = _render_publication(class_names=("left", "right"))
-
-            with (
-                patch.object(
-                    Saliency3DPlotWidget,
-                    "_interactive_3d_runtime_available",
-                    return_value=(True, ""),
-                ),
-                patch.object(widget, "_start_3d_engine_worker") as start_engine,
-            ):
-                widget.update_plot(publication, False)
-
-            assert start_engine.call_count == 1
-            assert start_engine.call_args.args[1] == 0
-            right_index = widget.class_combo.findData(1)
-            right_item = cast(
-                QStandardItemModel,
-                widget.class_combo.model(),
-            ).item(right_index)
-            assert right_item is not None
-            assert right_item.isEnabled() is False
-            assert right_item.toolTip() == (
-                "Gradient saliency is being computed in the background."
-            )
+            assert recompute_engine.call_args.args[1] == 1
 
     def test_update_plot_allows_wayland_when_runtime_probe_passes(
         self,
@@ -1220,7 +1202,7 @@ class TestSaliency3DPlotWidget:
             ]
             assert any("BadWindow" in text for text in visible_labels)
 
-    def test_do_3d_plot_surfaces_engine_initialization_error(self, qtbot):
+    def test_do_3d_plot_reports_scene_failure_without_raw_details(self, qtbot):
         with patch(
             "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
         ):
@@ -1231,14 +1213,8 @@ class TestSaliency3DPlotWidget:
             )
 
             class FailedSaliency:
-                init_error = "Could not map EEG event 769 to saliency results."
-                engine = None
-
                 def __init__(self, *_args, **_kwargs):
-                    pass
-
-                def get_3d_head_plot(self):
-                    return None
+                    raise RuntimeError("private scene preparation detail")
 
             class CleanupPlotter(QWidget):
                 def __init__(self):
@@ -1261,14 +1237,20 @@ class TestSaliency3DPlotWidget:
                 "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.Saliency3D",
                 FailedSaliency,
             ):
-                w._do_3d_plot(_render_publication().data, "769")
+                w._do_3d_plot(prepared_engine=object(), prepared_channel_count=1)
 
             visible_labels = [
                 label.text()
                 for label in w.findChildren(QLabel)
                 if not label.isHidden() and label.text()
             ]
-            assert any("Could not map EEG event 769" in text for text in visible_labels)
+            assert any(
+                "Saliency could not be rendered" in text for text in visible_labels
+            )
+            assert all(
+                "private scene preparation detail" not in text
+                for text in visible_labels
+            )
 
     def test_exact_3d_plot_ignores_deleted_widget(self, qtbot):
         with patch(
@@ -1294,8 +1276,8 @@ class TestSaliency3DPlotWidget:
                 w._do_3d_plot_if_alive(
                     1,
                     plotter,
-                    _render_publication().data,
-                    "769",
+                    prepared_engine=object(),
+                    prepared_channel_count=1,
                 )
 
     def test_superseded_3d_request_cannot_render_into_newer_plotter(self, qtbot):
@@ -1323,15 +1305,15 @@ class TestSaliency3DPlotWidget:
                 widget._do_3d_plot_if_alive(
                     1,
                     old_plotter,
-                    _render_publication().data,
-                    "769",
+                    prepared_engine=object(),
+                    prepared_channel_count=1,
                 )
 
             renderer.assert_not_called()
             assert widget.plotter_widget is newer_plotter
             assert widget.plot_layout.indexOf(newer_plotter) >= 0
 
-    def test_do_3d_plot_passes_method_and_absolute_to_renderer(self, qtbot):
+    def test_do_3d_plot_passes_exact_prepared_engine_to_scene(self, qtbot):
         with patch(
             "XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view.pyvistaqt"
         ):
@@ -1342,13 +1324,16 @@ class TestSaliency3DPlotWidget:
             )
 
             captured_kwargs = {}
+            engine = SimpleNamespace(
+                time_axis_seconds=np.array([-0.2, 0.0]),
+                time_range_seconds=(-0.2, 0.0),
+                initial_time_seconds=-0.2,
+            )
 
             class SuccessfulSaliency:
-                init_error = ""
-                engine = object()
-
                 def __init__(self, *_args, **kwargs):
                     captured_kwargs.update(kwargs)
+                    self.engine = kwargs["prepared_engine"]
 
                 def get_3d_head_plot(self):
                     return None
@@ -1362,14 +1347,14 @@ class TestSaliency3DPlotWidget:
                 SuccessfulSaliency,
             ):
                 w._do_3d_plot(
-                    _render_publication(method="VarGrad").data,
-                    "769",
-                    method="VarGrad",
-                    absolute=True,
+                    prepared_engine=engine,
+                    prepared_channel_count=2,
                 )
 
-        assert captured_kwargs["method"] == "VarGrad"
-        assert captured_kwargs["absolute"] is True
+        assert captured_kwargs["prepared_engine"] is engine
+        assert captured_kwargs["prepared_channel_count"] == 2
+        assert captured_kwargs["plotter"] is w.plotter_widget
+        assert w.scene_controls.isHidden() is False
 
     def test_3d_head_plot_keeps_full_pixel_stable_xyz_widget_across_repeated_builds(
         self,
@@ -1509,10 +1494,8 @@ class TestSaliency3DPlotWidget:
         saliency.engine.time_range_seconds = (-0.2, 0.72)
         saliency.engine.initial_time_seconds = -0.2
         saliency.plotter = PlotterStub()
-        saliency.channelBox = MagicMock()
-        saliency.headBox = MagicMock()
-        saliency.showChannel = True
-        saliency.showHead = True
+        saliency.show_electrodes = True
+        saliency.show_head = True
         saliency.chs = []
         cast(Any, saliency).cmap = "coolwarm"
         CameraOrientationWidgetStub.expected_interactor = (
@@ -1672,10 +1655,8 @@ class TestSaliency3DPlotWidget:
         saliency.engine.brain_scaled = object()
         saliency.engine.scalar_bar_range = [0.0, 1.0]
         saliency.plotter = PlotterStub()
-        saliency.channelBox = MagicMock()
-        saliency.headBox = MagicMock()
-        saliency.showChannel = True
-        saliency.showHead = True
+        saliency.show_electrodes = True
+        saliency.show_head = True
         saliency.chs = []
         cast(Any, saliency).cmap = "coolwarm"
 

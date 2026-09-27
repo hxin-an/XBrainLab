@@ -13,6 +13,7 @@ DATA_DIR_ENV = "XBRAINLAB_DATA_DIR"
 CACHE_DIR_ENV = "XBRAINLAB_CACHE_DIR"
 LOG_DIR_ENV = "XBRAINLAB_LOG_DIR"
 MODEL_CACHE_DIR_ENV = "XBRAINLAB_MODEL_CACHE_DIR"
+RAG_CACHE_DIR_ENV = "XBRAINLAB_RAG_CACHE_DIR"
 SETTINGS_FILENAME = "settings.json"
 
 
@@ -228,6 +229,41 @@ def user_model_cache_dir(
         )
         / "models"
     )
+
+
+def user_rag_cache_dir(
+    *,
+    environ: Mapping[str, str] | None = None,
+    system_name: str | None = None,
+    home: str | Path | None = None,
+) -> Path:
+    """Resolve the existing RAG boundary without importing ML dependencies.
+
+    RAG has its own override; general data/cache overrides historically do not
+    relocate it. Keep that contract shared by bootstrap and runtime.
+    """
+    env = os.environ if environ is None else environ
+    user_home = _user_home(home)
+    explicit = _explicit_path(env, RAG_CACHE_DIR_ENV, user_home)
+    if explicit is not None:
+        return explicit.resolve(strict=False)
+    current_system = system_name or platform.system()
+    if current_system == "Windows":
+        base = (
+            _absolute_environment_path(
+                env, "LOCALAPPDATA", user_home / "AppData" / "Local"
+            )
+            / "XBrainLab"
+            / "cache"
+        )
+    elif current_system == "Darwin":
+        base = user_home / "Library" / "Caches" / "XBrainLab"
+    else:
+        base = (
+            _absolute_environment_path(env, "XDG_CACHE_HOME", user_home / ".cache")
+            / "xbrainlab"
+        )
+    return (base / "rag").resolve(strict=False)
 
 
 def user_settings_path(

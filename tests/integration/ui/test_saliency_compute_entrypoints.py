@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
+import sys
 import time
 from pathlib import Path
 from threading import Event
 
+import numpy as np
 import pytest
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import QApplication, QDialogButtonBox
@@ -36,6 +39,27 @@ from XBrainLab.ui.dialogs.visualization.saliency_setting_dialog import (
 from XBrainLab.ui.main_window import MainWindow
 
 _TIMEOUT_MS = 120_000
+
+
+def _assert_native_3d_frame(view) -> None:
+    """Require a real interactive VTK scene and rendered pixels, not a ready flag."""
+    assert QApplication.platformName().lower() == "windows"
+    assert os.environ.get("PYVISTA_OFF_SCREEN", "").lower() == "false"
+    assert view.scene_ready
+    plotter = view.plotter_widget
+    assert plotter.isVisible()
+    assert not plotter.render_window.GetOffScreenRendering()
+    assert not plotter.render_window.GetNeverRendered()
+    scene = view._saliency_scene
+    assert scene.channel_count == 4
+    assert len(scene.channelActor) == 4
+    assert scene.headActor is not None
+    assert np.isfinite(scene.engine.saliency_cap["scalars"]).all()
+    frame = plotter.screenshot(return_img=True)
+    assert frame.ndim == 3 and frame.size > 0
+    assert np.ptp(frame.reshape(-1, frame.shape[-1]), axis=0).max() > 0, (
+        "The native 3D framebuffer contains only a uniform background"
+    )
 
 
 def _wait_for_finished_training(qtbot, service) -> None:
@@ -108,7 +132,24 @@ def _open_visualization_panel(qtbot, window):
 
 
 @pytest.mark.parametrize("first_entrypoint", ["gui", "assistant"])
-@pytest.mark.parametrize("recompute_view", ["tab_map", "tab_topo"])
+@pytest.mark.parametrize(
+    "recompute_view",
+    [
+        "tab_map",
+        "tab_topo",
+        pytest.param(
+            "tab_3d",
+            marks=[
+                pytest.mark.platform_contract,
+                pytest.mark.skipif(
+                    sys.platform != "win32"
+                    or os.environ.get("QT_QPA_PLATFORM", "").lower() != "windows",
+                    reason="Native 3D requires Windows with QT_QPA_PLATFORM=windows",
+                ),
+            ],
+        ),
+    ],
+)
 @pytest.mark.usefixtures("allow_real_modals")
 def test_real_gui_and_assistant_saliency_entrypoints_render_finite_results(
     qtbot,
@@ -119,6 +160,11 @@ def test_real_gui_and_assistant_saliency_entrypoints_render_finite_results(
     noise_method: str = "SmoothGrad",
 ) -> None:
     """Both approved entry points schedule real work and render a visible result."""
+    if recompute_view == "tab_3d":
+        # An explicitly selected native run must fail, never skip/fallback, when
+        # its interactive rendering prerequisites are unavailable.
+        assert QApplication.platformName().lower() == "windows"
+        assert os.environ.get("PYVISTA_OFF_SCREEN", "").lower() == "false"
     study = Study()
     service = get_application_service(study)
     source_path = write_training_ready_raw_fif(tmp_path / "training_ready_raw.fif")
@@ -218,6 +264,8 @@ def test_real_gui_and_assistant_saliency_entrypoints_render_finite_results(
         )
         panel.method_combo.setCurrentText(noise_method)
         _wait_for_visible_finite_saliency(qtbot, panel)
+        if recompute_view == "tab_3d":
+            _assert_native_3d_frame(panel.tab_3d)
 
         panel.method_combo.setCurrentText("Gradient * Input")
         panel.tabs.setCurrentWidget(panel.tab_spectro)
@@ -315,11 +363,15 @@ def test_real_gui_and_assistant_saliency_entrypoints_render_finite_results(
         render = getattr(render_owner, render_name)
         render_entered = Event()
         render_release = Event()
+        render_results = []
+        late_worker_results = []
 
         def held_render(*args, **kwargs):
             render_entered.set()
             assert render_release.wait(10), "GUI did not release native render barrier"
-            return render(*args, **kwargs)
+            result = render(*args, **kwargs)
+            render_results.append(result)
+            return result
 
         try:
             with monkeypatch.context() as controlled:
@@ -333,6 +385,12 @@ def test_real_gui_and_assistant_saliency_entrypoints_render_finite_results(
                 assert panel._saliency_compute_in_progress
                 operation_id = panel._saliency_operation_presenter.active_operation_id
                 assert operation_id and view in panel._native_render_bindings
+                published_record = holder.get_plans()[0].get_eval_record()
+                cancelled_scene = view._saliency_scene if view is panel.tab_3d else None
+                if view is panel.tab_3d:
+                    view._engine_worker.signals.result.connect(
+                        late_worker_results.append
+                    )
                 assert panel.cancel_saliency_btn.isVisible()
                 assert panel.cancel_saliency_btn.isEnabled()
                 qtbot.mouseClick(panel.cancel_saliency_btn, Qt.MouseButton.LeftButton)
@@ -343,13 +401,35 @@ def test_real_gui_and_assistant_saliency_entrypoints_render_finite_results(
                 )
                 render_release.set()
                 qtbot.waitUntil(panel.native_render_work_idle, timeout=10_000)
+                assert render_results, "The real renderer did not finish after cancel"
                 assert view.property("renderStatus") == "cancelled"
+                assert view not in panel._native_render_bindings
+                assert (
+                    service.get_owned_operation(operation_id).phase.value == "cancelled"
+                )
+                assert holder.get_plans()[0].get_eval_record() is published_record
+                if view is panel.tab_3d:
+                    assert len(late_worker_results) == 1
+                    assert late_worker_results[0] is render_results[-1]
+                    assert view._saliency_scene is cancelled_scene
+                    assert view._active_scene_key is None
+                    assert (
+                        cancelled_scene is None
+                        or cancelled_scene.engine is not render_results[-1][0]
+                    ), "The cancelled preparation replaced the visible scene"
         finally:
             render_release.set()
         qtbot.mouseClick(panel.compute_saliency_btn, Qt.MouseButton.LeftButton)
         _wait_for_visible_finite_saliency(qtbot, panel)
+        if view is panel.tab_3d:
+            _assert_native_3d_frame(view)
+            assert view._saliency_scene.engine is not render_results[-1][0]
+            assert view._saliency_scene is not cancelled_scene
     finally:
         window.close()
         deadline = time.monotonic() + (_TIMEOUT_MS / 1_000)
         while window.isVisible() and time.monotonic() < deadline:
             qtbot.wait(50)
+    assert not window.isVisible(), "The real workflow window did not close"
+    assert panel.native_render_work_idle()
+    assert panel.native_render_resources_finalized()

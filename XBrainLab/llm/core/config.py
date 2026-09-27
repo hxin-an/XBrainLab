@@ -13,7 +13,7 @@ import logging
 import os
 import tempfile
 import warnings
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
@@ -120,67 +120,12 @@ class LLMConfig:
             if hasattr(self, legacy_attr):
                 delattr(self, legacy_attr)
 
-    @staticmethod
-    def normalize_backend_mode(mode: str | None, fallback: str = "local") -> str:
-        """Normalize backend identifiers to the local-only product runtime."""
-        _ = mode, fallback
-        return "local"
-
-    @staticmethod
-    def normalize_ui_mode(mode: str | None, fallback: str = "local") -> str:
-        """Normalize UI mode labels to the local-only product runtime."""
-        _ = mode, fallback
-        return "local"
-
-    def ui_active_mode_key(self) -> str:
-        """Return the normalized user-facing local/Gemini mode."""
-        return self.normalize_ui_mode(self.active_mode)
-
-    def runtime_backend_mode_key(self) -> str:
-        """Return the normalized backend mode that should drive execution."""
-        return self.normalize_backend_mode(
-            self.inference_mode,
-            fallback=self.ui_active_mode_key(),
-        )
-
-    def runtime_backend_model_id(self, mode: str | None = None) -> str:
-        """Return the model identifier for the requested backend mode."""
-        return self.runtime_backend_model_id_from(self, mode)
-
-    @classmethod
-    def runtime_backend_model_id_from(
-        cls,
-        config: Any,
-        mode: str | None = None,
-    ) -> str:
-        """Return the model identifier for any config-like object."""
-        _ = mode
-        return str(getattr(config, "model_name", ""))
-
     def assistant_runtime_selection(self) -> AssistantRuntimeSelection:
         """Return the normalized runtime-selection truth for the assistant."""
-        return self.assistant_runtime_selection_from(self)
-
-    @classmethod
-    def assistant_runtime_selection_from(
-        cls,
-        config: Any,
-    ) -> AssistantRuntimeSelection:
-        """Return normalized runtime truth for any config-like object."""
-        _ = (
-            getattr(config, "inference_mode", None),
-            getattr(
-                config,
-                "active_mode",
-                None,
-            ),
-        )
-        backend_mode = "local"
-        ui_active_mode = "local"
         return AssistantRuntimeSelection(
-            backend_mode=backend_mode,
-            model_id=cls.runtime_backend_model_id_from(config, backend_mode),
-            ui_active_mode=ui_active_mode,
+            backend_mode="local",
+            model_id=self.model_name,
+            ui_active_mode="local",
         )
 
     def apply_runtime_selection(
@@ -203,16 +148,6 @@ class LLMConfig:
         self.inference_mode = resolved_backend
         self.active_mode = "local"
         return self.assistant_runtime_selection()
-
-    def to_dict(self):
-        """Converts the configuration to a plain dictionary.
-
-        Returns:
-            A dict representation of all configuration fields.
-
-        """
-        data = asdict(self)
-        return data
 
     def missing_local_runtime_packages(self) -> list[str]:
         """Return optional local-backend packages missing in this environment.

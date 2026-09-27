@@ -240,29 +240,6 @@ def test_format_retry_dispatch_uses_system_policy_and_resets_for_next_turn(
     assert correction not in dispatched[2].to_model_messages()[0]["content"]
 
 
-def test_direct_uncorrelated_user_input_fails_closed(
-    controller: LLMController,
-    qtbot,
-) -> None:
-    """Only the desktop host may admit and correlate a user turn."""
-    generation_requests = []
-    controller.sig_generate.connect(generation_requests.append)
-    history_before = deepcopy(controller.history)
-    worker = controller.worker
-
-    controller.handle_user_input("Explain alpha and beta EEG rhythms.")
-    qtbot.wait(25)
-
-    assert controller.history == history_before
-    assert controller._turn_orchestrator.host_turn_id is None
-    assert controller._turn_orchestrator.host_turn_generation is None
-    assert controller._turn_orchestrator.active_generation_id is None
-    assert controller._turn_orchestrator.active_rag_turn_id is None
-    assert controller.is_processing is False
-    assert generation_requests == []
-    assert controller.worker is worker
-
-
 def test_generation_diagnostic_observer_cannot_reenter_dispatch(
     controller: LLMController,
 ) -> None:
@@ -310,8 +287,12 @@ def test_delivery_setup_fault_unwinds_all_controller_turn_state(
             controller.metrics.start_turn()
             controller._begin_rag_turn()
             controller.assembler.add_context("stale RAG context")
-            controller._turn_orchestrator.admitted_command_name = "scan_source"
-            controller._turn_orchestrator.admitted_publication_generation = 12
+            controller._turn_orchestrator.set_active_publication(
+                PromptToolPublication(
+                    tool_names=frozenset({"import_eeg_data"}),
+                    backend_generation=12,
+                )
+            )
             controller._turn_orchestrator.active_generation_id = 91
             controller._turn_orchestrator.dispatch_phase = MagicMock()
             controller.pending_interactions._workflow_handoff = MagicMock()
@@ -336,8 +317,10 @@ def test_delivery_setup_fault_unwinds_all_controller_turn_state(
     assert controller._turn_orchestrator.waiting_for_rag is False
     assert controller._turn_orchestrator.active_rag_turn_id is None
     assert controller.assembler.context_notes == []
-    assert controller._turn_orchestrator.admitted_command_name is None
-    assert controller._turn_orchestrator.admitted_publication_generation is None
+    assert (
+        controller._turn_orchestrator.active_publication
+        == PromptToolPublication.empty()
+    )
     assert controller._turn_orchestrator.active_generation_id is None
     assert controller._turn_orchestrator.dispatch_phase is None
     assert controller._turn_orchestrator.host_turn_id is None
@@ -420,14 +403,14 @@ def test_controller_verification_flow_rejection(controller: LLMController) -> No
 
     command = ("SomeTool", {"param": 1})
     response_text = '{"tool_name":"SomeTool","parameters":{"param":1}}'
-    controller._process_tool_calls([command], response_text)
+    controller._process_tool_call(command, response_text)
 
     assert any(
         "Blocked:" in str(call.args[0]) and "Safety Violation" in str(call.args[0])
         for call in status_mock.call_args_list
     )
     last_msg = controller.history[-1]
-    assert last_msg["role"] == "user"
+    assert last_msg["role"] == "internal"
     assert "Tool Output:" in last_msg["content"]
     assert "Safety Violation" in last_msg["content"]
 

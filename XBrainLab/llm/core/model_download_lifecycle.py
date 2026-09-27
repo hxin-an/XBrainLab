@@ -229,27 +229,6 @@ def _delete_unstarted_qobject(obj: QObject | None) -> None:
             sip.delete(obj)
 
 
-class _ApplicationOwnedModelDownloader(ModelDownloader):
-    """Harden the base downloader's never-started QThread cleanup."""
-
-    def _publish_thread_start_failure(
-        self,
-        *,
-        target: ModelDownloadTarget,
-        thread: QThread,
-        worker: Any,
-        exc: Exception,
-    ) -> None:
-        super()._publish_thread_start_failure(
-            target=target,
-            thread=thread,
-            worker=worker,
-            exc=exc,
-        )
-        _delete_unstarted_qobject(worker)
-        _delete_unstarted_qobject(thread)
-
-
 class _ModelCacheCleanupWorker(QObject):
     """Run recursive deletion outside the GUI thread."""
 
@@ -387,7 +366,7 @@ class ModelDownloadLifecycle(QObject):
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
-        self._downloader = downloader or _ApplicationOwnedModelDownloader(self)
+        self._downloader = downloader or ModelDownloader(self)
         self._shutdown_requested = False
         self._active_target: ModelDownloadTarget | None = None
         self._cleanup_thread: QThread | None = None

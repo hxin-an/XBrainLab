@@ -18,8 +18,8 @@ from XBrainLab.llm.agent.verifier import VerificationResult
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
     ToolAvailabilityContext,
-    ToolCommandResult,
 )
+from XBrainLab.llm.tools.result_contract import ToolCommandResult
 
 
 @dataclass(frozen=True)
@@ -53,11 +53,8 @@ class _Verifier:
     def verify_tool_call(
         self,
         tool_call: tuple[str, dict[str, Any]],
-        *,
-        confidence: float,
     ) -> VerificationResult:
         del tool_call
-        assert confidence == 0.8
         self.calls += 1
         return VerificationResult(
             self.valid,
@@ -104,7 +101,6 @@ def _request(
     return ToolAttemptRequest(
         command_name=tool_name,
         params=params or {},
-        confidence=0.8,
         publication=PromptToolPublication(
             tool_names=frozenset({tool_name}),
             backend_generation=17,
@@ -146,25 +142,6 @@ def _training_preflight() -> dict[str, Any]:
         "preflight_fingerprint": "preflight-1",
         "scope_fingerprint": "scope-1",
         "confirmation_ttl_seconds": 120.0,
-    }
-
-
-def _saliency_preflight() -> dict[str, Any]:
-    return {
-        "schema_version": 1,
-        "risk_level": "warning",
-        "requires_confirmation": True,
-        "message": "Saliency may use most available memory.",
-        "warnings": ["Saliency may use most available memory."],
-        "confirmation_challenge": {
-            "schema_version": 1,
-            "challenge_id": "saliency-receipt-1",
-            "command_name": "saliency",
-            "scope_fingerprint": "saliency-scope-1",
-            "ttl_seconds": 120.0,
-            "configuration_fingerprint": "saliency-configuration-1",
-            "preflight_fingerprint": "saliency-preflight-1",
-        },
     }
 
 
@@ -229,31 +206,6 @@ def test_typed_clarification_admission_uses_published_direct_tool_schema() -> No
         )
         is None
     )
-
-
-def _interpretation_preflight(
-    *,
-    command_name: str,
-    candidate_id: str,
-    token: str,
-) -> dict[str, Any]:
-    return {
-        "schema_version": 1,
-        "risk_level": "warning",
-        "requires_confirmation": True,
-        "message": "Import preview may use most available memory.",
-        "warnings": ["Import preview may use most available memory."],
-        "confirmation_challenge": {
-            "schema_version": 1,
-            "challenge_id": token,
-            "command_name": command_name,
-            "scope_fingerprint": f"{command_name}-scope-1",
-            "ttl_seconds": 120.0,
-            "candidate_id": candidate_id,
-            "configuration_fingerprint": f"{command_name}-configuration-1",
-            "preflight_fingerprint": f"{command_name}-preflight-1",
-        },
-    }
 
 
 def test_schema_rejection_prevents_registry_and_confirmation_checks() -> None:
@@ -368,19 +320,18 @@ def test_missing_context_fails_closed_without_controller_fallback() -> None:
     assert registry.reads == 0
 
 
-def test_selection_policy_keeps_only_first_normalized_proposal() -> None:
+def test_admission_preserves_the_exact_proposal_and_detaches_parameters() -> None:
     coordinator, _source, _verifier, _registry = _coordinator(_context())
-    commands = [("query_state", {}), ("evaluate", {})]
+    params = {"rate": 128}
 
-    decision = coordinator.select_proposal(
-        commands,
+    command = coordinator.admit_proposal(
+        ("resample_data", params),
         execution_count=0,
         cancelled=False,
     )
 
-    assert decision.command == ("query_state", {})
-    assert decision.reason == "execute"
-    assert decision.discarded_count == 1
+    assert command == ("resample_data", {"rate": 128})
+    assert command[1] is not params
 
 
 def test_start_training_warning_creates_command_bound_resource_receipt() -> None:
@@ -448,151 +399,55 @@ def test_start_training_receipt_approval_injects_resource_confirmation() -> None
     }
 
 
-def test_saliency_receipt_approval_replays_exact_backend_challenge() -> None:
-    preflight = _saliency_preflight()
-    coordinator, _source, _verifier, _registry = _coordinator(
-        _context(tool_name="saliency")
-    )
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("confirmation_command", "saliency"),
+        ("configuration_fingerprint", ""),
+        ("preflight_fingerprint", ""),
+        ("confirmation_token", ""),
+    ],
+)
+def test_training_resource_warning_requires_complete_matching_receipt(
+    field: str, value: str
+) -> None:
+    preflight = {**_training_preflight(), field: value}
     initial = ToolAttemptDecision(
         action=ToolAttemptAction.EXECUTE,
-        command_name="saliency",
-        params={"method": "Gradient"},
-        context=_context(tool_name="saliency"),
+        command_name="start_training",
+        params={},
+        context=_context(tool_name="start_training"),
     )
     warning = ToolCommandResult.failure(
-        "saliency",
-        str(preflight["message"]),
-        command_name="saliency",
+        "start_training",
+        "Training needs resource confirmation.",
         error_type="confirmation_required",
         diagnostics={"resource_preflight": preflight},
     )
 
-    pending = coordinator.resource_confirmation(initial, warning)
+    blocked = ToolAttemptCoordinator.resource_confirmation(initial, warning)
 
-    assert pending is not None
-    assert pending.action is ToolAttemptAction.CONFIRMATION_REQUIRED
-    receipt = pending.resource_preflight_receipt
-    assert receipt is not None
-    assert receipt.challenge_id == "saliency-receipt-1"
-    assert receipt.command_name == "saliency"
-    assert receipt.configuration_fingerprint == "saliency-configuration-1"
-    assert receipt.preflight_fingerprint == "saliency-preflight-1"
-    assert coordinator.approved_params(pending) == {
-        "method": "Gradient",
-        "resource_preflight_confirmed": True,
-        "resource_preflight_token": "saliency-receipt-1",
-    }
-
-
-@pytest.mark.parametrize(
-    ("command_name", "params", "candidate_id", "token", "expected"),
-    [
-        (
-            "preview_interpretation",
-            {"choices": {"skip_labels": True}},
-            "scan-1",
-            "preview-receipt-1",
-            {
-                "scan_id": "scan-1",
-                "choices": {"skip_labels": True},
-                "resource_preflight_confirmed": True,
-                "resource_preflight_token": "preview-receipt-1",
-            },
-        ),
-        (
-            "reload_interpretation_recipe",
-            {"recipe_path": "/tmp/recipe.json"},
-            "recipe-1",
-            "reload-receipt-1",
-            {
-                "recipe_path": "/tmp/recipe.json",
-                "resource_preflight_confirmed": True,
-                "resource_preflight_token": "reload-receipt-1",
-            },
-        ),
-    ],
-)
-def test_data_interpretation_resource_warning_approval_injects_exact_receipt(
-    command_name: str,
-    params: dict[str, Any],
-    candidate_id: str,
-    token: str,
-    expected: dict[str, Any],
-) -> None:
-    coordinator, _source, _verifier, _registry = _coordinator(
-        _context(tool_name=command_name),
-    )
-    initial = ToolAttemptDecision(
-        action=ToolAttemptAction.EXECUTE,
-        command_name=command_name,
-        params=params,
-        context=_context(tool_name=command_name),
-    )
-    warning = ToolCommandResult.failure(
-        command_name,
-        "Import preview may use most available memory.",
-        command_name=command_name,
-        error_type="confirmation_required",
-        diagnostics={
-            "resource_preflight": _interpretation_preflight(
-                command_name=command_name,
-                candidate_id=candidate_id,
-                token=token,
-            ),
-        },
-    )
-
-    pending = coordinator.resource_confirmation(initial, warning)
-
-    assert pending is not None
-    assert pending.action is ToolAttemptAction.CONFIRMATION_REQUIRED
-    assert coordinator.approved_params(pending) == expected
-
-
-def test_preview_resource_receipt_rejects_different_requested_scan() -> None:
-    coordinator, _source, _verifier, _registry = _coordinator(
-        _context(tool_name="preview_interpretation"),
-    )
-    initial = ToolAttemptDecision(
-        action=ToolAttemptAction.EXECUTE,
-        command_name="preview_interpretation",
-        params={"scan_id": "scan-2", "choices": {}},
-        context=_context(tool_name="preview_interpretation"),
-    )
-    warning = ToolCommandResult.failure(
-        "preview_interpretation",
-        "Import preview may use most available memory.",
-        command_name="preview_interpretation",
-        error_type="confirmation_required",
-        diagnostics={
-            "resource_preflight": _interpretation_preflight(
-                command_name="preview_interpretation",
-                candidate_id="scan-1",
-                token="preview-receipt-1",  # noqa: S106
-            ),
-        },
-    )
-    pending = coordinator.resource_confirmation(initial, warning)
-    assert pending is not None
-
-    with pytest.raises(ValueError, match="scan does not match"):
-        coordinator.approved_params(pending)
+    assert blocked is not None
+    assert blocked.action is ToolAttemptAction.RESOURCE_CONFIRMATION_BLOCKED
+    assert blocked.resource_preflight_receipt is None
+    assert blocked.result is not None
+    assert blocked.result.error_type == "contract"
 
 
 def test_blocking_resource_result_never_becomes_approvable_confirmation() -> None:
     coordinator, _source, _verifier, _registry = _coordinator(
-        _context(tool_name="preview_interpretation"),
+        _context(tool_name="start_training"),
     )
     initial = ToolAttemptDecision(
         action=ToolAttemptAction.EXECUTE,
-        command_name="preview_interpretation",
-        params={"scan_id": "scan-1"},
-        context=_context(tool_name="preview_interpretation"),
+        command_name="start_training",
+        params={},
+        context=_context(tool_name="start_training"),
     )
     blocking = ToolCommandResult.failure(
-        "preview_interpretation",
-        "Dataset is too large to preview safely.",
-        command_name="preview_interpretation",
+        "start_training",
+        "Training exceeds available GPU memory.",
+        command_name="start_training",
         error_type="precondition",
         recoverable=True,
         diagnostics={
@@ -600,7 +455,7 @@ def test_blocking_resource_result_never_becomes_approvable_confirmation() -> Non
                 "schema_version": 1,
                 "risk_level": "blocking",
                 "requires_confirmation": False,
-                "message": "Dataset is too large to preview safely.",
+                "message": "Training exceeds available GPU memory.",
             },
         },
     )
@@ -610,16 +465,16 @@ def test_blocking_resource_result_never_becomes_approvable_confirmation() -> Non
 
 def test_resource_receipts_are_restricted_to_explicit_command_allowlist() -> None:
     coordinator, _source, _verifier, _registry = _coordinator(
-        _context(tool_name="list_files")
+        _context(tool_name="resample_data")
     )
     initial = ToolAttemptDecision(
         action=ToolAttemptAction.EXECUTE,
-        command_name="list_files",
-        params={"directory": "/data"},
-        context=_context(tool_name="list_files"),
+        command_name="resample_data",
+        params={"rate": 128},
+        context=_context(tool_name="resample_data"),
     )
     warning = ToolCommandResult.failure(
-        "list_files",
+        "resample_data",
         "Loading may use most available memory.",
         error_type="confirmation_required",
         diagnostics={

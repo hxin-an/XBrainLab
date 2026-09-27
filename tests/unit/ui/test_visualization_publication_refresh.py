@@ -177,7 +177,6 @@ def _widget_factory(parent=None):
     widget.show_error = MagicMock()
     widget.show_message = MagicMock()
     widget.set_saliency_coverage = MagicMock()
-    widget.set_post_training_saliency_status = MagicMock()
     widget.update_plot = MagicMock()
     widget.select_class_key = MagicMock()
     widget.invalidate_render_publication = MagicMock()
@@ -324,12 +323,27 @@ def test_visualization_discards_a_summary_crossed_by_terminal_publication(
     )
 
 
-def test_visualization_summary_query_keeps_qt_and_selectors_responsive(qtbot) -> None:
+@pytest.mark.parametrize("has_results", [False, True])
+def test_visualization_summary_query_keeps_qt_and_selectors_responsive(
+    qtbot, has_results
+) -> None:
     """A held summary query must not occupy the Qt event loop."""
     port = _VisualizationApplicationPort()
+    port.publication = _publication(
+        generation=4,
+        revision=4,
+        visualization=VisualizationStateSnapshot(
+            saliency_coverage=[SaliencyRunCoverageSnapshot(plan_index=0, run_index=0)]
+            if has_results
+            else [],
+        ),
+    )
+    panel = _panel(qtbot, port)
+    with patch.object(panel, "on_update"):
+        _prime_panel(panel, qtbot)
+        panel.refresh_combos()
     port.visualize_gate = Event()
     port.visualize_entered = Event()
-    panel = _panel(qtbot, port)
     ticks: list[bool] = []
 
     panel._refresh_application_query(view="Saliency Map")
@@ -338,7 +352,8 @@ def test_visualization_summary_query_keeps_qt_and_selectors_responsive(qtbot) ->
     qtbot.waitUntil(lambda: bool(ticks), timeout=500)
     assert not port.visualize_gate.is_set()
     assert application_command_registry().active_count(panel) > 0
-    assert panel.plan_combo.isEnabled()
+    assert panel.plan_combo.count() == int(has_results)
+    assert panel.plan_combo.isEnabled() is has_results
     assert panel.run_combo.isEnabled()
     port.visualize_gate.set()
     qtbot.waitUntil(lambda: application_command_registry().active_count(panel) == 0)

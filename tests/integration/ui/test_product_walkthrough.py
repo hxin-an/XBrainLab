@@ -110,6 +110,8 @@ class _ReadyAssistantIntegrationRuntime(QObject):
     controller_created = pyqtSignal(object)
     runtime_snapshot_changed = pyqtSignal(object)
     turn_finished = pyqtSignal(object)
+    deactivation_finished = pyqtSignal(bool, str)
+    _turn_requested = pyqtSignal(object)
 
     def __init__(self, controller: LLMController) -> None:
         super().__init__()
@@ -125,7 +127,14 @@ class _ReadyAssistantIntegrationRuntime(QObject):
         self.delivery_phases: list[AssistantTurnDeliveryPhase] = []
         self._started = False
         self._next_turn_id = 1
+        self._turn_requested.connect(
+            self._deliver_turn, Qt.ConnectionType.QueuedConnection
+        )
         controller.turn_finished.connect(self.turn_finished.emit)
+
+    def _deliver_turn(self, request: AssistantTurnRequest) -> None:
+        delivery = self.controller.handle_user_turn(request)
+        self.delivery_phases.append(delivery.phase)
 
     def replay_runtime_snapshot(self) -> None:
         self.runtime_snapshot_changed.emit(self.current)
@@ -149,24 +158,17 @@ class _ReadyAssistantIntegrationRuntime(QObject):
         )
         self._next_turn_id += 1
         self.submissions.append(text)
-        delivery = self.controller.handle_user_turn(
+        self._turn_requested.emit(
             AssistantTurnRequest(
                 correlation=correlation,
                 text=text,
             )
         )
-        self.delivery_phases.append(delivery.phase)
-        accepted = delivery.phase is AssistantTurnDeliveryPhase.ACCEPTED
         return RuntimeCommandAdmissionResult(
             command_name="submit",
-            status=(
-                RuntimeCommandAdmissionStatus.ACCEPTED
-                if accepted
-                else RuntimeCommandAdmissionStatus.REJECTED
-            ),
-            message=delivery.message,
-            turn_id=correlation.turn_id if accepted else None,
-            generation=correlation.generation if accepted else None,
+            status=RuntimeCommandAdmissionStatus.ACCEPTED,
+            turn_id=correlation.turn_id,
+            generation=correlation.generation,
         )
 
     def resolve_ui_handoff(self, resolution) -> RuntimeCommandAdmissionResult:
@@ -496,13 +498,15 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
     assert panel.send_btn.icon().isNull() is True
     assert panel.send_btn.accessibleName() == "Send request"
 
-    panel.append_message("user", "hello from a product user")
-    user_bubble = panel._latest_layout_message_bubble()
-    assert user_bubble is not None
+    manager.chat_controller.add_user_message("hello from a product user")
+    bubbles = panel.transcript_view.message_bubbles()
+    assert len(bubbles) == 1
+    user_bubble = bubbles[0]
     assert user_bubble.get_text().endswith("user")
-    assert user_bubble.text_edit.toPlainText().endswith("user")
+    assert user_bubble.content_view.text_views[0].toPlainText().endswith("user")
     assert (
-        user_bubble.text_edit.document().textWidth() < user_bubble.bubble_frame.width()
+        user_bubble.content_view.text_views[0].document().textWidth()
+        < user_bubble.bubble_frame.width()
     )
 
     submission = manager._assistant_turn_state.begin_submission()
@@ -515,7 +519,7 @@ def test_assistant_product_click_through_layout(test_app, qtbot):
             submission,
             correlation,
         )
-        is not None
+        is True
     )
     manager._handle_response_presentation(
         AssistantResponsePresentation(
@@ -609,11 +613,13 @@ def test_assistant_dock_restores_product_width_across_states_and_reopens(
             assert panel.width() == 420, phase
 
         panel.set_runtime_state("ready")
-        panel.set_processing_state(True)
+        manager.chat_controller.set_processing(True)
         qtbot.wait(10)
+        assert panel.is_processing is True
         assert dock.width() == 420
         assert panel.width() == 420
-        panel.set_processing_state(False)
+        manager.chat_controller.set_processing(False)
+        assert panel.is_processing is False
 
         test_app.resizeDocks([dock], [320], Qt.Orientation.Horizontal)
         qtbot.waitUntil(lambda: dock.width() == 420, timeout=2_000)
@@ -646,11 +652,19 @@ def test_assistant_dock_width_stays_within_responsive_product_bounds(
     panel = manager.chat_panel
     dock.show()
     qtbot.waitUntil(dock.isVisible, timeout=2_000)
+    # Opening the dock first preserves the remembered workflow width asynchronously.
+    # Measure manual resizes only after that initial shell adjustment has settled.
+    qtbot.waitUntil(
+        lambda: not test_app._assistant_dock_resize_pending
+        and not test_app._assistant_dock_expand_pending,
+        timeout=2_000,
+    )
 
     observed_widths = []
     for window_width in (760, 820, 860, 1280):
         test_app.resize(window_width, 800)
         qtbot.wait(50)
+        assert test_app.width() == window_width
         observed_widths.append(dock.width())
         assert 320 <= dock.width() <= 420
         assert panel.width() == dock.width()
@@ -786,7 +800,7 @@ def test_model_import_action_opens_typed_product_surface_directly(
 
     try:
         manager.init_ui()
-        assert manager.start_system() is None
+        assert runtime.start()
         controller.workflow_ui_handoff_requested.connect(handoff_requests.append)
         manager.chat_dock.show()
         qtbot.waitUntil(manager.chat_dock.isVisible, timeout=2_000)

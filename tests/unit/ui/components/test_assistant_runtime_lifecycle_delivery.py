@@ -12,6 +12,10 @@ from XBrainLab.llm.agent.confirmation import (
     AgentConfirmationResolution,
     AgentConfirmationResolutionStatus,
 )
+from XBrainLab.llm.agent.response_presentation import (
+    AssistantPanelNavigationRequest,
+    AssistantPanelTarget,
+)
 from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
     AssistantRuntimeSnapshot,
@@ -113,13 +117,20 @@ class _TerminalFallbackController(_LifecycleController):
             self.active_turn = None
 
 
-class _DeliveryDispatcher:
+class _DeliveryDispatcher(QObject):
+    cleanup_finished = pyqtSignal(bool, str)
+    turn_delivery_acknowledged = pyqtSignal(object)
+
     def __init__(self) -> None:
+        super().__init__()
         self.controller: _LifecycleController | None = None
         self.outcomes: dict[str, bool | None] = {}
         self.calls: list[str] = []
         self.turn_requests: list[AssistantTurnRequest] = []
         self.debug_requests: list[AssistantDebugToolRequest] = []
+        self.navigation_resolutions: list[
+            tuple[AssistantPanelNavigationRequest, bool]
+        ] = []
 
     def _deliver(self, command_name: str) -> bool | None:
         self.calls.append(command_name)
@@ -163,18 +174,16 @@ class _DeliveryDispatcher:
         self.debug_requests.append(request)
         return self._deliver("debug")
 
+    def resolve_panel_navigation(
+        self, request: AssistantPanelNavigationRequest, *, success: bool
+    ) -> bool | None:
+        self.navigation_resolutions.append((request, success))
+        return self._deliver("resolve_panel_navigation")
+
     def close(self) -> bool:
         if self.controller is not None:
             self.controller.close()
         return True
-
-
-class _AcknowledgingDeliveryDispatcher(QObject, _DeliveryDispatcher):
-    turn_delivery_acknowledged = pyqtSignal(object)
-
-    def __init__(self) -> None:
-        QObject.__init__(self)
-        _DeliveryDispatcher.__init__(self)
 
 
 class _LaunchResolver:
@@ -256,6 +265,72 @@ def test_rejected_submit_releases_the_reserved_turn() -> None:
     assert lifecycle.turn_in_flight is False
 
 
+@pytest.mark.parametrize("success", [True, False])
+def test_panel_navigation_delivers_current_turn_outcome(success: bool) -> None:
+    dispatcher = _DeliveryDispatcher()
+    lifecycle, _controller = _ready_lifecycle(dispatcher)
+    admission = lifecycle.submit("Show evaluation")
+    request = AssistantPanelNavigationRequest(
+        AssistantPanelTarget.EVALUATION, correlation=admission.correlation
+    )
+
+    result = lifecycle.resolve_panel_navigation(request, success=success)
+
+    assert result.accepted
+    assert dispatcher.navigation_resolutions == [(request, success)]
+    assert lifecycle.turn_in_flight
+
+
+@pytest.mark.parametrize("delivered", [False, None])
+def test_panel_navigation_rejected_delivery_is_not_accepted(
+    delivered: bool | None,
+) -> None:
+    dispatcher = _DeliveryDispatcher()
+    lifecycle, _controller = _ready_lifecycle(dispatcher)
+    admission = lifecycle.submit("Show evaluation")
+    dispatcher.outcomes["resolve_panel_navigation"] = delivered
+    request = AssistantPanelNavigationRequest(
+        AssistantPanelTarget.EVALUATION, correlation=admission.correlation
+    )
+
+    result = lifecycle.resolve_panel_navigation(request, success=True)
+
+    assert result.status is RuntimeCommandAdmissionStatus.REJECTED
+    assert dispatcher.navigation_resolutions == [(request, True)]
+
+
+@pytest.mark.parametrize("state", ["uncorrelated", "stale", "finished", "closed"])
+def test_panel_navigation_cannot_complete_an_unowned_turn(state: str) -> None:
+    dispatcher = _DeliveryDispatcher()
+    lifecycle, controller = _ready_lifecycle(dispatcher)
+    admission = lifecycle.submit("Show evaluation")
+    correlation = admission.correlation
+    assert correlation is not None
+    if state == "uncorrelated":
+        request_correlation = None
+    elif state == "stale":
+        request_correlation = AssistantTurnCorrelation(
+            generation=correlation.generation, turn_id=correlation.turn_id + 1
+        )
+    else:
+        request_correlation = correlation
+        if state == "finished":
+            controller.turn_finished.emit(
+                AssistantTurnTerminal(correlation=correlation, outcome="completed")
+            )
+            assert lifecycle.submit("A newer request").accepted
+        else:
+            assert lifecycle.close()
+    request = AssistantPanelNavigationRequest(
+        AssistantPanelTarget.EVALUATION, correlation=request_correlation
+    )
+
+    result = lifecycle.resolve_panel_navigation(request, success=True)
+
+    assert not result.accepted
+    assert dispatcher.navigation_resolutions == []
+
+
 def test_submit_preserves_each_natural_request_without_host_scope_routing() -> None:
     dispatcher = _DeliveryDispatcher()
     lifecycle, controller = _ready_lifecycle(dispatcher)
@@ -292,7 +367,7 @@ def test_submit_leaves_natural_request_meaning_to_the_model() -> None:
 
 
 def test_delivery_error_releases_only_its_correlated_turn() -> None:
-    dispatcher = _AcknowledgingDeliveryDispatcher()
+    dispatcher = _DeliveryDispatcher()
     lifecycle, controller = _ready_lifecycle(dispatcher)
     terminals: list[AssistantTurnTerminal] = []
     lifecycle.turn_finished.connect(terminals.append)
@@ -347,7 +422,7 @@ def test_delivery_error_releases_only_its_correlated_turn() -> None:
 def test_terminal_before_delivery_ack_is_not_reported_as_stale(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    dispatcher = _AcknowledgingDeliveryDispatcher()
+    dispatcher = _DeliveryDispatcher()
     lifecycle, controller = _ready_lifecycle(dispatcher)
 
     admission = lifecycle.submit("request resolved synchronously")
@@ -373,7 +448,7 @@ def test_terminal_before_delivery_ack_is_not_reported_as_stale(
 
 
 def test_delivery_timeout_fences_retry_until_correlated_terminal() -> None:
-    dispatcher = _AcknowledgingDeliveryDispatcher()
+    dispatcher = _DeliveryDispatcher()
     lifecycle, controller = _ready_lifecycle(dispatcher)
     terminals: list[AssistantTurnTerminal] = []
     lifecycle.turn_finished.connect(terminals.append)
@@ -406,7 +481,7 @@ def test_delivery_timeout_fences_retry_until_correlated_terminal() -> None:
 
 
 def test_async_close_disarms_delivery_watchdog_until_shutdown_terminal() -> None:
-    dispatcher = _AcknowledgingDeliveryDispatcher()
+    dispatcher = _DeliveryDispatcher()
     lifecycle, _controller = _ready_lifecycle(dispatcher)
     terminals: list[AssistantTurnTerminal] = []
     lifecycle.turn_finished.connect(terminals.append)
@@ -515,7 +590,7 @@ def test_rejected_model_switch_enters_observable_recovery_state() -> None:
     )
     dispatcher.outcomes["set_model"] = None
 
-    result = lifecycle.switch_model("test/local-secondary")
+    result = lifecycle.activate(LLMConfig(model_name="test/local-secondary"))
 
     assert result.status is RuntimeActivationStatus.UNAVAILABLE
     assert lifecycle.current.phase is AssistantRuntimePhase.FAILED

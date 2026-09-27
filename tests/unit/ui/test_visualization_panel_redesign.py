@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from threading import Event
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from PyQt6.QtCore import QTimer, pyqtSignal
+from PyQt6.QtCore import QSignalBlocker, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QGridLayout,
     QGroupBox,
+    QLabel,
     QMainWindow,
     QWidget,
 )
@@ -74,7 +76,11 @@ def _info_panel_factory(*args, **kwargs):
     return QWidget()
 
 
-def _make_panel(qtbot, *, parent=None):
+def _make_panel(qtbot, *, parent=None, real_3d=False):
+    from XBrainLab.ui.panels.visualization.saliency_views.plot_3d_view import (
+        Saliency3DPlotWidget,
+    )
+
     fallback_port = Observable()
     fallback_runtime = cast(Any, fallback_port)
     fallback_runtime.get_view_publication = MagicMock(return_value=None)
@@ -82,12 +88,6 @@ def _make_panel(qtbot, *, parent=None):
     fallback_runtime.get_saliency_render = MagicMock(return_value=None)
     fallback_runtime.begin_saliency_render = MagicMock(
         side_effect=lambda _request: SimpleNamespace(operation_id="render-operation")
-    )
-    fallback_runtime.prepare_saliency_render = MagicMock(
-        side_effect=lambda operation_id, request: replace(
-            _render_publication_for_request(None, request),
-            operation_id=operation_id,
-        )
     )
     fallback_runtime.prepare_saliency_render_variants = MagicMock(
         side_effect=lambda operation_id, request, *, include_normalized: (
@@ -145,7 +145,7 @@ def _make_panel(qtbot, *, parent=None):
         ),
         patch(
             "XBrainLab.ui.panels.visualization.panel.Saliency3DPlotWidget",
-            side_effect=_widget_factory,
+            side_effect=Saliency3DPlotWidget if real_3d else _widget_factory,
         ),
     ):
         from XBrainLab.ui.panels.visualization.panel import (
@@ -223,26 +223,17 @@ def test_visualization_controls_keep_saliency_before_method_and_transforms(
     assert positions == sorted(positions)
 
 
-@pytest.mark.parametrize(
-    ("control_width", "expected_mode"),
-    (
-        (1200, "wide"),
-        (800, "wide"),
-        (720, "medium"),
-        (650, "narrow"),
-        (500, "narrow"),
-    ),
-)
+@pytest.mark.parametrize("control_width", (1200, 800, 720, 650, 500))
 def test_visualization_controls_use_responsive_layout_modes(
     qtbot,
     control_width,
-    expected_mode,
 ) -> None:
     panel = _make_panel(qtbot)
     panel.ctrl_bar.resize(control_width, 120)
     panel._refresh_control_layout_for_width()
 
-    assert panel._controls_layout_mode == expected_mode
+    # The breakpoint depends on the active font/style, not a fixed pixel guess.
+    assert panel.ctrl_layout.minimumSize().width() <= control_width
     normalize_index = panel.ctrl_layout.indexOf(panel.normalize_check)
     absolute_index = panel.ctrl_layout.indexOf(panel.abs_check)
     normalize_row, normalize_column, _, _ = panel.ctrl_layout.getItemPosition(
@@ -279,6 +270,107 @@ def test_visualization_controls_use_rendered_bar_width_without_overlap(qtbot) ->
         assert panel.ctrl_bar.rect().contains(left.geometry())
         for right in visible_controls[index + 1 :]:
             assert not left.geometry().intersects(right.geometry())
+
+
+@pytest.mark.parametrize("sidebar_visible", (True, False))
+@pytest.mark.parametrize("embedded", (True, False))
+def test_visualization_controls_remain_readable_through_live_resize(
+    qtbot,
+    sidebar_visible,
+    embedded,
+) -> None:
+    from XBrainLab.ui.styles.stylesheets import Stylesheets
+
+    host = QWidget()
+    panel = _make_panel(SimpleNamespace(addWidget=lambda _widget: None))
+    panel.setStyleSheet(Stylesheets.MAIN_WINDOW)
+    panel.sidebar.setVisible(sidebar_visible)
+    panel.on_update = lambda: None
+    selectors = (
+        panel.plan_combo,
+        panel.run_combo,
+        panel.method_combo,
+        panel.saliency_combo,
+    )
+    for combo, text in zip(
+        selectors,
+        ("Fold 2", "Run 2", "SmoothGrad_Squared", "right hand imagery"),
+        strict=True,
+    ):
+        with QSignalBlocker(combo):
+            combo.clear()
+            combo.addItem(text, text)
+            combo.setCurrentIndex(0)
+    selected = tuple(combo.currentData() for combo in selectors)
+    if embedded:
+        panel.setParent(host)
+    qtbot.addWidget(host if embedded else panel)
+    host.resize(1550, 760)
+    host.show()
+    screen = panel.screen().availableGeometry()
+    height = min(600, screen.height() - 80)
+    width_limit = 1500 if embedded else screen.width() - 80
+    panel.resize(min(1500, width_limit), height)
+    panel.show()
+    qtbot.waitExposed(panel)
+    # Exercise layout delivery, not manual mode selection or a forced refresh.
+    for requested_width in (1500, 1180, 1080, 1000, 900, 800, 760, 900, 1180, 1500):
+        # Native Windows bounds top-level windows to the monitor at high DPI.
+        # Embedded panels still cover the full wide layout at every DPI.
+        width = min(requested_width, width_limit)
+        panel.resize(width, height)
+        qtbot.wait(25)
+        assert panel.width() == width, (
+            width,
+            panel.width(),
+            panel._controls_layout_mode,
+        )
+        for tab in (0, 1, 2):
+            panel.tabs.setCurrentIndex(tab)
+            qtbot.wait(10)
+            assert tuple(combo.currentData() for combo in selectors) == selected
+            labels = (
+                panel.plan_label,
+                panel.run_label,
+                panel.saliency_view_label,
+                panel.method_label,
+                panel.normalize_check,
+                panel.abs_check,
+            )
+            controls = [
+                w
+                for w in (
+                    *labels,
+                    panel.plan_combo,
+                    panel.run_combo,
+                    panel.saliency_combo,
+                    panel.method_combo,
+                )
+                if not w.isHidden()
+            ]
+            context = (
+                width,
+                panel.width(),
+                panel.ctrl_bar.width(),
+                panel._controls_layout_mode,
+                tab,
+            )
+            for label in labels:
+                if not label.isHidden():
+                    assert label.width() >= label.minimumSizeHint().width(), (
+                        context,
+                        label.text(),
+                        label.width(),
+                        label.minimumSizeHint().width(),
+                    )
+            for index, control in enumerate(controls):
+                assert panel.ctrl_bar.rect().contains(control.geometry()), context
+                for other in controls[index + 1 :]:
+                    assert not control.geometry().intersects(other.geometry()), (
+                        context,
+                        control,
+                        other,
+                    )
 
 
 def test_medium_visualization_controls_do_not_include_reset_action(
@@ -832,7 +924,9 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     assert not any(
         group.title() == "EXPLANATION PLOTS" for group in panel.findChildren(QGroupBox)
     )
-    assert panel.plan_combo.itemText(0) == "Select a fold"
+    assert panel.plan_combo.count() == 0
+    assert panel.plan_combo.placeholderText() == "Select a fold"
+    assert not panel.plan_combo.isEnabled()
     assert panel.method_combo.count() == 1
     assert panel.method_combo.currentText() == "No results"
     assert panel.method_combo.isEnabled() is False
@@ -1220,7 +1314,7 @@ def test_visualization_controls_stay_in_a_compact_narrow_grid(qtbot):
 def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
     panel = _make_panel(qtbot)
     panel.abs_check.setChecked(True)
-    panel.resize(1180, 720)
+    panel.resize(1500, 720)
     panel.show()
     qtbot.wait(50)
 
@@ -1492,11 +1586,11 @@ def test_visualization_panel_populates_controls_for_published_runs(qtbot):
         ),
     )
 
-    assert panel.plan_combo.count() == 3
+    assert panel.plan_combo.count() == 2
     assert panel.plan_combo.currentText() == "Fold 1 (Subject-1-1)"
     assert panel.run_combo.count() == 2
 
-    panel.plan_combo.setCurrentIndex(2)
+    panel.plan_combo.setCurrentIndex(panel.plan_combo.findText("Fold 2"))
 
     assert panel.plan_combo.currentText() == "Fold 2"
     assert panel.run_combo.count() == 1
@@ -1531,7 +1625,7 @@ def test_visualization_panel_dispatches_default_run_when_fold_changes(qtbot):
         "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
         side_effect=_prepare_render_variants,
     ):
-        panel.plan_combo.setCurrentIndex(2)
+        panel.plan_combo.setCurrentIndex(panel.plan_combo.findText("Fold 2"))
         qtbot.waitUntil(
             lambda: current_widget.update_plot.call_count >= 1
             and panel.native_render_work_idle(),
@@ -1559,7 +1653,7 @@ def test_visualization_panel_dispatches_plot_update_to_active_tab(qtbot):
     )
     panel._application_summary_dirty = False
     panel.tabs.setCurrentIndex(0)
-    panel.plan_combo.setCurrentIndex(1)
+    panel.plan_combo.setCurrentIndex(panel.plan_combo.findText("Fold 1"))
     panel.run_combo.setCurrentIndex(0)
     current_widget = _current_mock_widget(panel)
     current_widget.update_plot.reset_mock()
@@ -1781,6 +1875,134 @@ def test_visualization_panel_reports_active_background_saliency_without_recomput
     assert "has not been computed" not in message
     assert panel.compute_saliency_btn.text() == "Computing..."
     assert panel.compute_saliency_btn.isEnabled() is False
+
+
+@pytest.mark.parametrize(
+    ("phase", "message", "button_text", "button_enabled"),
+    [
+        (
+            PostTrainingSaliencyPhase.IDLE,
+            "has not been computed",
+            "Compute Saliency",
+            True,
+        ),
+        (PostTrainingSaliencyPhase.PENDING, "waiting to start", "Computing...", False),
+        (PostTrainingSaliencyPhase.RUNNING, "being computed", "Computing...", False),
+        (
+            PostTrainingSaliencyPhase.FAILED,
+            "failed to complete",
+            "Recompute Saliency",
+            True,
+        ),
+        (
+            PostTrainingSaliencyPhase.CANCELLED,
+            "was cancelled",
+            "Recompute Saliency",
+            True,
+        ),
+        (
+            PostTrainingSaliencyPhase.SUCCEEDED,
+            "has not been computed",
+            "Compute Saliency",
+            True,
+        ),
+    ],
+)
+def test_visualization_panel_owns_unavailable_status_in_real_3d_view(
+    qtbot, phase, message, button_text, button_enabled
+):
+    panel = _make_panel(qtbot, real_3d=True)
+    with QSignalBlocker(panel.tabs):
+        panel.tabs.setCurrentWidget(panel.tab_3d)
+    status = (
+        PostTrainingSaliencyStatus.idle()
+        if phase is PostTrainingSaliencyPhase.IDLE
+        else _post_training_saliency_status(phase)
+    )
+    _publish_panel_state(
+        panel,
+        _application_query_with_saliency_state(
+            status,
+            SaliencyMethodCoverageSnapshot(
+                method="Gradient",
+                classes=[
+                    SaliencyClassCoverageSnapshot(class_index=0, display_name="left")
+                ],
+            ),
+        ),
+    )
+
+    with patch.object(panel.tab_3d, "_start_3d_engine_worker") as start_engine:
+        panel.on_update()
+
+    labels = panel.tab_3d.plot_container.findChildren(QLabel)
+    assert len(labels) == 1
+    assert message in labels[0].text()
+    assert panel.compute_saliency_btn.text() == button_text
+    assert panel.compute_saliency_btn.isEnabled() is button_enabled
+    start_engine.assert_not_called()
+
+
+@pytest.mark.parametrize("probe_available", [True, False])
+def test_visualization_panel_unavailable_status_survives_late_3d_probe(
+    qtbot, monkeypatch, probe_available
+):
+    panel = _make_panel(qtbot, real_3d=True)
+    view = panel.tab_3d
+    with QSignalBlocker(panel.tabs):
+        panel.tabs.setCurrentWidget(view)
+    _publish_panel_state(
+        panel,
+        _application_query_with_saliency_state(
+            PostTrainingSaliencyStatus.idle(), _complete_coverage()
+        ),
+    )
+    entered = Event()
+    release = Event()
+
+    def probe():
+        entered.set()
+        assert release.wait(5), "Test did not release the runtime probe"
+        return probe_available, "Probe rejected the runtime"
+
+    monkeypatch.setattr(view, "_probe_interactive_3d_runtime", probe)
+    monkeypatch.setattr(
+        view,
+        "_interactive_3d_runtime_available",
+        lambda: (True, "") if release.is_set() else (None, "Checking 3D runtime..."),
+    )
+    with patch.object(view, "_start_3d_engine_worker") as start_engine:
+        try:
+            panel.on_update()
+            qtbot.waitUntil(entered.is_set, timeout=3000)
+            assert "Checking 3D runtime" in view.plot_container.findChild(QLabel).text()
+            _publish_panel_state(
+                panel,
+                _application_query_with_saliency_state(
+                    _post_training_saliency_status(PostTrainingSaliencyPhase.RUNNING),
+                    SaliencyMethodCoverageSnapshot(
+                        method="Gradient",
+                        classes=[
+                            SaliencyClassCoverageSnapshot(
+                                class_index=0, display_name="left"
+                            )
+                        ],
+                    ),
+                ),
+            )
+            panel.on_update()
+        finally:
+            release.set()
+            qtbot.waitUntil(view.native_render_work_idle, timeout=3000)
+
+        labels = view.plot_container.findChildren(QLabel)
+        assert len(labels) == 1
+        assert (
+            labels[0].text() == "Gradient saliency is being computed in the background."
+        )
+        assert panel.compute_saliency_btn.text() == "Computing..."
+        assert not panel.compute_saliency_btn.isEnabled()
+        start_engine.assert_not_called()
 
 
 def test_visualization_panel_hides_compute_saliency_while_training(qtbot):
@@ -2199,8 +2421,20 @@ def test_explicit_saliency_busy_state_keeps_visible_cancel_operable(
     assert panel.sidebar.btn_saliency.isEnabled()
 
 
-def test_saliency_busy_state_tolerates_minimal_sidebar(qtbot) -> None:
+@pytest.mark.parametrize("has_results", [False, True])
+def test_saliency_busy_state_tolerates_minimal_sidebar(qtbot, has_results) -> None:
     panel = _make_panel(qtbot)
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        visualization=VisualizationStateSnapshot(
+            saliency_coverage=[SaliencyRunCoverageSnapshot(plan_index=0, run_index=0)]
+            if has_results
+            else [],
+        ),
+    )
+    _publish_panel_state(
+        panel, CommandResult.success_result("visualize", "Ready", state, ChangedState())
+    )
     full_sidebar = panel.sidebar
     panel.sidebar = SimpleNamespace()
     try:
@@ -2211,7 +2445,8 @@ def test_saliency_busy_state_tolerates_minimal_sidebar(qtbot) -> None:
 
         panel.set_busy(False)
 
-        assert panel.plan_combo.isEnabled()
+        assert panel.plan_combo.count() == int(has_results)
+        assert panel.plan_combo.isEnabled() is has_results
     finally:
         panel.sidebar = full_sidebar
 
@@ -3867,7 +4102,7 @@ def test_visualization_panel_preserves_selection_across_publication_refresh(qtbo
         ),
     )
     _publish_panel_state(panel, result)
-    panel.plan_combo.setCurrentIndex(2)
+    panel.plan_combo.setCurrentIndex(panel.plan_combo.findText("Fold 2"))
     panel.run_combo.setCurrentIndex(1)
 
     assert panel.plan_combo.currentText() == "Fold 2"
@@ -4120,8 +4355,9 @@ def test_visualization_panel_shows_empty_application_query_state(
     assert "Create EEG epochs, complete training, or configure saliency" in (
         panel.last_application_query.message
     )
-    assert panel.plan_combo.count() == 1
-    assert panel.plan_combo.itemText(0) == "Select a fold"
+    assert panel.plan_combo.count() == 0
+    assert panel.plan_combo.placeholderText() == "Select a fold"
+    assert not panel.plan_combo.isEnabled()
     assert panel.run_combo.count() == 0
     current_widget.show_message.assert_called_once_with(
         "Create EEG epochs, complete training, or configure saliency before "
@@ -4167,8 +4403,9 @@ def test_visualization_panel_unavailable_query_keeps_placeholder(
 
     panel.refresh_combos()
 
-    assert panel.plan_combo.count() == 1
-    assert panel.plan_combo.itemText(0) == "Select a fold"
+    assert panel.plan_combo.count() == 0
+    assert panel.plan_combo.placeholderText() == "Select a fold"
+    assert not panel.plan_combo.isEnabled()
     assert panel.run_combo.count() == 0
 
 
@@ -4194,7 +4431,7 @@ def test_visualization_panel_uses_typed_render_boundary(
         _prepare_render_variants,
     )
 
-    assert panel.plan_combo.count() == 2
+    assert panel.plan_combo.count() == 1
     assert panel.run_combo.findText("Average") == -1
     current_widget = _current_mock_widget(panel)
     current_widget.update_plot.reset_mock()

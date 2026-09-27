@@ -151,11 +151,7 @@ def test_host_template_messages_keep_policy_then_one_user_generation_turn() -> N
             {"role": "user", "content": latest_request},
         ]
     )
-    backend = cast(LocalBackend, object.__new__(LocalBackend))
-    backend.config = cast(
-        LLMConfig,
-        SimpleNamespace(model_name=PRIMARY_LOCAL_MODEL_ID),
-    )
+    backend = LocalBackend(LLMConfig())
 
     processed = backend._process_messages_for_template(messages)
 
@@ -192,11 +188,7 @@ def test_host_template_boundary_keeps_untrusted_context_non_authoritative() -> N
             )
         ]
     )
-    backend = cast(LocalBackend, object.__new__(LocalBackend))
-    backend.config = cast(
-        LLMConfig,
-        SimpleNamespace(model_name=PRIMARY_LOCAL_MODEL_ID),
-    )
+    backend = LocalBackend(LLMConfig())
 
     policy = ContextAssembler(ToolRegistry(), Study()).build_system_prompt()
     processed = backend._process_messages_for_template(

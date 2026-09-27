@@ -503,7 +503,7 @@ def test_analysis_service_publishes_only_admitted_cross_fold_runs() -> None:
                 ]
             },
             "display_name": "All Folds",
-            "run_label": "Run 1 (Summary)",
+            "run_label": "Run 1",
             "evaluation_splits": ["test"],
             "fold_count": 2,
             "sample_count": 2,

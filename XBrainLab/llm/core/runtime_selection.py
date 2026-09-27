@@ -19,9 +19,6 @@ class AssistantRuntimeSelectionOutcome(str, Enum):
     """How the concrete launch model relates to the requested model."""
 
     EXACT = "exact"
-    # Retained so historical runtime snapshots remain deserializable. The
-    # product resolver no longer emits fallback selections.
-    FALLBACK = "fallback"
 
 
 class AssistantRuntimeSelectionFailureCode(str, Enum):
@@ -106,10 +103,6 @@ class AssistantRuntimeLaunchSpec:
     @property
     def backend_mode(self) -> str:
         return self.backend.value
-
-    @property
-    def fallback_used(self) -> bool:
-        return self.outcome is AssistantRuntimeSelectionOutcome.FALLBACK
 
     @property
     def execution_device(self) -> str:

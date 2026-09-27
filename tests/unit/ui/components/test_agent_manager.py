@@ -75,7 +75,11 @@ from XBrainLab.llm.agent.ui_handoff import (
     WorkflowUiHandoffResolutionStatus,
 )
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.tools.application_surface import ToolCommandResult
+from XBrainLab.llm.core.runtime_selection import (
+    AssistantRuntimeSelectionFailure,
+    AssistantRuntimeSelectionFailureCode,
+)
+from XBrainLab.llm.tools.result_contract import ToolCommandResult
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.chat.presentation import (
     ChatTurnCancelability,
@@ -89,9 +93,7 @@ from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeCommandAdmissionResult,
     RuntimeCommandAdmissionStatus,
     RuntimeSetupAction,
-)
-from XBrainLab.ui.components.assistant_status_projection import (
-    AssistantStatusProjection,
+    RuntimeSetupOutcome,
 )
 
 
@@ -117,7 +119,7 @@ def _admit_ui_turn(agent_mgr: Any, *, turn_id: int = 1) -> AssistantTurnCorrelat
             submission,
             correlation,
         )
-        is not None
+        is True
     )
     return correlation
 
@@ -153,6 +155,8 @@ class _ReadyTestRuntime(QObject):
     controller_created = pyqtSignal(object)
     runtime_snapshot_changed = pyqtSignal(object)
     turn_finished = pyqtSignal(object)
+    deactivation_finished = pyqtSignal(bool, str)
+    _turn_requested = pyqtSignal(object)
 
     def __init__(self, controller: Any):
         super().__init__()
@@ -166,6 +170,9 @@ class _ReadyTestRuntime(QObject):
         )
         self._started = False
         self._next_turn_id = 1
+        self._turn_requested.connect(
+            controller.handle_user_turn, Qt.ConnectionType.QueuedConnection
+        )
         terminal_signal = getattr(controller, "turn_finished", None)
         if terminal_signal is not None:
             terminal_signal.connect(self.turn_finished)
@@ -191,7 +198,7 @@ class _ReadyTestRuntime(QObject):
             turn_id=self._next_turn_id,
         )
         self._next_turn_id += 1
-        self.controller.handle_user_turn(
+        self._turn_requested.emit(
             AssistantTurnRequest(
                 correlation=correlation,
                 text=text,
@@ -243,10 +250,6 @@ def agent_mgr(qtbot) -> Any:
             backend_mode="local",
             model_id="test-model",
         )
-        runtime.switch_model.side_effect = lambda model_name: RuntimeActivationResult(
-            RuntimeActivationStatus.SWITCHING,
-            model_id=str(model_name),
-        )
         runtime.submit.return_value = RuntimeCommandAdmissionResult(
             command_name="submit",
             status=RuntimeCommandAdmissionStatus.ACCEPTED,
@@ -297,6 +300,39 @@ def agent_mgr(qtbot) -> Any:
 
 
 class TestAgentManagerInit:
+    @pytest.mark.parametrize("succeeded", [False, True])
+    def test_runtime_deactivation_signal_preserves_workflow_and_updates_transcript(
+        self, qtbot, succeeded
+    ):
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.components.agent_manager import AgentManager
+
+        window = QMainWindow()
+        qtbot.addWidget(window)
+        manager = AgentManager(window, Study())
+        manager.init_ui()
+        manager.chat_controller.add_user_message("Inspect the current dataset.")
+        before = manager.application_service.get_view_publication()
+        completed = []
+        manager.assistant_deactivation_finished.connect(
+            lambda ok, message: completed.append((ok, message))
+        )
+        try:
+            manager.assistant_runtime.deactivation_finished.emit(
+                succeeded, "Deactivation result."
+            )
+
+            assert completed == [(succeeded, "Deactivation result.")]
+            messages = manager.chat_controller.messages
+            assert len(messages) == (0 if succeeded else 1)
+            if not succeeded:
+                assert messages[0]["content"] == "Inspect the current dataset."
+            after = manager.application_service.get_view_publication()
+            assert after.generation == before.generation
+            assert after.state == before.state
+        finally:
+            assert manager.close()
+
     def test_creates_instance(self, agent_mgr):
         assert isinstance(agent_mgr, QObject)
         assert cast(Any, agent_mgr).study is not None
@@ -318,21 +354,6 @@ class TestAgentManagerInit:
         agent_mgr._assistant_runtime.request_deactivation.assert_called_once_with(
             config
         )
-
-    def test_successful_deactivation_clears_only_assistant_presentation(
-        self,
-        agent_mgr,
-    ):
-        completed: list[tuple[bool, str]] = []
-        agent_mgr.assistant_deactivation_finished.connect(
-            lambda ok, message: completed.append((ok, message))
-        )
-        agent_mgr.chat_controller.clear_conversation.reset_mock()
-
-        agent_mgr._on_assistant_deactivation_finished(True, "Assistant disabled.")
-
-        agent_mgr.chat_controller.clear_conversation.assert_called_once_with()
-        assert completed == [(True, "Assistant disabled.")]
 
     def test_constructor_does_not_resolve_legacy_study_controllers(self, qtbot):
         from XBrainLab.backend.study import Study
@@ -362,18 +383,21 @@ class TestAgentManagerInit:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
 
-        def called_names(method_name: str) -> set[str]:
-            return {
-                node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
-                for node in ast.walk(methods[method_name])
-                if isinstance(node, ast.Call)
-                and isinstance(node.func, (ast.Attribute, ast.Name))
-            }
-
-        assert "get_view_publication" in called_names("refresh_backend_status")
-        assert "build_assistant_status_projection" in called_names(
-            "_render_backend_publication"
+        from XBrainLab.ui.components.assistant_application_publication_coordinator import (
+            AssistantApplicationPublicationCoordinator,
         )
+
+        delivery_tree = ast.parse(
+            inspect.getsource(AssistantApplicationPublicationCoordinator)
+        )
+        delivery_calls = {
+            node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
+            for node in ast.walk(delivery_tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, (ast.Attribute, ast.Name))
+        }
+        assert "get_view_publication" in delivery_calls
+        assert "build_assistant_status_projection" in delivery_calls
         all_calls = {
             node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id
             for node in ast.walk(tree)
@@ -384,7 +408,7 @@ class TestAgentManagerInit:
             "get_state",
             "get_capabilities",
             "build_workflow_projection",
-        }.isdisjoint(all_calls)
+        }.isdisjoint(all_calls | delivery_calls)
         assert "_product_next_steps" not in methods
         assert "_on_execution_mode_changed" not in methods
         assert "_sync_execution_mode_ui" not in methods
@@ -402,6 +426,29 @@ class TestAgentManagerInit:
 
 
 class TestAgentManagerMethods:
+    def test_refresh_failure_preserves_visible_tooltip_with_real_panel(
+        self, agent_mgr, qtbot
+    ):
+        from XBrainLab.ui.chat.panel import ChatPanel
+
+        panel = ChatPanel()
+        qtbot.addWidget(panel)
+        agent_mgr.chat_panel = panel
+        statuses = []
+        agent_mgr.status_message_received.connect(statuses.append)
+        with patch.object(
+            agent_mgr.application_service,
+            "get_view_publication",
+            side_effect=RuntimeError("private backend diagnostic"),
+        ):
+            agent_mgr.refresh_backend_status()
+        assert panel.empty_state_widget.toolTip() == (
+            "Workflow: checking\nSetup: checking\n\n"
+            "Workflow status could not be refreshed. Try again."
+        )
+        assert statuses == ["Workflow status unavailable · Try again"]
+        assert agent_mgr.assistant_status_projection is None
+
     def test_update_ai_btn_state(self, agent_mgr):
         agent_mgr.update_ai_btn_state(True)
         agent_mgr.main_window.ai_btn.setChecked.assert_called()
@@ -430,12 +477,12 @@ class TestAgentManagerMethods:
             refresh_error="state refresh failed",
         )
 
-        assert agent_mgr._on_application_view_publication_changed(first) is True
+        assert agent_mgr._application_publication_coordinator.deliver(first) is True
         agent_mgr.chat_panel.set_product_status.reset_mock()
-        assert agent_mgr._on_application_view_publication_changed(first) is True
+        assert agent_mgr._application_publication_coordinator.deliver(first) is True
         agent_mgr.chat_panel.set_product_status.assert_not_called()
 
-        assert agent_mgr._on_application_view_publication_changed(stale) is True
+        assert agent_mgr._application_publication_coordinator.deliver(stale) is True
 
         assert agent_mgr.assistant_status_projection.publication_revision == 9
         assert agent_mgr.assistant_status_projection.usable is False
@@ -457,13 +504,15 @@ class TestAgentManagerMethods:
             MagicMock()
         )
 
-        assert agent_mgr._on_application_view_publication_changed(publication) is False
+        assert (
+            agent_mgr._application_publication_coordinator.deliver(publication) is False
+        )
         (
             agent_mgr.application_service.acknowledge_view_publication_delivery
         ).assert_not_called()
 
     def test_malformed_backend_publication_returns_false(self, agent_mgr):
-        assert agent_mgr._on_application_view_publication_changed(object()) is False
+        assert agent_mgr._application_publication_coordinator.deliver(object()) is False
 
     def test_pull_and_push_of_one_publication_render_exactly_once(
         self,
@@ -482,7 +531,7 @@ class TestAgentManagerMethods:
         agent_mgr.application_service.get_view_publication = MagicMock(
             return_value=first
         )
-        agent_mgr._on_application_view_publication_changed(first)
+        agent_mgr._application_publication_coordinator.deliver(first)
         agent_mgr.refresh_backend_status()
 
         assert agent_mgr.chat_panel.set_product_status.call_count == 1
@@ -490,7 +539,7 @@ class TestAgentManagerMethods:
         agent_mgr.chat_panel.set_product_status.reset_mock()
         agent_mgr.application_service.get_view_publication.return_value = second
         agent_mgr.refresh_backend_status()
-        agent_mgr._on_application_view_publication_changed(second)
+        agent_mgr._application_publication_coordinator.deliver(second)
 
         assert agent_mgr.chat_panel.set_product_status.call_count == 1
 
@@ -506,19 +555,24 @@ class TestAgentManagerMethods:
             state=state,
             capabilities=build_capability_policy(state),
         )
-        agent_mgr._render_assistant_status_projection = MagicMock(
+        agent_mgr._application_publication_coordinator._render_status = MagicMock(
             side_effect=(RuntimeError("transient render failure"), True),
         )
 
         with pytest.raises(RuntimeError, match="transient render failure"):
-            agent_mgr._render_backend_publication(publication)
+            agent_mgr._application_publication_coordinator.deliver(publication)
 
         assert agent_mgr.assistant_status_projection is None
-        assert agent_mgr._render_backend_publication(publication) is True
+        assert (
+            agent_mgr._application_publication_coordinator.deliver(publication) is True
+        )
         projection = agent_mgr.assistant_status_projection
         assert projection is not None
         assert projection.publication_revision == 8
-        assert agent_mgr._render_assistant_status_projection.call_count == 2
+        assert (
+            agent_mgr._application_publication_coordinator._render_status.call_count
+            == 2
+        )
 
     def test_false_publication_render_retries_are_bounded_and_local(
         self,
@@ -533,21 +587,29 @@ class TestAgentManagerMethods:
             state=state,
             capabilities=build_capability_policy(state),
         )
-        agent_mgr._render_assistant_status_projection = MagicMock(return_value=False)
+        agent_mgr._application_publication_coordinator._render_status = MagicMock(
+            return_value=False
+        )
         agent_mgr.application_service.acknowledge_view_publication_delivery = (
             MagicMock()
         )
         agent_mgr.application_service.reject_view_publication_delivery = MagicMock()
 
-        assert agent_mgr._render_backend_publication(publication) is False
+        assert (
+            agent_mgr._application_publication_coordinator.deliver(publication) is False
+        )
         assert agent_mgr.assistant_status_projection is None
         qtbot.waitUntil(
-            lambda: agent_mgr._render_assistant_status_projection.call_count == 4,
+            lambda: agent_mgr._application_publication_coordinator._render_status.call_count
+            == 4,
             timeout=1_000,
         )
         qtbot.wait(100)
 
-        assert agent_mgr._render_assistant_status_projection.call_count == 4
+        assert (
+            agent_mgr._application_publication_coordinator._render_status.call_count
+            == 4
+        )
         (
             agent_mgr.application_service.acknowledge_view_publication_delivery
         ).assert_not_called()
@@ -566,7 +628,7 @@ class TestAgentManagerMethods:
             state=state,
             capabilities=build_capability_policy(state),
         )
-        agent_mgr._render_assistant_status_projection = MagicMock(
+        agent_mgr._application_publication_coordinator._render_status = MagicMock(
             side_effect=(False, False, False, False, True),
         )
         agent_mgr.application_service.acknowledge_view_publication_delivery = (
@@ -574,7 +636,9 @@ class TestAgentManagerMethods:
         )
         agent_mgr.application_service.reject_view_publication_delivery = MagicMock()
 
-        assert agent_mgr._render_backend_publication(publication) is False
+        assert (
+            agent_mgr._application_publication_coordinator.deliver(publication) is False
+        )
         qtbot.waitUntil(
             lambda: agent_mgr.assistant_status_projection is not None,
             timeout=2_000,
@@ -583,12 +647,14 @@ class TestAgentManagerMethods:
         projection = agent_mgr.assistant_status_projection
         assert projection is not None
         assert projection.publication_revision == publication.revision
-        assert agent_mgr._render_assistant_status_projection.call_count == 5
+        assert (
+            agent_mgr._application_publication_coordinator._render_status.call_count
+            == 5
+        )
         agent_mgr.application_service.acknowledge_view_publication_delivery.assert_not_called()
         agent_mgr.application_service.reject_view_publication_delivery.assert_not_called()
         assert (
-            agent_mgr._application_publication_coordinator.snapshot().pending_publication
-            is None
+            agent_mgr._application_publication_coordinator._pending_publication is None
         )
 
     def test_publication_retry_coalesces_to_latest_pending_revision(
@@ -611,14 +677,14 @@ class TestAgentManagerMethods:
             rendered_revisions.append(projection.publication_revision)
             return len(rendered_revisions) == 3
 
-        agent_mgr._render_assistant_status_projection = render_latest
+        agent_mgr._application_publication_coordinator._render_status = render_latest
         agent_mgr.application_service.acknowledge_view_publication_delivery = (
             MagicMock()
         )
         agent_mgr.application_service.reject_view_publication_delivery = MagicMock()
 
-        assert agent_mgr._render_backend_publication(first) is False
-        assert agent_mgr._render_backend_publication(second) is False
+        assert agent_mgr._application_publication_coordinator.deliver(first) is False
+        assert agent_mgr._application_publication_coordinator.deliver(second) is False
         qtbot.waitUntil(
             lambda: agent_mgr.assistant_status_projection is not None,
             timeout=1_000,
@@ -638,20 +704,24 @@ class TestAgentManagerMethods:
             state=state,
             capabilities=build_capability_policy(state),
         )
-        agent_mgr._render_assistant_status_projection = MagicMock(return_value=False)
+        agent_mgr._application_publication_coordinator._render_status = MagicMock(
+            return_value=False
+        )
         agent_mgr.application_service.acknowledge_view_publication_delivery = (
             MagicMock()
         )
         agent_mgr.application_service.reject_view_publication_delivery = MagicMock()
 
-        assert agent_mgr._render_backend_publication(publication) is False
+        assert (
+            agent_mgr._application_publication_coordinator.deliver(publication) is False
+        )
         agent_mgr.close()
         qtbot.wait(100)
 
-        agent_mgr._render_assistant_status_projection.assert_called_once()
-        rendered_projection = (
-            agent_mgr._render_assistant_status_projection.call_args.args[0]
-        )
+        agent_mgr._application_publication_coordinator._render_status.assert_called_once()
+        rendered_projection = agent_mgr._application_publication_coordinator._render_status.call_args.args[
+            0
+        ]
         assert rendered_projection.publication_revision == publication.revision
         (
             agent_mgr.application_service.acknowledge_view_publication_delivery
@@ -681,7 +751,7 @@ class TestAgentManagerMethods:
         assert lease is not None
         assert lease == AssistantTurnCorrelation(generation=1, turn_id=1)
 
-    def test_debug_admission_without_correlation_releases_its_provisional_queue(
+    def test_debug_admission_without_correlation_releases_its_reservation(
         self,
         agent_mgr,
     ):
@@ -879,11 +949,10 @@ class TestAgentManagerMethods:
         )
         records_before = controller.get_typed_history()
         ui_events: list[str] = []
-        controller.conversation_cleared.connect(lambda: ui_events.append("clear"))
-        controller.message_record_added.connect(lambda _record: ui_events.append("add"))
-        controller.message_record_updated.connect(
-            lambda _record: ui_events.append("update")
+        controller.history_replaced.connect(
+            lambda replacement: ui_events.append(replacement.kind.value)
         )
+        controller.message_record_added.connect(lambda _record: ui_events.append("add"))
 
         result = agent_mgr.handle_user_input("This turn must not be admitted.")
 
@@ -1482,164 +1551,6 @@ class TestAgentManagerMethods:
         visible = agent_mgr.chat_panel.set_turn_activity.call_args.args[0]
         assert visible.phase is ChatTurnPresentationPhase.STOPPING
 
-    def test_synchronous_admission_events_replay_in_original_order(
-        self,
-        agent_mgr,
-    ) -> None:
-        agent_mgr.chat_panel = MagicMock()
-        agent_mgr.chat_controller.is_processing = False
-        agent_mgr.chat_controller.set_processing.side_effect = lambda state: setattr(
-            agent_mgr.chat_controller,
-            "is_processing",
-            state,
-        )
-
-        def complete_during_submit(_text: str, *, generation: int):
-            correlation = AssistantTurnCorrelation(
-                generation=generation,
-                turn_id=73,
-            )
-            agent_mgr.on_assistant_activity_changed(
-                AssistantTurnActivity(
-                    AssistantTurnActivityPhase.PREPARING,
-                    turn_id=correlation.turn_id,
-                    generation=correlation.generation,
-                )
-            )
-            agent_mgr._handle_response_presentation(
-                AssistantResponsePresentation(
-                    correlation=correlation,
-                    text="The synchronous turn completed.",
-                )
-            )
-            agent_mgr._on_assistant_turn_finished(
-                AssistantTurnTerminal(correlation=correlation)
-            )
-            return RuntimeCommandAdmissionResult(
-                command_name="submit",
-                status=RuntimeCommandAdmissionStatus.ACCEPTED,
-                turn_id=correlation.turn_id,
-                generation=correlation.generation,
-            )
-
-        agent_mgr._assistant_runtime.submit.side_effect = complete_during_submit
-
-        agent_mgr.handle_user_input("complete synchronously")
-
-        agent_mgr.chat_controller.add_user_message.assert_called_once_with(
-            "complete synchronously"
-        )
-        agent_mgr.chat_controller.add_agent_message.assert_called_once()
-        assert agent_mgr._assistant_turn_state.phase is AssistantUiTurnPhase.IDLE
-        assert agent_mgr._assistant_turn_state.lease is None
-        assert agent_mgr.chat_controller.set_processing.call_args_list == [
-            call(True),
-            call(False),
-        ]
-
-    def test_synchronous_confirmation_replays_after_turn_admission(
-        self,
-        agent_mgr,
-    ) -> None:
-        agent_mgr.chat_panel = MagicMock()
-        request = AgentConfirmationRequest.for_action(
-            command_name="new_session",
-            params={},
-            action_label="Start new session",
-            description="Start a new session and clear the current one.",
-            destructive=True,
-            publication_generation=1,
-        )
-
-        def request_confirmation_during_submit(_text: str, *, generation: int):
-            correlation = AssistantTurnCorrelation(generation=generation, turn_id=73)
-            agent_mgr.on_assistant_activity_changed(
-                AssistantTurnActivity(
-                    AssistantTurnActivityPhase.WAITING_FOR_DECISION,
-                    command_name=request.command_name,
-                    request_id=request.request_id,
-                    turn_id=correlation.turn_id,
-                    generation=correlation.generation,
-                    decision_owner=AssistantDecisionOwner.CONFIRMATION_CARD,
-                )
-            )
-            agent_mgr._show_action_confirmation(request)
-            return RuntimeCommandAdmissionResult(
-                command_name="submit",
-                status=RuntimeCommandAdmissionStatus.ACCEPTED,
-                turn_id=correlation.turn_id,
-                generation=correlation.generation,
-            )
-
-        agent_mgr._assistant_runtime.submit.side_effect = (
-            request_confirmation_during_submit
-        )
-
-        result = agent_mgr.handle_user_input("start a new session")
-
-        assert result.accepted is True
-        agent_mgr.chat_controller.add_user_message.assert_called_once_with(
-            "start a new session"
-        )
-        agent_mgr.chat_panel.show_confirmation_request.assert_called_once()
-        shown_request = agent_mgr.chat_panel.show_confirmation_request.call_args.args[0]
-        assert shown_request is request
-
-    def test_synchronous_workflow_handoff_opens_after_turn_admission(
-        self,
-        agent_mgr,
-    ) -> None:
-        agent_mgr.chat_panel = MagicMock()
-        request = WorkflowUiHandoffRequest.for_decision("evaluate")
-        resolution = _handoff_resolution(
-            request,
-            WorkflowUiHandoffResolutionStatus.NAVIGATED,
-        )
-
-        def open_after_transcript(*_args, **_kwargs):
-            assert agent_mgr.chat_controller.add_user_message.called
-            return resolution
-
-        agent_mgr._workflow_ui_handoff_host.open = MagicMock(
-            side_effect=open_after_transcript
-        )
-        agent_mgr._assistant_runtime.resolve_ui_handoff.return_value = (
-            RuntimeCommandAdmissionResult(
-                command_name="resolve_ui_handoff",
-                status=RuntimeCommandAdmissionStatus.ACCEPTED,
-            )
-        )
-
-        def request_handoff_during_submit(_text: str, *, generation: int):
-            correlation = AssistantTurnCorrelation(generation=generation, turn_id=74)
-            agent_mgr.on_assistant_activity_changed(
-                AssistantTurnActivity(
-                    AssistantTurnActivityPhase.WAITING_FOR_DECISION,
-                    command_name=request.command_name,
-                    request_id=request.request_id,
-                    turn_id=correlation.turn_id,
-                    generation=correlation.generation,
-                    decision_owner=AssistantDecisionOwner.PANEL_HANDOFF,
-                )
-            )
-            agent_mgr.handle_workflow_ui_handoff(request)
-            return RuntimeCommandAdmissionResult(
-                command_name="submit",
-                status=RuntimeCommandAdmissionStatus.ACCEPTED,
-                turn_id=correlation.turn_id,
-                generation=correlation.generation,
-            )
-
-        agent_mgr._assistant_runtime.submit.side_effect = request_handoff_during_submit
-
-        result = agent_mgr.handle_user_input("show evaluation results")
-
-        assert result.accepted is True
-        agent_mgr._workflow_ui_handoff_host.open.assert_called_once()
-        agent_mgr._assistant_runtime.resolve_ui_handoff.assert_called_once_with(
-            resolution
-        )
-
     def test_superseded_admission_preserves_newer_submission_without_transcript(
         self,
         agent_mgr,
@@ -1826,7 +1737,9 @@ class TestAgentManagerMethods:
             capabilities=build_capability_policy(completed),
         )
 
-        assert agent_mgr._render_backend_publication(publication) is True
+        assert (
+            agent_mgr._application_publication_coordinator.deliver(publication) is True
+        )
         agent_mgr.chat_controller.add_agent_message.assert_not_called()
 
         agent_mgr._on_assistant_turn_finished(
@@ -1845,7 +1758,7 @@ class TestAgentManagerMethods:
         assert "actions" not in terminal_call.kwargs
 
         newer = replace(publication, generation=9, revision=81)
-        assert agent_mgr._render_backend_publication(newer) is True
+        assert agent_mgr._application_publication_coordinator.deliver(newer) is True
         assert agent_mgr.chat_controller.add_agent_message.call_count == 1
 
     @pytest.mark.parametrize(
@@ -1921,10 +1834,12 @@ class TestAgentManagerMethods:
             capabilities=build_capability_policy(terminal),
         )
 
-        assert agent_mgr._render_backend_publication(publication) is True
-        coordinator_state = agent_mgr._application_publication_coordinator.snapshot()
-        assert coordinator_state.training_watch is None
-        assert coordinator_state.pending_training_terminal is not None
+        assert (
+            agent_mgr._application_publication_coordinator.deliver(publication) is True
+        )
+        coordinator_state = agent_mgr._application_publication_coordinator
+        assert coordinator_state._training_watch is None
+        assert coordinator_state._pending_training_terminal is not None
         agent_mgr.chat_controller.add_agent_message.assert_not_called()
         agent_mgr._on_assistant_turn_finished(
             AssistantTurnTerminal(correlation=correlation)
@@ -2001,9 +1916,7 @@ class TestAgentManagerMethods:
         )
 
         agent_mgr._on_application_command_completed(result)
-        watch_before = (
-            agent_mgr._application_publication_coordinator.snapshot().training_watch
-        )
+        watch_before = agent_mgr._application_publication_coordinator._training_watch
         assert watch_before is not None
         publication = ApplicationViewPublication(
             generation=10,
@@ -2012,11 +1925,13 @@ class TestAgentManagerMethods:
             capabilities=build_capability_policy(terminal),
         )
 
-        assert agent_mgr._render_backend_publication(publication) is True
+        assert (
+            agent_mgr._application_publication_coordinator.deliver(publication) is True
+        )
 
-        coordinator_state = agent_mgr._application_publication_coordinator.snapshot()
-        assert coordinator_state.training_watch == watch_before, identity_case
-        assert coordinator_state.pending_training_terminal is None, identity_case
+        coordinator_state = agent_mgr._application_publication_coordinator
+        assert coordinator_state._training_watch == watch_before, identity_case
+        assert coordinator_state._pending_training_terminal is None, identity_case
         agent_mgr._on_assistant_turn_finished(
             AssistantTurnTerminal(correlation=correlation)
         )
@@ -2071,12 +1986,14 @@ class TestAgentManagerMethods:
             state=completed,
             capabilities=build_capability_policy(completed),
         )
-        agent_mgr.application_service = MagicMock()
-        agent_mgr.application_service.get_view_publication.return_value = (
-            terminal_publication
+        agent_mgr.application_service.get_view_publication = MagicMock(
+            return_value=terminal_publication
         )
 
-        assert agent_mgr._render_backend_publication(terminal_publication) is True
+        assert (
+            agent_mgr._application_publication_coordinator.deliver(terminal_publication)
+            is True
+        )
         result = ToolCommandResult(
             ok=True,
             tool_name="start_training",
@@ -2088,9 +2005,9 @@ class TestAgentManagerMethods:
         )
         agent_mgr._on_application_command_completed(result)
 
-        coordinator_state = agent_mgr._application_publication_coordinator.snapshot()
-        assert coordinator_state.training_watch is None
-        assert coordinator_state.pending_training_terminal is not None
+        coordinator_state = agent_mgr._application_publication_coordinator
+        assert coordinator_state._training_watch is None
+        assert coordinator_state._pending_training_terminal is not None
         agent_mgr.chat_controller.add_agent_message.assert_not_called()
 
         agent_mgr._on_assistant_turn_finished(
@@ -2122,10 +2039,7 @@ class TestAgentManagerMethods:
 
         agent_mgr._on_application_command_completed(result)
 
-        assert (
-            agent_mgr._application_publication_coordinator.snapshot().training_watch
-            is None
-        )
+        assert agent_mgr._application_publication_coordinator._training_watch is None
 
     def test_training_terminal_typed_renderer_prunes_capacity_before_retry(
         self,
@@ -2158,39 +2072,102 @@ class TestAgentManagerMethods:
             in agent_mgr.chat_panel.show_notice.call_args_list
         )
 
-    def test_training_terminal_notice_is_retained_until_visible_render_succeeds(
+    def test_training_terminal_notice_retries_until_real_transcript_commit(
         self,
-        agent_mgr,
+        qtbot,
         monkeypatch,
     ) -> None:
-        agent_mgr.chat_panel = MagicMock()
-        notice = SimpleNamespace(
-            outcome=TrainingOutcomeState.COMPLETED,
-            correlation=AssistantTurnCorrelation(generation=7, turn_id=3),
+        manager, _controller = _make_real_manager_with_fake_controller(qtbot, "normal")
+        manager.handle_user_input("Start training.")
+        correlation = manager._assistant_turn_state.lease
+        assert correlation is not None
+        run = TrainingRunIdentity(trainer_id="assistant-trainer", run_id=1)
+        running = replace(
+            ApplicationStateSnapshot.empty(),
+            training=TrainingStateSnapshot(
+                has_trainer=True,
+                is_running=True,
+                terminal_outcome=TrainingTerminalOutcome(
+                    state=TrainingOutcomeState.RUNNING,
+                    run=run,
+                ),
+            ),
         )
-        coordinator = agent_mgr._application_publication_coordinator
-        terminal_notice_if_idle = MagicMock(return_value=notice)
-        complete_terminal_notice = MagicMock(return_value=True)
-        monkeypatch.setattr(
-            coordinator,
-            "terminal_notice_if_idle",
-            terminal_notice_if_idle,
+        completed = replace(
+            running,
+            training=replace(
+                running.training,
+                is_running=False,
+                terminal_outcome=TrainingTerminalOutcome(
+                    state=TrainingOutcomeState.COMPLETED,
+                    run=run,
+                ),
+            ),
         )
-        monkeypatch.setattr(
-            coordinator,
-            "complete_terminal_notice",
-            complete_terminal_notice,
-        )
-        agent_mgr.chat_controller.add_agent_message.side_effect = TypeError(
-            "transient presentation failure"
-        )
+        message = "Training completed. Results are ready in Evaluation."
+        append = manager.chat_controller.add_agent_message
+        attempts = []
 
-        assert agent_mgr._flush_assistant_training_terminal() is False
-        complete_terminal_notice.assert_not_called()
+        def append_after_one_failure(text, **kwargs):
+            if text == message:
+                attempts.append(text)
+                if len(attempts) == 1:
+                    raise TypeError("transient presentation failure")
+            return append(text, **kwargs)
 
-        agent_mgr.chat_controller.add_agent_message.side_effect = None
-        assert agent_mgr._flush_assistant_training_terminal() is True
-        complete_terminal_notice.assert_called_once_with(notice)
+        monkeypatch.setattr(
+            manager.chat_controller,
+            "add_agent_message",
+            append_after_one_failure,
+        )
+        manager._on_application_command_completed(
+            ToolCommandResult(
+                ok=True,
+                tool_name="start_training",
+                command_name="train",
+                message="Training started.",
+                state=running.to_dict(),
+                diagnostics={"training_handoff_generation": 7},
+            ),
+        )
+        publication = ApplicationViewPublication(
+            generation=8,
+            revision=80,
+            state=completed,
+            capabilities=build_capability_policy(completed),
+        )
+        coordinator = manager._application_publication_coordinator
+        try:
+            assert manager._application_publication_coordinator.deliver(publication)
+            assert attempts == []
+            assert coordinator._pending_training_terminal is not None
+            # The queued turn terminal permits rendering; the first append fails.
+            qtbot.waitUntil(lambda: len(attempts) == 1, timeout=1000)
+            assert coordinator._pending_training_terminal is not None
+            assert not any(
+                record["content"] == message
+                for record in manager.chat_controller.messages
+            )
+            # Only the real retry timer, not a second test call, completes delivery.
+            qtbot.waitUntil(
+                lambda: coordinator._pending_training_terminal is None,
+                timeout=2000,
+            )
+            assert attempts == [message, message]
+            assert (
+                sum(
+                    record["content"] == message
+                    for record in manager.chat_controller.messages
+                )
+                == 1
+            )
+            assert manager._application_publication_coordinator.deliver(
+                replace(publication, revision=81)
+            )
+            qtbot.wait(600)
+            assert attempts == [message, message]
+        finally:
+            assert manager.close()
 
     def test_manual_training_terminal_does_not_create_assistant_transcript_claim(
         self,
@@ -2221,31 +2198,11 @@ class TestAgentManagerMethods:
             capabilities=build_capability_policy(state),
         )
 
-        assert agent_mgr._render_backend_publication(publication) is True
+        assert (
+            agent_mgr._application_publication_coordinator.deliver(publication) is True
+        )
 
         agent_mgr.chat_controller.add_agent_message.assert_not_called()
-
-    def test_set_model_preserves_approved_local_model_identifier(self, agent_mgr):
-        model_id = LLMConfig.default_local_model_id()
-
-        with patch.object(agent_mgr.vram_checker, "check") as check_vram:
-            agent_mgr.set_model(model_id)
-
-        agent_mgr._assistant_runtime.switch_model.assert_called_once_with(model_id)
-        check_vram.assert_called_once_with(switching_to_local=True)
-
-    def test_new_chat_resets_only_conversation_state(self, agent_mgr):
-        agent_mgr.chat_panel = MagicMock()
-        application_service = MagicMock()
-        agent_mgr.application_service = application_service
-        agent_mgr.study.reset_mock()
-
-        agent_mgr.start_new_conversation()
-
-        agent_mgr.chat_controller.clear_conversation.assert_called_once_with()
-        agent_mgr._assistant_runtime.reset_conversation.assert_called_once_with()
-        application_service.execute.assert_not_called()
-        assert agent_mgr.study.mock_calls == []
 
     def test_new_chat_does_not_clear_transcript_when_runtime_turn_is_busy(
         self,
@@ -2372,8 +2329,6 @@ class TestAgentManagerMethods:
         agent_mgr.chat_panel = MagicMock()
         agent_mgr.on_agent_status_update(raw_status)
 
-        agent_mgr.chat_panel.set_workflow_status.assert_not_called()
-
     @pytest.mark.parametrize(
         ("activity", "expected_phase", "expected_cancelability"),
         [
@@ -2429,7 +2384,6 @@ class TestAgentManagerMethods:
         assert presentation.cancelability is expected_cancelability
         assert presentation.primary_status
         assert presentation.step
-        agent_mgr.chat_panel.set_workflow_status.assert_not_called()
 
     def test_typed_workflow_handoff_does_not_publish_manager_owned_activity(
         self,
@@ -2451,7 +2405,6 @@ class TestAgentManagerMethods:
 
         agent_mgr.handle_workflow_ui_handoff(request)
 
-        agent_mgr.chat_panel.set_workflow_status.assert_not_called()
         agent_mgr.chat_panel.show_notice.assert_not_called()
         agent_mgr._assistant_runtime.resolve_ui_handoff.assert_called_once_with(
             _handoff_resolution(
@@ -2508,7 +2461,6 @@ class TestAgentManagerMethods:
         agent_mgr._open_assistant_panel_target.assert_called_once_with(
             AssistantPanelTarget.TRAINING
         )
-        agent_mgr.chat_panel.set_workflow_status.assert_not_called()
 
     @pytest.mark.parametrize(
         "status",
@@ -2518,8 +2470,6 @@ class TestAgentManagerMethods:
             WorkflowUiHandoffResolutionStatus.BLOCKED,
             WorkflowUiHandoffResolutionStatus.UNAVAILABLE,
             WorkflowUiHandoffResolutionStatus.FAILED,
-            WorkflowUiHandoffResolutionStatus.NAVIGATED,
-            WorkflowUiHandoffResolutionStatus.DEFERRED_TO_UI,
             WorkflowUiHandoffResolutionStatus.COMMAND_PENDING,
         ],
     )
@@ -2539,7 +2489,6 @@ class TestAgentManagerMethods:
         agent_mgr._assistant_runtime.resolve_ui_handoff.assert_called_once_with(
             resolution
         )
-        agent_mgr.chat_panel.set_workflow_status.assert_not_called()
 
     def test_async_handoff_terminal_callback_is_forwarded_after_pending_ack(
         self,
@@ -2739,47 +2688,32 @@ class TestAgentManagerMethods:
         agent_mgr._show_action_confirmation(request)
         agent_mgr.chat_panel.show_confirmation_request.assert_called_once()
 
-    def test_confirmation_current_values_require_matching_reliable_publication(
+    def test_confirmation_context_requires_matching_reliable_publication(
         self,
         agent_mgr,
     ):
         request = AgentConfirmationRequest.for_action(
-            command_name="configure_training",
-            params={"batch_size": 16, "learning_rate": 0.0005},
-            action_label="Apply training settings",
-            description="Reduce GPU memory pressure.",
+            command_name="start_training",
+            params={},
+            action_label="Start training",
+            description="Run the reviewed training configuration.",
             destructive=False,
             publication_generation=4,
         )
         publication = SimpleNamespace(
             usable=True,
             generation=4,
-            state=SimpleNamespace(
-                state_reliable=True,
-                training=TrainingStateSnapshot(
-                    has_training_option=True,
-                    training_option={
-                        "batch_size": 32,
-                        "learning_rate": 0.001,
-                    },
-                ),
-            ),
+            state=SimpleNamespace(state_reliable=True),
         )
         agent_mgr.application_service.get_view_publication = MagicMock(
             return_value=publication
         )
 
-        values, changed = agent_mgr._confirmation_current_values(request)
-
-        assert values == {
-            "Batch size": "32",
-            "Learning rate": "0.001",
-        }
+        changed = agent_mgr._confirmation_context_changed(request)
         assert changed is False
 
         publication.generation = 5
-        values, changed = agent_mgr._confirmation_current_values(request)
-        assert values == {}
+        changed = agent_mgr._confirmation_context_changed(request)
         assert changed is True
 
     def test_invalid_typed_handoff_payload_is_not_guessed_or_routed(
@@ -2873,15 +2807,93 @@ class TestAgentManagerMethods:
 
         agent_mgr._assistant_runtime.activate_persisted.assert_called_once_with()
 
+    @pytest.mark.parametrize("entry", ["toggle", "inline", "settings", "retry"])
+    @pytest.mark.parametrize(
+        "outcome", ["started", "already_ready", "unavailable", "disabled", "busy"]
+    )
+    def test_activation_entrypoints_preserve_visible_notice_and_ready_differences(
+        self, agent_mgr, qtbot, entry, outcome
+    ):
+        from XBrainLab.ui.chat.panel import ChatPanel
+
+        panel = ChatPanel()
+        qtbot.addWidget(panel)
+        panel.set_runtime_state("idle")
+        original_detail = panel.runtime_state_detail.text()
+        agent_mgr.chat_panel = panel
+        agent_mgr.chat_dock = MagicMock()
+        agent_mgr.chat_dock.isVisible.return_value = False
+        agent_mgr.refresh_backend_status = MagicMock()
+        runtime = agent_mgr.assistant_runtime
+        runtime.initialized = False
+        runtime.needs_first_run.return_value = False
+        runtime.apply_first_run_choice.return_value = RuntimeSetupOutcome(
+            action=RuntimeSetupAction.CONTINUE
+        )
+        message = "Model cache not found."
+        failure = None
+        if outcome == "disabled":
+            message = "Assistant is disabled."
+            failure = AssistantRuntimeSelectionFailure(
+                code=AssistantRuntimeSelectionFailureCode.RUNTIME_DISABLED,
+                message=message,
+                requested_backend_id="local",
+                requested_model_id=LLMConfig.default_local_model_id(),
+            )
+        status = {
+            "started": RuntimeActivationStatus.STARTED,
+            "already_ready": RuntimeActivationStatus.ALREADY_READY,
+            "unavailable": RuntimeActivationStatus.UNAVAILABLE,
+            "disabled": RuntimeActivationStatus.UNAVAILABLE,
+            "busy": RuntimeActivationStatus.BUSY,
+        }[outcome]
+        result = RuntimeActivationResult(status, message=message, failure=failure)
+        runtime.activate.return_value = result
+        runtime.activate_persisted.return_value = result
+        # A repeated failure is deduplicated, except an explicit Retry must show it.
+        agent_mgr._runtime_unavailable_notice = message
+
+        if entry == "toggle":
+            agent_mgr.toggle()
+        elif entry == "inline":
+            agent_mgr._handle_inline_setup("enable")
+        elif entry == "retry":
+            agent_mgr.retry_local_assistant()
+        else:
+            with patch(
+                "XBrainLab.ui.components.agent_manager.ModelSettingsDialog"
+            ) as dialog:
+                dialog.return_value.exec.return_value = True
+                agent_mgr.open_settings_dialog()
+
+        agent_mgr.refresh_backend_status.assert_called_once()
+        if outcome == "disabled":
+            assert panel.runtime_state_detail.text() == (
+                "Assistant is disabled. Open assistant settings to enable it."
+            )
+        elif outcome in {"unavailable", "busy"} and entry == "retry":
+            assert (
+                "selected local model is missing" in panel.runtime_state_detail.text()
+            )
+        elif not (entry == "settings" and outcome == "already_ready"):
+            assert panel.runtime_state_detail.text() == original_detail
+        assert panel.input_field.isEnabled() is (
+            entry == "settings" and outcome == "already_ready"
+        )
+        assert agent_mgr._runtime_unavailable_notice == (
+            message if outcome in {"unavailable", "busy"} else None
+        )
+
     def test_runtime_publication_controls_the_visible_composer(self, agent_mgr):
         agent_mgr.chat_panel = MagicMock()
-        agent_mgr._assistant_status_projection = AssistantStatusProjection(
-            publication_generation=3,
-            publication_revision=4,
-            usable=True,
-            stage="Ready to train",
-            available_commands=("train",),
-            tooltip="Workflow stage: Ready to train",
+        state = ApplicationStateSnapshot.empty()
+        assert agent_mgr._application_publication_coordinator.deliver(
+            ApplicationViewPublication(
+                generation=3,
+                revision=4,
+                state=state,
+                capabilities=build_capability_policy(state),
+            )
         )
 
         agent_mgr._render_assistant_runtime(
@@ -2949,32 +2961,47 @@ class TestAgentManagerMethods:
 
         agent_mgr._assistant_runtime.active_local_runtime_blocks_model_deletion.assert_called_once_with()
 
-    def test_on_processing_state_changed_forwards_to_real_ready_chat_panel(
+    def test_processing_publication_updates_real_ready_chat_panel_once(
         self,
-        agent_mgr,
         qtbot,
+        monkeypatch,
     ) -> None:
-        from XBrainLab.ui.chat.panel import ChatPanel
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.components.agent_manager import AgentManager
 
-        panel = ChatPanel()
-        qtbot.addWidget(panel)
+        window = QMainWindow()
+        qtbot.addWidget(window)
+        agent_mgr = AgentManager(window, Study())
+        agent_mgr.init_ui()
+        panel = agent_mgr.chat_panel
+        assert panel is not None
         panel.set_runtime_state("ready")
         panel.input_field.setText("Continue")
-        agent_mgr.chat_panel = panel
+        presentations = []
+        original = panel.set_turn_activity
 
-        agent_mgr.on_processing_state_changed(True)
+        def record_presentation(presentation):
+            presentations.append(presentation)
+            original(presentation)
+
+        monkeypatch.setattr(panel, "set_turn_activity", record_presentation)
+
+        agent_mgr.chat_controller.set_processing(True)
 
         assert panel.is_processing is True
         assert panel.send_btn.text() == "Working"
         assert panel.send_btn.isEnabled() is False
         assert panel.input_field.isEnabled() is False
+        assert len(presentations) == 1
 
-        agent_mgr.on_processing_state_changed(False)
+        agent_mgr.chat_controller.set_processing(False)
 
         assert panel.is_processing is False
         assert panel.send_btn.text() == "Send"
         assert panel.send_btn.isEnabled() is True
         assert panel.input_field.isEnabled() is True
+        assert len(presentations) == 2
+        assert agent_mgr.close()
 
     def test_toggle_first_open(self, agent_mgr):
         agent_mgr._assistant_runtime.initialized = False
@@ -3059,6 +3086,27 @@ class TestAgentManagerMethods:
 
         agent_mgr.open_settings_dialog.assert_called_once_with()
         agent_mgr._assistant_runtime.activate.assert_not_called()
+
+    def test_inline_setup_save_failure_is_visible_without_runtime_activation(
+        self, agent_mgr, qtbot
+    ):
+        from XBrainLab.ui.chat.panel import ChatPanel
+
+        panel = ChatPanel()
+        qtbot.addWidget(panel)
+        agent_mgr.chat_panel = panel
+        agent_mgr._assistant_runtime.apply_first_run_choice.return_value = (
+            RuntimeSetupOutcome(
+                action=RuntimeSetupAction.STOP,
+                message="The local assistant could not be started.",
+            )
+        )
+        agent_mgr._handle_inline_setup("enable")
+
+        agent_mgr._assistant_runtime.activate.assert_not_called()
+        visible = panel.runtime_state_detail.text()
+        assert "Assistant unavailable" in visible
+        assert "assistant settings" in visible
 
     def test_initialized_toggle_closes_then_reopens_dock(self, agent_mgr):
         agent_mgr._assistant_runtime.initialized = True
@@ -3182,9 +3230,8 @@ class TestAgentManagerMethods:
         assert isinstance(dock_view, QDockWidget)
         title_bar = dock_view.titleBarWidget()
         assert isinstance(title_bar, AssistantDockTitleBar)
-        assert title_bar.status_badge is None
-        assert title_bar.status_indicator is None
-        assert title_bar.status_dot is None
+        # The title is the only text widget; status stays on its tooltip/property.
+        assert title_bar.findChildren(QLabel) == [title]
         title_bar.set_assistant_status("Local · Ready")
         assert title.toolTip() == "Local · Ready"
         assert title.accessibleDescription() == "Assistant status: Local · Ready"
@@ -3321,7 +3368,7 @@ class TestAgentManagerMethods:
                 manager.init_ui()
                 manager_ready = True
                 assert manager.chat_panel is not None
-                manager.start_system()
+                assert runtime.start()
                 submission = manager._assistant_turn_state.begin_submission()
                 correlation = AssistantTurnCorrelation(
                     generation=submission.generation,
@@ -3332,7 +3379,7 @@ class TestAgentManagerMethods:
                         submission,
                         correlation,
                     )
-                    is not None
+                    is True
                 )
                 manager.agent_controller._turn_orchestrator.host_turn_generation = None
                 manager.agent_controller._turn_orchestrator.host_turn_id = None
@@ -3495,6 +3542,9 @@ class _FakeAgentController(QObject):
     def on_workflow_ui_handoff_resolved(self, _resolution: object):
         return None
 
+    def on_panel_navigation_resolved(self, _request: object, _success: bool):
+        return None
+
     def stop_generation(self):
         correlation = self._active_correlation
         if correlation is None:
@@ -3545,7 +3595,7 @@ def _make_real_manager_with_fake_controller(
         ),
     )
     manager.init_ui()
-    manager.start_system()
+    assert runtime.start()
     return manager, fake
 
 
@@ -3607,7 +3657,9 @@ class TestAgentManagerProductChatFlow:
             render_publication=render_desktop_after_one_failure,
             parent=manager,
         )
-        manager._render_assistant_status_projection = render_after_one_failure
+        manager._application_publication_coordinator._render_status = (
+            render_after_one_failure
+        )
         trainer = Trainer([])
         service.study.training_manager.trainer = trainer
         trainer.run(interact=False)
@@ -3669,9 +3721,10 @@ class TestAgentManagerProductChatFlow:
             service.get_view_publication(),
         )
 
-        assert projection.available_commands == ("scan_source",)
-        assert "load_data" not in projection.available_commands
-        assert "attach_labels" not in projection.available_commands
+        assert projection.recommended_command == "scan_source"
+        assert "Suggested next action:" in projection.tooltip
+        assert "load_data" not in projection.tooltip
+        assert "attach_labels" not in projection.tooltip
 
     def test_product_next_steps_leave_raw_preparation_choice_open(self):
         from XBrainLab.backend.application.view_publication import (
@@ -3701,7 +3754,6 @@ class TestAgentManagerProductChatFlow:
             )
         )
 
-        assert projection.available_commands == ()
         assert projection.recommended_command is None
         assert projection.decision_fields == ()
 
@@ -3710,6 +3762,7 @@ class TestAgentManagerProductChatFlow:
 
         manager.chat_panel.input_field.setText("hello")
         manager.chat_panel._on_send()
+        qtbot.waitUntil(lambda: manager._assistant_turn_state.lease is None)
 
         messages = manager.chat_controller.messages
         assert messages[0] == {"role": "user", "content": "hello"}
@@ -3749,6 +3802,7 @@ class TestAgentManagerProductChatFlow:
 
         manager.chat_panel.input_field.setText("hello")
         manager.chat_panel._on_send()
+        qtbot.waitUntil(lambda: manager._assistant_turn_state.lease is None)
 
         assistant_messages = [
             message["content"]
@@ -3763,6 +3817,7 @@ class TestAgentManagerProductChatFlow:
 
         manager.chat_panel.input_field.setText("hello")
         manager.chat_panel._on_send()
+        qtbot.waitUntil(lambda: manager._assistant_turn_state.lease is None)
 
         assistant_messages = [
             message["content"]

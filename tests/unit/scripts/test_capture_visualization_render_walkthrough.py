@@ -543,14 +543,15 @@ def test_matplotlib_window_capture_preserves_scroll_area_canvas(
         assert green > blue > red
 
 
-def test_three_d_artifact_claims_follow_the_actual_runtime() -> None:
+@pytest.mark.parametrize("platform_name", ["xcb", "windows", "cocoa"])
+def test_three_d_artifact_claims_follow_the_actual_runtime(platform_name) -> None:
     blocked = _three_d_runtime_contract(
         platform_name="offscreen",
         environment={"QT_QPA_PLATFORM": "offscreen"},
     )
     interactive = _three_d_runtime_contract(
-        platform_name="xcb",
-        environment={"QT_QPA_PLATFORM": "xcb", "DISPLAY": ":99"},
+        platform_name=platform_name,
+        environment={"QT_QPA_PLATFORM": platform_name},
     )
 
     blocked_metadata = _artifact_metadata_for_runtime(blocked)
@@ -561,12 +562,15 @@ def test_three_d_artifact_claims_follow_the_actual_runtime() -> None:
     assert "offscreen" in blocked_metadata["environment"]
     assert "3D blocked state" in blocked_metadata["supports"]
     assert "interactive 3D render" in blocked_metadata["does_not_support"]
-    assert "xcb" in interactive_metadata["environment"]
+    assert platform_name in interactive_metadata["environment"]
     assert "interactive 3D render" in interactive_metadata["supports"]
     assert "interactive 3D render" not in interactive_metadata["does_not_support"]
     assert any("blocked reason" in item for item in blocked_boundary["supports"])
     assert any(
         "interactive 3D rendering" in item for item in interactive_boundary["supports"]
+    )
+    assert any(
+        f"Qt {platform_name}" in item for item in interactive_boundary["supports"]
     )
 
 
@@ -1034,6 +1038,70 @@ def test_validate_visualization_payload_accepts_rendered_tabs(tmp_path):
 
     assert ok is True, reason
     assert reason == ""
+
+
+@pytest.mark.parametrize("state_kind", ["missing", "empty", "null"])
+def test_validate_visualization_payload_requires_final_state(tmp_path, state_kind):
+    payload = _payload_with_screenshots(tmp_path)
+    if state_kind == "missing":
+        payload.pop("final_state")
+    else:
+        payload["final_state"] = {} if state_kind == "empty" else None
+
+    ok, reason = validate_visualization_render_payload(payload)
+
+    assert ok is False
+    assert reason == "Final application state is missing or invalid."
+
+
+@pytest.mark.parametrize(
+    ("section", "field", "value", "reason"),
+    [
+        (
+            "dataset",
+            "available",
+            False,
+            "Final state does not have a generated dataset.",
+        ),
+        (
+            "training",
+            "is_running",
+            True,
+            "Training was still running at render capture.",
+        ),
+        (
+            "training",
+            "finished_run_count",
+            0,
+            "Final state does not have a completed training run.",
+        ),
+        (
+            "evaluation",
+            "metrics_available",
+            False,
+            "Final state does not have evaluation metrics.",
+        ),
+        (
+            "visualization",
+            "saliency_available",
+            False,
+            "Final state does not have saliency available.",
+        ),
+        (
+            "visualization",
+            "montage_available",
+            False,
+            "Final state does not have montage for topographic render.",
+        ),
+    ],
+)
+def test_validate_visualization_payload_requires_ready_final_state(
+    tmp_path, section, field, value, reason
+):
+    payload = _payload_with_screenshots(tmp_path)
+    payload["final_state"][section][field] = value
+
+    assert validate_visualization_render_payload(payload) == (False, reason)
 
 
 @pytest.mark.parametrize(

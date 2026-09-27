@@ -13,7 +13,7 @@ from XBrainLab.llm.action_contracts import (
 )
 
 from ..base import BaseTool
-from ..result_contract import ToolExecutionResult, ToolResult, UiRequest, UiRequestKind
+from ..result_contract import ToolCommandResult, UiRequest, UiRequestKind
 
 
 class WorkflowHandoffTool(BaseTool):
@@ -75,6 +75,7 @@ class ApplicationCommandTool(BaseTool):
             raise ValueError(f"Mapped application tool is not registered: {tool_name}")
         self._name = tool_name
         self._description = description
+        self._command_name = contract.action.value
 
     @property
     def name(self) -> str:
@@ -92,11 +93,15 @@ class ApplicationCommandTool(BaseTool):
             "additionalProperties": False,
         }
 
-    def execute(self, study: Any, **kwargs: Any) -> ToolExecutionResult:
+    def execute(self, study: Any, **kwargs: Any) -> ToolCommandResult:
         del study, kwargs
-        return ToolResult(
-            False,
-            f"{self.name} must execute through ApplicationService.",
+        message = f"{self.name} must execute through ApplicationService."
+        return ToolCommandResult(
+            ok=False,
+            tool_name=self.name,
+            message=message,
+            command_name=self._command_name,
+            blocked_reason=message,
             error_type="contract",
             recoverable=False,
         )
@@ -161,12 +166,14 @@ class BaseSwitchPanelTool(BaseTool):
         panel_name: str | None = None,
         view_mode: str | None = None,
         **kwargs: Any,
-    ) -> ToolResult | UiRequest:
+    ) -> ToolCommandResult | UiRequest:
         """Return a typed request; only the existing UI host applies the effect."""
         if panel_name is None:
-            return ToolResult(
+            return ToolCommandResult(
                 ok=False,
+                tool_name=self.name,
                 message="A panel name is required.",
+                blocked_reason="A panel name is required.",
                 error_type="input",
             )
         return UiRequest(

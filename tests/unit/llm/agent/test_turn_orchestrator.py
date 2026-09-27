@@ -113,8 +113,6 @@ def test_cancelled_rag_result_cannot_consume_pending_turn_or_start_generation() 
 def test_tool_attempt_session_resets_all_user_turn_state() -> None:
     session = AssistantToolAttemptSession()
     session.retry_count = 2
-    session.tool_failure_count = 3
-    session.successful_tool_count = 4
     session.execution_count = 5
     session.visible_response_sent = True
     session.last_tool_summary = "old result"
@@ -123,28 +121,22 @@ def test_tool_attempt_session_resets_all_user_turn_state() -> None:
     session.reset_for_user_turn()
 
     assert session.retry_count == 0
-    assert session.tool_failure_count == 0
-    assert session.successful_tool_count == 0
     assert session.execution_count == 0
     assert session.visible_response_sent is False
     assert session.last_tool_summary is None
     assert session.last_tool_summary_kind is AssistantResponseKind.MESSAGE
 
 
-def test_tool_attempt_session_owns_attempt_transition_sequence() -> None:
+def test_generation_reset_preserves_format_retry_and_execution_admission() -> None:
     session = AssistantToolAttemptSession()
 
     session.record_format_retry(1)
     assert session.begin_execution() == 1
-    assert session.record_failure() == 1
 
     session.begin_generation()
 
     assert session.retry_count == 1
     assert session.execution_count == 1
-    assert session.tool_failure_count == 1
-    assert session.record_success() == 1
-    assert session.tool_failure_count == 0
 
 
 def test_tool_attempt_session_arbitrates_visible_terminal_response() -> None:

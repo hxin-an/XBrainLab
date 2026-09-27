@@ -113,13 +113,6 @@ class EvaluationQueryPort(Protocol):
         """Return one committed state/capability publication."""
         ...
 
-    def get_evaluation_render(
-        self,
-        request: EvaluationRenderRequest,
-    ) -> EvaluationRenderPublication:
-        """Return a detached Evaluation render publication."""
-        ...
-
     def begin_evaluation_render(
         self,
         request: EvaluationRenderRequest,
@@ -648,12 +641,6 @@ class _StudyApplicationUiRuntime:
 
     def enter_saliency_render_commit(self, operation_id: str) -> bool:
         return self._service().enter_saliency_render_commit(operation_id)
-
-    def get_evaluation_render(
-        self,
-        request: EvaluationRenderRequest,
-    ) -> EvaluationRenderPublication:
-        return self._service().get_evaluation_render(request)
 
     def begin_evaluation_render(
         self,

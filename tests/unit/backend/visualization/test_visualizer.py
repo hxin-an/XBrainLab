@@ -1,3 +1,4 @@
+from dataclasses import replace
 from unittest.mock import patch
 
 import mne
@@ -8,8 +9,10 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.ticker import FuncFormatter
 from scipy import signal
 
+from XBrainLab.backend.application.saliency_render import SaliencyRenderData
 from XBrainLab.backend.dataset import Epochs
 from XBrainLab.backend.load_data import Raw
+from XBrainLab.backend.saliency_methods import SALIENCY_METHOD_STORE_NAMES
 from XBrainLab.backend.training.record import EvalRecord
 from XBrainLab.backend.training.record.eval import SaliencyProducerIdentity
 from XBrainLab.backend.training.saliency_artifact_integrity import (
@@ -102,6 +105,21 @@ def _bound_eval_record(epochs, *args) -> EvalRecord:
     return record
 
 
+def _render_data(record, epochs, method="Gradient") -> SaliencyRenderData:
+    context = record.validate_saliency_context(epochs)
+    return SaliencyRenderData(
+        method=method,
+        saliency_by_class=getattr(record, SALIENCY_METHOD_STORE_NAMES[method]),
+        class_map=context.class_map,
+        event_ids=epochs.event_id,
+        channel_names=tuple(epochs.get_channel_names()),
+        channel_positions=tuple(epochs.get_montage_position() or ()),
+        sfreq=epochs.sfreq,
+        tmin=epochs.tmin,
+        producer_identities=(context.producer_identity,),
+    )
+
+
 @pytest.mark.parametrize("absolute", [True, False])
 @pytest.mark.parametrize(
     "epochs, n_class",
@@ -151,7 +169,7 @@ def test_map(absolute, epochs, n_class, visualizer, mask_out):
         smoothgrad_sq,
         vargrad,
     )
-    visualizer = visualizer.value(eval_record, epochs)
+    visualizer = visualizer.value(_render_data(eval_record, epochs))
     assert visualizer.get_plt("Gradient", absolute) is not None
     assert sum([len(i.images) for i in visualizer.fig.axes]) == n_class
     assert len([axis for axis in visualizer.fig.axes if axis.get_title()]) == n_class
@@ -206,7 +224,7 @@ def test_eval_plot(epochs, n_class, mask_out, visualizer):
         smoothgrad_sq,
         vargrad,
     )
-    visualizer = visualizer.value(eval_record, epochs)
+    visualizer = visualizer.value(_render_data(eval_record, epochs))
     assert visualizer.get_plt("Gradient") is not None
     assert sum([len(i.images) for i in visualizer.fig.axes]) == n_class
     assert len([axis for axis in visualizer.fig.axes if axis.get_title()]) == n_class
@@ -238,7 +256,7 @@ def test_saliency_visualizers_use_available_label_keys(visualizer):
         gradient.copy(),
     )
 
-    saliency_viz = visualizer.value(eval_record, epochs)
+    saliency_viz = visualizer.value(_render_data(eval_record, epochs))
     if visualizer in get_abs_visualizer():
         fig = saliency_viz.get_plt("Gradient", False)
     else:
@@ -273,7 +291,9 @@ def test_saliency_spectrogram_places_low_frequencies_at_the_bottom():
         gradient.copy(),
     )
 
-    visualizer = VisualizerType.SaliencySpectrogramMap.value(eval_record, epochs)
+    visualizer = VisualizerType.SaliencySpectrogramMap.value(
+        _render_data(eval_record, epochs)
+    )
     fig = visualizer.get_plt("Gradient")
     plot_axes = [axis for axis in fig.axes if axis.get_title()]
 
@@ -308,7 +328,7 @@ def test_saliency_map_uses_real_epoch_time_bounds_and_compact_ticks():
         gradient.copy(),
     )
 
-    visualizer = VisualizerType.SaliencyMap.value(eval_record, epochs)
+    visualizer = VisualizerType.SaliencyMap.value(_render_data(eval_record, epochs))
     fig = visualizer.get_plt("Gradient", False)
     plot_axes = [axis for axis in fig.axes if axis.images]
 
@@ -345,7 +365,9 @@ def test_saliency_spectrogram_uses_stft_bin_support_without_boundary_padding():
         gradient.copy(),
     )
 
-    visualizer = VisualizerType.SaliencySpectrogramMap.value(eval_record, epochs)
+    visualizer = VisualizerType.SaliencySpectrogramMap.value(
+        _render_data(eval_record, epochs)
+    )
     fig = visualizer.get_plt("Gradient")
     plot_axes = [axis for axis in fig.axes if axis.get_title()]
 
@@ -397,7 +419,9 @@ def test_saliency_spectrogram_positions_bins_at_scipy_stft_time_centers():
     )
     expected_centers = epochs.tmin + stft_centers
 
-    visualizer = VisualizerType.SaliencySpectrogramMap.value(eval_record, epochs)
+    visualizer = VisualizerType.SaliencySpectrogramMap.value(
+        _render_data(eval_record, epochs)
+    )
     fig = visualizer.get_plt("Gradient")
     image = fig.axes[0].images[0]
     rendered = np.asarray(image.get_array())
@@ -431,7 +455,9 @@ def test_saliency_spectrogram_handles_epoch_shorter_than_one_second():
         gradient.copy(),
     )
 
-    visualizer = VisualizerType.SaliencySpectrogramMap.value(eval_record, epochs)
+    visualizer = VisualizerType.SaliencySpectrogramMap.value(
+        _render_data(eval_record, epochs)
+    )
     fig = visualizer.get_plt("Gradient")
 
     assert fig is not None
@@ -474,7 +500,7 @@ def test_topomap_preserves_constant_saliency_and_marks_sparse_interpolation():
         image = axes.imshow(np.zeros((2, 2)))
         return image, None
 
-    visualizer = VisualizerType.SaliencyTopoMap.value(eval_record, epochs)
+    visualizer = VisualizerType.SaliencyTopoMap.value(_render_data(eval_record, epochs))
     with patch("mne.viz.plot_topomap", side_effect=capture_topomap):
         fig = visualizer.get_plt("Gradient", False)
 
@@ -502,9 +528,11 @@ def test_topomap_rejects_channel_position_count_mismatch():
         gradient.copy(),
         gradient.copy(),
     )
-    epochs.channel_position = np.zeros((3, 3)).tolist()
-
-    visualizer = VisualizerType.SaliencyTopoMap.value(eval_record, epochs)
+    data = replace(
+        _render_data(eval_record, epochs),
+        channel_positions=tuple((0.0, 0.0, 0.0) for _ in range(3)),
+    )
+    visualizer = VisualizerType.SaliencyTopoMap.value(data)
 
     with pytest.raises(ValueError, match=r"channel names.*montage positions"):
         visualizer.get_plt("Gradient", False)
@@ -526,7 +554,9 @@ def test_saliency_map_uses_sequential_scale_for_nonnegative_methods():
         gradient.copy(),
     )
 
-    visualizer = VisualizerType.SaliencyMap.value(eval_record, epochs)
+    visualizer = VisualizerType.SaliencyMap.value(
+        _render_data(eval_record, epochs, "SmoothGrad_Squared")
+    )
     fig = visualizer.get_plt("SmoothGrad_Squared", False)
     image = fig.axes[0].images[0]
 
@@ -554,7 +584,7 @@ def test_saliency_map_centers_signed_scale_on_zero():
         gradient.copy(),
     )
 
-    visualizer = VisualizerType.SaliencyMap.value(eval_record, epochs)
+    visualizer = VisualizerType.SaliencyMap.value(_render_data(eval_record, epochs))
     fig = visualizer.get_plt("Gradient", False)
     image = fig.axes[0].images[0]
 
@@ -581,7 +611,7 @@ def test_saliency_map_shares_signed_scale_across_classes():
         gradient.copy(),
     )
 
-    visualizer = VisualizerType.SaliencyMap.value(eval_record, epochs)
+    visualizer = VisualizerType.SaliencyMap.value(_render_data(eval_record, epochs))
     fig = visualizer.get_plt("Gradient", False)
     images = [axis.images[0] for axis in fig.axes if axis.images]
 
@@ -614,7 +644,9 @@ def test_saliency_map_shares_nonnegative_scale_across_classes(method, absolute):
         gradient.copy(),
     )
 
-    visualizer = VisualizerType.SaliencyMap.value(eval_record, epochs)
+    visualizer = VisualizerType.SaliencyMap.value(
+        _render_data(eval_record, epochs, method)
+    )
     fig = visualizer.get_plt(method, absolute)
     images = [axis.images[0] for axis in fig.axes if axis.images]
 
@@ -691,7 +723,9 @@ def test_topomap_shares_scale_across_classes(
         )
         return image, None
 
-    visualizer = VisualizerType.SaliencyTopoMap.value(eval_record, epochs)
+    visualizer = VisualizerType.SaliencyTopoMap.value(
+        _render_data(eval_record, epochs, method)
+    )
     with patch("mne.viz.plot_topomap", side_effect=capture_topomap):
         fig = visualizer.get_plt(method, absolute)
 
@@ -741,7 +775,9 @@ def test_saliency_spectrogram_shares_robust_scale_across_classes():
         observed_stft_dtypes.append(np.asarray(values).dtype)
         return original_stft(values, *args, **kwargs)
 
-    visualizer = VisualizerType.SaliencySpectrogramMap.value(eval_record, epochs)
+    visualizer = VisualizerType.SaliencySpectrogramMap.value(
+        _render_data(eval_record, epochs)
+    )
     with patch(
         "XBrainLab.backend.visualization.saliency_spectrogram_map.signal.stft",
         side_effect=recording_stft,
@@ -804,13 +840,14 @@ def test_map_and_spectrogram_share_attribution_palette_and_colorbar_style():
         gradient.copy(),
     )
 
-    map_figure = VisualizerType.SaliencyMap.value(eval_record, epochs).get_plt(
+    map_figure = VisualizerType.SaliencyMap.value(
+        _render_data(eval_record, epochs)
+    ).get_plt(
         "Gradient",
         False,
     )
     spectrogram_figure = VisualizerType.SaliencySpectrogramMap.value(
-        eval_record,
-        epochs,
+        _render_data(eval_record, epochs),
     ).get_plt("Gradient")
     map_image = next(axis.images[0] for axis in map_figure.axes if axis.images)
     spectrogram_image = next(
@@ -868,7 +905,9 @@ def test_saliency_spectrogram_robust_scale_is_not_owned_by_one_outlier():
         gradient.copy(),
     )
 
-    visualizer = VisualizerType.SaliencySpectrogramMap.value(eval_record, epochs)
+    visualizer = VisualizerType.SaliencySpectrogramMap.value(
+        _render_data(eval_record, epochs)
+    )
     fig = visualizer.get_plt("Gradient")
     images = [axis.images[0] for axis in fig.axes if axis.images]
     display_max = images[0].get_clim()[1]
@@ -913,7 +952,9 @@ def test_saliency_class_panels_share_one_colorbar(visualizer_type):
         gradient.copy(),
     )
 
-    fig = visualizer_type.value(eval_record, epochs).get_plt("Gradient", False)
+    fig = visualizer_type.value(_render_data(eval_record, epochs)).get_plt(
+        "Gradient", False
+    )
     titled_axes = [axis for axis in fig.axes if axis.get_title()]
 
     assert len(titled_axes) == 2
@@ -942,7 +983,7 @@ def test_saliency_map_detail_keeps_shared_scale_and_reserves_colorbar_column():
         gradient.copy(),
     )
 
-    fig = VisualizerType.SaliencyMap.value(eval_record, epochs).get_plt(
+    fig = VisualizerType.SaliencyMap.value(_render_data(eval_record, epochs)).get_plt(
         "Gradient",
         False,
         selected_label_key=1,
@@ -975,7 +1016,7 @@ def test_saliency_map_overview_declares_minimum_scrollable_tile_height():
         gradient.copy(),
     )
 
-    fig = VisualizerType.SaliencyMap.value(eval_record, epochs).get_plt(
+    fig = VisualizerType.SaliencyMap.value(_render_data(eval_record, epochs)).get_plt(
         "Gradient", False
     )
 
@@ -1014,7 +1055,9 @@ def test_topomap_colorbar_tight_bounds_leave_readable_right_margin():
         gradient.copy(),
     )
 
-    fig = VisualizerType.SaliencyTopoMap.value(eval_record, epochs).get_plt(
+    fig = VisualizerType.SaliencyTopoMap.value(
+        _render_data(eval_record, epochs)
+    ).get_plt(
         "Gradient",
         False,
     )

@@ -273,7 +273,7 @@ def _publish_capture(
 
 def _settle_chat_panel_capture(app: QApplication, panel: ChatPanel) -> None:
     """Flush deferred ChatPanel layout and child painting before capture."""
-    containers = (panel, panel.chat_content_widget, panel.control_panel)
+    containers = (panel, panel.transcript_view.content_widget, panel.control_panel)
     for _ in range(4):
         for container in containers:
             layout = container.layout()
@@ -599,19 +599,21 @@ def _assistant_setup_required_narrow() -> ChatPanel:
 
 
 def _assistant_active_turn_narrow() -> ChatPanel:
+    from XBrainLab.backend.controller.chat_controller import ChatController
+
     panel = ChatPanel()
+    controller = ChatController()
+    panel.connect_controller(controller)
     panel.set_runtime_state("ready")
     panel.resize(QSize(420, 650))
     panel.show()
     app = QApplication.instance()
     if app is not None:
         app.processEvents()
-    panel.append_message("user", "Prepare the data for training.")
-    panel.append_message(
-        "assistant",
+    controller.add_user_message("Prepare the data for training.")
+    controller.add_agent_message(
         "I checked the workflow and need one decision before continuing.",
     )
-    panel.set_workflow_status("Complete the open XBrainLab dialog")
     panel.set_turn_activity(
         present_assistant_activity(
             AssistantTurnActivity(
@@ -753,7 +755,7 @@ def _evaluation_controls_panel() -> QWidget:
     panel.run_combo.clear()
     panel.split_combo.clear()
     panel.model_combo.addItem("All Folds", object())
-    panel.run_combo.addItem("Run 1 (Summary)", object())
+    panel.run_combo.addItem("Run 1", object())
     panel.split_combo.addItem("Test", "test")
     panel.model_combo.blockSignals(False)
     panel.run_combo.blockSignals(False)
@@ -1239,17 +1241,7 @@ def _semantic_control_text(control: QWidget) -> str:
 def _pixmap_image(pixmap) -> Image.Image:
     if pixmap.isNull():
         raise RuntimeError("Could not create a settled live widget reference.")
-    buffer = QBuffer()
-    if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
-        raise RuntimeError("Could not open the live widget reference buffer.")
-    if not pixmap.save(buffer, "PNG"):
-        raise RuntimeError("Could not encode the live widget reference.")
-    data = buffer.data().data()
-    buffer.close()
-    with Image.open(BytesIO(data)) as source:
-        image = source.convert("RGB")
-        image.load()
-    return image
+    return _qt_image_to_pil(pixmap.toImage())
 
 
 def _qt_image_to_pil(qt_image: QImage) -> Image.Image:
@@ -1593,7 +1585,8 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
             tree_viewport = tree.viewport()
             if tree_viewport is None:
                 raise RuntimeError(f"{filename} has no results viewport.")
-            unused_height = tree_viewport.height() - row_rect.bottom()
+            # QRect.bottom() includes the last occupied pixel.
+            unused_height = tree_viewport.height() - (row_rect.bottom() + 1)
             if unused_height > 12:
                 raise RuntimeError(f"{filename} leaves an empty results viewport.")
 
@@ -1713,12 +1706,13 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
         runtime_state = widget.runtime_state_widget
         if runtime_state.isVisible():
             state_bottom_right = runtime_state.mapTo(
-                widget.chat_content_widget,
+                widget.transcript_view.content_widget,
                 runtime_state.rect().bottomRight(),
             )
             if (
-                state_bottom_right.x() >= widget.chat_content_widget.width()
-                or state_bottom_right.y() >= widget.chat_content_widget.height()
+                state_bottom_right.x() >= widget.transcript_view.content_widget.width()
+                or state_bottom_right.y()
+                >= widget.transcript_view.content_widget.height()
             ):
                 raise RuntimeError(f"{filename} clips its inline runtime state.")
         if widget.setup_btn.isVisible():
@@ -1751,7 +1745,7 @@ def _assert_capture_geometry(filename: str, widget: QWidget) -> None:
             ):
                 raise RuntimeError(f"{filename} clips Retry local assistant.")
 
-        viewport = widget.scroll_area.viewport()
+        viewport = widget.transcript_view.viewport()
         if viewport is None:
             raise RuntimeError(f"{filename} has no conversation viewport.")
         for bubble in widget.findChildren(MessageBubble):

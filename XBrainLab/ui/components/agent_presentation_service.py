@@ -13,10 +13,6 @@ from XBrainLab.llm.agent.assistant_activity import (
 )
 from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
 from XBrainLab.llm.agent.response_presentation import AssistantResponseKind
-from XBrainLab.ui.components.workflow_surface_router import (
-    WorkflowSurfaceOutcome,
-    WorkflowSurfaceStatus,
-)
 from XBrainLab.ui.product_language import tool_action_label
 
 
@@ -25,46 +21,11 @@ class _RuntimeIssue(str, Enum):
     CUDA_UNAVAILABLE = "cuda_unavailable"
     GPU_MEMORY = "gpu_memory"
     DISABLED = "disabled"
-    MODEL_START = "model_start"
     UNKNOWN = "unknown"
 
 
 class AgentPresentationService:
     """Translate typed assistant events into stable, user-facing language."""
-
-    _LEGACY_CANCELLED_TURN_COPY = (
-        "The assistant stopped this request. No further response or action will run."
-    )
-    _CANCELLED_TURN_COPY = "Request cancelled. You can revise it or ask something else."
-
-    @classmethod
-    def assistant_transcript_message(cls, message: str) -> str:
-        """Replace one legacy cancellation sentence without reclassifying replies."""
-        if not isinstance(message, str):
-            raise TypeError("Assistant transcript copy must be a string.")
-        if " ".join(message.split()) == cls._LEGACY_CANCELLED_TURN_COPY:
-            return cls._CANCELLED_TURN_COPY
-        return message
-
-    @classmethod
-    def is_cancelled_transcript_message(cls, message: str) -> bool:
-        """Identify the one host-owned terminal cancellation presentation."""
-        if not isinstance(message, str):
-            raise TypeError("Assistant transcript copy must be a string.")
-        normalized = " ".join(message.split())
-        if normalized in {
-            cls._LEGACY_CANCELLED_TURN_COPY,
-            cls._CANCELLED_TURN_COPY,
-        }:
-            return True
-        normalized_lower = normalized.lower()
-        return " cancelled. " in f" {normalized_lower} " and normalized.endswith(
-            (
-                "Your current workflow is unchanged.",
-                "Your current workspace is unchanged.",
-                "Your current history is unchanged.",
-            )
-        )
 
     @classmethod
     def runtime_unavailable_message(cls, message: str) -> str:
@@ -113,59 +74,6 @@ class AgentPresentationService:
         )
 
     @staticmethod
-    def workflow_surface_outcome_message(outcome: WorkflowSurfaceOutcome) -> str:
-        """Translate a typed product-surface result into concise assistant copy."""
-        label = tool_action_label(outcome.command_name)
-        if outcome.command_name == "evaluate":
-            evaluation_copy = {
-                WorkflowSurfaceStatus.COMPLETED: (
-                    "Evaluation review is ready in XBrainLab."
-                ),
-                WorkflowSurfaceStatus.CANCELLED: (
-                    "Evaluation review was cancelled. "
-                    "Your current workflow is unchanged."
-                ),
-                WorkflowSurfaceStatus.FAILED: (
-                    "XBrainLab could not open Evaluation. "
-                    "Try again from the main window."
-                ),
-            }
-            if outcome.status in evaluation_copy:
-                return evaluation_copy[outcome.status]
-        if outcome.status is WorkflowSurfaceStatus.NAVIGATED:
-            if outcome.command_name == "evaluate":
-                return "Evaluation is open in the main window. Review results there."
-            if outcome.command_name == "visualize":
-                return (
-                    "Visualization is open in the main window. Review the output there."
-                )
-            return f"{label} is open in the main window. Continue there."
-        if outcome.status is WorkflowSurfaceStatus.COMPLETED:
-            return f"{label} is ready in XBrainLab."
-        if outcome.status is WorkflowSurfaceStatus.ACCEPTED:
-            return (
-                f"{label} settings were submitted. "
-                "Review the main window for the current result."
-            )
-        if outcome.status is WorkflowSurfaceStatus.CANCELLED:
-            return f"{label} was cancelled. Your current workflow is unchanged."
-        if outcome.status is WorkflowSurfaceStatus.CLOSED_WITHOUT_CHANGE:
-            return f"{label} closed without changing your workflow."
-        if outcome.status is WorkflowSurfaceStatus.BLOCKED:
-            return (
-                f"{label} is not available yet. Complete the required earlier "
-                "workflow step first."
-            )
-        if outcome.status is WorkflowSurfaceStatus.UNAVAILABLE:
-            return f"{label} is not available from the assistant yet."
-        return f"XBrainLab could not open {label}. Try again from the main window."
-
-    @staticmethod
-    def workflow_error_status(_message: str = "") -> str:
-        """Return stable status copy without exposing backend exception details."""
-        return "Review the current workflow step and try again."
-
-    @staticmethod
     def status_refresh_error() -> str:
         """Return stable copy for a failed backend-status refresh."""
         return "Workflow status could not be refreshed. Try again."
@@ -206,86 +114,21 @@ class AgentPresentationService:
             AssistantResponseKind.CANCELLED: ChatMessagePresentationKind.CANCELLED,
         }.get(kind, ChatMessagePresentationKind.ASSISTANT)
 
-    @classmethod
-    def confirmation_current_values(
-        cls,
+    @staticmethod
+    def confirmation_context_changed(
         request: AgentConfirmationRequest,
         publication: ApplicationViewPublication,
-    ) -> tuple[dict[str, str] | None, bool]:
-        """Project one matching publication into a confirmation-card comparison."""
+    ) -> bool:
+        """Report a stale request only against a reliable current publication."""
         request_generation = request.publication_generation
         if not getattr(publication, "usable", False) or not getattr(
             publication.state, "state_reliable", False
         ):
-            return None, False
-        if (
+            return False
+        return (
             request_generation is not None
             and publication.generation != request_generation
-        ):
-            return {}, True
-        if request_generation is None:
-            return None, False
-
-        training = publication.state.training
-        candidates: dict[str, object] = {}
-        if training.has_training_option:
-            candidates.update(training.training_option)
-            if "checkpoint_epoch" in candidates:
-                candidates["save_checkpoints_every"] = candidates["checkpoint_epoch"]
-        if training.has_model:
-            candidates.update(training.model_params)
-            if training.model_name:
-                candidates["model_name"] = training.model_name
-
-        display_values = {
-            str(key).replace("_", " ").strip().capitalize(): (
-                cls._confirmation_display_value(str(key), value)
-            )
-            for key, value in candidates.items()
-        }
-        requested_labels = {label for label, _value in request.parameter_rows}
-        if not requested_labels.issubset(display_values):
-            return None, False
-        return (
-            {
-                label: value
-                for label, value in display_values.items()
-                if label in requested_labels
-            },
-            False,
         )
-
-    @classmethod
-    def _confirmation_display_value(cls, key: str, value: object) -> str:
-        """Normalize authoritative display aliases for proposal comparison."""
-        normalized_key = key.strip().casefold()
-        if isinstance(value, str):
-            normalized_value = " ".join(value.strip().casefold().split())
-            if normalized_key == "optimizer":
-                value = normalized_value
-            elif normalized_key == "device" and normalized_value.startswith("cuda:"):
-                value = "cuda"
-            elif normalized_key == "evaluation_option":
-                value = {
-                    "best validation loss": "val_loss",
-                    "best validation auc": "val_auc",
-                    "best validation performance": "val_acc",
-                    "last epoch": "last_epoch",
-                }.get(normalized_value, normalized_value)
-        return cls._display_ui_value(value)
-
-    @staticmethod
-    def _display_ui_value(value: object) -> str:
-        """Format safe snapshot values without exposing object representations."""
-        if value is None:
-            return "None"
-        if isinstance(value, bool):
-            return "True" if value else "False"
-        if isinstance(value, (str, int, float)):
-            return str(value)
-        if isinstance(value, (list, tuple)):
-            return ", ".join(str(item) for item in value[:8])
-        return "Configured"
 
     @staticmethod
     def _runtime_issue(message: str) -> _RuntimeIssue:
@@ -313,8 +156,6 @@ class AgentPresentationService:
             return _RuntimeIssue.MODEL_CACHE
         if "disabled" in normalized:
             return _RuntimeIssue.DISABLED
-        if "model load" in normalized or "runtime unavailable" in normalized:
-            return _RuntimeIssue.MODEL_START
         return _RuntimeIssue.UNKNOWN
 
     @staticmethod

@@ -51,6 +51,10 @@ def test_model_summary_async_failure_replaces_loading_with_actionable_terminal_s
     )
     panel = EvaluationPanel()
     qtbot.addWidget(panel)
+    panel.resize(900, 650)
+    panel.bottom_tabs.setCurrentWidget(panel.summary_tab)
+    with qtbot.waitExposed(panel):
+        panel.show()
     panel._application_generation = 4
     run_identity = EvaluationRunIdentity(
         plan=EvaluationPlanIdentity(plan_index=0),
@@ -97,6 +101,10 @@ def test_model_summary_async_failure_replaces_loading_with_actionable_terminal_s
     assert "KeyError" not in visible
     assert "private worker" not in visible
     assert panel._model_summary_identity is None
+    assert panel.summary_text.isVisibleTo(panel)
+    image = panel.grab().toImage()
+    assert not image.isNull()
+    assert image.width() >= 900 and image.height() >= 650
     assert (
         "KeyError: 0 from raw backend result" in caplog.text
         or "private worker traceback detail" in caplog.text

@@ -3,16 +3,23 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from copy import deepcopy
 from threading import Event, Thread
+from time import monotonic
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from transformers import StoppingCriteria, StoppingCriteriaList
 
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.resource_guard import ResourceChecker
 from XBrainLab.llm.core.config import LLMConfig
-from XBrainLab.llm.core.generation import ResolvedGenerationOptions
+from XBrainLab.llm.core.generation import GenerationProfile, ResolvedGenerationOptions
+from XBrainLab.llm.core.model_catalog import (
+    LOWER_MEMORY_LOCAL_MODEL_ID,
+    PRIMARY_LOCAL_MODEL_ID,
+)
 
 CONFIGURED_TEST_OPTIONS = ResolvedGenerationOptions(
     max_new_tokens=128,
@@ -70,7 +77,10 @@ def _configure_blocking_generation(
         threads.append(thread)
         return thread
 
-    transformers = MagicMock()
+    transformers = MagicMock(
+        StoppingCriteria=StoppingCriteria,
+        StoppingCriteriaList=StoppingCriteriaList,
+    )
     transformers.TextIteratorStreamer.side_effect = lambda *_args, **_kwargs: (
         _EmptyStreamer()
     )
@@ -145,21 +155,15 @@ class TestGenerationOwnedEngineLifecycle:
         config = LLMConfig(inference_mode="local")
         engine = LLMEngine(config)
         backend = MagicMock()
-        backend.unload.return_value = False
-        engine.backends["local"] = backend
-        engine._backend_model_ids["local"] = "old-model"
-        engine.active_backend = backend
-        config.model_name = "new-model"
-
-        with pytest.raises(RuntimeError, match="generation is still running"):
-            engine.switch_backend("local")
-
-        assert engine.backends == {"local": backend}
-        assert engine.active_backend is backend
-        assert engine._backend_model_ids == {"local": "old-model"}
+        backend.unload.side_effect = [False, True]
+        with patch(
+            "XBrainLab.llm.core.backends.local.LocalBackend", return_value=backend
+        ):
+            engine.load_model()
         assert engine.close() is False
-        assert engine.backends == {"local": backend}
-        assert engine.active_backend is backend
+        assert engine.active_backend is None
+        assert engine.close() is True
+        assert backend.unload.call_count == 2
 
 
 class TestGenerationProfiles:
@@ -216,7 +220,9 @@ class TestGenerationProfiles:
                 "sys.modules",
                 {
                     "transformers": MagicMock(
-                        TextIteratorStreamer=MagicMock(return_value=streamer)
+                        StoppingCriteria=StoppingCriteria,
+                        StoppingCriteriaList=StoppingCriteriaList,
+                        TextIteratorStreamer=MagicMock(return_value=streamer),
                     ),
                 },
             ),
@@ -276,7 +282,9 @@ class TestGenerationProfiles:
                 "sys.modules",
                 {
                     "transformers": MagicMock(
-                        TextIteratorStreamer=MagicMock(return_value=streamer)
+                        StoppingCriteria=StoppingCriteria,
+                        StoppingCriteriaList=StoppingCriteriaList,
+                        TextIteratorStreamer=MagicMock(return_value=streamer),
                     ),
                 },
             ),
@@ -516,6 +524,37 @@ class TestLocalBackendLoad:
 
 
 class TestProcessMessages:
+    @pytest.mark.parametrize(
+        "model_id", [PRIMARY_LOCAL_MODEL_ID, LOWER_MEMORY_LOCAL_MODEL_ID]
+    )
+    def test_supported_templates_preserve_policy_context_and_request(self, model_id):
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        context = (
+            '{"schema":"xbrainlab.untrusted_context.v1",'
+            '"trust":"untrusted","items":["reference"]}'
+        )
+        messages = [
+            {"role": "system", "content": "host policy"},
+            {"role": "user", "content": context},
+            {"role": "user", "content": "exact request"},
+            {"role": "assistant", "content": "first response"},
+            {"role": "assistant", "content": "second response"},
+            {"role": "user", "content": "followup"},
+            {"role": "user", "content": "additional detail"},
+        ]
+        original = deepcopy(messages)
+        backend = LocalBackend(_make_config(model_name=model_id))
+
+        assert backend._process_messages_for_template(messages) == [
+            {"role": "system", "content": "host policy"},
+            {"role": "user", "content": context},
+            {"role": "user", "content": "exact request"},
+            {"role": "assistant", "content": "first response\n\nsecond response"},
+            {"role": "user", "content": "followup\n\nadditional detail"},
+        ]
+        assert messages == original
+
     def _get_backend(self):
         from XBrainLab.llm.core.backends.local import LocalBackend
 
@@ -575,6 +614,91 @@ class TestProcessMessages:
 
 
 class TestGenerateStream:
+    def test_real_stopping_criteria_cancels_thread_and_allows_next_generation(self):
+        import torch
+
+        from XBrainLab.llm.core.backends.local import LocalBackend
+        from XBrainLab.llm.core.engine import LLMEngine
+
+        backend = LocalBackend(_make_config())
+        tokenizer = MagicMock()
+        tokenizer.apply_chat_template.return_value = "prompt text"
+        tokenizer.return_value = MagicMock(to=MagicMock(return_value={}))
+        started = Event()
+        cancelled = Event()
+        emergency_release = Event()
+        calls = []
+        model = MagicMock(device="cpu")
+
+        def generate(*, stopping_criteria, streamer, **_kwargs):
+            assert isinstance(stopping_criteria, StoppingCriteriaList)
+            token_ids = torch.zeros((1, 1), dtype=torch.long)
+            assert not stopping_criteria(token_ids, None).item()
+            calls.append(stopping_criteria)
+            if len(calls) == 1:
+                started.set()
+                deadline = monotonic() + 3
+                while not emergency_release.wait(0.001):
+                    if stopping_criteria(token_ids, None).item():
+                        cancelled.set()
+                        break
+                    if monotonic() >= deadline:
+                        raise AssertionError("Cancellation never reached the model.")
+                streamer.on_finalized_text("", stream_end=True)
+            else:
+                streamer.on_finalized_text("next run", stream_end=True)
+
+        model.generate.side_effect = generate
+        backend.model = model
+        backend.tokenizer = tokenizer
+        backend.is_loaded = True
+        engine = LLMEngine(LLMConfig(model_name=GRANITE_MODEL_ID, max_new_tokens=128))
+        with patch(
+            "XBrainLab.llm.core.backends.local.LocalBackend", return_value=backend
+        ):
+            engine.load_model()
+        errors = []
+        first_output = []
+
+        def consume():
+            try:
+                first_output.extend(
+                    engine.generate_stream(
+                        [{"role": "user", "content": "first"}],
+                        profile=GenerationProfile.STRUCTURED_DECISION,
+                    )
+                )
+            except BaseException as error:
+                errors.append(error)
+
+        consumer = Thread(target=consume)
+        consumer.start()
+        try:
+            assert started.wait(2)
+            lease = backend._active_generation
+            assert lease is not None and lease.thread is not None
+            generation_thread = lease.thread
+            assert engine.cancel_generation(wait_timeout=1) is True
+            consumer.join(timeout=1)
+            assert cancelled.is_set()
+            assert not generation_thread.is_alive()
+            assert not consumer.is_alive()
+            assert errors == []
+            assert first_output == []
+            assert backend._active_generation is None
+            assert list(
+                engine.generate_stream(
+                    [{"role": "user", "content": "second"}],
+                    profile=GenerationProfile.STRUCTURED_DECISION,
+                )
+            ) == ["next run"]
+            assert len(calls) == 2
+            assert calls[0] is not calls[1]
+        finally:
+            emergency_release.set()
+            consumer.join(timeout=1)
+            engine.cancel_generation(wait_timeout=1)
+
     def test_generate_stream_not_loaded(self):
         from XBrainLab.llm.core.backends.local import LocalBackend
 
@@ -635,7 +759,9 @@ class TestGenerateStream:
                 "sys.modules",
                 {
                     "transformers": MagicMock(
-                        TextIteratorStreamer=MagicMock(return_value=mock_streamer)
+                        StoppingCriteria=StoppingCriteria,
+                        StoppingCriteriaList=StoppingCriteriaList,
+                        TextIteratorStreamer=MagicMock(return_value=mock_streamer),
                     ),
                 },
             ),
@@ -691,7 +817,9 @@ class TestGenerateStream:
                 "sys.modules",
                 {
                     "transformers": MagicMock(
-                        TextIteratorStreamer=MagicMock(return_value=mock_streamer)
+                        StoppingCriteria=StoppingCriteria,
+                        StoppingCriteriaList=StoppingCriteriaList,
+                        TextIteratorStreamer=MagicMock(return_value=mock_streamer),
                     ),
                 },
             ),

@@ -148,6 +148,43 @@ class _TerminateIgnoringProcess:
         self.alive = False
 
 
+@pytest.mark.parametrize("operation", ["cancel", "timeout"])
+@pytest.mark.parametrize("stop_raises", [False, True])
+def test_failed_stop_retains_process_until_cleanup_retry(operation, stop_raises):
+    class _UnstoppableProcess(_TerminateIgnoringProcess):
+        allow_stop = False
+
+        def terminate(self):
+            if stop_raises and not self.allow_stop:
+                raise OSError("process termination unavailable")
+
+        def kill(self):
+            self.alive = not self.allow_stop
+
+    lifecycle = ProcessRAGRetrieverLifecycle(shutdown_wait_seconds=0.01)
+    process = _UnstoppableProcess()
+    callbacks = []
+    lifecycle._process = process
+    lifecycle._pending = rag_process_lifecycle._PendingRetrieval(
+        7, "query", lambda *args: callbacks.append(args), None
+    )
+
+    if operation == "cancel":
+        assert lifecycle.cancel_retrieval(7) is False
+    else:
+        lifecycle._abort_generation(lifecycle._generation, error="retrieval timed out")
+        assert callbacks == [(7, "query", "", "retrieval timed out")]
+    assert lifecycle.has_active_process
+    assert lifecycle.start() is False
+    assert lifecycle.retrieve(8, "next", lambda *_args: None) is False
+    assert lifecycle.close() is False
+    assert lifecycle.has_active_process
+
+    process.allow_stop = True
+    assert lifecycle.close() is True
+    assert lifecycle.has_active_process is False
+
+
 def test_process_lifecycle_delivers_result_and_closes_without_child() -> None:
     lifecycle = ProcessRAGRetrieverLifecycle(
         process_target=_responsive_worker,

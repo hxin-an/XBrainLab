@@ -9,7 +9,7 @@ from enum import Enum
 from itertools import count
 from typing import Any, Protocol, cast
 
-from PyQt6.QtCore import QObject, QTimer, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, QTimer, pyqtBoundSignal, pyqtSignal, pyqtSlot
 
 from XBrainLab.backend.utils.logger import logger
 from XBrainLab.chat_contract import (
@@ -17,6 +17,7 @@ from XBrainLab.chat_contract import (
     bounded_chat_string,
 )
 from XBrainLab.llm.agent.confirmation import AgentConfirmationResolution
+from XBrainLab.llm.agent.response_presentation import AssistantPanelNavigationRequest
 from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
     AssistantRuntimeSnapshot,
@@ -52,6 +53,12 @@ from XBrainLab.ui.components.assistant_runtime_coordinator import (
 class _RuntimeDispatcher(Protocol):
     """Command dispatcher contract owned by the runtime lifecycle."""
 
+    @property
+    def cleanup_finished(self) -> pyqtBoundSignal: ...
+
+    @property
+    def turn_delivery_acknowledged(self) -> pyqtBoundSignal: ...
+
     def bind(self, controller: object) -> None: ...
 
     def initialize(self, launch_spec: AssistantRuntimeLaunchSpec) -> bool: ...
@@ -69,6 +76,13 @@ class _RuntimeDispatcher(Protocol):
     def resolve_ui_handoff(
         self,
         resolution: WorkflowUiHandoffResolution,
+    ) -> bool: ...
+
+    def resolve_panel_navigation(
+        self,
+        request: AssistantPanelNavigationRequest,
+        *,
+        success: bool,
     ) -> bool: ...
 
     def debug(self, request: AssistantDebugToolRequest) -> bool: ...
@@ -198,10 +212,6 @@ class RuntimeActivationResult:
             RuntimeActivationStatus.UNAVAILABLE,
         }
 
-    @property
-    def fallback_used(self) -> bool:
-        return bool(self.launch_spec and self.launch_spec.fallback_used)
-
 
 class AssistantRuntimeLifecycle(QObject):
     """Own config readiness, controller startup, dispatch, state, and shutdown.
@@ -267,19 +277,19 @@ class AssistantRuntimeLifecycle(QObject):
         super().__init__(parent)
         self._study = study
         self._controller_factory = controller_factory
-        self._dispatcher_factory = dispatcher_factory
-        self._dispatcher_cleanup_signal: Any | None = None
-        self._dispatcher_delivery_signal: Any | None = None
+        self._dispatcher_factory: Callable[[], _RuntimeDispatcher] | None = (
+            dispatcher_factory
+        )
         self._dispatcher: _RuntimeDispatcher
         if dispatcher is None:
             self._dispatcher_factory = dispatcher_factory or (
-                lambda: AssistantCommandDispatcher(self)
+                # PyQt's stubs expose class signals, not their bound descriptors.
+                lambda: cast(_RuntimeDispatcher, AssistantCommandDispatcher(self))
             )
             self._dispatcher = self._dispatcher_factory()
         else:
             self._dispatcher = dispatcher
-        self._connect_dispatcher_cleanup_signal()
-        self._connect_dispatcher_delivery_signal()
+        self._connect_dispatcher_signals()
         self._config_loader = config_loader or self._default_config_loader
         self._resolver = resolver or AssistantRuntimeLaunchResolver()
         self._coordinator = AssistantRuntimeCoordinator(
@@ -367,36 +377,24 @@ class AssistantRuntimeLifecycle(QObject):
     def _default_config_loader() -> LLMConfig:
         return LLMConfig.load_from_file() or LLMConfig()
 
-    def _connect_dispatcher_cleanup_signal(self) -> None:
-        """Observe optional asynchronous cleanup without widening test doubles."""
-        signal = getattr(self._dispatcher, "cleanup_finished", None)
-        if signal is None or not callable(getattr(signal, "connect", None)):
-            self._dispatcher_cleanup_signal = None
-            return
-        signal.connect(self._on_dispatcher_cleanup_finished)
-        self._dispatcher_cleanup_signal = signal
-
-    def _connect_dispatcher_delivery_signal(self) -> None:
-        """Observe typed completion of optionally queued turn delivery."""
-        signal = getattr(self._dispatcher, "turn_delivery_acknowledged", None)
-        if signal is None or not callable(getattr(signal, "connect", None)):
-            self._dispatcher_delivery_signal = None
-            return
-        signal.connect(self._on_turn_delivery_acknowledged)
-        self._dispatcher_delivery_signal = signal
+    def _connect_dispatcher_signals(self) -> None:
+        """Observe the transport owner's delivery and cleanup acknowledgements."""
+        self._dispatcher.cleanup_finished.connect(self._on_dispatcher_cleanup_finished)
+        self._dispatcher.turn_delivery_acknowledged.connect(
+            self._on_turn_delivery_acknowledged
+        )
 
     def _replace_dispatcher(self, dispatcher: _RuntimeDispatcher) -> None:
-        cleanup_signal = self._dispatcher_cleanup_signal
-        if cleanup_signal is not None:
-            with suppress(RuntimeError, TypeError):
-                cleanup_signal.disconnect(self._on_dispatcher_cleanup_finished)
-        delivery_signal = self._dispatcher_delivery_signal
-        if delivery_signal is not None:
-            with suppress(RuntimeError, TypeError):
-                delivery_signal.disconnect(self._on_turn_delivery_acknowledged)
+        with suppress(RuntimeError, TypeError):
+            self._dispatcher.cleanup_finished.disconnect(
+                self._on_dispatcher_cleanup_finished
+            )
+        with suppress(RuntimeError, TypeError):
+            self._dispatcher.turn_delivery_acknowledged.disconnect(
+                self._on_turn_delivery_acknowledged
+            )
         self._dispatcher = dispatcher
-        self._connect_dispatcher_cleanup_signal()
-        self._connect_dispatcher_delivery_signal()
+        self._connect_dispatcher_signals()
 
     @pyqtSlot(bool, str)
     def _on_dispatcher_cleanup_finished(self, ok: bool, message: str) -> None:
@@ -421,7 +419,6 @@ class AssistantRuntimeLifecycle(QObject):
             ):
                 self._state = AssistantRuntimeLifecycleState.CLEANUP_PENDING
                 self._coordinator.mark_unavailable(self._CLEANUP_PENDING_MESSAGE)
-                return
             self.cleanup_finished.emit(False, detail)
             return
 
@@ -461,13 +458,8 @@ class AssistantRuntimeLifecycle(QObject):
     def _resolve_launch(
         self,
         config: LLMConfig,
-        *,
-        requested_model_id: str | None = None,
     ) -> AssistantRuntimeLaunchResolution:
-        return self._resolver.resolve(
-            config,
-            requested_model_id=requested_model_id,
-        )
+        return self._resolver.resolve(config)
 
     @staticmethod
     def _unavailable_result(
@@ -483,9 +475,17 @@ class AssistantRuntimeLifecycle(QObject):
     def apply_first_run_choice(config: LLMConfig, choice: str) -> RuntimeSetupOutcome:
         """Persist a bounded inline setup choice through the lifecycle owner."""
         if str(choice or "").strip() in {"enable", "use_existing_cache"}:
+            previous_enabled = config.local_model_enabled
+            previous_acknowledged = config.local_runtime_notice_acknowledged
             config.local_model_enabled = True
             config.local_runtime_notice_acknowledged = True
-            config.save_to_file()
+            if not config.save_to_file():
+                config.local_model_enabled = previous_enabled
+                config.local_runtime_notice_acknowledged = previous_acknowledged
+                return RuntimeSetupOutcome(
+                    RuntimeSetupAction.STOP,
+                    AssistantRuntimeLifecycle._START_FAILURE_MESSAGE,
+                )
             return RuntimeSetupOutcome(RuntimeSetupAction.CONTINUE)
         return RuntimeSetupOutcome(RuntimeSetupAction.OPEN_SETTINGS)
 
@@ -505,6 +505,10 @@ class AssistantRuntimeLifecycle(QObject):
             return RuntimeActivationResult(
                 RuntimeActivationStatus.UNAVAILABLE,
                 message=message,
+            )
+        if self.expected_activation_id is not None:
+            return RuntimeActivationResult(
+                RuntimeActivationStatus.BUSY, message=self._LOADING_MESSAGE
             )
         resolution = self._resolve_launch(config)
         if resolution.failure is not None:
@@ -678,11 +682,6 @@ class AssistantRuntimeLifecycle(QObject):
                     f"'{signal_name}'."
                 )
             resolved.append((signal, slot))
-        shutdown_signal = getattr(controller, "shutdown_finished", None)
-        if shutdown_signal is not None and callable(
-            getattr(shutdown_signal, "connect", None)
-        ):
-            resolved.append((shutdown_signal, self._on_controller_shutdown_finished))
         terminal_handler = getattr(
             controller,
             "on_workflow_ui_handoff_resolved",
@@ -703,40 +702,6 @@ class AssistantRuntimeLifecycle(QObject):
             raise
         self._controller_lifecycle_connections = tuple(connected)
         self._terminal_handoff_fallback_bound = callable(terminal_handler)
-
-    @pyqtSlot(bool, str)
-    def _on_controller_shutdown_finished(self, ok: bool, message: str) -> None:
-        """Resume transport cleanup after controller workers become terminal."""
-        if (
-            not self._close_requested
-            or self._state is AssistantRuntimeLifecycleState.CLOSED
-        ):
-            return
-        detail = redact_public_text(message or "")
-        if not ok:
-            self._state = AssistantRuntimeLifecycleState.CLEANUP_PENDING
-            self._coordinator.mark_unavailable(self._CLEANUP_PENDING_MESSAGE)
-            self.cleanup_finished.emit(False, detail)
-            return
-        try:
-            closed = bool(self._dispatcher.close())
-        except Exception as exc:
-            safe_unexpected_failure(
-                logger,
-                exc,
-                boundary="assistant_runtime_lifecycle",
-                operation="dispatcher_cleanup_after_controller_shutdown",
-            )
-            self._state = AssistantRuntimeLifecycleState.CLEANUP_PENDING
-            self._coordinator.mark_unavailable(self._CLEANUP_PENDING_MESSAGE)
-            self.cleanup_finished.emit(
-                False,
-                "Assistant transport cleanup did not finish.",
-            )
-            return
-        if closed:
-            self._complete_close()
-            self.cleanup_finished.emit(True, detail)
 
     def _disconnect_controller_lifecycle_signals(self) -> None:
         for signal, slot in self._controller_lifecycle_connections:
@@ -813,8 +778,6 @@ class AssistantRuntimeLifecycle(QObject):
         correlation: AssistantTurnCorrelation,
     ) -> None:
         """Bound queued delivery to a terminal acknowledgement deadline."""
-        if self._dispatcher_delivery_signal is None:
-            return
         self._stop_turn_delivery_watchdog()
         timer = QTimer(self)
         timer.setSingleShot(True)
@@ -1010,45 +973,6 @@ class AssistantRuntimeLifecycle(QObject):
     def mark_unavailable(self, message: str) -> None:
         self._stop_activation_watchdog()
         self._coordinator.mark_unavailable(redact_public_text(message))
-
-    def switch_model(self, model_name: str) -> RuntimeActivationResult:
-        """Resolve once and queue one exact immutable model-switch request."""
-        if not self._lifecycle_is_open:
-            message = self._admission_failure_message()
-            self.mark_unavailable(message)
-            return RuntimeActivationResult(
-                RuntimeActivationStatus.UNAVAILABLE,
-                message=message,
-            )
-        if self.turn_in_flight:
-            return self._busy_activation_result()
-        resolution = self._resolve_launch(
-            self.load_config(),
-            requested_model_id=str(model_name or "").strip(),
-        )
-        if resolution.failure is not None:
-            return self._unavailable_result(resolution.failure)
-        launch_spec = resolution.launch_spec
-        if launch_spec is None:  # pragma: no cover - resolution invariant
-            raise RuntimeError("Assistant runtime resolution returned no launch spec.")
-        if self._controller is None:
-            return RuntimeActivationResult(
-                RuntimeActivationStatus.UNAVAILABLE,
-                message="Assistant runtime is not initialized.",
-                launch_spec=launch_spec,
-            )
-        if (
-            self.current.initialized
-            and self.current.backend_mode == launch_spec.backend_mode
-            and self.current.model_id == launch_spec.model_id
-        ):
-            self._coordinator.restore_active_runtime()
-            return RuntimeActivationResult(
-                RuntimeActivationStatus.ALREADY_READY,
-                message=launch_spec.selection_detail,
-                launch_spec=launch_spec,
-            )
-        return self._queue_model_switch(launch_spec)
 
     def _queue_model_switch(
         self,
@@ -1256,6 +1180,30 @@ class AssistantRuntimeLifecycle(QObject):
             generation=active.generation if active is not None else None,
         )
 
+    def resolve_panel_navigation(
+        self,
+        request: AssistantPanelNavigationRequest,
+        *,
+        success: bool,
+    ) -> RuntimeCommandAdmissionResult:
+        """Queue the existing panel completion callback to its controller thread."""
+        if not isinstance(request, AssistantPanelNavigationRequest):
+            raise TypeError("Panel navigation resolution requires a typed request.")
+        if type(success) is not bool:
+            raise TypeError("Panel navigation success must be boolean.")
+        if request.correlation is None or request.correlation != self._active_turn:
+            return RuntimeCommandAdmissionResult(
+                command_name="resolve_panel_navigation",
+                status=RuntimeCommandAdmissionStatus.REJECTED,
+                message=self._DELIVERY_FAILURE_MESSAGE,
+            )
+        return self._dispatch_if_open(
+            "resolve_panel_navigation",
+            request,
+            success=success,
+            require_ready=False,
+        )
+
     def debug(
         self,
         tool_name: str,
@@ -1312,6 +1260,7 @@ class AssistantRuntimeLifecycle(QObject):
         method_name: str,
         *args: Any,
         require_ready: bool = True,
+        **kwargs: Any,
     ) -> RuntimeCommandAdmissionResult:
         can_dispatch = (
             self.accepts_commands if require_ready else self._owns_command_transport
@@ -1329,7 +1278,7 @@ class AssistantRuntimeLifecycle(QObject):
             )
         method = getattr(self._dispatcher, method_name)
         try:
-            dispatched = method(*args)
+            dispatched = method(*args, **kwargs)
         except Exception as exc:
             safe_unexpected_failure(
                 logger,

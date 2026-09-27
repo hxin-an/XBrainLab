@@ -32,6 +32,40 @@ def test_alert_uses_xbrainlab_dialog_shell_and_wraps_message(qtbot):
     assert dialog.acknowledge_button.text() == "OK"
 
 
+def test_opt_out_is_bottom_left_in_same_row_as_acknowledgement(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="GPU Memory Usage",
+        message=(
+            "Using the local Assistant with 3D Plot may increase GPU memory use."
+            " If the app slows down, try using one at a time."
+        ),
+        opt_out_text="Don't show this again",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitUntil(dialog.isVisible)
+    check = dialog.opt_out_checkbox
+    button = dialog.acknowledge_button
+    assert check is not None
+    check_rect = check.rect().translated(check.mapTo(dialog, QPoint(0, 0)))
+    button_rect = button.rect().translated(button.mapTo(dialog, QPoint(0, 0)))
+    message_bottom = dialog.message_label.mapTo(
+        dialog, dialog.message_label.rect().bottomLeft()
+    ).y()
+    assert abs(check_rect.center().y() - button_rect.center().y()) <= 2
+    assert check_rect.right() < button_rect.left()
+    assert check_rect.left() == dialog.message_label.mapTo(dialog, QPoint(0, 0)).x()
+    assert check_rect.left() == dialog.title_label.mapTo(dialog, QPoint(0, 0)).x()
+    assert button_rect.top() - message_bottom >= 16
+    assert button_rect.left() - check_rect.right() >= 24
+    assert dialog.message_label.height() >= dialog.message_label.heightForWidth(
+        dialog.message_label.width()
+    )
+    assert dialog.rect().contains(check_rect)
+    assert dialog.rect().contains(button_rect)
+
+
 @pytest.mark.parametrize(
     ("severity", "title", "severity_text"),
     [
@@ -85,11 +119,36 @@ def test_acknowledgement_alert_has_exactly_one_ok_action(qtbot):
 
     assert dialog.confirm_button is None
     assert dialog.cancel_button is None
+    assert dialog.opt_out_checkbox is None
     assert dialog.acknowledge_button.text() == "OK"
     assert (
         dialog.findChild(QPushButton, "PrimaryConfirmButton")
         is dialog.acknowledge_button
     )
+
+
+def test_optional_opt_out_is_unchecked_visible_and_keyboard_operable(qtbot):
+    dialog = ModalAlertDialog(
+        severity=AlertSeverity.WARNING,
+        title="VRAM Warning",
+        message="Close the 3D view if memory is insufficient.",
+        opt_out_text="Do not ask again",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    checkbox = dialog.opt_out_checkbox
+    assert checkbox is not None
+    assert checkbox.isVisible()
+    assert checkbox.text() == "Do not ask again"
+    assert not checkbox.isChecked()
+    assert dialog.rect().contains(checkbox.geometry())
+    assert (
+        checkbox.geometry().right()
+        < dialog.acknowledge_button.mapTo(dialog, QPoint(0, 0)).x()
+    )
+    checkbox.setFocus()
+    QTest.keyClick(checkbox, Qt.Key.Key_Space)
+    assert checkbox.isChecked()
 
 
 def test_generic_warning_title_does_not_repeat_visible_warning_copy(qtbot):

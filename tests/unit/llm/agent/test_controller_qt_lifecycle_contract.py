@@ -124,11 +124,40 @@ def test_controller_integration_fixture_owns_exception_safe_shutdown() -> None:
 
 
 def test_assistant_shutdown_source_forbids_nested_loops_and_blocking_waits() -> None:
-    """Only an immediate native-completion probe may supplement Qt terminals."""
+    """Allow only immediate probes and the bounded generation-exit grace."""
     forbidden: list[tuple[str, int]] = []
 
     for source in (CONTROLLER_SOURCE, WORKER_SOURCE):
         tree = ast.parse(source.read_text(encoding="utf-8"))
+        generation_exit_waits: set[int] = set()
+        if source == WORKER_SOURCE:
+            grace = next(
+                node.value.value
+                for node in tree.body
+                if isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name)
+                    and target.id == "GENERATION_THREAD_EXIT_WAIT_MS"
+                    for target in node.targets
+                )
+                and isinstance(node.value, ast.Constant)
+            )
+            assert grace == 250
+            cleanup = next(
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef)
+                and node.name == "_cleanup_generation_thread"
+            )
+            generation_exit_waits = {
+                node.lineno
+                for node in ast.walk(cleanup)
+                if isinstance(node, ast.Call)
+                and len(node.args) == 1
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "GENERATION_THREAD_EXIT_WAIT_MS"
+                and not node.keywords
+            }
         for node in ast.walk(tree):
             if isinstance(node, ast.Name) and node.id == "QEventLoop":
                 forbidden.append((f"{source.name}:QEventLoop", node.lineno))
@@ -136,6 +165,7 @@ def test_assistant_shutdown_source_forbids_nested_loops_and_blocking_waits() -> 
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr == "wait"
+                and node.lineno not in generation_exit_waits
                 and not (
                     len(node.args) == 1
                     and isinstance(node.args[0], ast.Constant)
@@ -523,7 +553,6 @@ def test_real_qobject_worker_shutdown_waits_only_for_finished_signal(
     """A live native generation makes shutdown pending without blocking its owner."""
     from XBrainLab.llm.agent.turn import (
         AssistantGenerationRequest,
-        AssistantResponseContract,
     )
     from XBrainLab.llm.agent.worker import AgentWorker
     from XBrainLab.llm.core.config import LLMConfig
@@ -536,6 +565,8 @@ def test_real_qobject_worker_shutdown_waits_only_for_finished_signal(
             self.config = LLMConfig()
             self.config.timeout = 60
             self.close_calls = 0
+            self.active_backend = self
+            self.restart_required = False
 
         def generate_stream(self, _messages, *, profile):
             del profile
@@ -547,8 +578,11 @@ def test_real_qobject_worker_shutdown_waits_only_for_finished_signal(
             del wait_timeout
             return False
 
-        def close(self) -> None:
+        def close(self, *, wait_timeout: float = 0.0) -> bool:
+            del wait_timeout
             self.close_calls += 1
+            self.active_backend = None
+            return True
 
     engine = _BlockingEngine()
     worker = AgentWorker()
@@ -557,7 +591,6 @@ def test_real_qobject_worker_shutdown_waits_only_for_finished_signal(
     worker.shutdown_finished.connect(terminals.append)
     request = AssistantGenerationRequest.from_messages(
         [{"role": "user", "content": "run"}],
-        response_contract=AssistantResponseContract.STRUCTURED_ACTION,
     ).correlated(1)
     monkeypatch.setattr(LLMConfig, "load_from_file", lambda: None)
 
@@ -603,7 +636,6 @@ def test_controller_timeout_does_not_finalize_with_live_generation(
     from XBrainLab.llm.agent import controller as controller_module
     from XBrainLab.llm.agent.turn import (
         AssistantGenerationRequest,
-        AssistantResponseContract,
     )
     from XBrainLab.llm.core.config import LLMConfig
 
@@ -615,6 +647,8 @@ def test_controller_timeout_does_not_finalize_with_live_generation(
             self.config = LLMConfig()
             self.config.timeout = 60
             self.close_calls = 0
+            self.active_backend = self
+            self.restart_required = False
 
         def generate_stream(self, _messages, *, profile):
             del profile
@@ -626,8 +660,11 @@ def test_controller_timeout_does_not_finalize_with_live_generation(
             del wait_timeout
             return False
 
-        def close(self) -> None:
+        def close(self, *, wait_timeout: float = 0.0) -> bool:
+            del wait_timeout
             self.close_calls += 1
+            self.active_backend = None
+            return True
 
     monkeypatch.setattr(controller_module, "WORKER_SHUTDOWN_TIMEOUT_MS", 25)
     monkeypatch.setattr(
@@ -648,7 +685,6 @@ def test_controller_timeout_does_not_finalize_with_live_generation(
     )
     request = AssistantGenerationRequest.from_messages(
         [{"role": "user", "content": "run"}],
-        response_contract=AssistantResponseContract.STRUCTURED_ACTION,
     ).correlated(1)
 
     try:

@@ -1953,7 +1953,7 @@ def test_trajectory_retries_format_error_with_product_policy_and_scores_final() 
     }
 
 
-def test_trajectory_exhaustion_is_visible_safe_failure_after_two_retries() -> None:
+def test_trajectory_exhaustion_is_visible_safe_failure_after_one_repair() -> None:
     registry = target_tool_registry()
     case = next(
         case
@@ -1971,11 +1971,10 @@ def test_trajectory_exhaustion_is_visible_safe_failure_after_two_retries() -> No
     assert trajectory.raw_score.passed is False
     assert trajectory.final_score.passed is False
     assert trajectory.final_score.failure_type == "output_format"
-    assert len(generated_messages) == 3
-    assert generated_messages[2][0]["content"].count("FORMAT CORRECTION REQUIRED") == 1
-    assert "FORMAT CORRECTION REQUIRED" not in generated_messages[2][1]["content"]
+    assert len(generated_messages) == 2
+    assert generated_messages[1][0]["content"].count("FORMAT CORRECTION REQUIRED") == 1
+    assert "FORMAT CORRECTION REQUIRED" not in generated_messages[1][1]["content"]
     assert [attempt.recovery_action for attempt in trajectory.attempts] == [
-        "retry_format",
         "retry_format",
         "exhausted",
     ]
@@ -2071,7 +2070,7 @@ def test_evaluation_uses_product_structured_generation_budget_not_legacy_128_cap
         "do_sample": False,
         "temperature": None,
         "top_p": None,
-        "max_format_recovery_attempts": 2,
+        "max_format_recovery_attempts": 1,
     }
 
     config.max_new_tokens = 1_024

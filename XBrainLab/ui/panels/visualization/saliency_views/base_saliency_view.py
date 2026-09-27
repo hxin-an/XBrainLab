@@ -42,15 +42,6 @@ SALIENCY_PREPARATION_FAILED_TEXT = (
     "This saliency view could not be prepared. "
     "Recompute saliency or choose another view."
 )
-_SAFE_SALIENCY_DETAIL_PREFIXES = (
-    "Cannot map EEG event ",
-    "Could not map EEG event ",
-    "No saliency samples are available for EEG event ",
-    "No montage positions found.",
-    "3D head model assets are not installed:",
-    "Failed to map any channels to 3D positions.",
-    "3D saliency requires at least one time sample.",
-)
 
 
 class SaliencyViewUnavailableError(ValueError):
@@ -171,18 +162,6 @@ def _render_callable_captures_qwidget(render_fn: Callable[[], object]) -> bool:
         return False
 
     return captures(render_fn)
-
-
-def safe_saliency_detail(
-    detail: object,
-    *,
-    fallback: str = SALIENCY_RENDER_FAILED_TEXT,
-) -> str:
-    """Allow only reviewed product details to cross the UI boundary."""
-    message = str(detail).strip()
-    if message.startswith(_SAFE_SALIENCY_DETAIL_PREFIXES):
-        return message
-    return fallback
 
 
 def _start_worker_atomically(
@@ -962,12 +941,6 @@ class BaseSaliencyView(QWidget):
         # replaced. Treat late canvas draws as stale rather than crashing.
         with suppress(RuntimeError):
             self.canvas.draw()
-
-    def update_view(self, result, params):
-        """Update the view with calculation results.
-        Must be implemented by subclasses.
-        """
-        raise NotImplementedError
 
     def set_saliency_coverage(
         self,

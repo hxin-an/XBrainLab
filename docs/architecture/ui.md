@@ -1,6 +1,6 @@
 # UI 目前架構
 
-最後更新：`2026-09-12`
+最後更新：`2026-09-23`
 
 ## 範圍
 
@@ -178,6 +178,14 @@ hyperparameter search、trial progress 或 automatic model-selection contract，
 
 這些 guard 是 **product runtime fallback boundary**，不是 full zero-controller UI 證明。
 
+Visualization 的 shared class selector 是唯一 class 選擇入口，傳遞 canonical class key；
+3D scene 不維護另一個隱藏 selector。3D geometry engine 由背景 worker 準備，再交給
+view-owned QtInteractor 建立 scene；不保留同步準備／自行建立 plotter 的替代入口。
+View 仍負責 Qt/native 資源釋放與 late callback fence，backend operation ownership 不變。
+Panel 統一呈現 unavailable／計算 lifecycle；3D view 不另存 lifecycle status 或重做該提示政策。
+Assistant 與 3D 同用提醒是可記住 opt-out 的 UI advisory，不是 VRAM 偵測、resource
+admission 或工具授權；關閉／Escape 不保存勾選，只有 OK 確認才保存提醒偏好。
+
 ## Panel 基底與事件更新
 
 主要 panel 繼承 `BasePanel`，它負責：
@@ -225,8 +233,11 @@ Workflow panel 不保留 controller getter fallback。Training 的 `training_upd
 不會改 application revision 或 publication-owned controls。
 
 `EvaluationPanel` 的 Model、Run 與 Split selector 共同建立 generation-bound render request。
-Split 清單只呈現該 repeat 實際保存的 predictions；Average 則使用所有 completed repeats 的
-共同 split。切換 selector 會先清除舊 metrics，再提交 exact split render。`Show percentages`
+Split 清單只呈現該 repeat 實際保存的 predictions；至少兩個 completed repeats 時提供
+`Summary`，使用它們的共同 split。跨 Fold 的同序號 repeat 仍標成 `Run 1`／`Run 2`。
+切換 selector 會先清除舊 metrics，再提交 exact split render。與 Evaluation signature
+無關的 publication revision 保留已顯示的 detached render；真正來源／選取改變仍失效。
+`Show percentages`
 只重畫 confusion matrix 的 true-label row normalization，不改 Precision、Recall、F1 或
 Support。
 

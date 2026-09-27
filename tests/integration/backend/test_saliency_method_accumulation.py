@@ -30,7 +30,7 @@ from XBrainLab.backend.training.record import EvalRecord
 
 
 @pytest.fixture
-def real_saliency_service(tmp_path):
+def real_saliency_service(tmp_path, request):
     labels = np.tile(np.arange(4), 4)
     info = mne.create_info(["C3", "C4", "Cz", "Pz"], 64.0, "eeg")
     epochs = mne.EpochsArray(
@@ -48,7 +48,7 @@ def real_saliency_service(tmp_path):
         use_cpu=True,
         gpu_idx=None,
         epoch=1,
-        bs=4,
+        bs=getattr(request, "param", 4),
         lr=0.001,
         checkpoint_epoch=1,
         evaluation_option=TrainingEvaluation.VAL_LOSS,
@@ -214,6 +214,60 @@ def test_real_commands_accumulate_methods_and_keep_last_success_after_failure(
     assert set(loaded.saliency_method_parameters) == expected
     assert set(loaded.smoothgrad) == {0, 1, 2, 3}
     assert set(loaded.vargrad) == {0, 1, 2, 3}
+
+
+@pytest.mark.parametrize("real_saliency_service", [2], indirect=True)
+@pytest.mark.parametrize("cancel_after_forward", [1, 2])
+def test_cancel_inside_real_attribution_stops_later_work_and_allows_retry(
+    real_saliency_service, monkeypatch, cancel_after_forward
+):
+    service, holders = real_saliency_service
+    manager = service.study.training_manager
+
+    def compute(method):
+        params = {"nt_samples": 5} if method == "SmoothGrad" else {}
+        result = service.execute(SaliencyCommand(method=method, params=params))
+        assert result.ok, result.message
+        assert manager.wait_for_saliency_job(timeout=10)
+        assert service.training_runtime.wait_for_saliency_delivery(timeout=10)
+
+    compute("Gradient")
+    previous = [holder.get_plans()[0].get_saliency_eval_record() for holder in holders]
+    evaluate = Evaluator.evaluate_with_saliency
+    forward_count = 0
+
+    def cancel_from_forward(_model, _inputs, _output):
+        nonlocal forward_count
+        forward_count += 1
+        if forward_count == cancel_after_forward:
+            service.training_runtime.cancel_saliency_job()
+
+    def evaluate_with_cancel(model, *args, **kwargs):
+        # Trigger the real manager cancellation during logits/noise attribution.
+        # The holder must pass its callback through to the real evaluator.
+        hook = model.register_forward_hook(cancel_from_forward)
+        try:
+            return evaluate(model, *args, **kwargs)
+        finally:
+            hook.remove()
+
+    with monkeypatch.context() as cancellation:
+        cancellation.setattr(Evaluator, "evaluate_with_saliency", evaluate_with_cancel)
+        compute("SmoothGrad")
+    assert manager.get_post_training_saliency_status().phase.value == "cancelled"
+    assert forward_count == cancel_after_forward
+    for holder, record in zip(holders, previous, strict=True):
+        assert holder.get_plans()[0].get_saliency_eval_record() is record
+        assert "SmoothGrad" not in record.saliency_method_parameters
+
+    compute("SmoothGrad")
+    assert manager.get_post_training_saliency_status().phase.value == "succeeded"
+    for holder, record in zip(holders, previous, strict=True):
+        retried = holder.get_plans()[0].get_saliency_eval_record()
+        assert retried is not record
+        assert retried.saliency_method_parameters["SmoothGrad"]["nt_samples"] == 5
+        for label, values in record.gradient.items():
+            np.testing.assert_array_equal(retried.gradient[label], values)
 
 
 @pytest.mark.parametrize("cancel", [False, True])

@@ -11,7 +11,7 @@ import pytest
 from XBrainLab.llm.tools.result_contract import (
     SAFE_UNEXPECTED_FAILURE_CODE,
     SAFE_UNEXPECTED_FAILURE_MESSAGE,
-    ToolResult,
+    ToolCommandResult,
     public_safe_result_projection,
     recover_authoritative_failure_state,
     redact_public_text,
@@ -366,16 +366,24 @@ def test_public_safe_result_projection_redacts_every_feedback_surface() -> None:
     assert "[REDACTED_SECRET]" in projection.message
 
 
-def test_success_tool_result_keeps_internal_message_until_public_projection() -> None:
+def test_success_tool_result_keeps_internal_payload_until_public_projection() -> None:
     private_path = "/srv/private/sub-P001/session.edf"
-    result = ToolResult(ok=True, message=f"Loaded {private_path}")
+    result = ToolCommandResult(
+        ok=True,
+        tool_name="import_eeg_data",
+        message="Loaded session.edf",
+        raw_result={"source_path": private_path},
+    )
 
-    projection = public_safe_result_projection(message=result.message)
+    projection = public_safe_result_projection(
+        message=result.message,
+        raw_result=result.raw_result,
+    )
 
-    assert private_path in result.message
-    assert private_path not in projection.message
+    assert private_path in repr(result.raw_result)
+    assert private_path not in repr(projection)
     assert "session.edf" in projection.message
-    assert "[REDACTED_PATH]" in projection.message
+    assert "[REDACTED_PATH]" in repr(projection.raw_result)
 
 
 def test_public_projection_rejects_unknown_objects_fail_closed() -> None:
@@ -433,7 +441,9 @@ def test_public_projection_and_tool_result_reject_hostile_truth_protocols() -> N
         message="failed",
         diagnostics=HostileDiagnostics({"detail": "private"}),
     )
-    tool_result = ToolResult(ok=HostileTruth(), message="failed")  # type: ignore[arg-type]
+    tool_result = ToolCommandResult(
+        ok=HostileTruth(), tool_name="probe", message="failed"
+    )  # type: ignore[arg-type]
 
     assert projection.diagnostics == {}
     assert tool_result.ok is False
@@ -443,16 +453,25 @@ def test_public_projection_and_tool_result_reject_hostile_truth_protocols() -> N
 def test_failed_tool_result_projects_every_public_feedback_field() -> None:
     private_path = "/srv/clinical/subject-17/events.tsv"
 
-    result = ToolResult(
+    result = ToolCommandResult(
         ok=False,
+        tool_name="import_eeg_data",
         message=f"Could not read {private_path}",
-        payload={"source_path": private_path},
+        raw_result={"source_path": private_path},
         state={"source_path": private_path},
         capability={"reasons": [f"Review {private_path}"]},
         diagnostics={"source_path": private_path},
     )
 
-    serialized = repr(result)
+    projection = public_safe_result_projection(
+        message=result.message,
+        blocked_reason=result.blocked_reason,
+        raw_result=result.raw_result,
+        state=result.state,
+        capability=result.capability,
+        diagnostics=result.diagnostics,
+    )
+    serialized = repr(projection)
     assert private_path not in serialized
     assert "[REDACTED_PATH]" in serialized
 

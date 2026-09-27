@@ -14,7 +14,6 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationEventPhase,
     AssistantGenerationRequest,
     AssistantGenerationStopRequest,
-    AssistantResponseContract,
 )
 from XBrainLab.llm.agent.turn_orchestrator import (
     AssistantToolAttemptSession,
@@ -31,7 +30,6 @@ def _request(
 ) -> AssistantGenerationRequest:
     request = AssistantGenerationRequest.from_messages(
         [{"role": "user", "content": text}],
-        response_contract=AssistantResponseContract.STRUCTURED_ACTION,
     )
     return request.correlated(generation_id)
 
@@ -76,6 +74,7 @@ class TestAgentWorkerTimeout:
         """Keep timeout completion pending until native generation exits."""
         worker = AgentWorker()
         worker.engine = MagicMock()
+        worker.engine.cancel_generation.return_value = False
 
         # Setup mock signals
         worker.error = MagicMock()
@@ -139,6 +138,8 @@ class TestAgentWorkerTimeout:
             def __init__(self) -> None:
                 self.config = LLMConfig()
                 self.config.timeout = 60
+                self.active_backend = self
+                self.restart_required = False
                 self.calls = 0
                 self.active = 0
                 self.max_active = 0
@@ -215,6 +216,8 @@ class TestAgentWorkerTimeout:
             def __init__(self) -> None:
                 self.config = LLMConfig()
                 self.config.timeout = 60
+                self.active_backend = self
+                self.restart_required = False
 
             def generate_stream(self, _messages, *, profile):
                 del profile

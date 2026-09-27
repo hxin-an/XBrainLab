@@ -53,13 +53,12 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationDispatchAcknowledgement,
     AssistantGenerationDispatchPhase,
     AssistantGenerationRequest,
-    AssistantResponseContract,
     AssistantTurnCorrelation,
-    AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
     AssistantTurnTerminal,
 )
 from XBrainLab.llm.agent.worker import AgentWorker
+from XBrainLab.llm.core.generation import GenerationProfile
 from XBrainLab.ui.chat.message_bubble import MessageBubble
 from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
@@ -195,18 +194,17 @@ class _DeterministicModelWorker(AgentWorker):
         self.requests.append(request)
         generation_id = request.generation_id
         response_text = f"Bounded deterministic response {len(self.requests)}."
-        if request.response_contract is AssistantResponseContract.STRUCTURED_ACTION:
-            parameters = self.proposed_tool_parameters
-            if parameters is None:
-                parameters = {"message": response_text}
-            response_text = json.dumps(
-                {
-                    "workflow_stage": _request_workflow_stage(request),
-                    "tool_name": self.proposed_tool_name,
-                    "parameters": parameters,
-                },
-                separators=(",", ":"),
-            )
+        parameters = self.proposed_tool_parameters
+        if parameters is None:
+            parameters = {"message": response_text}
+        response_text = json.dumps(
+            {
+                "workflow_stage": _request_workflow_stage(request),
+                "tool_name": self.proposed_tool_name,
+                "parameters": parameters,
+            },
+            separators=(",", ":"),
+        )
         self.generation_dispatch_acknowledged.emit(
             AssistantGenerationDispatchAcknowledgement(
                 generation_id=generation_id,
@@ -237,6 +235,10 @@ class _ControllerRuntime(QObject):
     controller_created = pyqtSignal(object)
     runtime_snapshot_changed = pyqtSignal(object)
     turn_finished = pyqtSignal(object)
+    deactivation_finished = pyqtSignal(bool, str)
+    _turn_requested = pyqtSignal(object)
+    _confirmation_requested = pyqtSignal(object)
+    _navigation_resolved = pyqtSignal(object, bool)
 
     def __init__(
         self,
@@ -257,6 +259,15 @@ class _ControllerRuntime(QObject):
         self.terminals: list[AssistantTurnTerminal] = []
         self._started = False
         self._next_turn_id = 1
+        self._turn_requested.connect(
+            controller.handle_user_turn, Qt.ConnectionType.QueuedConnection
+        )
+        self._confirmation_requested.connect(
+            controller.on_user_confirmation_resolved, Qt.ConnectionType.QueuedConnection
+        )
+        self._navigation_resolved.connect(
+            controller.on_panel_navigation_resolved, Qt.ConnectionType.QueuedConnection
+        )
         controller.turn_finished.connect(self._forward_terminal)
 
     def _forward_terminal(self, payload: object) -> None:
@@ -286,23 +297,17 @@ class _ControllerRuntime(QObject):
             turn_id=self._next_turn_id,
         )
         self._next_turn_id += 1
-        delivery = self.controller.handle_user_turn(
+        self._turn_requested.emit(
             AssistantTurnRequest(
                 correlation=correlation,
                 text=text,
             )
         )
-        accepted = delivery.phase is AssistantTurnDeliveryPhase.ACCEPTED
         admission = RuntimeCommandAdmissionResult(
             command_name="submit",
-            status=(
-                RuntimeCommandAdmissionStatus.ACCEPTED
-                if accepted
-                else RuntimeCommandAdmissionStatus.REJECTED
-            ),
-            message=delivery.message,
-            turn_id=correlation.turn_id if accepted else None,
-            generation=correlation.generation if accepted else None,
+            status=RuntimeCommandAdmissionStatus.ACCEPTED,
+            turn_id=correlation.turn_id,
+            generation=correlation.generation,
         )
         self.admissions.append(admission)
         return admission
@@ -311,12 +316,21 @@ class _ControllerRuntime(QObject):
         self,
         resolution: AgentConfirmationResolution,
     ) -> RuntimeCommandAdmissionResult:
-        """Forward a typed UI-card decision to the real in-process controller."""
+        """Queue a typed UI-card decision through the Qt event loop."""
         if not isinstance(resolution, AgentConfirmationResolution):
             raise TypeError("Assistant confirmation resolution must be typed.")
-        self.controller.on_user_confirmation_resolved(resolution)
+        self._confirmation_requested.emit(resolution)
         return RuntimeCommandAdmissionResult(
             command_name="confirm",
+            status=RuntimeCommandAdmissionStatus.ACCEPTED,
+        )
+
+    def resolve_panel_navigation(
+        self, request: object, *, success: bool
+    ) -> RuntimeCommandAdmissionResult:
+        self._navigation_resolved.emit(request, success)
+        return RuntimeCommandAdmissionResult(
+            command_name="resolve_panel_navigation",
             status=RuntimeCommandAdmissionStatus.ACCEPTED,
         )
 
@@ -353,6 +367,7 @@ def _send_ui_turn(
 
     assert len(runtime.admissions) == admission_count + 1
     assert runtime.admissions[-1].accepted
+    assert runtime.terminals[-1].correlation == runtime.admissions[-1].correlation
     assert runtime.terminals[-1].outcome == "completed"
     assert manager.chat_controller.pruned_row_count == pruned_at_boundary
     return latency, pruned_at_boundary
@@ -417,8 +432,8 @@ def _request_utf8_bytes(request: AssistantGenerationRequest) -> int:
 
 def _layout_bubble_ids(panel: Any) -> list[str]:
     ids: list[str] = []
-    for index in range(panel.chat_layout.count()):
-        item = panel.chat_layout.itemAt(index)
+    for index in range(panel.transcript_view.content_layout.count()):
+        item = panel.transcript_view.content_layout.itemAt(index)
         widget = item.widget() if item is not None else None
         if isinstance(widget, MessageBubble):
             message_id = widget.property("chatMessageId")
@@ -847,7 +862,7 @@ def _open_reset_preprocessing_confirmation(
             runtime_lifecycle=cast(AssistantRuntimeLifecycle, runtime),
         )
         manager.init_ui()
-        manager.start_system()
+        assert runtime.start()
         assert manager.chat_panel is not None
         main_window.show()
         manager.chat_dock.show()
@@ -858,8 +873,8 @@ def _open_reset_preprocessing_confirmation(
             timeout=2_000,
         )
         assert (
-            worker.requests[-1].response_contract
-            is AssistantResponseContract.STRUCTURED_ACTION
+            worker.requests[-1].generation_profile
+            is GenerationProfile.STRUCTURED_DECISION
         )
         assert manager.chat_panel.confirmation_card_widget.command_name == (
             "reset_preprocessing"
@@ -1069,7 +1084,7 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
             )
 
         manager.init_ui()
-        manager.start_system()
+        assert runtime.start()
         assert manager.agent_controller is controller
         assert not hasattr(controller, "_product_turn_policy")
         assert manager.chat_panel is not None
@@ -1221,8 +1236,8 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
                     "typed transcript did not converge after turn "
                     f"{turn_index}: expected={len(expected_turn_ids)} "
                     f"actual={len(actual_turn_ids)} "
-                    f"phase={manager.chat_panel._history_rebuild_phase} "
-                    f"deltas={len(manager.chat_panel._history_rebuild_deltas)}; "
+                    f"phase={manager.chat_panel.transcript_view._history_rebuild_phase} "
+                    f"deltas={len(manager.chat_panel.transcript_view._history_rebuild_deltas)}; "
                     f"{exc}"
                 )
             _assert_turn_transcript_parity(
@@ -1295,7 +1310,11 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
         qtbot.waitUntil(
             lambda: manager is not None
             and manager.chat_panel is not None
-            and len(manager.chat_panel.chat_content_widget.findChildren(MessageBubble))
+            and len(
+                manager.chat_panel.transcript_view.content_widget.findChildren(
+                    MessageBubble
+                )
+            )
             == len(manager.chat_controller.get_typed_history()),
             timeout=5_000,
         )
@@ -1337,8 +1356,8 @@ def test_long_session_uses_real_policy_and_stays_bounded_across_two_prunes(
         records = manager.chat_controller.get_typed_history()
         persisted = manager.chat_controller.get_history()
         layout_bubbles: list[MessageBubble] = []
-        for index in range(manager.chat_panel.chat_layout.count()):
-            item = manager.chat_panel.chat_layout.itemAt(index)
+        for index in range(manager.chat_panel.transcript_view.content_layout.count()):
+            item = manager.chat_panel.transcript_view.content_layout.itemAt(index)
             if item is None:
                 continue
             widget = item.widget()

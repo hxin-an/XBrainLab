@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import itertools
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -108,7 +109,7 @@ def _load_memory_contract_function() -> Callable[..., list[str]]:
 
 def _load_native_qt_platform_function() -> Callable[[str], str]:
     function = _named_function("_native_qt_platform")
-    namespace: dict[str, object] = {}
+    namespace: dict[str, object] = {"os": os}
     module = ast.Module(body=[function], type_ignores=[])
     ast.fix_missing_locations(module)
     exec(compile(module, str(SCRIPT_PATH), "exec"), namespace)  # noqa: S102
@@ -329,12 +330,28 @@ def test_supported_parent_stops_before_native_imports_when_core_guard_fails():
     assert any(isinstance(node, ast.Raise) for node in ast.walk(guard))
 
 
-def test_native_stress_uses_cocoa_on_darwin_and_offscreen_elsewhere() -> None:
+def test_native_stress_defaults_to_cocoa_on_darwin_and_offscreen_elsewhere(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
     native_qt_platform = _load_native_qt_platform_function()
 
     assert native_qt_platform("darwin") == "cocoa"
     assert native_qt_platform("linux") == "offscreen"
     assert native_qt_platform("win32") == "offscreen"
+
+
+def test_native_stress_preserves_explicit_windows_desktop(monkeypatch) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "windows")
+    native_qt_platform = _load_native_qt_platform_function()
+    assert native_qt_platform("win32") == "windows"
+    assert native_qt_platform("linux") == "offscreen"
+    assert native_qt_platform("darwin") == "cocoa"
+
+
+def test_native_stress_preserves_explicit_headless_windows_ci(monkeypatch) -> None:
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    assert _load_native_qt_platform_function()("win32") == "offscreen"
 
 
 def test_native_render_scope_only_bounds_headless_macos_ci() -> None:
@@ -405,11 +422,6 @@ def test_product_tab_stress_uses_public_panel_publication_path():
     assert "refresh_combos" in called_attributes
     assert "_render_figure_async" not in called_attributes
     assert "_replace_figure" not in called_attributes
-
-    source = SCRIPT_PATH.read_text(encoding="utf-8")
-    assert "actual_saliency_tab" not in source
-    assert "_build_tab_stress_figure" not in source
-    assert '"product_3d_tab_updates": 1' not in source
 
 
 def test_visualization_stress_constructs_panel_with_narrow_runtime_ports():
@@ -676,6 +688,69 @@ def test_native_stress_exercises_active_3d_engine_and_probe_deletion():
     assert "deleteLater" in called_attributes
     assert "waitForDone" not in called_attributes
     assert "globalInstance" not in called_attributes
+
+
+@pytest.mark.parametrize("worker_kind", ["engine", "probe"])
+@pytest.mark.parametrize("heartbeat_running", [True, False])
+def test_active_worker_deletion_observes_real_delayed_or_stopped_heartbeat(
+    qapp, monkeypatch, worker_kind, heartbeat_running
+):
+    from PyQt6 import sip
+    from PyQt6.QtCore import QTimer
+
+    from scripts.dev import run_ui_native_render_stress as stress
+
+    heartbeat = QTimer()
+    observed_ticks = []
+    deleted_views = []
+    owners = []
+    original_delete = stress.Saliency3DPlotWidget.deleteLater
+
+    def delete_with_controlled_heartbeat(view):
+        deleted_views.append(view)
+        owners.append(view._worker_pool_owner)
+        # Reset a real Qt timer immediately before deletion so the next tick
+        # falls outside the old fixed 12 ms observation window.
+        heartbeat.stop()
+        if heartbeat_running:
+            heartbeat.start(250)
+        original_delete(view)
+
+    def record_tick():
+        if deleted_views:
+            owner = owners[-1]
+            observed_ticks.append(
+                (
+                    sip.isdeleted(deleted_views[-1]),
+                    not sip.isdeleted(owner) and owner.active_worker_count == 1,
+                )
+            )
+
+    heartbeat.timeout.connect(record_tick)
+    monkeypatch.setattr(stress, "QTimer", lambda: heartbeat)
+    monkeypatch.setattr(
+        stress.Saliency3DPlotWidget, "deleteLater", delete_with_controlled_heartbeat
+    )
+
+    safe, late_callbacks, _ticks = stress._exercise_one_active_3d_worker_deletion(
+        app=qapp, worker_kind=worker_kind
+    )
+
+    # Neither outcome may abandon the real running worker or its cleanup owner.
+    assert len(deleted_views) == len(owners) == 1
+    assert sip.isdeleted(deleted_views[0])
+    assert sip.isdeleted(owners[0])
+    assert not heartbeat.isActive()
+    assert late_callbacks == 0
+    assert safe is heartbeat_running
+    if heartbeat_running:
+        assert (True, True) in observed_ticks
+    else:
+        assert observed_ticks == []
+        result = _passing_stress_result()
+        failed_metric = f"active_3d_{worker_kind}_close_safe"
+        result[failed_metric] = safe
+        assert failed_metric in stress._stress_contract_failures(result, cycles=1)
 
 
 def test_stress_failures_return_nonzero_without_intentional_native_crash():

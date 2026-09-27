@@ -1,6 +1,5 @@
 """Target Assistant application-surface ownership and failure contracts."""
 
-import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -10,15 +9,13 @@ import pytest
 
 from XBrainLab.backend.application import (
     CommandName,
+    QueryStateCommand,
     get_application_service,
 )
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.load_data.raw import Raw
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.utils.public_diagnostics import (
-    PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES,
-)
 from XBrainLab.llm.action_contracts import (
     AGENT_ACTION_CONTRACTS,
     AgentExecutionKind,
@@ -30,12 +27,14 @@ from XBrainLab.llm.tools.application_surface import (
     READ_ONLY_TOOLS,
     TOOL_TO_COMMAND,
     UI_REQUEST_TOOLS,
-    ToolCommandResult,
+    ToolAvailability,
     _command_for_tool,
     build_agent_tool_policy,
     execute_application_tool_command,
     get_application_context,
+    normalize_tool_result,
 )
+from XBrainLab.llm.tools.result_contract import ToolCommandResult
 
 
 def test_registry_is_the_complete_runtime_and_prompt_boundary() -> None:
@@ -215,52 +214,6 @@ def test_start_training_preserves_backend_confirmation_boundary() -> None:
     assert "Save a valid data splitting specification" in result.message
 
 
-def test_tool_command_payload_keeps_final_public_envelope_bounded_and_safe() -> None:
-    # Exhaust the node budget near the byte cap. Restoring omitted contract
-    # fields must not grow the final JSON beyond the public output limit.
-    result = ToolCommandResult(
-        ok=True,
-        tool_name="query_state",
-        message="ready",
-        state={
-            "left": "x" * 125_880,
-            "right": "y" * 125_880,
-            "nodes": [[None for _ in range(255)] for _ in range(8)],
-        },
-    )
-
-    payload = result.to_payload()
-    serialized = json.dumps(
-        payload,
-        ensure_ascii=False,
-        separators=(",", ":"),
-    ).encode("utf-8")
-
-    assert len(serialized) <= PUBLIC_DIAGNOSTIC_MAX_OUTPUT_BYTES
-    assert set(payload) == {
-        "ok",
-        "tool_name",
-        "command_name",
-        "message",
-        "error_type",
-        "error_code",
-        "recovery_action",
-        "recoverable",
-        "blocked_reason",
-        "state",
-        "capability",
-        "diagnostics",
-        "changed_state",
-        "raw_result",
-    }
-    assert type(payload["ok"]) is bool
-    assert type(payload["tool_name"]) is str
-    assert type(payload["message"]) is str
-    assert type(payload["recoverable"]) is bool
-    assert type(payload["diagnostics"]) is dict
-    assert type(payload["changed_state"]) is dict
-
-
 def test_stale_publication_exposes_only_navigation() -> None:
     state = ApplicationStateSnapshot.empty()
     publication = ApplicationViewPublication(
@@ -312,3 +265,55 @@ def test_target_policy_is_derived_from_one_publication_generation() -> None:
     assert context.availability.tool_name == "switch_panel"
     assert context.availability.enabled is True
     assert context.state == newer.state.to_dict()
+
+
+@pytest.mark.parametrize("result_owns_fields", [False, True])
+def test_normalization_preserves_complete_typed_result_without_rewriting_fields(
+    result_owns_fields: bool,
+) -> None:
+    context_state = {"pipeline_stage": "data_loaded"}
+    availability = ToolAvailability(
+        tool_name="resample_data", enabled=True, command_name="preprocess"
+    )
+    raw = ToolCommandResult(
+        ok=True,
+        tool_name="resample_data",
+        message="Resampled data.",
+        raw_result={"payload_type": "preprocess"},
+        command_name="reported_command" if result_owns_fields else None,
+        state={"pipeline_stage": "preprocessed"} if result_owns_fields else None,
+        capability={"enabled": False} if result_owns_fields else None,
+        diagnostics={"origin": "result"} if result_owns_fields else {},
+        changed_state={"preprocessed_changed": True},
+    )
+
+    result = normalize_tool_result(
+        object(), "resample_data", raw, availability=availability, state=context_state
+    )
+
+    assert result is raw
+    assert result.command_name == ("reported_command" if result_owns_fields else None)
+    assert result.state == (
+        {"pipeline_stage": "preprocessed"} if result_owns_fields else None
+    )
+    assert result.capability == ({"enabled": False} if result_owns_fields else None)
+    assert result.diagnostics == ({"origin": "result"} if result_owns_fields else {})
+    assert result.raw_result == {"payload_type": "preprocess"}
+    assert result.changed_state == {"preprocessed_changed": True}
+
+
+def test_normalization_rejects_unadapted_backend_command_result() -> None:
+    raw = get_application_service(Study()).execute(QueryStateCommand())
+    assert raw.ok is True
+
+    result = normalize_tool_result(
+        object(), "resample_data", raw, state={"state_reliable": True}
+    )
+
+    assert isinstance(result, ToolCommandResult)
+    assert result.ok is False
+    assert result.error_type == "contract"
+    assert result.recoverable is False
+    assert result.message == "The assistant tool returned an invalid result contract."
+    assert result.state == {"state_reliable": True}
+    assert raw.ok is True

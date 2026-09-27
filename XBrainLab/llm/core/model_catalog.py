@@ -20,6 +20,7 @@ MAX_SINGLE_MODEL_DOWNLOAD_GB = 10.0
 MAX_TOTAL_MODEL_CACHE_GB = 20.0
 MIN_DISK_FREE_AFTER_DOWNLOAD_GB = 5.0
 MIN_MODEL_WEIGHT_BYTES = 256_000_000
+MIN_EMBEDDING_WEIGHT_BYTES = 90_000_000
 CACHE_SCAN_MAX_ENTRIES = 100_000
 CACHE_SCAN_MAX_DEPTH = 64
 
@@ -78,11 +79,44 @@ class LocalModelSpec:
     estimated_vram_gb: float
     quantization: str
     runtime_context_tokens: int = 8_192
-    supports_system_role: bool = False
+    supports_consecutive_user_roles: bool = True
     preferred_cuda_dtype: str = "float16"
     attn_implementation: str | None = None
     source_url: str = ""
     notes: str = ""
+    estimated_4bit_vram_gb: float | None = None
+    bnb_4bit_quant_type: str = "fp4"
+    bnb_4bit_compute_dtype: str = "float32"
+
+
+@dataclass(frozen=True)
+class ModelDownloadSpec:
+    """Pinned files to install, independent of selectable generation models."""
+
+    repo_id: str
+    revision: str
+    estimated_download_gb: float
+    allow_patterns: tuple[str, ...] | None = None
+
+
+RAG_EMBEDDING_SPEC = ModelDownloadSpec(
+    repo_id="sentence-transformers/all-MiniLM-L6-v2",
+    revision="1110a243fdf4706b3f48f1d95db1a4f5529b4d41",  # pragma: allowlist secret
+    estimated_download_gb=0.10,
+    allow_patterns=(
+        "config.json",
+        "config_sentence_transformers.json",
+        "modules.json",
+        "sentence_bert_config.json",
+        "special_tokens_map.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "vocab.txt",
+        "1_Pooling/config.json",
+        "model.safetensors",
+        "README.md",
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -148,7 +182,6 @@ LOCAL_MODEL_SPECS: tuple[LocalModelSpec, ...] = (
             "BF16 safetensors; optional runtime 4-bit if bitsandbytes is installed"
         ),
         runtime_context_tokens=8_192,
-        supports_system_role=True,
         preferred_cuda_dtype="bfloat16",
         source_url="https://huggingface.co/ibm-granite/granite-4.0-micro",
         notes=(
@@ -172,7 +205,6 @@ LOCAL_MODEL_SPECS: tuple[LocalModelSpec, ...] = (
             "BF16 safetensors; optional runtime 4-bit if bitsandbytes is installed"
         ),
         runtime_context_tokens=8_192,
-        supports_system_role=True,
         preferred_cuda_dtype="bfloat16",
         source_url=("https://huggingface.co/ibm-granite/granite-3.3-2b-instruct"),
         notes=(
@@ -198,6 +230,16 @@ def default_local_model_id() -> str:
 def local_model_spec(repo_id: str | None) -> LocalModelSpec | None:
     """Return metadata for a supported local model."""
     return _SPECS_BY_ID.get(str(repo_id or ""))
+
+
+def model_download_spec(repo_id: str) -> ModelDownloadSpec | None:
+    """Resolve only reviewed installation assets, never arbitrary Hub repos."""
+    if repo_id == RAG_EMBEDDING_SPEC.repo_id:
+        return RAG_EMBEDDING_SPEC
+    spec = local_model_spec(repo_id)
+    if spec is None:
+        return None
+    return ModelDownloadSpec(spec.repo_id, spec.revision, spec.estimated_download_gb)
 
 
 def is_disallowed_local_model(repo_id: str | None) -> bool:
@@ -276,7 +318,7 @@ def _artifact_size(path: Path, *, cache_root: Path) -> int | None:
     return size if size > 0 else None
 
 
-def _tree_has_unsafe_symlink(root: Path, *, cache_root: Path) -> bool:
+def _tree_has_unsafe_links(root: Path, *, cache_root: Path) -> bool:
     try:
         resolved_cache = cache_root.resolve(strict=True)
 
@@ -290,12 +332,17 @@ def _tree_has_unsafe_symlink(root: Path, *, cache_root: Path) -> bool:
         ):
             for name in (*directories, *files):
                 candidate = Path(current_root) / name
-                if not candidate.is_symlink():
-                    continue
                 target = candidate.resolve(strict=True)
                 if not _path_is_within(target, resolved_cache):
                     return True
-    except OSError:
+                # Hub locks truncate and incomplete blobs append. A hardlink
+                # would modify the other name even though resolution stays here.
+                if (
+                    name.casefold().endswith((".lock", ".incomplete"))
+                    and candidate.stat().st_nlink > 1
+                ):
+                    return True
+    except (OSError, RuntimeError):
         return True
     return False
 
@@ -347,7 +394,9 @@ def _safe_relative_artifact(root: Path, raw_name: object) -> Path | None:
     return candidate
 
 
-def _weight_artifacts_complete(root: Path, *, cache_root: Path) -> bool:
+def _weight_artifacts_complete(
+    root: Path, *, cache_root: Path, minimum_bytes: int
+) -> bool:
     for index_name in _WEIGHT_INDEX_NAMES:
         index_path = root / index_name
         if not index_path.exists():
@@ -372,7 +421,7 @@ def _weight_artifacts_complete(root: Path, *, cache_root: Path) -> bool:
         ]
         return (
             all(size is not None for size in sizes)
-            and sum(size or 0 for size in sizes) >= MIN_MODEL_WEIGHT_BYTES
+            and sum(size or 0 for size in sizes) >= minimum_bytes
         )
 
     try:
@@ -386,11 +435,13 @@ def _weight_artifacts_complete(root: Path, *, cache_root: Path) -> bool:
     sizes = [_artifact_size(path, cache_root=cache_root) for path in weight_paths]
     return (
         all(size is not None for size in sizes)
-        and sum(size or 0 for size in sizes) >= MIN_MODEL_WEIGHT_BYTES
+        and sum(size or 0 for size in sizes) >= minimum_bytes
     )
 
 
-def _model_artifacts_complete(root: Path, *, cache_root: Path) -> bool:
+def _model_artifacts_complete(
+    root: Path, *, cache_root: Path, minimum_bytes: int
+) -> bool:
     try:
         resolved_cache = cache_root.resolve(strict=True)
         resolved_root = root.resolve(strict=True)
@@ -400,7 +451,7 @@ def _model_artifacts_complete(root: Path, *, cache_root: Path) -> bool:
         not root.is_dir()
         or not _path_is_within(resolved_root, resolved_cache)
         or _contains_partial_markers(root)
-        or _tree_has_unsafe_symlink(root, cache_root=cache_root)
+        or _tree_has_unsafe_links(root, cache_root=cache_root)
     ):
         return False
     if not all(
@@ -413,12 +464,14 @@ def _model_artifacts_complete(root: Path, *, cache_root: Path) -> bool:
         for name in _REQUIRED_MODEL_METADATA
     ):
         return False
-    return _weight_artifacts_complete(root, cache_root=cache_root)
+    return _weight_artifacts_complete(
+        root, cache_root=cache_root, minimum_bytes=minimum_bytes
+    )
 
 
 def model_snapshot_path(cache_dir: str, repo_id: str) -> Path | None:
     """Return the immutable snapshot path used by the local-only runtime."""
-    spec = local_model_spec(repo_id)
+    spec = model_download_spec(repo_id)
     if spec is None:
         return None
     return Path(cache_dir) / hf_model_cache_name(repo_id) / "snapshots" / spec.revision
@@ -429,7 +482,54 @@ def model_cache_complete(cache_dir: str, repo_id: str) -> bool:
     snapshot = model_snapshot_path(cache_dir, repo_id)
     if snapshot is None:
         return False
-    return _model_artifacts_complete(snapshot, cache_root=Path(cache_dir))
+    is_embedding = repo_id == RAG_EMBEDDING_SPEC.repo_id
+    cache_root = Path(cache_dir)
+    if is_embedding:
+        # Runtime also supports an existing .bin snapshot; new installs use only
+        # safetensors. Tokenizer/pooling files are required for offline loading.
+        required = RAG_EMBEDDING_SPEC.allow_patterns or ()
+        if not all(
+            _artifact_size(snapshot / name, cache_root=cache_root) is not None
+            for name in required
+            if name not in {"model.safetensors", "README.md"}
+        ):
+            return False
+    return _model_artifacts_complete(
+        snapshot,
+        cache_root=cache_root,
+        minimum_bytes=(
+            MIN_EMBEDDING_WEIGHT_BYTES if is_embedding else MIN_MODEL_WEIGHT_BYTES
+        ),
+    )
+
+
+def _download_policy_error(repo_id: str, cache_dir: str) -> str | None:
+    if model_download_spec(repo_id) is None:
+        return local_model_policy_error(repo_id)
+    root = Path(cache_dir).expanduser().resolve(strict=False)
+    model_root = root / hf_model_cache_name(repo_id)
+    # Reject redirected write destinations before handing them to the Hub client.
+    # The user-selected cache itself may resolve elsewhere; its children may not.
+    candidates = (
+        model_root,
+        model_root / "snapshots",
+        model_root / "blobs",
+        root / ".locks" / hf_model_cache_name(repo_id),
+    )
+    try:
+        if any(not _path_is_within(path.resolve(), root) for path in candidates):
+            return "Model cache contains a download path outside its cache boundary."
+        for artifact_root in (
+            model_root,
+            root / ".locks" / hf_model_cache_name(repo_id),
+        ):
+            if artifact_root.exists() and _tree_has_unsafe_links(
+                artifact_root, cache_root=root
+            ):
+                return "Model cache contains unsafe linked artifacts."
+    except (OSError, RuntimeError):
+        return "Model cache paths could not be verified."
+    return None
 
 
 def _requires_samefile_hardlink_fallback() -> bool:
@@ -716,7 +816,8 @@ def plan_model_download(
     max_total_cache_gb: float = MAX_TOTAL_MODEL_CACHE_GB,
 ) -> DownloadPreflightResult:
     """Check product download limits before starting a model download."""
-    policy_error = local_model_policy_error(repo_id)
+    spec = model_download_spec(repo_id)
+    policy_error = _download_policy_error(repo_id, cache_dir)
     max_single_bytes = _bytes_from_gb(max_single_model_gb)
     max_total_bytes = _bytes_from_gb(max_total_cache_gb)
     free_bytes = available_disk_bytes(cache_dir)
@@ -755,7 +856,6 @@ def plan_model_download(
             cleanup_candidates=cleanup,
         )
 
-    spec = local_model_spec(repo_id)
     if spec is None:
         return DownloadPreflightResult(
             ok=False,
@@ -967,7 +1067,7 @@ def validate_downloaded_model_cache(
     max_total_cache_gb: float = MAX_TOTAL_MODEL_CACHE_GB,
 ) -> ModelCacheValidationResult:
     """Verify immutable snapshot identity, artifacts, and actual resource limits."""
-    spec = local_model_spec(repo_id)
+    spec = model_download_spec(repo_id)
     expected_snapshot = model_snapshot_path(cache_dir, repo_id)
     free_bytes = available_disk_bytes(cache_dir)
     revision = spec.revision if spec is not None else ""
@@ -991,7 +1091,7 @@ def validate_downloaded_model_cache(
             available_disk_bytes=free_bytes,
         )
 
-    policy_error = local_model_policy_error(repo_id)
+    policy_error = _download_policy_error(repo_id, cache_dir)
     if policy_error is not None or spec is None or expected_snapshot is None:
         return _result(False, policy_error or f"Unsupported local model: {repo_id}.")
 

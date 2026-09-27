@@ -302,14 +302,14 @@ def test_structured_smoke_rejects_non_target_tool_call(response: str):
     engine_type.return_value.close.assert_called_once_with()
 
 
-def test_structured_smoke_rejects_legacy_arguments_and_code_fences():
+def test_structured_smoke_rejects_legacy_arguments_and_prose_wrapped_code():
     config = LLMConfig()
     config.apply_runtime_selection("local", ui_active_mode="local")
 
     for response in (
         '{"tool_name":"get_state","arguments":{}}',
         (
-            '```json\n{"workflow_stage":"unavailable",'
+            'Here is the action:\n```json\n{"workflow_stage":"unavailable",'
             '"tool_name":"switch_panel",'
             '"parameters":{"panel_name":"dataset"}}\n```'
         ),

@@ -150,14 +150,6 @@ def widget(qtbot, monkeypatch) -> Saliency3DPlotWidget:
     return instance
 
 
-def _select_class(widget: Saliency3DPlotWidget, name: str) -> None:
-    index = widget.class_combo.findText(name)
-    widget._requested_class_key = widget.class_combo.itemData(index)
-    widget._selector_syncing = True
-    widget.class_combo.setCurrentIndex(index)
-    widget._selector_syncing = False
-
-
 def test_prepared_engine_cache_reuses_exact_toggle_requests(
     qtbot,
     widget: Saliency3DPlotWidget,
@@ -184,10 +176,10 @@ def test_prepared_engine_cache_reuses_exact_toggle_requests(
     qtbot.waitUntil(lambda: widget._do_3d_plot_if_alive.call_count == 2)
     widget.update_plot(raw, False)
     qtbot.waitUntil(lambda: widget._do_3d_plot_if_alive.call_count == 3)
-    _select_class(widget, "right")
+    widget.select_class_key(1)
     widget.update_plot(raw, False)
     qtbot.waitUntil(lambda: widget._do_3d_plot_if_alive.call_count == 4)
-    _select_class(widget, "left")
+    widget.select_class_key(0)
     widget.update_plot(raw, False)
     qtbot.waitUntil(lambda: widget._do_3d_plot_if_alive.call_count == 5)
     widget.update_plot(normalized, False)
@@ -233,17 +225,15 @@ def test_prepared_engine_cache_does_not_own_full_publication_payloads(
         widget.update_plot(publication, False)
         widget._do_3d_plot_if_alive.reset_mock()
 
+    widget.update_plot(publication, False)
+    assert prepare_count == widget._MAX_PREPARED_ENGINE_CACHE_ENTRIES
+    widget._do_3d_plot_if_alive.reset_mock()
     del publication
     gc.collect()
 
-    assert all(reference() is None for reference in publication_refs[:-1])
-    assert all(reference() is None for reference in data_refs[:-1])
-    assert all(reference() is None for reference in payload_refs[:-1])
-
-    current_publication = publication_refs[-1]()
-    assert current_publication is not None
-    widget.update_plot(current_publication, False)
-    assert prepare_count == widget._MAX_PREPARED_ENGINE_CACHE_ENTRIES
+    assert all(reference() is None for reference in publication_refs)
+    assert all(reference() is None for reference in data_refs)
+    assert all(reference() is None for reference in payload_refs)
 
 
 def test_prepared_engine_cache_is_bounded_and_cleared_by_lifecycle(
@@ -305,10 +295,6 @@ def test_stale_prepared_engine_result_is_not_cached_or_rendered(
         worker,
         request_id,
         (object(), 2),
-        publication.data,
-        "left",
-        method="Gradient",
-        absolute=False,
         publication_generation=publication.generation,
         publication=publication,
         prepared_cache_key=cache_key,

@@ -3,11 +3,43 @@
 import pytest
 
 from XBrainLab.llm.tools import get_all_tools
-from XBrainLab.llm.tools.result_contract import ToolResult, UiRequest, UiRequestKind
+from XBrainLab.llm.tools.application_surface import normalize_tool_result
+from XBrainLab.llm.tools.result_contract import (
+    ToolCommandResult,
+    UiRequest,
+    UiRequestKind,
+)
 
 
 def _tool(name: str):
     return next(tool for tool in get_all_tools() if tool.name == name)
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "message", "error_type", "recoverable"),
+    [
+        ("switch_panel", "A panel name is required.", "input", True),
+        (
+            "reset_preprocessing",
+            "reset_preprocessing must execute through ApplicationService.",
+            "contract",
+            False,
+        ),
+    ],
+)
+def test_direct_error_producers_preserve_public_failure(
+    tool_name, message, error_type, recoverable
+):
+    result = normalize_tool_result(
+        object(), tool_name, _tool(tool_name).execute(object())
+    )
+    assert isinstance(result, ToolCommandResult)
+    assert result.tool_name == tool_name
+    assert result.ok is False
+    assert result.message == message
+    assert result.blocked_reason == message
+    assert result.error_type == error_type
+    assert result.recoverable is recoverable
 
 
 @pytest.mark.parametrize(
@@ -57,7 +89,7 @@ def test_switch_panel_without_a_panel_returns_input_failure() -> None:
 
     result = tool.execute(object())
 
-    assert isinstance(result, ToolResult)
+    assert isinstance(result, ToolCommandResult)
     assert result.ok is False
     assert result.error_type == "input"
     assert result.message == "A panel name is required."

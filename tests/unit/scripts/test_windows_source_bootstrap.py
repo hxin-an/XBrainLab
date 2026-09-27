@@ -287,6 +287,15 @@ def test_declining_plan_does_not_start_mutating_setup(
             "download_required": True,
             "cache": str(tmp_path / "models"),
         },
+        "rag": {
+            "id": "sentence-transformers/all-MiniLM-L6-v2",
+            "revision": "pinned",
+            "source": "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2",
+            "license": "Apache-2.0",
+            "estimated_download_gb": 0.10,
+            "download_required": True,
+            "cache": str(tmp_path / "rag" / "models"),
+        },
     }
     monkeypatch.setattr(windows_setup, "_validate_bootstrap_python", lambda: None)
     monkeypatch.setattr(windows_setup, "_validate_checkout", lambda _root: None)
@@ -456,7 +465,7 @@ def test_verified_poetry_installer_fixture_writes_exact_bytes(
     assert destination.read_bytes() == fixture
 
 
-def test_existing_environment_no_launch_runs_sync_and_model_only(
+def test_existing_environment_no_launch_prepares_both_models(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -464,6 +473,7 @@ def test_existing_environment_no_launch_runs_sync_and_model_only(
     python = environment / "Scripts" / "python.exe"
     poetry = tmp_path / "poetry.exe"
     commands: list[list[str]] = []
+    monkeypatch.setattr(windows_setup, "user_rag_cache_dir", lambda: tmp_path / "rag")
 
     monkeypatch.setattr(
         windows_setup,
@@ -501,8 +511,125 @@ def test_existing_environment_no_launch_runs_sync_and_model_only(
 
     assert any(command[:2] == [str(poetry), "sync"] for command in commands)
     assert any("--download-model" in command for command in commands)
+    assert any("--prepare-rag" in command for command in commands)
+    assert commands[-1][-1] == "--prepare-rag"
     assert not any(str(tmp_path / "run.py") in command for command in commands)
     assert commands[-1][0] == str(python)
+
+
+def test_setup_plan_exposes_pinned_embedding_without_creating_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rag_root = tmp_path / "RAG 新機 cache"
+    monkeypatch.setattr(windows_setup, "user_rag_cache_dir", lambda: rag_root)
+    plan = windows_setup._build_plan(
+        repo_root=tmp_path,
+        compute=ComputePlan("cpu", True, None, None, "test"),
+        environment=EnvironmentState(tmp_path / ".venv", "valid", "reuse"),
+        poetry=None,
+        poetry_home=tmp_path / "poetry",
+        model_id=PRIMARY_LOCAL_MODEL_ID,
+        model_cache=tmp_path / "models",
+    )
+    rag = plan["rag"]
+    assert rag["revision"] == windows_setup.RAG_EMBEDDING_SPEC.revision
+    assert rag["source"].startswith("https://huggingface.co/sentence-transformers/")
+    assert rag["license"] == "Apache-2.0"
+    assert rag["estimated_download_gb"] == 0.10
+    assert rag["download_required"] is True
+    assert rag["cache"] == str(rag_root / "models")
+    assert not rag_root.exists()
+
+
+def test_combined_cache_budget_rechecks_actual_growth_across_roots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rag_root = tmp_path / "rag"
+    model_root = tmp_path / "generation"
+    monkeypatch.setattr(windows_setup, "user_rag_cache_dir", lambda: rag_root)
+    sizes = {
+        str(model_root.resolve()): 19_950_000_000,
+        str((rag_root / "models").resolve()): 90_000_000,
+    }
+    monkeypatch.setattr(windows_setup, "cache_usage_bytes", sizes.__getitem__)
+    with pytest.raises(SetupError, match=r"Combined.*20 GB"):
+        windows_setup._check_combined_cache_budget(model_root)
+    sizes[str(model_root.resolve())] = 19_850_000_000
+    windows_setup._check_combined_cache_budget(model_root)
+    with pytest.raises(SetupError, match=r"Combined.*20 GB"):
+        windows_setup._check_combined_cache_budget(
+            model_root, pending_download_bytes=100_000_000
+        )
+
+
+def test_rag_setup_verifies_offline_after_successful_preparation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    requests = []
+    verification = []
+    monkeypatch.setattr(windows_setup, "user_rag_cache_dir", lambda: tmp_path / "RAG")
+
+    def download(model_id, cache):
+        requests.append((model_id, cache))
+        return 0
+
+    def run(argv, **kwargs):
+        verification.append((argv, kwargs))
+
+    monkeypatch.setattr(windows_setup, "run_model_download", download)
+    monkeypatch.setattr(windows_setup, "_run", run)
+    assert windows_setup.prepare_rag() == 0
+    assert requests == [
+        ("sentence-transformers/all-MiniLM-L6-v2", str(tmp_path / "RAG" / "models"))
+    ]
+    argv, options = verification[0]
+    assert argv[-1] == "--verify-rag-offline"
+    assert Path(argv[-2]).name == "windows_setup.py"
+    assert options["env"]["HF_HUB_OFFLINE"] == "1"
+    assert options["env"]["TRANSFORMERS_OFFLINE"] == "1"
+    assert options["env"]["CUDA_VISIBLE_DEVICES"] == ""
+    assert options["timeout"] == 180
+
+
+@pytest.mark.parametrize("download_result", [1, 2, 3, 130])
+def test_rag_setup_does_not_verify_or_succeed_after_download_failure(
+    monkeypatch: pytest.MonkeyPatch, download_result: int
+) -> None:
+    monkeypatch.setattr(
+        windows_setup, "run_model_download", lambda *_args: download_result
+    )
+    monkeypatch.setattr(
+        windows_setup, "_run", lambda *_args, **_kwargs: pytest.fail("must stop")
+    )
+    assert windows_setup.prepare_rag() == download_result
+
+
+def test_rag_setup_propagates_offline_verification_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(windows_setup, "run_model_download", lambda *_args: 0)
+
+    def reject(*_args, **_kwargs):
+        raise SetupError("Offline RAG verification failed")
+
+    monkeypatch.setattr(windows_setup, "_run", reject)
+    with pytest.raises(SetupError, match="Offline RAG"):
+        windows_setup.prepare_rag()
+
+
+def test_offline_install_probe_rejects_missing_cache_without_creating_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "empty RAG cache"
+    monkeypatch.setenv("XBRAINLAB_RAG_CACHE_DIR", str(root))
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
+    with pytest.raises(SetupError, match="Pinned RAG embedding"):
+        windows_setup.verify_rag_offline()
+    assert not root.exists()
 
 
 def test_public_windows_bootstrap_is_repo_relative_and_policy_bounded() -> None:
