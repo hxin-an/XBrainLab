@@ -9,7 +9,30 @@
 `settings.json`、共用環境／模型、正式研究題庫或既有結果。這一輪包含 product、tests、scripts、
 corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測試通過當成完成。
 
-**目前狀態（優先於下方歷史Next）**：兩欄契約已實作，但15e06744真模型驗證仍有新增
+**目前狀態（優先於下方歷史Next）**：使用者最新授權離席後持續施工，直到RAG可集中手測，
+並準備後續Agent架構討論；下述需決策checkpoint已恢復施工，不因CI／compaction停止。
+沿用兩欄已批准契約及不改UI功能的邊界，先處理15e新增語意退步／mixed-request缺口，
+以及直接阻擋產品驗證的import busy還原競態。後者僅恢復既定按鈕可用性與取消保護，
+不改layout／文案／工具membership。先以既有失敗作baseline，按責任做一個有依據的
+prompt／RAG呈現修理，不增router／模型／語料同義句、不使用sealed題庫或修改oracle。
+獨立設計覆核選定：以既有publication-filtered contracts生成單一兩欄JSON Schema，
+互斥alternatives重用各工具參數與response schema；blocked reason另置於schema外。
+取代混合catalog與重複輸出形狀，不新增permission owner／constrained decoder。
+RAG corpus／ranking／example內容不改；先以schema membership／真parser測試RED，
+再驗fixed105逐題語意。依據為[Granite官方JSON schema範例](https://github.com/ibm-granite/granite-4.0-language-models/blob/main/Granite%204.0%20Prompt%20engineering%20guide%20v2.md)，
+不把該文件當成Micro一定改善的證據。
+仍保留固定105完整對照、原門檻及所有失敗，避免逐題搜索；若產品設計必須變更則另需授權。
+Import先RED確定busy→新publication→release順序，再讓既有render owner提供當前可用性，
+不增加狀態owner。兩項寫入分離、共享邊界獨立覆核；凍結整合source驗CI、offline retrieval、
+真model與Windows journey後開程式＋PowerShell log交付一次手測，不合併。
+施工進度：import兩種真Qt／FIF publication交錯先RED後GREEN；直接176案例（含原失敗的
+GUI import→subject training→重開結果流程）及重疊的sidebar/presentation124案例通過。
+Production兩檔+27/-19/net+8，只有既有owner的busy狀態投影，Cancel及generic async不改。
+Schema呈現一檔+40/-51/net-11，97個直接測試通過；獨立覆核兩項diff無blocker，
+另驗103個已保存輸入的schema結構，但不把它當模型語意通過。Next凍結整合source重跑完整105、
+retrieval及native，依逐題非退步和同版本CI決定是否能交手測；當前尚不能。
+
+**前一checkpoint**：兩欄契約已實作，但15e06744真模型驗證仍有新增
 語意退步，獨立覆核不批准non-regression／交付。需要決定暫緩此遷移，或明確接受新增限制；
 不再自動調prompt追分，也未合併。2026-09-28 使用者批准獨立遷移模型輸出契約：
 移除模型回填的 `workflow_stage`，只接受 `tool_name` 與 `parameters`；階段仍由後端提供給

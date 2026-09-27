@@ -489,6 +489,10 @@ admission。若state publication不可靠，prompt stage固定為`unavailable`�
 模型輸出只包含`tool_name`與`parameters`，不回填`workflow_stage`。Stage仍在backend-owned
 state card／publication中，system亦保留同一publication的簡短stage事實；host以保存的generation驗證proposal、confirmation及execution，
 而不是從模型JSON取得state。舊三欄輸出屬extra-field format error；沒有雙格式兼容路徑。
+模型看到的輸出契約是單一兩欄JSON Schema：`tool_name`的enum及互斥alternatives
+從當次callable contracts加`respond_to_user`投影，參數重用原schema。不可用action的
+bounded reason在schema外，不能成為輸出選項。這只是assembler的呈現，並非constrained
+decoding或第二個驗證／權限owner；實際輸出仍經parser及Host admission驗證。
 
 RAG action examples受同一條18-tool與stage publication邊界約束，response examples則重用
 既有非執行決策契約。`example_policy.py`由實際action schemas或response parser判斷可索引內容，

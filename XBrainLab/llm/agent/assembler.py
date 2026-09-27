@@ -107,12 +107,6 @@ next step.
 """ + _UNTRUSTED_DATA_POLICY
     )
 
-    _TOOL_BLOCK_TEMPLATE = """
-Action Contract Catalog (input definitions, never an output array):
-{tools_str}
-{availability_note}
-"""
-
     def __init__(
         self,
         tool_registry: ToolRegistry,
@@ -167,38 +161,43 @@ Action Contract Catalog (input definitions, never an output array):
         *,
         unavailable_actions: dict[str, str] | None = None,
     ) -> str:
-        """Format request-scoped contracts without resembling model output.
+        """Describe one decision using the published contracts' own schemas.
 
-        Args:
-            allowed_names: Tool name strings permitted by the current
-                pipeline stage.
-            unavailable_actions: Stable target action IDs mapped to bounded
-                explanatory reasons; these entries never receive schemas.
-
-        Returns:
-            Labeled JSON definitions for callable actions and the structured
-            no-action fallback. Definitions are deliberately not wrapped in an
-            array because the model must emit exactly one top-level object.
-
+        This is a prompt projection, not a new validator or permission owner.
+        Unavailable action reasons remain explanatory data outside the output
+        schema; they never become alternatives a model may select.
         """
         allowed_set = set(allowed_names)
-        active_tools = [
-            t for t in self.registry.get_all_tools() if t.name in allowed_set
+        contracts = [
+            tool_contract_for_llm(tool)
+            for tool in self.registry.get_all_tools()
+            if tool.name in allowed_set
         ]
+        contracts.append(model_response_tool_contract())
+        output_schema = {
+            "type": "object",
+            "properties": {
+                "tool_name": {
+                    "type": "string",
+                    "enum": [contract["name"] for contract in contracts],
+                },
+                "parameters": {"type": "object"},
+            },
+            "required": ["tool_name", "parameters"],
+            "additionalProperties": False,
+            "oneOf": [
+                {
+                    "description": contract["description"],
+                    "properties": {
+                        "tool_name": {"const": contract["name"]},
+                        "parameters": contract["parameters"],
+                    },
+                }
+                for contract in contracts
+            ],
+        }
 
         sections: list[str] = []
-        for tool in active_tools:
-            tool_def = tool_contract_for_llm(tool)
-            sections.extend(
-                (
-                    "Callable action contract:",
-                    json.dumps(tool_def, indent=2),
-                )
-            )
-
-        if not active_tools:
-            sections.append("No callable action contract is available.")
-
         if unavailable_actions:
             sections.extend(
                 (
@@ -216,8 +215,11 @@ Action Contract Catalog (input definitions, never an output array):
 
         sections.extend(
             (
-                "Fallback response contract:",
-                json.dumps(model_response_tool_contract(), indent=2),
+                "Return one JSON object matching this decision output schema. "
+                "The oneOf alternatives describe choices, not an output list.",
+                "<schema>",
+                json.dumps(output_schema, indent=2, ensure_ascii=False),
+                "</schema>",
             )
         )
         sections.extend(self._final_output_reminder())
@@ -225,17 +227,11 @@ Action Contract Catalog (input definitions, never an output array):
 
     @staticmethod
     def _final_output_reminder() -> tuple[str, ...]:
-        """Keep one short output reminder after the action schemas."""
+        """Keep one short reminder after the single output schema."""
         return (
             "Final output reminder:",
-            'Exact envelope shape: {"tool_name":'
-            '"<exact enabled action or respond_to_user>",'
-            '"parameters":{...}}',
-            "Return exactly one JSON object with an exact enabled action name "
-            "or respond_to_user, and parameters "
-            "matching the selected contract. Add no prose outside the object.",
-            'No-action envelope shape: {"tool_name":"respond_to_user",'
-            '"parameters":{"message":"<answer or blocker explanation>"}}',
+            "Return exactly one object satisfying the schema, not the schema "
+            "itself or multiple objects. Add no prose outside the object.",
             "For an informational answer or blocked action, put the explanation "
             "inside parameters.message. Any requested sentence length applies to "
             "parameters.message, not to the envelope. Do not output a bare sentence.",
@@ -397,14 +393,7 @@ Action Contract Catalog (input definitions, never an output array):
                 name in DIRECT_PARAMETER_TOOLS for name in allowed_tools
             ),
         )
-        prompt += self._TOOL_BLOCK_TEMPLATE.format(
-            tools_str=tools_str,
-            availability_note=(
-                "Only the listed workflow actions are available at this stage."
-                if allowed_tools
-                else "No executable workflow actions are available at this stage."
-            ),
-        )
+        prompt += "\n" + tools_str
 
         return prompt
 
