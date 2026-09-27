@@ -29,12 +29,10 @@ from XBrainLab.llm.agent.context_encoding import (
     UntrustedContextSource,
     encode_untrusted_context,
 )
-from XBrainLab.llm.agent.decision_contract import model_response_tool_contract
 from XBrainLab.llm.core.generation import GenerationProfile
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG, PipelineStage
 from XBrainLab.llm.tools.base import BaseTool
 from XBrainLab.llm.tools.definitions.training_def import BaseStartTrainingTool
-from XBrainLab.llm.tools.schema_contract import strict_prompt_parameters
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 
@@ -49,78 +47,9 @@ def _context_item(payload: dict, item_type: str) -> dict:
     return next(item for item in payload["items"] if item["type"] == item_type)
 
 
-def _output_schema(prompt: str) -> dict:
-    assert prompt.count("<schema>") == prompt.count("</schema>") == 1
-    return json.loads(prompt.split("<schema>", 1)[1].split("</schema>", 1)[0])
-
-
-def _schema_tool_names(prompt: str) -> set[str]:
-    return set(_output_schema(prompt)["properties"]["tool_name"]["enum"])
-
-
-def test_real_prompt_projects_one_exact_output_schema_from_current_publication():
-    from XBrainLab.llm.tools import get_all_tools
-
-    state = _state(
-        pipeline_stage="data_loaded",
-        raw=RawStateSnapshot(loaded=True, count=1),
-        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
-    )
-    publication = ApplicationViewPublication(
-        generation=83,
-        state=state,
-        capabilities=build_capability_policy(state),
-    )
-    registry = ToolRegistry()
-    tools = {tool.name: tool for tool in get_all_tools()}
-    for tool in tools.values():
-        registry.register(tool)
-    runtime = _ApplicationRuntimeFake(publication)
-    assembler = ContextAssembler(registry, Study(), application_runtime=runtime)
-    request = assembler.get_generation_request(
-        [{"role": "user", "content": "Explain what is ready."}]
-    )
-    messages = request.to_model_messages()
-    prompt = messages[0]["content"]
-    schema = _output_schema(prompt)
-    allowed = assembler.latest_tool_publication.tool_names
-
-    assert schema["type"] == "object"
-    assert set(schema["required"]) == {"tool_name", "parameters"}
-    assert schema["additionalProperties"] is False
-    assert set(schema["properties"]) == {"tool_name", "parameters"}
-    assert schema["properties"]["parameters"] == {"type": "object"}
-    assert set(schema["properties"]["tool_name"]["enum"]) == allowed | {
-        "respond_to_user"
-    }
-    branches = {
-        branch["properties"]["tool_name"]["const"]: branch for branch in schema["oneOf"]
-    }
-    assert len(branches) == len(schema["oneOf"]) == len(allowed) + 1
-    assert set(branches) == allowed | {"respond_to_user"}
-    for name in allowed:
-        assert branches[name]["properties"]["parameters"] == strict_prompt_parameters(
-            tools[name].parameters
-        )
-    assert (
-        branches["respond_to_user"]["properties"]["parameters"]
-        == (model_response_tool_contract()["parameters"])
-    )
-    assert "start_training" not in branches
-    assert prompt.index("Unavailable Action Reference (not callable):") < prompt.index(
-        "<schema>"
-    )
-    assert runtime.publication_reads == 1
-    assert assembler.latest_tool_publication.backend_generation == 83
-    card = _context_item(_untrusted_context(messages), "state_card")["data"]
-    assert card["workflow_stage"] == "data_loaded"
-    assert card["backend_generation"] == 83
-    assert messages[-1]["content"] == "Explain what is ready."
-
-
 def _unavailable_action_reference(prompt: str) -> str:
     start = prompt.index("Unavailable Action Reference (not callable):")
-    end = prompt.index("<schema>", start)
+    end = prompt.index("Fallback response contract:", start)
     return prompt[start:end]
 
 
@@ -141,19 +70,17 @@ def test_generation_request_keeps_concept_question_on_strict_response_contract(
 
     assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
     system_prompt = " ".join(request.to_model_messages()[0]["content"].split())
-    assert "respond_to_user" in _schema_tool_names(system_prompt)
+    assert '"name": "respond_to_user"' in system_prompt
     assert "Final no-action envelope" not in system_prompt
     assert "never explain that the user should call an internal tool" in system_prompt
     messages = request.to_model_messages()
-    response = next(
-        branch
-        for branch in _output_schema(messages[0]["content"])["oneOf"]
-        if branch["properties"]["tool_name"]["const"] == "respond_to_user"
+    example = (
+        messages[0]["content"].split("No-action envelope shape: ", 1)[1].splitlines()[0]
     )
-    assert (
-        response["properties"]["parameters"]
-        == (model_response_tool_contract()["parameters"])
-    )
+    assert json.loads(example) == {
+        "tool_name": "respond_to_user",
+        "parameters": {"message": "<answer or blocker explanation>"},
+    }
     assert "requested sentence length applies to parameters.message" in system_prompt
     assert messages[-1] == {"role": "user", "content": question}
 
@@ -263,7 +190,7 @@ def test_question_does_not_narrow_backend_stage_published_actions() -> None:
 
     assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
     assert "Final no-action envelope" not in prompt
-    assert "respond_to_user" in _schema_tool_names(prompt)
+    assert '"name": "respond_to_user"' in prompt
     assert runtime.publication_reads == 1
     assert assembler.latest_tool_publication.tool_names == frozenset(
         {"select_channels", "switch_panel"}
@@ -310,11 +237,11 @@ def test_empty_stage_separates_callable_schemas_from_unavailable_reference() -> 
         {"import_eeg_data", "switch_panel"}
     )
     assert assembler.latest_tool_publication.backend_generation == 82
-    assert "import_eeg_data" in _schema_tool_names(prompt)
-    assert "switch_panel" in _schema_tool_names(prompt)
-    assert "create_epochs" not in _schema_tool_names(prompt)
-    assert "start_training" not in _schema_tool_names(prompt)
-    assert "select_model" not in _schema_tool_names(prompt)
+    assert '"name": "import_eeg_data"' in prompt
+    assert '"name": "switch_panel"' in prompt
+    assert '"name": "create_epochs"' not in prompt
+    assert '"name": "start_training"' not in prompt
+    assert '"name": "select_model"' not in prompt
     assert '"create_epochs": "Load raw data before creating EEG epochs."' in reference
     assert '"start_training": "Load raw data before training.;' in reference
     assert (
@@ -369,7 +296,7 @@ def test_confirmation_required_enabled_action_remains_callable() -> None:
     assert (
         assembler.latest_tool_publication.blocked_reason("reset_preprocessing") is None
     )
-    assert "reset_preprocessing" in _schema_tool_names(prompt)
+    assert '"name": "reset_preprocessing"' in prompt
     assert "Unavailable Action Reference (not callable):" not in prompt
 
 
@@ -539,8 +466,9 @@ def test_prompt_action_contracts_do_not_resemble_an_output_array():
     contracts = assembler._format_tools([])
 
     assert not contracts.lstrip().startswith("[")
-    assert _schema_tool_names(contracts) == {"respond_to_user"}
-    assert len(_output_schema(contracts)["oneOf"]) == 1
+    assert "No callable action contract is available." in contracts
+    assert "Fallback response contract:" in contracts
+    assert '"name": "respond_to_user"' in contracts
 
 
 def test_zero_parameter_action_contract_has_one_final_output_reminder():
@@ -550,11 +478,11 @@ def test_zero_parameter_action_contract_has_one_final_output_reminder():
 
     contracts = assembler._format_tools(["start_training"])
 
-    assert _schema_tool_names(contracts) == {"start_training", "respond_to_user"}
+    assert "Callable action contract:" in contracts
     assert "Exact zero-parameter output shape:" not in contracts
     assert contracts.count("Final output reminder:") == 1
     assert "Generic action envelope:" not in contracts
-    assert "<schema>" in contracts
+    assert "parameters matching the selected contract" in contracts
     assert not contracts.lstrip().startswith("[")
 
 
@@ -582,13 +510,12 @@ def test_action_catalog_ends_with_one_short_output_reminder() -> None:
         ["configure_training", "apply_bandpass_filter"],
     )
 
-    definitions = _output_schema(contracts)["oneOf"]
+    definitions = [
+        json.JSONDecoder().raw_decode(section)[0]
+        for section in contracts.split("Callable action contract:\n")[1:]
+    ]
     assert {
-        definition["properties"]["tool_name"]["const"]: definition["properties"][
-            "parameters"
-        ]
-        for definition in definitions
-        if definition["properties"]["tool_name"]["const"] != "respond_to_user"
+        definition["name"]: definition["parameters"] for definition in definitions
     } == {
         "configure_training": {
             "type": "object",
@@ -607,8 +534,10 @@ def test_action_catalog_ends_with_one_short_output_reminder() -> None:
     }
 
     reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1]
-    assert "schema" in reminder
-    assert "{...}" not in reminder
+    assert (
+        '{"tool_name":"<exact enabled action or respond_to_user>","parameters":{...}}'
+    ) in reminder
+    assert "exact enabled action name or respond_to_user" in reminder
     assert "Add no prose outside the object" in reminder
     assert "Decision checkpoint" not in reminder
 
@@ -679,7 +608,7 @@ def test_operation_choice_guidance_follows_published_tools_not_stage(
         "apply_bandpass_filter" in assembler.latest_tool_publication.tool_names
     ) is publish_preprocessing
     assert ("ask which operation the user wants" in prompt) is publish_preprocessing
-    assert "respond_to_user" in _schema_tool_names(prompt)
+    assert '"name": "respond_to_user"' in prompt
     assert "information, a negated, ambiguous, or multi-action request" in prompt
 
 
@@ -713,15 +642,15 @@ def test_prompt_policy_consolidation_preserves_publication_and_decision_contract
     assert assembler.latest_tool_publication.tool_names == frozenset(
         {"select_channels", "switch_panel"}
     )
-    assert _schema_tool_names(prompt) == {
-        "select_channels",
-        "switch_panel",
-        "respond_to_user",
-    }
+    assert prompt.count("Callable action contract:") == 2
+    assert '"name": "select_channels"' in prompt
+    assert '"name": "switch_panel"' in prompt
+    assert '"name": "respond_to_user"' in prompt
     assert "tool_input_clarification" not in prompt
     assert prompt.rstrip().endswith(
         "For a clear enabled action, choose it now; never explain that the user "
-        "should call an internal tool or function."
+        "should call an internal tool or function.\n"
+        "Only the listed workflow actions are available at this stage."
     )
     assert "Never claim that an action completed" in prompt
 
@@ -913,7 +842,7 @@ def test_system_prompt_uses_exactly_one_publication_for_all_workflow_sections():
     assert "STRICT RESPONSE CONTRACT - DECISION ORDER" in prompt
     assert "Operation policy" not in prompt
     assert '"unavailable_operations"' not in prompt
-    assert _schema_tool_names(prompt) == {"respond_to_user"}
+    assert "No executable workflow actions are available" in prompt
 
 
 def test_preprocessed_publication_aligns_model_and_decision_context() -> None:
@@ -956,7 +885,7 @@ def test_preprocessed_publication_aligns_model_and_decision_context() -> None:
         "preprocessed_count": 1,
     }
     assert "recommended_next_step" not in prompt
-    assert "create_epochs" in _schema_tool_names(prompt)
+    assert '"name": "create_epochs"' in prompt
     assert "unique description for create_epochs" in prompt
 
 
@@ -1066,7 +995,7 @@ def test_explanatory_no_tool_turn_publishes_no_workflow_tools() -> None:
 
     assert "STRICT RESPONSE CONTRACT" in prompt
     assert "Final no-action envelope" not in prompt
-    assert "respond_to_user" in _schema_tool_names(prompt)
+    assert '"name": "respond_to_user"' in prompt
     assert "unique description for epoch_data" not in prompt
     assert assembler.latest_tool_publication.tool_names == frozenset()
     assert runtime.publication_reads == 1
@@ -1708,9 +1637,9 @@ def test_model_facing_channel_and_montage_schema_obeys_pre_epoch_stage_projectio
     }
     assert callable_tools == expected_callable
     for tool_name in expected_callable:
-        assert tool_name in _schema_tool_names(prompt)
+        assert f'"name": "{tool_name}"' in prompt
     for tool_name in {"select_channels", "set_montage"} - expected_callable:
-        assert tool_name not in _schema_tool_names(prompt)
+        assert f'"name": "{tool_name}"' not in prompt
 
 
 def test_assembler_filtering():

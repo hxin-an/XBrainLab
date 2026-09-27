@@ -19,13 +19,6 @@ from XBrainLab.llm.pipeline_state import PipelineStage
 from XBrainLab.llm.tools.base import BaseTool
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
-
-def _schema_tool_names(prompt: str) -> set[str]:
-    assert prompt.count("<schema>") == prompt.count("</schema>") == 1
-    schema = json.loads(prompt.split("<schema>", 1)[1].split("</schema>", 1)[0])
-    return set(schema["properties"]["tool_name"]["enum"])
-
-
 # ---------------------------------------------------------------------------
 # Test tools
 # ---------------------------------------------------------------------------
@@ -101,18 +94,18 @@ class TestStageBasedFiltering:
                 "apply_bandpass_filter",
             ],
         )
-        assert "import_eeg_data" in _schema_tool_names(prompt)
-        assert "switch_panel" in _schema_tool_names(prompt)
-        assert "apply_bandpass_filter" not in _schema_tool_names(prompt)
+        assert '"name": "import_eeg_data"' in prompt
+        assert '"name": "switch_panel"' in prompt
+        assert '"name": "apply_bandpass_filter"' not in prompt
 
     def test_data_loaded_shows_preprocess_not_training(self):
         prompt = self._build(
             PipelineStage.DATA_LOADED,
             ["select_channels", "apply_bandpass_filter", "start_training"],
         )
-        assert "select_channels" in _schema_tool_names(prompt)
-        assert "apply_bandpass_filter" in _schema_tool_names(prompt)
-        assert "start_training" not in _schema_tool_names(prompt)
+        assert '"name": "select_channels"' in prompt
+        assert '"name": "apply_bandpass_filter"' in prompt
+        assert '"name": "start_training"' not in prompt
 
     def test_dataset_ready_shows_training_not_preprocess(self):
         prompt = self._build(
@@ -124,18 +117,18 @@ class TestStageBasedFiltering:
                 "apply_bandpass_filter",
             ],
         )
-        assert "select_model" in _schema_tool_names(prompt)
-        assert "start_training" in _schema_tool_names(prompt)
-        assert "apply_bandpass_filter" not in _schema_tool_names(prompt)
+        assert '"name": "select_model"' in prompt
+        assert '"name": "start_training"' in prompt
+        assert '"name": "apply_bandpass_filter"' not in prompt
 
     def test_training_only_switch_panel(self):
         prompt = self._build(
             PipelineStage.TRAINING,
             ["switch_panel", "select_model", "stop_training"],
         )
-        assert "switch_panel" in _schema_tool_names(prompt)
-        assert "stop_training" in _schema_tool_names(prompt)
-        assert "select_model" not in _schema_tool_names(prompt)
+        assert '"name": "switch_panel"' in prompt
+        assert '"name": "stop_training"' in prompt
+        assert '"name": "select_model"' not in prompt
 
     def test_trained_allows_retraining(self):
         prompt = self._build(
@@ -148,13 +141,13 @@ class TestStageBasedFiltering:
                 "switch_panel",
             ],
         )
-        assert "select_model" in _schema_tool_names(prompt)
-        assert "start_training" in _schema_tool_names(prompt)
-        assert "clear_training_history" in _schema_tool_names(prompt)
+        assert '"name": "select_model"' in prompt
+        assert '"name": "start_training"' in prompt
+        assert '"name": "clear_training_history"' in prompt
 
     def test_no_tools_registered_shows_fallback(self):
         prompt = self._build(PipelineStage.EMPTY, [])
-        assert _schema_tool_names(prompt) == {"respond_to_user"}
+        assert "No executable workflow actions are available" in prompt
 
     def test_prompt_composes_the_canonical_decision_policy(self):
         prompt = self._build(
@@ -172,11 +165,7 @@ class TestStageBasedFiltering:
         assert "Current backend workflow stage: empty\n" in prompt
         assert "Workflow Decision Context" not in prompt
         assert 'schema "xbrainlab.untrusted_context.v1"' in prompt
-        assert _schema_tool_names(prompt) == {
-            "import_eeg_data",
-            "switch_panel",
-            "respond_to_user",
-        }
+        assert "Only the listed workflow actions are available" in prompt
 
     def test_stage_filter_keeps_retired_tools_out_of_primary_prompt(self):
         prompt = self._build(
@@ -188,8 +177,8 @@ class TestStageBasedFiltering:
                 "apply_bandpass_filter",
             ],
         )
-        assert "select_channels" in _schema_tool_names(prompt)
-        assert "apply_bandpass_filter" in _schema_tool_names(prompt)
+        assert '"name": "select_channels"' in prompt
+        assert '"name": "apply_bandpass_filter"' in prompt
         assert "scan_source" not in prompt
         assert "preview_interpretation" not in prompt
 
@@ -219,8 +208,8 @@ class TestStageBasedFiltering:
         ):
             prompt = ContextAssembler(registry, Study()).build_system_prompt()
 
-        assert "import_eeg_data" in _schema_tool_names(prompt)
-        assert "switch_panel" in _schema_tool_names(prompt)
+        assert '"name": "import_eeg_data"' in prompt
+        assert '"name": "switch_panel"' in prompt
         for tool_name in retired:
             assert tool_name not in prompt
 

@@ -15,7 +15,7 @@ corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測
 以及直接阻擋產品驗證的import busy還原競態。後者僅恢復既定按鈕可用性與取消保護，
 不改layout／文案／工具membership。先以既有失敗作baseline，按責任做一個有依據的
 prompt／RAG呈現修理，不增router／模型／語料同義句、不使用sealed題庫或修改oracle。
-獨立設計覆核選定：以既有publication-filtered contracts生成單一兩欄JSON Schema，
+曾選定並已否決的候選：以既有publication-filtered contracts生成單一兩欄JSON Schema，
 互斥alternatives重用各工具參數與response schema；blocked reason另置於schema外。
 取代混合catalog與重複輸出形狀，不新增permission owner／constrained decoder。
 RAG corpus／ranking／example內容不改；先以schema membership／真parser測試RED，
@@ -29,8 +29,18 @@ Import先RED確定busy→新publication→release順序，再讓既有render own
 GUI import→subject training→重開結果流程）及重疊的sidebar/presentation124案例通過。
 Production兩檔+27/-19/net+8，只有既有owner的busy狀態投影，Cancel及generic async不改。
 Schema呈現一檔+40/-51/net-11，97個直接測試通過；獨立覆核兩項diff無blocker，
-另驗103個已保存輸入的schema結構，但不把它當模型語意通過。Next凍結整合source重跑完整105、
-retrieval及native，依逐題非退步和同版本CI決定是否能交手測；當前尚不能。
+另驗103個已保存輸入的schema結構，但不把它當模型語意通過。
+**bfad6446否決**：完整105真跑positive36/36，但raw precision8/24（15e14/24、785c16/24），
+paired first21/24、final22/24；新增多個不可用操作誤選及negated navigation，不能交手測。
+回退該schema呈現及專屬測試／文件到23693406，保留已批准兩欄契約及632b94e0的import修理。
+所有bfad報告／capture保留，不再修補oneOf提示。獨立檢查發現103個15e prompt中，
+不可用tool ID只出現在status reference；Host才需要stable ID作admission。
+**Next**：一次ignored的status-label隔離診斷：固定15e全部98個首輪case（不冒稱包含7個
+clarification trajectories），只把reference字典key換成既有trusted tool description，
+保留數量／順序／reason／其他所有prompt內容，98個control rendered hash全吻合才允許生成。
+不改RAG／callable IDs／Host map，不重抽control、不將raw-only證據冒稱產品成功；此診斷
+不直接解釋normalize雙JSON，也不授權回退使用者批准的兩欄契約。依結果決定是否採用此
+呈現修理，再以原完整105及native／CI驗證；不降低原門檻、未知模型誤選不稱RAG已完成。
 
 **前一checkpoint**：兩欄契約已實作，但15e06744真模型驗證仍有新增
 語意退步，獨立覆核不批准non-regression／交付。需要決定暫緩此遷移，或明確接受新增限制；

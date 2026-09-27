@@ -179,12 +179,9 @@ def test_controller_prompt_generation(controller: LLMController) -> None:
 
     msgs = controller.assembler.get_messages(controller.history)
     assert len(msgs) == 3
-    prompt = msgs[0]["content"]
-    assert prompt.count("<schema>") == prompt.count("</schema>") == 1
-    schema = json.loads(prompt.split("<schema>", 1)[1].split("</schema>", 1)[0])
-    assert set(schema["required"]) == {"tool_name", "parameters"}
-    assert set(schema["properties"]["tool_name"]["enum"]) == (
-        controller.assembler.latest_tool_publication.tool_names | {"respond_to_user"}
+    assert (
+        "Action Contract Catalog (input definitions, never an output array):"
+        in msgs[0]["content"]
     )
     context = json.loads(msgs[1]["content"])
     assert context["schema"] == "xbrainlab.untrusted_context.v1"
