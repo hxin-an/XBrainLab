@@ -83,6 +83,14 @@ corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測
   操作；rules 1–3的可用性、必填值及禁止操作保護不變，不加assembler第二套政策。
   785c真模型結果作RED，既有prompt composition／contract測試及最後同版本三條件真模型
   作回歸；不以文字斷言冒稱模型會遵循。維持145例、原門檻與所有失敗產物，再做Windows真旅程。
+- **10a5b4ee否決與回退**：三條件完整105題，generic prompt釐清未修正normalize混合要求，
+  並使原positive split第二題選成training settings（35/36）。撤回該prompt與專屬文字斷言，
+  回到785c相同產品code／corpus，不把unit／CI通過當模型行為通過；所有失敗保留。
+  2026-09-27使用者同意一次受控定位：固定全部24個paired probes、785c control輸入／原始
+  輸出與生成條件，只在檢索後排除response示範、不補位，觀察操作與不操作兩面。
+  此為ignored一次性diagnostic，不改production、不作promotion或新held-out成績；control
+  rendered prompt必須逐筆hash相同，記錄移除ID／完整模型輸入輸出。結論決定下一個最小
+  修理，禁止無限prompt／語料搜尋；手測仍待新退步處置、同版本CI／native及獨立覆核。
 
 ## Context — 單一 main 基線先穩定，再分產品與實驗兩線
 

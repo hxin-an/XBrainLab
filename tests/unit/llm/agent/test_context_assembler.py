@@ -613,7 +613,7 @@ def test_operation_choice_guidance_follows_published_tools_not_stage(
     ) is publish_preprocessing
     assert ("ask which operation the user wants" in prompt) is publish_preprocessing
     assert '"name": "respond_to_user"' in prompt
-    assert "information-only, a negated, ambiguous, or multi-action request" in prompt
+    assert "information, a negated, ambiguous, or multi-action request" in prompt
 
 
 def test_prompt_policy_consolidation_preserves_publication_and_decision_contracts() -> (
