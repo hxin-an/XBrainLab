@@ -2,14 +2,50 @@
 
 最後更新：`2026-09-28`
 
-## Active — 收尾 RAG 工程品質，建立可重現的 Assistant 整合基線
+## Next — 討論 Agent 決策／追問；RAG 部件工程已收尾
+
+2026-09-28 使用者要求先做到 RAG 收尾，再討論下一組件。本輪 source 為 `f89f3f89`，
+已推送既有 PR #149，未 merge；本機只有受保護的 `settings.json` 差異。獨立 reviewer
+完成 source、145筆語料、測試品質與實際模型產物覆核，RAG 工程範圍無 blocker。
+這是部件 scope-complete，不是整合 handoff-ready，不開手測程式或自動開始下一組件。
+
+- 四筆解釋＋操作示範保留問題／ID，改為先選一件；145筆現為117操作／28回答。
+  既有 prompt rule 同步，owner 不增；production Python 本 slice +6/-3/net+3，corpus另計。
+- Scorer v14 保留全部81＋24題，兩個 mixed probes 的預期按新契約改正；安全不操作與
+  `semantic_review_required` 分開。歷史報告不改，不把評分規則更正算準確率提升。
+- RED5→RAG/context/process190通過，controller RAG7通過；評分先RED後相關131通過。
+  hooks、guidance audit、MkDocs strict通過，獨立實際diff覆核無blocker。
+- f89f 真 offline hybrid/dense皆Top-3 34/36、145points，資格／bounds／manifest／repeat
+  initialization通過；hybrid對舊36題基準non-regression通過。新隔離vectors只連結既有D槽
+  embedding，不下載／改共享模型。報告如實標示worktree dirty（僅使用者settings）。
+- f89f 完整105題真模型診斷完成；103個prompt/raw capture逐byte/hash經獨立覆核，
+  75次retrieved、28次正常empty、0degraded；model source_changes排除settings後為空。
+  positive36/36、raw precision15/24、product no-action23/24、clarification6/7。
+  相同81題相對15e無pass→fail或新增執行邊界；training-settings的raw加分仍非正確blocker說明。
+- 混合bandpass已收到正確範例／規則，仍只解釋，語意覆核不通過；normalize輸出雙JSON，
+  Host回choose-one但模型格式失敗；paired21機器成功＋1待覆核＋2失敗，不與舊契約總分比進步。
+  待覆核bandpass現已獨立判為不完成，保留原機器報告，不回填或重算它。
+- 初次model preflight因預設C槽無模型在零生成時停止，失敗報告保留；重跑明確使用啟動器
+  同樣的D槽model cache，完整結果另檔，沒有silent fallback或重抽失敗題。
+
+Evidence：`build/dev-artifacts/rag-f89f-{hybrid,dense}-retrieval.json`、
+`rag-f89f-hybrid-model-offline.json`、`rag-f89f-hybrid-prompts/`；前置失敗為
+`rag-f89f-hybrid-model.json`。f89f同source CI run `36369844021` 已 completed/success，
+全部適用non-skipped jobs成功；後續本文件收尾不改產品，不將該結果冒稱新head的CI。
+
+**下一次討論而非自動施工**：決策提示／輸出契約是否先做受控回退比較，再處理模糊要求
+`ambiguous_en`擅選channels與`generic_filter_selection`追問缺口。現行兩欄不變，未達
+product gate，不宣稱Stable、可集中手測或最佳RAG。回退的必要授權已有，但最新要求是先
+討論下一組件；不再自動調RAG權重、門檻、加例或跑組合搜尋。
+
+## 歷史 — 已執行的 RAG 收尾計畫與後續共同基線方向
 
 2026-09-27 使用者批准實作：先把 RAG 作為完整部件整理，再往下一部件推進。
 起點 main `a5f57a15`；單一 task branch `fix/rag-component-baseline`，不更動使用者
 `settings.json`、共用環境／模型、正式研究題庫或既有結果。這一輪包含 product、tests、scripts、
 corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測試通過當成完成。
 
-### 最新決策與唯一續作入口（2026-09-28）
+### 歷史決策與施工順序（2026-09-28；續作以頁首為準）
 
 使用者確認：這輪先建立可靠共同基線，不追求讓 RAG 適配當前所有組件的最高分；
 基線通過後再逐個打磨工具說明／決策提示、追問／上下文，於 Development 驗證組合效果。
