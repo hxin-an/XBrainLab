@@ -4,6 +4,74 @@
 
 ## Active — Agent可靠基線整合施工（已授權至集中手測）
 
+### 最新施工：英文小模型上下文與人工選例診斷
+
+2026-09-28 使用者批准「好施工」：本輪僅支援英文輸入／回答，先對既有失敗的
+7 個單輪案例做人工選取既有 RAG 示範的診斷。舊 off／hybrid-native 配對保留且不重跑。
+問題與證據：規則正確、無截斷不等於小模型容易使用；bandpass 全缺值要求收到兩個
+完整操作與一個 partial-high 示範，實際只問 lower，五個完整缺值示範未進融合候選。
+
+Outcome：區分「找錯參考」和「即使提供適合參考仍無法遵守」；不是正式準確率、
+RAG 改善宣稱或最終交付。現有基本模型 gate 仍有效，不以人工選例替代。
+Scope：先盤點既有語料、凍結選例／判準／模型與來源身分，再每題一次首答診斷（最多
+7 次生成，不做格式或語意重試），保存完整輸入／原始輸出與逐題獨立語意覆核。
+原產品最多一次格式修復仍保留；此診斷只比較舊首答，不能把零重試診斷冒稱產品改版。
+不改 system／工具／state／使用者原文、產品提示、語料、檢索參數、模型、settings 或
+UI。人工選例只走既有 RAG 編碼與 context 組裝，不另建 production owner 或逐題路由。
+若既有語料無合適示範，明記缺口並不生成該題，不為題目現寫答案；分母仍列全 7 題。
+
+步驟／focused validation：
+1. 記錄 7 題、既有示範 ID 與選擇理由，覆核沒有變造語料／補答案；先凍結再推論。
+2. 重用現有 assembler／模型 runtime 與既有快取；逐 byte 核對 system/current_user
+   對舊 capture 一致，確認只替換參考；無執行副作用，輸入輸出有 hash 與確切來源身分。
+3. 每題一次生成；不以格式合法或 Host 擋錯評為答對。判斷缺值項目／完整重述與否定
+   不操作的語意；獨立覆核全部 7 題，說明人工選例、範例數量改變等因果限制。
+4. 有證據才決定最多一版整體修正；沒有則提出模型／產品取捨，不自動 sweep。
+   修正版仍需固定 20 題、事先凍結少量新問法、RAG 受益及同版本整合 gate 才手測。
+
+UI 確認：本次診斷無可見產品改動。Complexity：production +0／-0、owner 不變；
+只用有界診斷附件，不新增通用測量平台。Stop：診斷完成後依結果判定可修範圍；
+不能將 reviewer 看得懂當小模型可用，也不將 checkpoint 冒稱 handoff-ready。
+診斷已執行，結果與接續如下；不重跑抽到成功。
+
+#### 人工選例首答診斷（已跑、非產品成績）
+
+Source `14ddc4ca644cdbd70c591b4f24a0514a762df5d9`；只有本節與 target 文件改動，
+產品程式及使用者 settings 未改。附件在
+`build/dev-artifacts/agent-single-turn-v1/oracle-reference-v1/`；凍結 manifest SHA
+`2a779a57f790a0b1aae2afabe3a4de8479a2c18ce6722fdd86833486a9af257e`。
+診斷腳本 `build/dev-artifacts/diagnose-single-turn-oracle.py` 只用既有 assembler／encoder／
+LLMEngine，無 executor、Host admission 或重試。只讀既有 D 槽 pinned Granite 快取，
+與舊 control 相同 CUDA／非4bit／greedy／512；Windows native 一次載入、5 次首答生成，
+engine_closed=true。生成前已獨立覆核選例，核對舊 off 的整份 rendered prompt、
+舊 on 的 system/current_user 與當前一致；新 5 captures 與凍結 prompt/output hash 一致。
+
+| 固定案例 | 人工選例首答 | 判斷 |
+| --- | --- | --- |
+| missing_bandpass_en | apply_bandpass_filter，parameters={} | 仍錯；沒有詢問上下限。原 hybrid 只問下限，兩者都失敗但形態不同。 |
+| missing_notch_en | apply_notch_filter，parameters={} | 仍錯；沒有詢問頻率。 |
+| missing_resample_en | resample_data，parameters={}，尾端多一個 code fence | 仍錯；另有格式錯，不以修復重跑掩蓋。 |
+| missing_reference_en | 詢問 reference method/channel 並要求完整重述 | 改善；原 off/on 均猜 average。 |
+| missing_normalize_en | 詢問 z-score/min-max 並要求完整重述 | 改善；原 off/on 均猜 z-score。 |
+| single_turn_negated_resample_en | 未生成：語料缺口 | 沒有同操作、單純禁止、respond_to_user 的既有示範；不是通過。 |
+| single_turn_negated_normalize_en | 未生成：語料缺口 | 同上；不能把其他操作的否定當等效參考。 |
+
+準確的語料缺口不是「完全沒有否定」：apply_notch_filter_07 與 resample_data_07 的
+混合要求分別包含禁止 resample／normalize，但示範是執行另一個操作，不適用此條件。
+7 題完整列出，5 題已生成中 2 題行為改善、3 題仍失敗，2 題未生成不計 pass／fail。
+此診斷未執行工具，也未測 Host 擋錯；不能說三個空參數操作已在本次被後端擋下。
+
+支持的結論：現有單一合適示範能幫助 reference／normalize；相同介入不足以讓另三題
+遵守缺值契約。不是「只修檢索即可完成」，也不證明模型天生不會、RAG 永遠無效。
+人工選例同時改了 relevance、範例數量與競爭內容；未隔離其因果，未跑新問法或正向
+回歸，不能把 2 題改善併入原 20 題宣稱 15/20，亦不能宣稱產品 RAG 已受益。
+獨立覆核已完成：manifest、腳本、corpus／case hash、14 份舊 capture 與5份新 capture
+核對一致，語意判斷同表；未找到規則矛盾、參考遺失／截斷或組裝錯誤，不能由失敗
+直接推導應改哪段 prompt。Guidance audit／strict MkDocs／diff 檢查通過。
+Next：帶著此結果討論下一個有明確假設的模型／上下文適配取捨；目前沒有足夠根因
+支持直接動用唯一有界修正，不追加候選或重跑。原20題 gate 與否定風險仍阻擋手測。
+本次只完成已批准的先跑診斷，產品可靠基線仍未完成；不能把文件與診斷收尾當整輪完成。
+
 ### 最新決策：完整單輪操作基線（取代下方跨輪施工方向）
 
 使用者於2026-09-28同意「好這輪做到這樣」：本輪以責任清楚、各部件直接測試、完整
@@ -91,7 +159,7 @@ raw 與一次格式修復後分開，20/20 要求含獨立回答語意覆核，H
   不是最後top3排序壓掉已召回正例，也不證明降低門檻或加stemming即可解決。
 
 Consumer／docs遷移、直接驗證與獨立覆核已收斂，保存為可回退本機checkpoint。
-Next：先決定下列設計取捨，再開新修理範圍；不追加模型推論或宣稱已可手測。
+以下是人工選例診斷前的阻擋狀態；新授權的最多 7 次診斷依頁首施工，不宣稱已可手測。
 模型gate目前阻擋交付；完整輸入覆核未發現足以支持有界呈現修理的source缺陷。
 若沒有可證的實作錯誤，不擅改retrieval設計、加Host語意路由／第二模型或放寬gate；
 完成coherent工程checkpoint後提出具體設計決策，不把此候選交手測或merge。
