@@ -30,21 +30,25 @@ def test_nuisance_control_changes_model_card_not_host_freshness():
         assembler = DevContextAssembler(
             ToolRegistry(), study, application_runtime=runtime
         )
-        first = assembler.get_messages([{"role": "user", "content": "Open import."}])
+        history = [{"role": "user", "content": "Open import."}]
+        first = assembler.get_messages(history)
         assert assembler.latest_tool_publication.backend_generation == 81
         runtime.publication = replace(original, generation=143)
-        second = assembler.get_messages([{"role": "user", "content": "Open import."}])
+        second = assembler.get_messages(history)
         assert first == second
         assert assembler.latest_tool_publication.backend_generation == 143
-        context = json.loads(second[1]["content"])
-        assert "backend_generation" not in context["items"][0]["data"]
-        assert context["trust"] == "untrusted"
+        context = json.loads(second[-1]["content"])
+        assert set(context) == {"application_state", "current_user"}
+        assert "backend_generation" not in context["application_state"]
+        assert context["current_user"] == {"text": "Open import."}
         assert runtime.publication.generation == 143
         normal = ContextAssembler(ToolRegistry(), study, application_runtime=runtime)
-        normal_card = json.loads(normal.get_messages([])[1]["content"])["items"][0][
-            "data"
-        ]
-        assert normal_card["backend_generation"] == 143
+        normal_context = json.loads(normal.get_messages(history)[-1]["content"])
+        assert normal_context["current_user"] == context["current_user"]
+        assert normal_context["application_state"] == {
+            **context["application_state"],
+            "backend_generation": 143,
+        }
     finally:
         service.close()
 

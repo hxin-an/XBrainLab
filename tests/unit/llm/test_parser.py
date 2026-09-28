@@ -147,6 +147,27 @@ def test_malformed_or_duplicate_json_fails_closed(raw):
     assert result.command is None
 
 
+@pytest.mark.parametrize(
+    "private_key",
+    [
+        "/home/alice/private/subject-17/events.tsv",
+        "alice@example.test",
+        "api_key=private-example-token",
+    ],
+)
+def test_duplicate_key_diagnostic_does_not_expose_private_model_text(private_key):
+    key = json.dumps(private_key)
+    raw = '{"tool_name":"resample_data","parameters":{' + key + ":128," + key + ":256}}"
+
+    result = CommandParser.parse_product(raw)
+
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    assert result.command is None
+    assert result.proposal_dict() is None
+    assert "Duplicate JSON key" in result.error
+    assert private_key not in result.error
+
+
 @pytest.mark.parametrize("number", ["NaN", "Infinity", "-Infinity", "1e9999"])
 def test_non_finite_numbers_are_rejected_at_any_depth(number):
     body = json.dumps(proposal(parameters={"nested": ["NUMBER"]})).replace(

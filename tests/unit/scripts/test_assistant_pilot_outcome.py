@@ -257,7 +257,7 @@ def _rejected_typed_nonaction_trace():
         )
         request = {
             "generation_id": number,
-            "response_contract": "structured_action",
+            "response_contract": "assistant_tool_response.v1",
             "messages": [[["role", "user"], ["content", "No data is loaded."]]],
         }
         trace["generations"].append(

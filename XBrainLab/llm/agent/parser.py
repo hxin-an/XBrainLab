@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, TypeAlias
 
+from XBrainLab.backend.utils.public_diagnostics import public_exception_message
+
 from .decision_contract import MAX_NAME_LENGTH, MODEL_RESPONSE_TOOL_NAME
 
 ToolCommand: TypeAlias = tuple[str, dict[str, Any]]
@@ -119,11 +121,11 @@ class CommandParser:
                 "Return one complete JSON object occupying the entire response.",
             )
         except (ValueError, RecursionError) as exc:
-            return ToolEnvelopeParseResult.format_error(str(exc))
+            return ToolEnvelopeParseResult.format_error(public_exception_message(exc))
         try:
             return CommandParser._parse_proposal(decoded)
         except ValueError as exc:
-            return ToolEnvelopeParseResult.format_error(str(exc))
+            return ToolEnvelopeParseResult.format_error(public_exception_message(exc))
 
     @staticmethod
     def _has_multiple_adjacent_objects(text: str, decoder: json.JSONDecoder) -> bool:

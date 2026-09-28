@@ -603,7 +603,10 @@ def test_real_runtime_command_trace_remains_scoreable(qtbot, monkeypatch, tmp_pa
             generation = report["generations"][0]
             assert generation["raw_response"] == harness.engine.generation_output
             assert generation["terminal"] == "finished"
-            assert generation["request"]["response_contract"] == "structured_action"
+            assert (
+                generation["request"]["response_contract"]
+                == "assistant_tool_response.v1"
+            )
             assert [dict(message) for message in generation["request"]["messages"]] == (
                 harness.engine.generated_messages[0]
             )

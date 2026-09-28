@@ -56,6 +56,23 @@ split／training settings仍提案操作。4個no-action case（3種不同原句
 模型gate失敗。Next／待決策：是否將目前明列限制的版本固定為Development起點，或批准
 一個有界工具決策修正；不得自行接受限制、改契約或再啟動模型調整。settings.json未改。
 
+已完成直接修理：CI run36449067516的`linux-unit-rest`揭露parser兩處`str(exception)`
+違反既有診斷邊界。Duplicate key由模型文字提供，確可將私人路徑／email／token帶入error。
+先新增真parser惡意key回歸並重現，再重用既有`public_exception_message`；不加owner、不放寬
+source guard、不改accepted JSON／格式修復、模型輸入／tool admission或UI流程。
+Focused：parser與result contract、strict recovery；獨立覆核，以及保存capture重播證明
+所有既有proposal判定不變（不是新模型分數）。完成後提交精確head CI；舊CI失敗保留。
+Stop仍為上方模型gate缺陷待決策；此修理只閉合必要工程驗證，不授權追加prompt實驗。
+同輪CI另有3項過時測試：Dev context仍要求舊untrusted items包裝與空history user訊息；
+runtime trace及pilot outcome fixture仍用退役`structured_action`。依既定
+`application_state/current_user`與`assistant_tool_response.v1`同步測試，保留真resample、
+correlation、格式錯誤不救分等assertions；不修改runtime/scorer或fixture中的故意錯誤輸出。
+實測：3個privacy案例RED→GREEN，parser／診斷邊界／strict recovery共120 passed；
+3項舊fixture先重現，遷移後相關156 passed。Production僅parser +4/-2（淨增2），
+owner不增；tests保留真Command等斷言。獨立覆核將先前53＋75＋4份capture共132份
+交給前後parser重播，status／message／command／error完全相同；這是修理等價性證據，
+不是新版真模型準確率或重新推論。舊source／模型失敗原樣保留，只有診斷隱私修正進新head。
+
 ### 歷史候選：回答完整性修正未通過當時的完整語意gate
 
 2026-09-28使用者批准「那就修吧」的一次有界候選已實作並測完；規則歧義確實移除，
