@@ -327,16 +327,14 @@ RAG／examples規則（2026-09-27批准的部件打磨目標）：
 
 - RAG提供操作／正確不操作的英文決策示範，不承擔EEG知識庫或第二套intent／permission router。
   不以文字關鍵字先判定是否檢索，也不按callable數量切換固定範例與semantic retrieval兩套policy。
-- 搜尋前限制為當次callable action examples及合法`respond_to_user` examples；後者不是新增可執行
-  action。Typed追問仍需pending_action目前可用、欄位符合該direct工具的required schema。
-  示範須以actual action schema或strict response parser驗證，不允許額外欄位或多action。
-- 2026-09-28授權的聯合修理候選讓dense與BM25各自召回再聯集排序，保留cosine門檻`0.7`、
-  最多三例及既有context上限，允許正常零命中。前次聯集候選因真模型退步否決，本次
-  連同既有追問契約覆蓋與用途描述重新驗證；未通過前不宣稱採用成功。Dense-only消融須
+- 搜尋前限制為當次callable action examples及既有`respond_to_user` examples；後者不是新增可執行
+  action。示範須以actual action schema或strict response parser驗證，不允許額外欄位或多action。
+- 暫保留dense admission＋BM25 reranking與cosine門檻`0.7`、最多三例及既有context上限，
+  允許正常零命中。2026-09-28獨立召回聯集候選雖改善retrieval，卻造成真模型positive／
+  clarification退步而否決；恢復此基線不表示dense否決的已知問題已解決。Dense-only消融須
   真正省去BM25建置／查詢，不另維護一套production retriever；hybrid缺BM25時不得silent fallback。
 - 範例內容涵蓋參數與相鄰操作差異、概念詢問、只要說明、明確禁止操作與無法辨識的指涉；
-  不機械湊數、不複製驗收題；五種direct工具須有既有typed clarification形狀的示範，
-  不把缺參數範例教成略過既有clarification流程。原要求partial值保留的契約選擇另待確認。
+  不機械湊數、不複製驗收題，不把缺參數範例教成略過既有clarification流程。
 - RAG延遲後，最終prompt以同一份publication組schemas／state card並重查範例資格；
   unavailable-action reference永遠不提供可操作示範，也不進RAG allowed tool names。
 - retrieval failure退回既有schema／format並明示degraded，不擴大tool surface或冒稱正常零命中。

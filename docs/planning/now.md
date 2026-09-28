@@ -68,7 +68,32 @@ action在dense、BM25、最終publication皆檢資格，index schema 3不使用�
 membership predicate收斂為兩檢索路徑／assembler共用；沒有另存第二套retriever。
 RED10（缺值語料、無效pending及stage資格）→現候選相關426通過；explicit-file hooks、
 guidance audit、MkDocs strict通過。獨立覆核允許進入真模型驗證，未批准候選採用。
-Next：固定candidate commit，真retrieval及完整105題／capture／receipt比較；待partial契約選擇。
+`fe533bcd`已完成真retrieval（150 points、positive Top3 36/36）與完整105題模型診斷。
+103 captures逐byte/hash獨立覆核；positive36/36，但clarification4/7低於f89f的6/7，
+故不能採用。bandpass仍抄mixed回答；generic filter首輪猜操作，非第二輪typed格式錯誤。
+五typed例全部進union，最終排名bandpass6/notch5/resample3/reference8/normalize12；
+Recall@3/5/10為1/5、2/5、4/5。resample已在prompt仍猜128，不能只歸因排序。
+17題完整context SHA重建一致；增k會一併加入更多ready-made actions，不能視為修理。
+
+Next：只做一個有界selection診斷，固定候選／分數／前三名預算，檢查同decision重複示範
+占位的影響。對既有validated decision signature選代表（action tool、typed pending action、
+ordinary response category），不足三筆再按原rank補；不解析user intent或決定可執行性。
+先離線比對正向與缺值／mixed／否定風險，再獨立設計覆核；未通過不寫product／跑模型。
+依據為coverage/diversity ICL文獻的冗餘問題，並非聲稱本heuristic已有效或等同論文方法。
+不進行權重／prompt組合搜尋；partial原值契約仍待使用者選擇。
+
+Selection診斷100題完成，current context全部逐byte重建一致；typed missing仍1/5，
+沒有解決缺值示範遺漏，positive22/36額外曝光其他action。否決，不進模型／product。
+本輪有界診斷已無可採用的聯集／選例候選，停止新增heuristic而非降低非退步標準。
+Next：撤回fe533造成退步的retrieval／新增語料／其專屬tests及相依文件，回到2e3b產品，
+只保留獨立98題支持的Split／Training catalogue描述修正，做同版本完整模型驗證。
+失敗commit、captures、rank與diversity產物均保留。RAG品質不宣稱完成，待typed已知值
+public contract決策；該契約選擇也不能被宣稱必然修好排序或模型複製問題。
+
+撤回source／專屬tests／策略文件與2e3b逐byte相同，僅catalogue描述保留（production
+Python +10/-2/net+8，無owner改變）。217個RAG／context／工具契約相關測試與explicit-file
+hooks、guidance audit、MkDocs strict通過。fe533 CI為failure，job明細讀取遭GitHub TLS
+timeout；不拿其CI支撐本版本。Next：commit後跑完整105題及同head CI，獨立覆核恢復結果。
 
 ### 前次候選的否決與撤回證據
 

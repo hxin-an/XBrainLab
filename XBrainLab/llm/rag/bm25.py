@@ -1,8 +1,8 @@
 """Lightweight BM25 scorer for hybrid RAG retrieval.
 
-Implements Okapi BM25 scoring with sklearn's English stop-word vocabulary.
-Designed to complement the Qdrant semantic
-retriever with independent, publication-scoped keyword recall.
+Implements Okapi BM25 scoring without external dependencies beyond the
+Python standard library.  Designed to complement the Qdrant semantic
+retriever by reranking semantically admitted candidates with keyword scores.
 
 Reference:
     Robertson, S. & Zaragoza, H. (2009). *The Probabilistic Relevance
@@ -18,31 +18,22 @@ import re
 from collections import Counter
 from pathlib import Path
 
-from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
-
-from .example_policy import example_is_allowed, is_primary_workflow_example
+from .example_policy import is_primary_workflow_example
 
 logger = logging.getLogger(__name__)
 
 # ── BM25 hyper-parameters (Okapi defaults) ──────────────────
 _K1 = 1.5
 _B = 0.75
-# The existing sklearn vocabulary removes function-word-only matches. Negation
-# remains informative for action/response examples; this is not intent routing.
-_STOP_WORDS = ENGLISH_STOP_WORDS - {"no", "not", "never", "without", "cannot"}
 
 
 def _tokenize(text: str) -> list[str]:
     """Simple whitespace + punctuation tokenizer.
 
     Lowercases the text, splits on non-alphanumeric characters, and
-    discards short tokens and English stop words, preserving negation.
+    discards tokens shorter than 2 characters.
     """
-    return [
-        t
-        for t in re.split(r"[^a-z0-9_]+", text.lower())
-        if len(t) >= 2 and t not in _STOP_WORDS
-    ]
+    return [t for t in re.split(r"[^a-z0-9_]+", text.lower()) if len(t) >= 2]
 
 
 class BM25Index:
@@ -123,15 +114,14 @@ class BM25Index:
     # ── Query ────────────────────────────────────────────────
 
     def query(
-        self, text: str, k: int = 3, *, allowed_tool_names: frozenset[str] | None = None
+        self, text: str, k: int = 3, *, candidate_ids: frozenset[str] | None = None
     ) -> list[tuple[float, str, str, dict]]:
         """Scores all documents against the query and returns top-*k*.
 
         Args:
             text: The query text.
             k: Maximum number of results.
-            allowed_tool_names: Optional publication filter applied before top-k;
-                response examples stay eligible and corpus IDF stays unchanged.
+            candidate_ids: Optional admitted pool; corpus IDF stays unchanged.
 
         Returns:
             A list of ``(score, doc_id, doc_text, metadata)`` tuples
@@ -148,9 +138,7 @@ class BM25Index:
         n = self.doc_count
 
         for idx in range(n):
-            if allowed_tool_names is not None and not example_is_allowed(
-                self._docs[idx][2], allowed_tool_names=allowed_tool_names
-            ):
+            if candidate_ids is not None and self._docs[idx][0] not in candidate_ids:
                 continue
             score = 0.0
             dl = self._dl[idx]

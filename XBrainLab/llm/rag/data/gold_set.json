@@ -1141,35 +1141,5 @@
     "category": "response_ungrounded_reference",
     "input": "Make the changes from my lab notes. The notes have not been shared with you.",
     "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Please share the relevant changes from your notes before I modify anything."}}]
-  },
-  {
-    "id": "clarify_bandpass_bounds",
-    "category": "response_missing_parameter",
-    "input": "Bandpass-filter this EEG recording.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "What lower and upper cutoff frequencies should I use?", "pending_action": "apply_bandpass_filter", "missing_inputs": ["low_freq", "high_freq"]}}]
-  },
-  {
-    "id": "clarify_notch_frequency",
-    "category": "response_missing_parameter",
-    "input": "Run notch filtering on this signal.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "What notch frequency should I use?", "pending_action": "apply_notch_filter", "missing_inputs": ["freq"]}}]
-  },
-  {
-    "id": "clarify_resample_rate",
-    "category": "response_missing_parameter",
-    "input": "Resample these EEG recordings.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "What target sampling rate should I use?", "pending_action": "resample_data", "missing_inputs": ["rate"]}}]
-  },
-  {
-    "id": "clarify_reference_method",
-    "category": "response_missing_parameter",
-    "input": "Use a new reference for these recordings.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Which reference method or channel should I use?", "pending_action": "set_reference", "missing_inputs": ["method"]}}]
-  },
-  {
-    "id": "clarify_normalize_method",
-    "category": "response_missing_parameter",
-    "input": "Normalize my recordings.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Which normalization method should I use: z-score or min-max?", "pending_action": "normalize_data", "missing_inputs": ["method"]}}]
   }
 ]

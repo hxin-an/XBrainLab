@@ -353,15 +353,6 @@ def test_rag_notes_cannot_publish_actions_absent_from_final_prompt_scope():
                     ("Stop training.", "stop_training", {}),
                     ("Do not act.", "respond_to_user", {"message": "I will not act."}),
                     ("Malformed response.", "respond_to_user", {}),
-                    (
-                        "Resample the recordings.",
-                        "respond_to_user",
-                        {
-                            "message": "What rate?",
-                            "pending_action": "resample_data",
-                            "missing_inputs": ["rate"],
-                        },
-                    ),
                 ]
             ]
         )

@@ -107,20 +107,7 @@ def prompt_tool_call_from_metadata(
         result = CommandParser.parse_product(
             json.dumps(call),
         )
-        if result.status is not ToolEnvelopeStatus.NO_TOOL:
-            return None
-        if result.pending_action:
-            from XBrainLab.llm.agent.verifier import (  # noqa: PLC0415
-                DIRECT_PARAMETER_TOOLS,
-            )
-
-            validator = _live_tool_schema_validator()
-            if validator is None or result.pending_action not in DIRECT_PARAMETER_TOOLS:
-                return None
-            required = validator.tool_schemas[result.pending_action].get("required", [])
-            if not set(result.missing_inputs) <= set(required):
-                return None
-        return call
+        return call if result.status is ToolEnvelopeStatus.NO_TOOL else None
     validator = _live_tool_schema_validator()
     if validator is None:
         return None
@@ -140,24 +127,3 @@ def prompt_tool_call_from_metadata(
 def is_primary_workflow_example(metadata: dict[str, Any] | None) -> bool:
     """Return whether a RAG example is safe for primary product prompting."""
     return prompt_tool_call_from_metadata(metadata) is not None
-
-
-def example_is_allowed(
-    metadata: dict, *, allowed_tool_names: frozenset[str] | None
-) -> bool:
-    """Apply the same schema and publication boundary to both retrieval routes."""
-    prompt_call = prompt_tool_call_from_metadata(metadata)
-    if prompt_call is None:
-        return False
-    return allowed_tool_names is None or example_required_tool_name(prompt_call) in (
-        allowed_tool_names | {MODEL_RESPONSE_TOOL_NAME}
-    )
-
-
-def example_required_tool_name(decision: dict[str, Any]) -> str:
-    """Derive publication scope from an already validated example decision.
-
-    A typed clarification still needs its pending action to be callable; a
-    plain informational response has no pending workflow action.
-    """
-    return decision["parameters"].get("pending_action", decision["tool_name"])
