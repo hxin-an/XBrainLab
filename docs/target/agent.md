@@ -488,6 +488,12 @@ command policy或fake backend。
 
 ## Candidate validation與claims
 
+2026-09-28使用者釐清本輪驗收以tool-call正確性為限：是否應呼叫、工具選擇、參數及
+合法格式；不操作情境不可提出工具或產生confirmation／GUI／執行副作用，應操作時不能
+以回答取代工具。回答完整度、措辭、複誦與知識性品質不是本輪準確率或freeze門檻。
+前述回答指引仍是產品期望，已知未達項如實保留；不改寫舊完整語意分數，也不宣稱
+一般問答品質合格。此範圍不削弱backend驗證、來源、publication、confirmation或取消保護。
+
 候選案例、門檻、runner／report版本與同版本gate只由
 [驗證契約](../validation/README.md)擁有，不在target複製另一份可漂移的出口。
 新單輪基本集合為20題（`scripts/dev/stable_assistant_single_turn_cases_v1.json`），

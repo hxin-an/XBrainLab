@@ -4,7 +4,30 @@
 
 ## Active — Agent可靠基線整合施工（已授權至集中手測）
 
-### 最新阻擋：回答完整性修正仍未通過模型gate
+### 最新授權：依tool-call範圍整合驗證與凍結
+
+2026-09-28使用者澄清「只有tool call準確率，沒有要審回答品質」，並批准架構／程式碼
+足夠清楚後進行整合驗證與凍結。這是明示縮限驗收維度，不把舊完整回答失敗改標成功。
+Scope：唯讀獨立覆核Agent decision/admission與Qt/runtime/RAG ownership；同步target／
+validation／current的驗收界線；保留現有產品source、模型／prompt／RAG及固定題目。
+不新增架構、不再為回答文案調參，不重跑既有52首答，舊report／scorer／失敗證據不改寫。
+Outcome：同一確切版本可追溯tool選擇／參數／合法格式／正確不操作及實際執行、確認取消、
+UI correlation／shutdown；回答完整度／措辭／知識性品質僅保留觀察，不作本輪阻擋。
+Host擋錯不救模型分數；回答不能替代本來應執行的工具。真錯誤side effect仍阻擋。
+步驟：兩個互補獨立source覆核；以既有capture核對20＋6題tool-only結果；一次74題
+既有單輪廣度報告；Windows真模型ChatPanel四步及必要confirmation／cancel直接驗證；
+精確head推送既有PR #149並追蹤全部non-skipped CI，通過後凍結SHA／模型／corpus及證據、
+開啟Windows給集中手測。不是論文正式Test，不宣稱所有未知要求正確。
+Validation：重用同產品source的52首答及相關工程tests，新增必要整合證據，不跑等價本機全套。
+Rollback：本輪預期只改文件；具體整合defect依原owner做必要修復並重驗受影響證據。
+UI確認：無layout改動，使用者已批准回答品質不作此輪gate。settings.json保持不動。
+Stop：凍結版本及所有必要gate閉合並開Windows給手測；或重現tool/執行缺陷、必要資源缺失。
+兩個獨立source覆核均GO：decision/admission／Command與Qt/runtime/RAG責任清楚，無確認
+阻擋；大controller與少量RAG metadata重複只是後續維護項。另以既有capture獨立tool-decision
+覆核：hybrid原20題20/20、另6題6/6；off14/20與4/6，首答／格式修復後分數各自相同。
+舊完整回答語意失敗未改寫。Next：提交文件、推送同head CI並跑74題breadth及native GUI。
+
+### 歷史候選：回答完整性修正未通過當時的完整語意gate
 
 2026-09-28使用者批准「那就修吧」的一次有界候選已實作並測完；規則歧義確實移除，
 但未達「三類回答問題收尾且既有操作不退步」outcome，不能宣稱修好或交手測。

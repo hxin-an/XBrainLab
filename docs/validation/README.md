@@ -277,6 +277,11 @@ PR #71 的 bounded baseline 與 v16 以前 81-case 報告保留原 source、sche
 跨輪草稿。此節取代舊五欄提案、draft admission 與七條 continuation 的 active gate；
 不是把失敗標為成功。正式模型回覆契約由 [Agent target](../target/agent.md) 擁有。
 
+2026-09-28後續使用者明確將本輪驗收限於tool-call正確性，不審回答品質。以下第3項依
+此授權更新：歷史完整回答語意成績與raw證據保留原判定；不把它們改標為模型全對。
+版本v17報告仍保留原content screening／semantic-review欄位與claim，不能把其總分直接
+重標為純tool-call準確率；以同份capture的獨立tool-decision覆核說明當前範圍。
+
 候選須在同一 clean/explained exact source 閉合以下證據：
 
 1. 18-tool registry、嚴格兩欄 parser、current-turn 參數來源、backend publication／stage／
@@ -287,12 +292,14 @@ PR #71 的 bounded baseline 與 v16 以前 81-case 報告保留原 source、sche
    五種 direct 操作各完整／缺值／否定，共 15；兩種 GUI 開窗；兩個說明；E01 7–30 Hz。
    每題允許產品既有的一次格式修復，修復後模型選擇與參數須 20/20；first raw 另報，
    不回填分數。語意選錯不是格式錯誤，不追加 semantic retry；Host 擋錯也不能救模型分數。
-   CLI `--strict` 只驗可機械核對的模型／capture／cleanup條件；通過也不等於下項語意
+   CLI `--strict` 只驗可機械核對的模型／capture／cleanup條件；通過也不等於下項tool-decision
    覆核或完整candidate通過。所有profile不得沿用舊bounded失敗allowance放行新版本。
-3. 回答另做獨立完整輸入／raw 語意覆核：缺值需指出缺項並要求完整重述，說明必須回答
-   問題，禁止操作不可執行。只有合法 `respond_to_user` 或零副作用不代表回答正確。
-   Scorer 標為 `semantic_review_required` 的列不能自動升格通過；實際 capture、raw、
-   review 結論與 source／manifest 身分必須可核對。不得以關鍵字匹配替代語意驗收。
+3. 對完整輸入／raw另做獨立tool-decision覆核：需要且可執行的完整操作須選對工具及參數；
+   缺值、禁止、資訊或當前不可用的操作須正確不操作。模型錯誤提案不能因Host拒絕而救分。
+   合法`respond_to_user`的message仍須非空，但不以解釋完整、禁止確認措辭、複誦或完整
+   重述提醒判tool-call成敗。既有`semantic_review_required`不是自動通過；review必須明記
+   本輪是tool-decision範圍，不能混同舊完整回答語意。Capture／raw／source／manifest須可核對；
+   不以關鍵字匹配替代判斷，也不因答覆而免除應執行工具的正向要求。
 4. 保留歷史 74 個單輪輸入（36 positive、14 challenge、24 no-action）作固定廣度報告，
    另列新契約下逐題結果，不宣稱 74=81 或把已移除的七條跨輪計為成功。模型品質、
    Host admission、抑制執行的測量 terminal 與真產品副作用分開。所有 no-action 的
