@@ -303,9 +303,10 @@ PR #71 的 bounded baseline 與 v16 以前 81-case 報告保留原 source、sche
    raw output、格式修復及 engine cleanup；report 檢查 capture bytes／hash／sequence。
 6. RAG 使用產品 ProcessRAGRetrieverLifecycle 與同一 assembler。保存 query、allowed
    tools、returned／assembled IDs、context hash 和 ready-empty／degraded 區別。
-   v4 離線准入保留 v3 的 20 個單輪案例（10 calibration＋10 review）；只移除實際四個
-   退役跨輪案例，unrelated 安全反例仍在。舊 v3 24 題及失败報告保留歷史身分。
-   語料為 157 筆、index schema 6；固定 corpus、fixture、embedding、設定與呈現後跑
+   v5 離線准入保留 v4 的全部20個單輪案例（10 calibration＋10 review），含原相關標註、
+   required IDs與unrelated安全反例；只為新語料補四個新示範的同主題ID。主題相關不是
+   決策等效，標註先於觀测凍結。舊v4、v3及失敗報告保留歷史身分。
+   語料為161筆、index schema 6；固定 corpus、fixture、embedding、設定與呈現後跑
    相同題目的 RAG on/off。最後送例相關性、模型受益與額外等待分開，不以有召回取代
    受益，不默默關閉 BM25 或換模型。不因基線高分要求任意漲幅，也不免除受益證據。
 7. 真模型 normal ChatPanel 路徑完成 Switch Dataset → Import GUI → Select Channels →
@@ -317,6 +318,12 @@ PR #71 的 bounded baseline 與 v16 以前 81-case 報告保留原 source、sche
 相同案例。仍不合格則不發布為可靠基線、不放寬分母、不無限調 prompt／語料／門檻，
 也不要求使用者替不合格版本做驗收。這是本輪收斂界線，不是零缺陷或論文準確率宣稱。
 研究的 frozen source、Development／Validation／Test 及 repeats 仍由 thesis protocol 擁有。
+
+2026-09-28 後續核准的英文呈現候選另固定6個新問法（完整／缺值／否定各2），由
+`stable_assistant_english_generalization_cases_v1.json` 擁有；與固定20題分開記錄，不用6題
+替代原gate，不宣稱統計或論文holdout。26題各off/on一次（52首答），只允許既有格式
+修復，不追加語意重試；模型錯答不能因Host擋錯救分。完整輸入覆核通過才生成，
+所有首答／修復另保留，新增題不得猜缺值或違反否定等契約。不以RAG換字算受益。
 
 ### Braindecode catalog candidate
 

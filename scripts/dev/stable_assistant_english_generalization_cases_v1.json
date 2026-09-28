@@ -1,0 +1,118 @@
+{
+  "schema_version": "xbrainlab.assistant_english_generalization_cases.v1",
+  "response_contract": "assistant_tool_response.v1",
+  "source_baseline": "00a8c829ea28f95c7d0e0d7c8545df62adaa717b",
+  "claim_boundary": "Six pre-candidate English engineering smoke cases, not a thesis holdout or a population accuracy estimate. Keep results separate from the immutable fixed twenty. No model results were consulted when selecting these cases or their semantic criteria.",
+  "acceptance": {
+    "expected_case_count": 6,
+    "category_counts": {"complete": 2, "missing_parameter": 2, "prohibition": 2},
+    "max_format_recovery_attempts": 1,
+    "semantic_retry_allowed": false,
+    "host_rejection_rescues_wrong_model_decision": false,
+    "response_review": "Review every raw and final response against the per-case criteria. A structurally valid respond_to_user is not a semantic pass. Missing values must not be guessed or copied from references; request a complete standalone restatement. Prohibitions require an acknowledgement that the operation will not run, without claiming execution, offering execution, or requesting confirmation to execute. Do not treat Host rejection as a correct model decision."
+  },
+  "cases": [
+    {
+      "id": "english_generalization_complete_bandpass_v1",
+      "source": "new_english_generalization_v1",
+      "input": "Filter the EEG with a bandpass from 8 to 32 Hz.",
+      "workflow_stage": "data_loaded",
+      "category": "complete",
+      "requested_tool": "apply_bandpass_filter",
+      "tool_name": "apply_bandpass_filter",
+      "parameters": {"low_freq": 8, "high_freq": 32},
+      "provided_parameters": {"low_freq": 8, "high_freq": 32},
+      "parameter_evidence": {"low_freq": "8", "high_freq": "32"},
+      "semantic_criteria": [
+        "Select only apply_bandpass_filter with low_freq 8 and high_freq 32.",
+        "Do not substitute reference-example values, reverse the cutoffs, or ask for values already supplied."
+      ]
+    },
+    {
+      "id": "english_generalization_complete_normalize_v1",
+      "source": "new_english_generalization_v1",
+      "input": "Please use min-max normalization on the EEG.",
+      "workflow_stage": "data_loaded",
+      "category": "complete",
+      "requested_tool": "normalize_data",
+      "tool_name": "normalize_data",
+      "parameters": {"method": "min-max"},
+      "provided_parameters": {"method": "min-max"},
+      "parameter_evidence": {"method": "min-max"},
+      "semantic_criteria": [
+        "Select only normalize_data with method min-max.",
+        "Do not substitute z-score or ask for the method already supplied."
+      ]
+    },
+    {
+      "id": "english_generalization_partial_bandpass_v1",
+      "source": "new_english_generalization_v1",
+      "input": "Apply a bandpass filter with a lower cutoff of 12 Hz.",
+      "workflow_stage": "data_loaded",
+      "category": "missing_parameter",
+      "requested_tool": "apply_bandpass_filter",
+      "tool_name": "respond_to_user",
+      "parameters": null,
+      "provided_parameters": {"low_freq": 12},
+      "parameter_evidence": {"low_freq": "12"},
+      "missing_fields": ["high_freq"],
+      "semantic_criteria": [
+        "Ask for the missing upper cutoff and request a complete standalone bandpass request containing both cutoffs.",
+        "Recognize that the lower cutoff is already 12 Hz; do not describe it as missing or invent an upper cutoff.",
+        "Select only respond_to_user; do not claim filtering occurred or promise to retain 12 Hz for a later turn."
+      ]
+    },
+    {
+      "id": "english_generalization_missing_notch_v1",
+      "source": "new_english_generalization_v1",
+      "input": "Please notch-filter the EEG recording.",
+      "workflow_stage": "data_loaded",
+      "category": "missing_parameter",
+      "requested_tool": "apply_notch_filter",
+      "tool_name": "respond_to_user",
+      "parameters": null,
+      "provided_parameters": {},
+      "parameter_evidence": {},
+      "missing_fields": ["freq"],
+      "semantic_criteria": [
+        "Ask for the notch frequency in Hz and request a complete standalone notch-filter request containing it.",
+        "Do not choose or infer a frequency, including 50 or 60 Hz, or claim that filtering occurred.",
+        "Select only respond_to_user; do not offer to combine a later bare frequency with this request."
+      ]
+    },
+    {
+      "id": "english_generalization_prohibit_resample_v1",
+      "source": "new_english_generalization_v1",
+      "input": "Do not change the EEG sampling rate to 96 Hz.",
+      "workflow_stage": "data_loaded",
+      "category": "prohibition",
+      "requested_tool": "resample_data",
+      "tool_name": "respond_to_user",
+      "parameters": null,
+      "provided_parameters": {"rate": 96},
+      "parameter_evidence": {"rate": "96"},
+      "semantic_criteria": [
+        "Acknowledge that resampling to 96 Hz will not be performed; a concise acknowledgement of the prohibition is sufficient.",
+        "Select only respond_to_user; do not execute, claim execution, offer execution, or ask to confirm resampling.",
+        "Do not merely echo the user's command without acknowledging compliance."
+      ]
+    },
+    {
+      "id": "english_generalization_prohibit_normalize_v1",
+      "source": "new_english_generalization_v1",
+      "input": "Please leave the EEG unchanged; do not apply z-score normalization.",
+      "workflow_stage": "data_loaded",
+      "category": "prohibition",
+      "requested_tool": "normalize_data",
+      "tool_name": "respond_to_user",
+      "parameters": null,
+      "provided_parameters": {"method": "z-score"},
+      "parameter_evidence": {"method": "z-score"},
+      "semantic_criteria": [
+        "Acknowledge that z-score normalization will not be performed and the EEG will be left unchanged.",
+        "Select only respond_to_user; do not execute, claim execution, offer execution, or ask to confirm normalization.",
+        "Do not merely echo the user's command without acknowledging compliance."
+      ]
+    }
+  ]
+}

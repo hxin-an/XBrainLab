@@ -257,9 +257,10 @@ recoverable precondition error，不呼叫模型。使用者可縮短完整要�
 
 當前施工與阻擋由[active plan](../planning/now.md)擁有，准入契約由
 [Agent target](../target/agent.md)擁有。下列既有接點不代表M3或模型收益已驗收；
-對稱IDF覆蓋與最終送例相關性gate沿用；目前單輪准入fixture為v4，不把批准當作通過。
+對稱IDF覆蓋與最終送例相關性gate沿用；目前單輪准入fixture為v5，不把批准當作通過。
 
-Bundled gold set目前有157個英文單輪示範：原145筆、7筆缺值／部分值回答與5筆純說明。
+Bundled gold set目前有161個英文單輪示範：前一版157筆再補4筆純否定；7筆缺值／
+部分值改用直接操作用語，回答指出精確缺項並要求完整重述，不改有效正例與純說明。
 兩筆補值／更正多輪示範已移除；缺值回答要求重新提供完整要求。操作涵蓋18個approved
 tools；非操作示範包括概念詢問、明確禁止、外部指涉與混合要求先選一件。
 範例使用兩欄tool_name／parameters，`RAGConfig`固定corpus hash與index schema 6，
@@ -291,10 +292,11 @@ assembler 的七個 stage tool publications，不以預期工具單獨過濾候�
 每工具至少一題；另檢查 context bounds、未授權工具、索引身分與重用。原48題的輸入保持不變；
 說明性問題的retrieval oracle檢查範例資格與邊界，不再強迫空結果。模型是否正確不操作須另驗。
 另有24個獨立成對工程探針，記錄action／response命中與相同安全檢查，不加入原36題的分母。
-同一verifier另執行固定v4的10＋10單輪准入案例：所有實際送例須在預定相關集合，無關題不得
+同一verifier另執行固定v5的10＋10單輪准入案例：所有實際送例須在預定相關集合，無關題不得
 送例，指定詞法正例須出現在sparse候選；未指定必回例的題目允許零命中。分路錯候選只作診斷，
 dense候選未觀測須明示，不能以最後三例倒推整個候選池。固定fixture／corpus hash與index
-schema一併識別目前配置；v4只從v3原24題移除4個跨輪案例，保留其餘query／原有標註。
+schema一併識別目前配置；v5保留v4全部query／原有標註，只補新語料的同主題示範ID。
+v4只從v3原24題移除4個跨輪案例；舊fixture不覆寫，主題相關不代表當輪應採同一決策。
 v1／v2／v3原fixture及失敗報告不改寫。
 `--ranking hybrid|dense`使用同一產品retriever比較排序；`--baseline-report`
 可比對同一探針／設定的舊報告，並核對逐題資料與摘要一致。這些探針已用於開發修訂，

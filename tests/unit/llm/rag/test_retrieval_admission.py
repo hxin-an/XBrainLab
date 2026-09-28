@@ -9,7 +9,7 @@ from XBrainLab.llm.agent.assembler import ContextAssembler
 from XBrainLab.llm.rag.config import RAGConfig
 
 
-def load_admission_cases(version=4):
+def load_admission_cases(version=5):
     return json.loads(
         Path(__file__)
         .with_name(f"retrieval_admission_cases_v{version}.json")
@@ -18,7 +18,7 @@ def load_admission_cases(version=4):
 
 
 def test_v4_preserves_every_single_turn_query_and_only_removes_retired_context_ids():
-    old, current = load_admission_cases(3), load_admission_cases()
+    old, current = load_admission_cases(3), load_admission_cases(4)
     assert current["version"] == 4
     assert current["rule"] == old["rule"]
     assert current["eligible_tool_names"] == old["eligible_tool_names"]
@@ -36,6 +36,24 @@ def test_v4_preserves_every_single_turn_query_and_only_removes_retired_context_i
             case for case in old[split] if len(case["user_turns"]) == 1
         ]
         assert sum(case["family"] == "unrelated" for case in current[split]) == 2
+
+
+def test_v5_preserves_queries_and_only_adds_same_topic_prohibition_labels():
+    old, current = load_admission_cases(4), load_admission_cases()
+    assert current["version"] == 5
+    assert current["corpus_sha256"] == RAGConfig.GOLD_SET_SHA256
+    for key in ("rule", "eligible_tool_names", "calibration", "review"):
+        assert current[key] == old[key]
+    additions = {
+        "bandpass": ["respond_prohibition_07"],
+        "resample": ["respond_prohibition_08"],
+        "reference": ["respond_prohibition_09"],
+        "normalize": ["respond_prohibition_10"],
+    }
+    assert current["acceptable_sets"] == {
+        topic: ids + additions.get(topic, [])
+        for topic, ids in old["acceptable_sets"].items()
+    }
 
 
 def test_single_turn_query_cannot_accept_past_draft_values():

@@ -4,7 +4,44 @@
 
 ## Active — Agent可靠基線整合施工（已授權至集中手測）
 
-### 最新施工：英文小模型上下文與人工選例診斷
+### 最新施工：英文上下文與 RAG 單一候選收斂
+
+使用者於 2026-09-28 批准「那就開始吧」，並要求收尾時整理整輪改善前後的具體差別
+與影響。此節取代下方已完成診斷的等待決策；只做一版整體候選，不換模型、不追加
+多輪能力／Host intent router／第二控制層，不以 reviewer 看得懂代替小模型實際可用。
+
+證據／假設：旧 off/on 均13/20；人工正確選例5題只改善2題、3題仍失敗、另2題語料
+缺口。規則正確不表示容易使用；本輪假設可透過回答／操作平衡呈現、合併重複規則、
+清楚區別当輪與參考、以及直接英文正反對照降低小模型理解負擔，尚非已證實因果。
+
+Scope／outcome：僅英文；維持18工具、兩欄wire、完整單輪要求及一次格式修復。
+整理既有 assembler／prompt policy，保留安全、來源、publication、confirmation、取消
+與真後端 owner；RAG維持BM25＋dense＋RRF，不改模型／top-k／准入門檻，不新增分流。
+語料對齊常見英文操作，補同操作的禁止不執行示範；明分完整、全缺值、部分值、
+否定及純說明，不複製測試原句或用錯誤tool call當範例。無UI layout／工具contract變更。
+只刪／收斂重複呈現，不刪必要狀態，不藉fail closed隱藏模型錯誤。
+
+施工步驟：
+1. 先由獨立 reviewer 凍結6題新英文問法與判準，完整／缺值／否定各2題；原20題不動。
+2. 主agent整理最終輸入；RAG語料獨立寫入；保持對應baseline tests，再完成focused
+   regression及離線檢索。不得為通過而刪反例／改oracle／掃參數。
+3. 在任何新模型結果出現前，完整候選與案例凍結並獨立覆核所有實際輸入；新候選26題
+   各跑off/on一次，52首答，最多每題原產品格式修復一次，無semantic retry。
+4. 逐題比對首答、格式修復、Host admission與獨立語意；原20題須全符合契約，新6題
+   不得猜缺值／違反否定或新增錯誤副作用。RAG需具體受益且不新增錯誤，不要求任意漲幅。
+5. 通過才同head CI／適用真模型GUI journey及Windows交付；仍失敗先保留source/失敗
+   並提出模型／產品取捨，不再開始第二版prompt、偷偷放寬gate或交使用者替失敗驗收。
+
+Complexity：owner不增；刪除候選是重複policy／schema重述與只供Host追蹤的多餘呈現，
+不是驗證本身。production delta逐slice記錄；單一PR#149既有大小例外仍有效。
+UI確認：只改已授權Assistant英文理解／回答契約的內部呈現，無layout改動。
+驗證／stop：focused assembly、安全隔離、budget、parser及真Command保護；offline corpus/
+retrieval；固定52首答；獨立完整context與語意review；通過適用同版本gate才handoff-ready。
+本輪結束另列已接受main、單輪簡化前、13/20中間版與最終候選的差異，分清code/tests/
+scripts/docs/corpus、實測與未驗證影響；不將不同題目分母直接加總。
+Next：凍結6題並建立focused baseline，開始唯一上下文／語料候選。settings.json不動。
+
+### 已完成診斷：英文小模型上下文與人工選例
 
 2026-09-28 使用者批准「好施工」：本輪僅支援英文輸入／回答，先對既有失敗的
 7 個單輪案例做人工選取既有 RAG 示範的診斷。舊 off／hybrid-native 配對保留且不重跑。

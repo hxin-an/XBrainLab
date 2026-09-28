@@ -1406,6 +1406,50 @@
     }
   },
   {
+    "id": "respond_prohibition_07",
+    "category": "response_prohibition",
+    "input": "Do not apply a 6 to 44 Hz bandpass filter to this recording.",
+    "expected_proposal": {
+      "tool_name": "respond_to_user",
+      "parameters": {
+        "message": "Understood. I will not apply a bandpass filter."
+      }
+    }
+  },
+  {
+    "id": "respond_prohibition_08",
+    "category": "response_prohibition",
+    "input": "Do not resample the EEG to 512 Hz; preserve its sampling rate.",
+    "expected_proposal": {
+      "tool_name": "respond_to_user",
+      "parameters": {
+        "message": "Understood. I will not resample the EEG or change its sampling rate."
+      }
+    }
+  },
+  {
+    "id": "respond_prohibition_09",
+    "category": "response_prohibition",
+    "input": "Do not set the EEG reference to Pz; keep the current reference.",
+    "expected_proposal": {
+      "tool_name": "respond_to_user",
+      "parameters": {
+        "message": "Understood. I will not change the EEG reference."
+      }
+    }
+  },
+  {
+    "id": "respond_prohibition_10",
+    "category": "response_prohibition",
+    "input": "Do not normalize the EEG with min-max; keep its signal values unchanged.",
+    "expected_proposal": {
+      "tool_name": "respond_to_user",
+      "parameters": {
+        "message": "Understood. I will not normalize the EEG or change its signal values."
+      }
+    }
+  },
+  {
     "id": "respond_reference_01",
     "category": "response_ungrounded_reference",
     "input": "Do the task I described in another chat, which is not included here.",
@@ -1474,77 +1518,77 @@
   {
     "id": "apply_bandpass_filter_missing_01",
     "category": "response_missing_parameter",
-    "input": "Prepare bandpass filtering for this recording.",
+    "input": "Apply a bandpass filter to this EEG recording.",
     "expected_proposal": {
       "tool_name": "respond_to_user",
       "parameters": {
-        "message": "What lower and upper cutoff frequencies should I use? Please restate the complete operation with all parameter values in one request."
+        "message": "What lower and upper cutoff frequencies in Hz should the bandpass filter use? Please restate the complete operation with both cutoff values in one request."
       }
     }
   },
   {
     "id": "apply_bandpass_filter_partial_low_01",
     "category": "response_partial_parameter",
-    "input": "For bandpass preprocessing, make the lower cutoff 6 Hz.",
+    "input": "Apply a bandpass filter with a lower cutoff of 6 Hz.",
     "expected_proposal": {
       "tool_name": "respond_to_user",
       "parameters": {
-        "message": "What upper cutoff frequency should I use? Please restate the complete operation with all parameter values in one request."
+        "message": "What upper cutoff frequency in Hz should the bandpass filter use? Please restate the complete operation with both lower and upper cutoff values in one request."
       }
     }
   },
   {
     "id": "apply_bandpass_filter_partial_high_01",
     "category": "response_partial_parameter",
-    "input": "Use bandpass preprocessing with an upper cutoff of 44 Hz.",
+    "input": "Apply a bandpass filter with an upper cutoff of 44 Hz.",
     "expected_proposal": {
       "tool_name": "respond_to_user",
       "parameters": {
-        "message": "What lower cutoff frequency should I use? Please restate the complete operation with all parameter values in one request."
+        "message": "What lower cutoff frequency in Hz should the bandpass filter use? Please restate the complete operation with both lower and upper cutoff values in one request."
       }
     }
   },
   {
     "id": "apply_notch_filter_missing_01",
     "category": "response_missing_parameter",
-    "input": "Please run notch filtering on this recording.",
+    "input": "Apply a notch filter to this EEG recording.",
     "expected_proposal": {
       "tool_name": "respond_to_user",
       "parameters": {
-        "message": "What notch frequency should I use? Please restate the complete operation with all parameter values in one request."
+        "message": "What notch frequency in Hz should the filter use? Please restate the complete operation with the notch frequency in one request."
       }
     }
   },
   {
     "id": "resample_data_missing_01",
     "category": "response_missing_parameter",
-    "input": "Change the sampling rate of this recording.",
+    "input": "Resample this EEG recording.",
     "expected_proposal": {
       "tool_name": "respond_to_user",
       "parameters": {
-        "message": "What new sampling rate in Hz should I use? Please restate the complete operation with all parameter values in one request."
+        "message": "What target sampling rate in Hz should I resample to? Please restate the complete operation with the target sampling rate in one request."
       }
     }
   },
   {
     "id": "set_reference_missing_01",
     "category": "response_missing_parameter",
-    "input": "Re-reference this recording before further processing.",
+    "input": "Set the reference for this EEG recording.",
     "expected_proposal": {
       "tool_name": "respond_to_user",
       "parameters": {
-        "message": "Which reference method or channel should I use? Please restate the complete operation with all parameter values in one request."
+        "message": "Which reference method or channel should I use? Please restate the complete operation with the reference method or channel name in one request."
       }
     }
   },
   {
     "id": "normalize_data_missing_01",
     "category": "response_missing_parameter",
-    "input": "Perform normalization on this recording.",
+    "input": "Normalize this EEG recording.",
     "expected_proposal": {
       "tool_name": "respond_to_user",
       "parameters": {
-        "message": "Which normalization method should I use: z-score or min-max? Please restate the complete operation with all parameter values in one request."
+        "message": "Which normalization method should I use: z-score or min-max? Please restate the complete operation with your chosen method in one request."
       }
     }
   },

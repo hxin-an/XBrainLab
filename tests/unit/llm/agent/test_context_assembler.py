@@ -167,7 +167,7 @@ def test_missing_value_history_does_not_become_current_action_context() -> None:
     request = _required_context(messages)
     assert set(request) == {"application_state", "current_user"}
     assert request["current_user"] == {"text": "30 Hz"}
-    assert "never fill missing parameters from chat history" in messages[0]["content"]
+    assert "Never fill values from examples, history" in messages[0]["content"]
     prior = _context_item(_untrusted_context(messages), "conversation_history")
     assert [row["text"] for row in prior["data"]["messages"]] == [
         history[1]["content"],
@@ -540,6 +540,35 @@ def test_prompt_action_contracts_do_not_resemble_an_output_array():
     assert '"tool_name"' in contracts
 
 
+@pytest.mark.parametrize("with_action", [False, True])
+def test_reply_contract_is_explicit_without_becoming_an_executable_tool(with_action):
+    """Deliver an equally explicit reply option, never another backend action."""
+    from XBrainLab.llm.agent.decision_contract import model_proposal_schema
+
+    registry = ToolRegistry()
+    if with_action:
+        registry.register(_NamedTool("import_eeg_data"))
+    assembler = ContextAssembler(registry, Study())
+    contracts = assembler.build_system_prompt()
+
+    reply_text = contracts.split("Reply contract (no action):\n", 1)[1]
+    reply = json.JSONDecoder().raw_decode(reply_text)[0]
+    assert reply["name"] == "respond_to_user"
+    assert (
+        reply["parameters"]
+        == model_proposal_schema()["allOf"][0]["then"]["properties"]["parameters"]
+    )
+    assert "respond_to_user" not in {tool.name for tool in registry.get_all_tools()}
+    assert not assembler.latest_tool_publication.permits("respond_to_user")
+    assert assembler.latest_tool_publication.permits("import_eeg_data") is with_action
+    if with_action:
+        action = json.JSONDecoder().raw_decode(
+            contracts.split("Callable action contract:\n", 1)[1]
+        )[0]
+        assert action["name"] == "import_eeg_data"
+        assert action["parameters"] == _NamedTool("import_eeg_data").parameters
+
+
 def test_zero_parameter_action_contract_has_one_final_output_reminder():
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
@@ -555,7 +584,7 @@ def test_zero_parameter_action_contract_has_one_final_output_reminder():
     assert not contracts.lstrip().startswith("[")
 
 
-def test_single_action_contract_ends_with_action_first_reminder() -> None:
+def test_single_action_contract_ends_with_both_response_choices() -> None:
     registry = ToolRegistry()
     registry.register(BaseStartTrainingTool())
     assembler = ContextAssembler(registry, Study())
@@ -563,7 +592,8 @@ def test_single_action_contract_ends_with_action_first_reminder() -> None:
     contracts = assembler._format_tools(["start_training"])
 
     assert contracts.rstrip().endswith(
-        "For a clear, complete enabled action return its tool_name and parameters."
+        "Choose respond_to_user for an answer or question; choose a callable "
+        "action only for a requested, complete, enabled operation."
     )
 
 
@@ -613,20 +643,6 @@ def test_action_catalog_ends_with_one_short_output_reminder() -> None:
     assert "Omitted saved parameters are retained" not in reminder
     assert "Examples never supply values" in reminder
     assert "Decision checkpoint" not in reminder
-
-
-def test_action_catalog_ends_with_action_first_reminder() -> None:
-    registry = ToolRegistry()
-    registry.register(BaseStartTrainingTool())
-    assembler = ContextAssembler(registry, Study())
-
-    contracts = assembler._format_tools(
-        ["start_training"],
-    )
-
-    assert contracts.rstrip().endswith(
-        "For a clear, complete enabled action return its tool_name and parameters."
-    )
 
 
 @pytest.mark.parametrize(
@@ -680,10 +696,11 @@ def test_operation_choice_guidance_follows_published_tools_not_stage(
     assert (
         "apply_bandpass_filter" in assembler.latest_tool_publication.tool_names
     ) is publish_preprocessing
-    assert "If any required value is missing or ambiguous" in prompt
+    assert "Requested action with missing or unclear required values" in prompt
     assert '"tool_name"' in prompt
-    assert "For information or a prohibition, use respond_to_user" in prompt
-    assert "For an unavailable action, explain its listed blocker" in prompt
+    assert "Information or explanation: respond_to_user" in prompt
+    assert "Prohibition: respond_to_user" in prompt
+    assert "Unavailable action: respond_to_user with its listed blocker" in prompt
 
 
 def test_prompt_policy_consolidation_preserves_publication_and_decision_contracts() -> (
@@ -722,7 +739,7 @@ def test_prompt_policy_consolidation_preserves_publication_and_decision_contract
     assert '"tool_name"' in prompt
     assert "tool_input_clarification" not in prompt
     assert prompt.rstrip().endswith(
-        "For a clear, complete enabled action return its tool_name and parameters.\n"
+        "action only for a requested, complete, enabled operation.\n"
         "Only the listed workflow actions are available at this stage."
     )
     assert "never report completion without a trusted tool result" in prompt

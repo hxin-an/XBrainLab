@@ -55,7 +55,7 @@ def test_format_error_builds_one_canonical_bounded_recovery_message():
     )
     assert "re-evaluate the current user request" in (decision.message.content.lower())
     assert (
-        "do not invent values or substitute an action for a blocker"
+        "call an action only when requested, complete and enabled"
         in decision.message.content.lower()
     )
 

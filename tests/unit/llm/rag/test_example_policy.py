@@ -159,7 +159,7 @@ def test_malformed_lists_are_not_silently_repaired(garbage, serialized):
 
 def test_corpus_covers_all_actions_with_complete_schemas_and_current_sources():
     items = json.loads(_GOLD_SET_PATH.read_text(encoding="utf-8"))
-    assert len(items) == 157
+    assert len(items) == 161
     counts = Counter()
     for item in items:
         assert set(item) == {"id", "input", "category", "expected_proposal"}
@@ -208,6 +208,56 @@ def test_seven_missing_partial_examples_request_complete_restatement_not_saved_v
         assert proposal["tool_name"] == "respond_to_user"
         assert set(proposal["parameters"]) == {"message"}
         assert "complete operation" in proposal["parameters"]["message"]
+
+
+@pytest.mark.parametrize(
+    "example_id,missing_fields",
+    [
+        ("apply_bandpass_filter_missing_01", ("lower", "upper", "cutoff")),
+        ("apply_bandpass_filter_partial_low_01", ("upper", "cutoff")),
+        ("apply_bandpass_filter_partial_high_01", ("lower", "cutoff")),
+        ("apply_notch_filter_missing_01", ("notch", "frequency")),
+        ("resample_data_missing_01", ("sampling rate", "hz")),
+        ("set_reference_missing_01", ("reference", "method", "channel")),
+        ("normalize_data_missing_01", ("method", "z-score", "min-max")),
+    ],
+)
+def test_missing_parameter_answers_name_every_missing_field(example_id, missing_fields):
+    rows = json.loads(_GOLD_SET_PATH.read_text(encoding="utf-8"))
+    row = next(row for row in rows if row["id"] == example_id)
+    message = row["expected_proposal"]["parameters"]["message"].casefold()
+    question, separator, restatement = message.partition("?")
+    assert separator, example_id
+    assert all(field in question for field in missing_fields), example_id
+    assert "complete operation" in restatement, example_id
+
+
+@pytest.mark.parametrize(
+    "example_id,operation",
+    [
+        ("respond_prohibition_05", "notch"),
+        ("respond_prohibition_07", "bandpass"),
+        ("respond_prohibition_08", "resample"),
+        ("respond_prohibition_09", "reference"),
+        ("respond_prohibition_10", "normalize"),
+    ],
+)
+def test_each_direct_operation_has_a_prohibition_only_response(example_id, operation):
+    rows = json.loads(_GOLD_SET_PATH.read_text(encoding="utf-8"))
+    matches = [row for row in rows if row["id"] == example_id]
+    assert len(matches) == 1, f"Missing prohibition-only example for {operation}"
+    (row,) = matches
+    assert row["category"] == "response_prohibition"
+    assert "do not" in row["input"].casefold()
+    assert operation in row["input"].casefold()
+    proposal = prompt_proposal_from_metadata(
+        _metadata(row["expected_proposal"], row["input"])
+    )
+    assert proposal["tool_name"] == "respond_to_user"
+    assert set(proposal["parameters"]) == {"message"}
+    message = proposal["parameters"]["message"].casefold()
+    assert "will not" in message
+    assert operation in message
 
 
 @pytest.mark.parametrize(

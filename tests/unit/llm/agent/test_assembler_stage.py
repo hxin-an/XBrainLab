@@ -222,7 +222,7 @@ class TestPromptContent:
             prompt = assembler.build_system_prompt()
 
         assert "Current backend workflow stage: preprocessed\n" in prompt
-        assert "EEG workflow guide" in prompt
+        assert "Help the user operate EEG software in English" in prompt
 
     def test_stage_guidance_is_not_in_system_policy(self):
         registry = ToolRegistry()
@@ -234,7 +234,7 @@ class TestPromptContent:
             prompt = assembler.build_system_prompt()
 
         assert "no data is loaded" not in prompt.lower()
-        assert "runtime context" in prompt.lower()
+        assert "Optional references arrive separately" in prompt
 
     def test_rag_context_is_in_separate_untrusted_message(self):
         registry = ToolRegistry()
@@ -289,6 +289,5 @@ class TestPromptContent:
 
         assert "backend-stage-published action contracts" in prompt
         assert (
-            "Use only a callable action contract published for this exact stage"
-            in prompt
-        )
+            "Only the listed workflow actions are available at this stage" in prompt
+        ) or "No executable workflow actions are available at this stage" in prompt

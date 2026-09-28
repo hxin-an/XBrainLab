@@ -33,9 +33,9 @@ PROBE_PATH = Path(__file__).with_name("rag_verification_probes.json")
 PROBE_SHA256 = "d4222a3e1595db23d45622ec0b29348e65482c0cb7eb3c3cb4bf880ad2d96822"  # pragma: allowlist secret
 PAIRED_PROBE_PATH = Path(__file__).with_name("rag_paired_probes.json")
 PAIRED_PROBE_SHA256 = "bd9608f783c9ef9d534153bf0e6135c249ae9c989546a6db3124f0a6e88c3f5e"  # pragma: allowlist secret
-ADMISSION_PATH = ROOT / "tests/unit/llm/rag/retrieval_admission_cases_v4.json"
-ADMISSION_SHA256 = "779bf21df8185f5709c0f6c45e0cd1ce73f766abdb45de2403d69f864714a79a"  # pragma: allowlist secret
-ADMISSION_CORPUS_SHA256 = "5b3360ebf0888c5e2703abf92d74791a2060fc7acb320e6435e5245c17a0f7cf"  # pragma: allowlist secret
+ADMISSION_PATH = ROOT / "tests/unit/llm/rag/retrieval_admission_cases_v5.json"
+ADMISSION_SHA256 = "ce8433d10326e800ee4cc602fdabcd696dba47faa137e3794317071ee2fda054"  # pragma: allowlist secret
+ADMISSION_CORPUS_SHA256 = "78c71aa304abd5443ec76c492278aef38c0a34d1479ef7cbbd9a471c96a9000f"  # pragma: allowlist secret
 _ALLOWED_GIT_ARGUMENTS = frozenset(
     {
         ("rev-parse", "--show-toplevel"),
@@ -207,15 +207,15 @@ def evaluate_probe_context(
 
 
 def load_admission_cases() -> dict[str, Any]:
-    """Preserve the fixed v4 labels and the corpus against which they were set."""
+    """Preserve the fixed v5 labels and the corpus against which they were set."""
     content = ADMISSION_PATH.read_bytes()
     if hashlib.sha256(content).hexdigest() != ADMISSION_SHA256:
-        raise ValueError("Frozen v4 RAG admission fixture changed.")
+        raise ValueError("Frozen v5 RAG admission fixture changed.")
     if (
         hashlib.sha256(RAGConfig.get_gold_set_path().read_bytes()).hexdigest()
         != ADMISSION_CORPUS_SHA256
     ):
-        raise ValueError("Frozen v4 RAG admission corpus changed.")
+        raise ValueError("Frozen v5 RAG admission corpus changed.")
     return json.loads(content)
 
 
@@ -450,7 +450,7 @@ def run_verification(*, dense_only: bool = False) -> dict[str, Any]:
 
     expected_document_count = _count_indexable_examples() if corpus_ok else 0
     report: dict[str, Any] = {
-        "schema": "xbrainlab.rag-verification.v4",
+        "schema": "xbrainlab.rag-verification.v5",
         "generated_at": datetime.now(UTC).isoformat(),
         "ok": False,
         "provenance": provenance,
@@ -482,10 +482,10 @@ def run_verification(*, dense_only: bool = False) -> dict[str, Any]:
         "paired_cases": [],
         "claim_boundary": (
             "This verifies local embedding/index/retrieval behavior. It does not "
-            "measure end-to-end local-LLM tool-call accuracy. Fixed v4 checks separate "
+            "measure end-to-end local-LLM tool-call accuracy. Fixed v5 checks separate "
             "sparse candidates from final packed examples; dense candidate admission "
             "is not observed. Acceptance checks returned-example relevance and required "
-            "sparse IDs, not candidate-pool purity or end-to-end model benefit."
+            "sparse IDs, not candidate-pool purity, decision equivalence or end-to-end model benefit."
         ),
     }
     if not corpus_ok or not embedding_ready or expected_document_count <= 0:
@@ -550,10 +550,10 @@ def run_verification(*, dense_only: bool = False) -> dict[str, Any]:
             for stage, publication in publications.items()
         }
         admission = evaluate_admission_cases(retriever, admission_fixture)
-        report["fixed_v4_admission"] = admission
+        report["fixed_v5_admission"] = admission
         _add_check(
             checks,
-            "fixed_v4_retrieval_admission",
+            "fixed_v5_retrieval_admission",
             admission["measured_checks_ok"],
             "Fixed 10+10 single-turn cases: actual packed example relevance and product sparse candidates/required IDs; four retired multi-turn cases remain historical v3 evidence.",
         )
@@ -719,7 +719,7 @@ def main(argv: list[str] | None = None) -> int:
                 report["ok"] = bool(report["ok"]) and comparison["ok"]
         except Exception as error:
             report = {
-                "schema": "xbrainlab.rag-verification.v4",
+                "schema": "xbrainlab.rag-verification.v5",
                 "generated_at": datetime.now(UTC).isoformat(),
                 "ok": False,
                 "checks": [

@@ -110,7 +110,7 @@ def test_prior_metadata_is_rejected_not_merged_by_verifier():
 def test_index_count_contains_only_standalone_rows():
     corpus = json.loads(verify_rag.RAGConfig.get_gold_set_path().read_text())
     assert not any("prior_turn" in row for row in corpus)
-    assert verify_rag._count_indexable_examples() == len(corpus) == 157
+    assert verify_rag._count_indexable_examples() == len(corpus) == 161
 
 
 def test_response_name_does_not_hide_an_invalid_response_contract() -> None:
@@ -349,12 +349,13 @@ def test_verification_passes_the_entire_production_publication_to_retrieval() ->
     # Existing positive probes cannot certify the newly frozen admission cases.
     assert report["ok"] is False
     assert any(
-        check["name"] == "fixed_v4_retrieval_admission" and not check["ok"]
+        check["name"] == "fixed_v5_retrieval_admission" and not check["ok"]
         for check in report["checks"]
     )
-    assert report["fixed_v4_admission"]["dense_candidates"]["status"] == "not_assessed"
+    assert report["schema"] == "xbrainlab.rag-verification.v5"
+    assert report["fixed_v5_admission"]["dense_candidates"]["status"] == "not_assessed"
     assert (
-        report["fixed_v4_admission"]["acceptance_scope"]
+        report["fixed_v5_admission"]["acceptance_scope"]
         == "selected_relevance_and_required_sparse_ids"
     )
 
@@ -367,7 +368,7 @@ def test_admission_rejects_changed_frozen_inputs(tmp_path, monkeypatch, changed)
         monkeypatch.setattr(verify_rag, "ADMISSION_PATH", path)
     else:
         monkeypatch.setattr(verify_rag.RAGConfig, "get_gold_set_path", lambda: path)
-    with pytest.raises(ValueError, match="Frozen v4 RAG admission"):
+    with pytest.raises(ValueError, match="Frozen v5 RAG admission"):
         verify_rag.load_admission_cases()
 
 

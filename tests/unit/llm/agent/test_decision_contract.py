@@ -67,7 +67,7 @@ def test_policy_keeps_current_turn_sources_and_backend_execution_separate():
     for invariant in (
         "current_user.text",
         "complete request",
-        "never fill missing parameters",
+        "Never fill values from examples, history, application state or defaults",
         "For multiple actions or an explanation plus an action",
         "Zero-parameter GUI",
         "Host confirmation is separate",
