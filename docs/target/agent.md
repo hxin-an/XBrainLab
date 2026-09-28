@@ -81,10 +81,12 @@ JSON就變成可信事實；schema與來源通過不證明語意正確或已准�
 未知不能以零／預設冒充已知。細節查詢不是本輪重點，不新增query工具或第二LLM路由。
 有可靠資訊才回答，缺來源時明示並依真實介面引導，不猜資料或介面位置。
 
-模型必要輸入為精簡policy、當次工具／必要state、當輪完整原文；另附放得下的RAG與
-有界history參考，不附累積參數或逐輪摘要。以選定模型實際tokenizer與chat template計數，
+模型必要輸入為精簡policy、當次工具／必要state、當輪完整原文；另附放得下的RAG。
+不傳先前user／Assistant對話、累積參數或逐輪摘要；畫面聊天與診斷紀錄仍保留。
+此無歷史投影由使用者於2026-09-28明確核准；指涉先前回答不屬可依歷史解答的能力。
+以選定模型實際tokenizer與chat template計數，
 輸入加預留輸出不得超過catalog runtime context；產品上限8,192 tokens不因本契約擴大。
-先移除optional history／notes，RAG只能完整放入或整筆略過；必要state、否定／條件與
+先移除optional notes，RAG只能完整放入或整筆略過；必要state、否定／條件與
 current user不能靜默截斷。必要內容仍超限便零推論、可見拒絕，請縮短完整要求或
 New Chat後重述。不新增摘要模型、不承諾無限歷史；詳細projection依下節契約。
 
@@ -393,8 +395,8 @@ Host不補欄或改寫操作。來源／schema拒絕及backend執行失敗不增
 3. 已註冊但本回合不可呼叫的target action reference；每項只有stable tool ID與bounded public reason，
    不含schema，也不是合法output candidate。
 4. 最後一則必要user-role JSON：`application_state`與`current_user: {text}`，保留當輪完整原文。
-5. 空間允許的完整RAG示範與最多上一則Assistant-visible message，明標untrusted參考。
-   不附草稿、來源ID或累積參數；歷史不能提供操作缺值。
+5. 空間允許的完整RAG示範，明標untrusted參考；不附先前user／Assistant對話、草稿、
+   對話來源ID或累積參數。畫面聊天紀錄不等於模型上下文。
 
 Callable集合固定為approved stage membership、同一份ApplicationService publication的enabled
 `ToolAvailability`與目前registry／target membership的交集。其餘已註冊target tools只可出現在明確分隔的
@@ -419,7 +421,7 @@ heuristic推翻另一個當下確實callable的model proposal。
 不放 file paths、完整 channels、完整 settings、diagnostics、recommended next step、full capability map、
 舊tool output或對話草稿。必要state與當前原文不能當optional context丟棄。
 Assembler先守完整UTF-8 byte bound，local backend再用exact tokenizer／chat template與
-預留輸出計數；先移除optional history／notes，再按原排名打包完整範例。
+預留輸出計數；先移除optional notes，再按原排名打包完整範例。
 必要內容仍超限則零推論、可見拒絕，請縮短完整要求或New Chat後重述；
 不能裁掉否定、條件或靜默截斷current user。New Chat不是保存／恢復草稿的入口。
 

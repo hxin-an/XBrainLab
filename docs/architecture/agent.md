@@ -138,7 +138,7 @@ Qt processing／closing admission。這些內部責任移交不新增工具或�
 
 - 建立 `ToolRegistry` 並註冊 real tools。
 - 組prompt：strict policy、stage-published action schemas、必要 application state／
-  最新 user 原文，另附放得下的 RAG 與最多上一則 Assistant-visible 訊息。
+  最新 user 原文，另附放得下的 RAG；不投影先前 user／Assistant 對話。
 - 讓 `AgentWorker` 在 background thread 生成回覆。
 - 用`CommandParser`接受 exact 兩欄 JSON response（`tool_name`、`parameters`），可有整份回答單一 `json`／無語言 code fence；
   只解除外框，原始輸出照存，不做散文抽取、寬鬆 schema 或 legacy fallback。
@@ -235,16 +235,16 @@ Assistant 已移除曾經重複保存這些資訊的 `decision_context`／turn-a
 送出時轉為required application_state，不作optional state_card。工具catalog的required
 約束完整執行參數；缺值不能從歷史或範例填入。固定policy沒有跨輪靜態示範。
 
-額外prompt history最多保留上一則Assistant-visible訊息，作為untrusted參考而非參數來源。
-Host feedback、raw action
-proposal與diagnostic trace由producer標記為history的`internal` role，不進模型訊息；來源不由
-`System:`／`Tool Output:`前綴或JSON形狀推論，真人與可見Assistant內容仍保留為資料。
-該內部role不輸出給chat template；既有untrusted-context隔離與redaction保持。
+模型不接收先前 user／Assistant 對話，也不產生conversation_history參考。
+ConversationHistory仍保存畫面／診斷所需內容；assembler只從有界紀錄選出最新有效user
+原文。Host feedback、raw action proposal與diagnostic trace仍由producer標記為`internal`，
+不成為當輪要求；來源不由`System:`／`Tool Output:`前綴或JSON形狀推論。
+可選參考的untrusted-context隔離與redaction保持；不為模型裁剪而刪除畫面聊天紀錄。
 
 完整輸入有兩層界線：assembler 先檢查必要 messages 的序列化 UTF-8 byte bound，再以完整
-RAG 範例優先於 optional history／runtime notes 打包剩餘空間；local backend 以選定模型的
+RAG 範例優先於 optional runtime notes 打包剩餘空間；local backend 以選定模型的
 實際 tokenizer＋chat template 計數，輸入預算為 runtime context 減去預留輸出 tokens。
-超 token 預算時先移除 optional history／notes，再按原檢索順序逐個放入仍容納的完整 RAG
+超 token 預算時先移除 optional notes，再按原檢索順序逐個放入仍容納的完整 RAG
 範例，不裁切範例欄位。System 與最後的必要 request 不能截斷；它們本身仍超限便回
 recoverable precondition error，不呼叫模型。使用者可縮短完整要求，或用New Chat清除對話後重述；
 超限不會靜默裁切必要要求，也不等於模型答錯或成功處理。

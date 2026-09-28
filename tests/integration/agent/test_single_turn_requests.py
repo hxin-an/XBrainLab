@@ -48,6 +48,12 @@ def test_partial_request_cannot_supply_old_values_to_a_later_tool_call(
     context = json.loads(requests[-1].to_model_messages()[-1]["content"])
     assert context["current_user"]["text"] == latest
     assert "pending_request" not in context
+    assert requests[-1].to_model_messages() == controller.assembler.get_messages(
+        [{"role": "user", "content": latest}]
+    )
+    old_reply = "Please restate the bandpass request with both lower and upper cutoffs."
+    assert old_reply in product_harness.visible_transcript
+    assert {"role": "assistant", "content": old_reply} in controller.history
     product_harness.send(
         "Apply a bandpass filter from 7 to 30 Hz.",
         _tool_json("apply_bandpass_filter", {"low_freq": 7, "high_freq": 30}),

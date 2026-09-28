@@ -269,7 +269,7 @@ def test_required_request_overflow_never_infers(
 
 
 @pytest.mark.parametrize("retained_count", [1, 2])
-def test_exact_token_budget_keeps_whole_ranked_examples_before_optional_history(
+def test_exact_token_budget_keeps_whole_ranked_examples_before_optional_notes(
     context_boundary_tokenizer,
     retained_count,
 ):
@@ -287,12 +287,12 @@ def test_exact_token_budget_keeps_whole_ranked_examples_before_optional_history(
         )
         for rank in range(3)
     ]
-    history = UntrustedContextItem(
-        item_type="conversation_history",
-        source=UntrustedContextSource(kind="assistant_conversation_history"),
-        data={"text": "Unrelated previous answer. " * 16},
+    note = UntrustedContextItem(
+        item_type="runtime_context",
+        source=UntrustedContextSource(kind="assistant_runtime_context"),
+        data={"text": "Unrelated optional note. " * 16},
     )
-    context = json.loads(encode_untrusted_context([*examples, history]))
+    context = json.loads(encode_untrusted_context([*examples, note]))
     system = {"role": "system", "content": "REQUIRED_POLICY_AND_STATE"}
     request = {
         "role": "user",
@@ -334,7 +334,7 @@ def test_exact_token_budget_keeps_whole_ranked_examples_before_optional_history(
         tokenize=False,
         add_generation_prompt=True,
     )
-    assert "Unrelated previous answer" not in prompt
+    assert "Unrelated optional note" not in prompt
     assert messages[-1] == request  # Required evidence and caller input stay intact.
     assert len(context["items"]) == 4
     model.generate.assert_not_called()

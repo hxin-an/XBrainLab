@@ -540,7 +540,7 @@ class LocalBackend:
         if required_token_count > max_input_tokens:
             raise PreconditionError(LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE)
 
-        # Optional history and runtime notes yield first. RAG items arrive in
+        # Optional runtime notes yield first. RAG items arrive in
         # relevance order; retain each complete item only when its exact template
         # fits. Never re-project or clip fields inside an admitted example.
         packed_messages = list(required_messages)

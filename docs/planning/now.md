@@ -4,6 +4,17 @@
 
 ## Active — Agent可靠基線整合施工（已授權至集中手測）
 
+### 已完成：模型輸入不帶對話歷史
+
+依2026-09-28使用者授權，刪除舊Assistant回覆投影、專屬限長及無用helpers／測試；
+畫面與診斷紀錄、當輪原文、confirmation／取消／格式recovery保持。
+Production +21／-118，淨減97行；測試+91／-183，淨減92行；owner數不變。
+7個新增／改寫案例先RED再GREEN；相關Windows回歸211 passed，assembler型別檢查通過，
+獨立覆核無未解source／test blocker。52份既有凍結首答輸入各比對有／無舊對話，
+104次完整messages比對相同；未呼叫模型或檢索，不能算新模型成績。
+當前契約見current／architecture／target；下方模型結果仍屬舊checkpoint，已知語意
+失敗尚未解決，仍不交手測／merge，也不自行追加prompt候選或調參。
+
 ### 最新施工：英文上下文與 RAG 單一候選收斂
 
 使用者於 2026-09-28 批准「那就開始吧」，並要求收尾時整理整輪改善前後的具體差別
