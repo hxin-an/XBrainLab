@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-09-28`
+最後更新：`2026-09-29`
 
 ## Active — Agent可靠基線整合施工（已授權至集中手測）
 
@@ -25,7 +25,36 @@ Stop：凍結版本及所有必要gate閉合並開Windows給手測；或重現to
 兩個獨立source覆核均GO：decision/admission／Command與Qt/runtime/RAG責任清楚，無確認
 阻擋；大controller與少量RAG metadata重複只是後續維護項。另以既有capture獨立tool-decision
 覆核：hybrid原20題20/20、另6題6/6；off14/20與4/6，首答／格式修復後分數各自相同。
-舊完整回答語意失敗未改寫。Next：提交文件、推送同head CI並跑74題breadth及native GUI。
+舊完整回答語意失敗未改寫。下列整合結果取代先前待跑狀態。
+
+#### 整合檢查結果與凍結阻擋（2026-09-29）
+
+產品仍是`77edf12e`；文件checkpoint `d586a173`的Windows真模型ChatPanel四步全部通過：
+Dataset→EDF匯入→選C3/Cz/C4→真Command重取樣64Hz，capture完整、資料變更正確，
+關閉後剩餘worker／subprocess皆0。另5個原生Windows確認／取消／stale確認／匯入取消／
+停止後關閉測試通過；這5項使用scripted generation隔離邊界，不冒稱真模型選擇證據。
+
+既有74題一次hybrid推論完成，74首答＋1次既有格式修復；75份capture、74份首答輸入hash
+全部核對，engine正常關閉。獨立tool-decision為首答65/74、修復後66/74；其中positive
+35/36、challenge 11/14、no-action precision首答19/24→20/24。歷史自動content screening
+是63/74→64/74，未改寫成新分數。19題positive原文與檢索範例重合，74題只有64份不同
+rendered prompt，因此只作固定工程廣度，不是holdout或論文準確率。
+
+8個最終失敗case對應7種不同原句：要求reset卻回答不執行；複合操作只提案bandpass或
+average reference；空資料的epoch要求改提案切Preprocess；以及dashboard／尚不可用的
+split／training settings仍提案操作。4個no-action case（3種不同原句）錯誤提案通過產品
+准入、抵達evaluator抑制的執行邊界；另3個被Host擋下，但仍算模型錯誤。沒有真Command
+或資料mutation發生，不把「未執行」包裝成正確不操作。這是工具決策缺陷，不是回答品質。
+
+因此source架構覆核GO，但**整合candidate不通過，尚不能凍結為已驗收可靠基線或交手測**。
+不增加Host意圖判斷、重試、prompt候選，也不因74題是breadth而忽略錯誤准入。既有52首答、
+本次失敗及舊判分全部保留於ignored `build/dev-artifacts/agent-toolcall-freeze/`與
+`agent-answer-completeness-v1/`；新input bundle SHA為
+`52293dd515647c27b40cdaccc974d95052cedf2cf88ea84fb2a7f1639eb78871`。
+
+同head CI仍作獨立工程驗證，最新狀態由GitHub PR #149擁有；即使全綠也不能補掉上面的
+模型gate失敗。Next／待決策：是否將目前明列限制的版本固定為Development起點，或批准
+一個有界工具決策修正；不得自行接受限制、改契約或再啟動模型調整。settings.json未改。
 
 ### 歷史候選：回答完整性修正未通過當時的完整語意gate
 
