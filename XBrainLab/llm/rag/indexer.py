@@ -14,7 +14,7 @@ from contextlib import suppress
 from typing import Any, Protocol
 
 from .config import RAGConfig
-from .example_policy import prompt_tool_call_from_metadata
+from .example_policy import example_required_tool_name, prompt_tool_call_from_metadata
 
 try:
     from langchain_core.documents import Document as _Document
@@ -93,7 +93,7 @@ class RAGIndexer:
             decision = prompt_tool_call_from_metadata(metadata)
             if content and decision is not None:
                 # Derived from the validated fragment, never a second authority.
-                metadata["decision_name"] = decision["tool_name"]
+                metadata["required_tool_name"] = example_required_tool_name(decision)
                 docs.append(Document(page_content=content, metadata=metadata))
 
         logger.info("Loaded %s documents from %s", len(docs), json_path)

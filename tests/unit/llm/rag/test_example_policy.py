@@ -91,6 +91,51 @@ def test_response_example_uses_the_existing_non_executing_contract() -> None:
     assert MODEL_RESPONSE_TOOL_NAME not in AGENT_ACTION_CONTRACTS.model_tool_names()
 
 
+@pytest.mark.parametrize(
+    ("pending_action", "missing"),
+    [
+        ("retired_filter", ["freq"]),
+        ("create_epochs", ["tmin"]),
+        ("resample_data", ["unknown"]),
+    ],
+)
+def test_typed_response_examples_require_real_direct_tool_parameters(
+    pending_action, missing
+):
+    assert (
+        prompt_tool_call_from_metadata(
+            _metadata(
+                "respond_to_user",
+                {
+                    "message": "What value should I use?",
+                    "pending_action": pending_action,
+                    "missing_inputs": missing,
+                },
+            )
+        )
+        is None
+    )
+
+
+def test_corpus_demonstrates_missing_input_branch_for_each_direct_tool():
+    from XBrainLab.llm.agent.verifier import DIRECT_PARAMETER_TOOLS
+    from XBrainLab.llm.tools import get_all_tools
+
+    schemas = {tool.name: tool.parameters for tool in get_all_tools()}
+    covered = set()
+    for example in json.loads(_GOLD_SET_PATH.read_text(encoding="utf-8")):
+        decision = prompt_tool_call_from_metadata(example)
+        assert decision is not None
+        params = decision["parameters"]
+        pending = params.get("pending_action")
+        if pending:
+            assert decision["tool_name"] == "respond_to_user"
+            assert set(params["missing_inputs"]) <= set(schemas[pending]["required"])
+            if set(params["missing_inputs"]) == set(schemas[pending]["required"]):
+                covered.add(pending)
+    assert covered == DIRECT_PARAMETER_TOOLS
+
+
 @pytest.mark.parametrize("garbage", [None, "invalid", []])
 @pytest.mark.parametrize("serialized", [False, True])
 @pytest.mark.parametrize(

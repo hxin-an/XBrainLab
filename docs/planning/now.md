@@ -2,7 +2,75 @@
 
 最後更新：`2026-09-28`
 
-## Active — RAG 聯集候選否決；待決定示範／決策耦合修理範圍
+## Active — 已授權 RAG 示範呈現／決策與追問的有界修理
+
+2026-09-28 最新授權：使用者同意將 RAG 示範呈現與模型決策／追問的交互影響一起修理。
+下方「等待範圍決策」已被本段取代；不因 context compaction 或候選失敗停止續作。
+起點為安全撤回版 `2e3b395b`，保留 b4c7 失敗輸入／輸出及原成功基線。
+Outcome：改善候選召回且不讓示範帶入未要求的操作、參數或錯誤追問；不能用新增成功
+抵銷既有逐題 pass→fail。Scope 包含既有 RAG 表示、決策提示及必要追問交界／直接測試。
+不換模型、不動正式研究題庫、不新增意圖分流／owner、不放寬 Host 保護；UI layout、
+工具名稱與副作用、兩欄輸出契約維持不變，使用者 settings 不動。
+假設：目前範例和當前要求的界線不足，須先以真實 capture 驗證，不能直接視為根因。
+步驟：先檢查 capture／assembler → 凍結單變量重播與判準 → 重播確認控制組一致 →
+以證據選擇最小修理、補回歸測試 → 完整既有模型診斷、逐題語意與安全覆核 → 獨立審查。
+Focused validation 包含 prompt/context 契約、參數來源、clarification receipt、RAG 真檢索與
+完整工程題組；適用 CI 與 Windows 實機證據依最終改動選擇。Stop condition 是有證據的
+部件收尾，或確實需要新決策／不可取得資源；不是一個候選跑完。Next：讀取已保存的
+錯誤 split／bandpass 輸入，建立單變量重播；不另做權重或 prompt 組合搜尋。
+
+單變量已凍結：只將 rag_example.data 的序列化改為 input 在 expected_action 前。
+獨立 reviewer 確認目前 latest user 已在最後，故不是請求位置錯誤；現行 sort_keys 使
+範例答案先於問題，可能影響條件連結，但改善尚未成立。98個第一輪輸入已逐byte重建
+b4c7 capture；所有 JSON 值／角色／來源／工具／字節長度不變，有例者重跑control與
+treatment，無例者明示重用原輸出。這是development診斷，沒有Host執行／追問續輪或
+正式holdout宣稱；driver與逐筆產物位於build/dev-artifacts/rag-example-order-replay*。
+撤回版2e3b CI run36373141917全部23個non-skipped jobs成功，尚非新修理的驗證。
+
+獨立覆核另確認兩個既有契約呈現缺口：split/training工具描述僅重複視窗名稱，未交代
+data partitions與training hyperparameters的責任差異；最後output reminder缺少typed
+clarification形狀且沒有以required values齊全限定立即action。下一個固定診斷分別只改
+catalogue兩句描述、或最後reminder的既有分支說明（兩臂獨立，不排列prompt組合）。
+採用前仍比對全部固定案例與f89f成功軌跡；沒有新schema、receipt、工具或權限規則。
+
+診斷結果：order-only全部98 control逐byte重現，196 fresh captures完整，6退步0改善，
+否決。clarity兩臂98題／122 fresh完成：catalogue修好split且raw無新增退步；reminder
+有3個raw退步，且missing-bandpass仍逐字抄mixed回答，部分分數改善實際語意不通過，
+不能採用。產品仍維持撤回版，沒有把診斷臂直接寫入source。
+下一個有界因果消融：固定相同input／IDs／rank／數量，將final prompt的完整答案
+改為decision_name參考；action與response同等處理，原語料／完整schema／資格驗證不改。
+這是檢查現成輸出干擾，不是prompt措辭搜尋。若採用須在final projection且驗證後才做，
+並完整覆核參數映射、各種response語意及追問軌跡；input仍含數字，不能宣稱防止所有抄參數。
+
+Name-only亦完整98題完成且有新增錯誤操作／虛報完成，否決，不再做表示法排列搜尋。
+實際缺口轉為既有追問契約：145語料沒有任何typed pending_action/missing_inputs示範。
+本輪已授權的RAG／追問耦合修理以契約覆蓋處理，不按失敗題逐題追加：先重現並修正
+typed clarification可能遺失原始單側bandpass cutoff，再補五種既有direct操作的缺值示範
+（完整語料仍保留）；partial兩種只有真Host路徑通過才納入。正式研究題庫不動。
+必要直接依賴：typed response的pending_action須受既有publication限制，不能因outer
+respond_to_user就跨stage召回；完整schema與最後publication重查仍由既有owner掌管。
+先RED／focused controller與檢索資格，之後才真retrieval／完整105題軌跡；不把語料覆蓋
+數量當品質保證。拒絕所有新退步的門檻不變，沒有新router或模型。Independent reviewer
+負責controller回歸測試；main持有產品／語料／文件。Next：原始partial cutoff的RED定位。
+
+契約校準：partial原始cutoff遺失已RED重現；Host明示label擷取候選雖經測試／獨立覆核，
+但target明定low/high mapping由模型負責，不能依內部品質批准擴充該責任。已撤下這個
+未核准候選source/tests，diff保存在build/dev-artifacts/partial-cutoff-host-parser-unapproved.patch。
+已請使用者選擇：建議擴充typed追問攜帶model-proposed已知欄位並沿用Host來源驗證，
+或另授權Host label解析，或另輪處理。等候此public contract選擇期間，先完成五種
+missing-all RAG示範及檢索資格修理；不加入partial示範，不因局部待決而停止其他工作。
+
+目前候選只含已授權RAG邊界：150筆（原145逐筆不變＋五種缺值分支），hash
+`7ccb75b98ae91e4e30f1d1e6b202e73b47c64988d86ef02223cb808f7cb662c3`；typed pending
+action在dense、BM25、最終publication皆檢資格，index schema 3不使用舊metadata。
+複雜度覆核：8個production files含JSON，Python +146/-99/net+47，語料+30，無新owner、
+模型、router、相容分支或新的權限真相。原dense-only universal veto由聯集替換，原私有
+membership predicate收斂為兩檢索路徑／assembler共用；沒有另存第二套retriever。
+RED10（缺值語料、無效pending及stage資格）→現候選相關426通過；explicit-file hooks、
+guidance audit、MkDocs strict通過。獨立覆核允許進入真模型驗證，未批准候選採用。
+Next：固定candidate commit，真retrieval及完整105題／capture／receipt比較；待partial契約選擇。
+
+### 前次候選的否決與撤回證據
 
 2026-09-28：不得依下方原施工步驟自動繼續調參。`b4c7df84`候選已實作、獨立覆核並跑完
 真模型；檢索結構正確但產品退步，故撤回該候選source／專屬tests及策略文件。保留逐題

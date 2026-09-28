@@ -19,9 +19,17 @@ _TARGET_GUI_HANDOFF_DESCRIPTIONS = {
     "select_channels": "Open Channel Selection for the user to choose EEG channels.",
     "set_montage": "Open Montage Settings for the user to resolve channel positions.",
     "create_epochs": "Open EEG Epoch Settings for the user to create epochs.",
-    "configure_dataset_split": "Open Dataset Splitting for the user to configure it.",
+    "configure_dataset_split": (
+        "Open Dataset Splitting to divide data into training, validation, and test "
+        "sets, including cross-validation folds. This configures data partitions, "
+        "not training hyperparameters."
+    ),
     "select_model": "Open Model Selection for the user to choose a model.",
-    "configure_training": "Open Training Settings for the user to configure training.",
+    "configure_training": (
+        "Open Training Settings to configure training hyperparameters: training "
+        "epochs, batch size, learning rate, and optimizer. This does not configure "
+        "data splits."
+    ),
     "compute_saliency": (
         "Compute saliency for the currently selected completed run after confirmation."
     ),

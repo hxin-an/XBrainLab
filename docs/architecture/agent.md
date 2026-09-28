@@ -215,18 +215,21 @@ Prompt history只保留最新user訊息與最多一則Assistant-visible訊息。
 proposal與diagnostic trace由producer標記為history的`internal` role，不進模型訊息；來源不由
 `System:`／`Tool Output:`前綴或JSON形狀推論，真人與可見Assistant內容仍保留為資料。
 該內部role不輸出給chat template；既有untrusted-context隔離與redaction保持。
-Bundled gold set目前有145個英文示範：117個操作示範涵蓋18個approved tools，另28個
+Bundled gold set候選有150個英文示範：117個操作示範涵蓋18個approved tools，另33個
 `respond_to_user`示範涵蓋概念詢問、只要說明、明確禁止操作、無法辨識的外部指涉，
 以及解釋＋操作先選一件。後者四筆保留原問題與ID，只修正不符合單次決策契約的答案；
-prompt policy同步要求先選擇，不提供第二次模型生成或部分執行。
+prompt policy同步要求先選擇，不提供第二次模型生成或部分執行。五個新增回應覆蓋
+既有direct工具的typed缺參數分支；不提供尚未核准的原要求partial值解析。
 原72個操作示範保持內容，新增案例補參數與相鄰操作差異，不以長句改寫取代既有詞彙覆蓋。
 它們是retrieval corpus，不是驗收題庫，也不代表已證明模型準確率改善。
 
-RAG不再以手寫intent grammar決定是否檢索。Qdrant在搜尋前，以已發布callable tools及
-`respond_to_user`篩選候選，再取dense top-10並以raw cosine threshold `0.7`准入。
-保留候選通過schema／membership驗證後，BM25沿用全corpus的IDF與平均長度，只在此准入集合
-內取分、正規化並參與排序；
-不以keyword命中把低於semantic門檻的範例補入。預設cosine／BM25權重為`0.7／0.3`，
+RAG不以手寫intent grammar決定是否檢索。Qdrant在搜尋前，依已發布callable tools及
+普通`respond_to_user`篩選候選；typed追問的required_tool_name由pending_action推導，
+必須目前可用。這個index metadata由完整合法envelope導出，schema 3不沿用舊索引。
+Dense top-10以raw cosine threshold `0.7`准入；BM25在相同資格集合獨立取正分top-10，
+兩者取聯集，必要時第二次Qdrant query補上lexical-only候選的真cosine。BM25沿用全corpus
+IDF與平均長度，候選內max正規化；用既有sklearn英文停用詞排除function-word-only命中，
+保留否定詞。預設cosine／BM25權重為`0.7／0.3`，
 最多取`TOP_K = 3`，也允許零命中。`hybrid_alpha = 1`的dense-only對照不建立或查詢BM25，
 不是建立後再把sparse權重乘零。Hybrid模式若BM25無法建立，初始化失敗，不silent fallback
 成dense-only。上述常數是目前設定，不是已證實最佳值。

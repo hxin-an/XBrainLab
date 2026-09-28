@@ -27,7 +27,7 @@ from .context_encoding import (
     encode_untrusted_context,
     sanitize_untrusted_text,
 )
-from .decision_contract import MODEL_RESPONSE_TOOL_NAME, model_response_tool_contract
+from .decision_contract import model_response_tool_contract
 from .prompt_policy import (
     STRICT_TOOL_RESPONSE_PROMPT_POLICY,
     PromptPolicyReadResult,
@@ -496,14 +496,12 @@ Action Contract Catalog (input definitions, never an output array):
                         if not isinstance(item.data, dict):
                             continue
                         from ..rag.example_policy import (  # noqa: PLC0415
-                            prompt_tool_call_from_metadata,
+                            example_is_allowed,
                         )
 
-                        decision = prompt_tool_call_from_metadata(
-                            {"tool_calls": [item.data.get("expected_action")]}
-                        )
-                        if decision is None or decision["tool_name"] not in (
-                            allowed_tools | {MODEL_RESPONSE_TOOL_NAME}
+                        if not example_is_allowed(
+                            {"tool_calls": [item.data.get("expected_action")]},
+                            allowed_tool_names=allowed_tools,
                         ):
                             continue
                     items.append(item)

@@ -104,7 +104,41 @@ def test_load_gold_set(mock_indexer, tmp_path: Path):
     assert docs[0].page_content == "User Input"
     assert docs[0].metadata["id"] == "test_01"
     assert "tool_calls" in docs[0].metadata
-    assert docs[0].metadata["decision_name"] == "import_eeg_data"
+    assert docs[0].metadata["required_tool_name"] == "import_eeg_data"
+
+
+def test_indexed_clarification_scope_comes_from_validated_pending_action(
+    mock_indexer, tmp_path
+):
+    corpus = tmp_path / "clarification.json"
+    corpus.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "clarify-rate",
+                    "category": "response_missing_parameter",
+                    "input": "Resample this recording.",
+                    "expected_tool_calls": [
+                        {
+                            "tool_name": "respond_to_user",
+                            "parameters": {
+                                "message": "What rate?",
+                                "pending_action": "resample_data",
+                                "missing_inputs": ["rate"],
+                            },
+                        }
+                    ],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    docs = mock_indexer.load_gold_set(str(corpus))
+    assert len(docs) == 1
+    assert docs[0].metadata["required_tool_name"] == "resample_data"
+    assert (
+        json.loads(docs[0].metadata["tool_calls"])[0]["tool_name"] == "respond_to_user"
+    )
 
 
 def test_load_gold_set_missing_file_raises_without_mutating_index(
