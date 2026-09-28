@@ -1,9 +1,9 @@
 """RAG retriever for querying similar examples from Qdrant.
 
 Explicitly initializes a pinned local embedding and verified gold-set index.
-Cosine similarity admits candidates; a weighted combination of cosine and
-normalized BM25 scores ranks that pool. The retriever is synchronous; GUI
-callers run it through the owned RAG process lifecycle.
+Dense and BM25 independently recall eligible candidates; a weighted combination
+of cosine and normalized BM25 scores ranks their union. The retriever is
+synchronous; GUI callers run it through the owned RAG process lifecycle.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 from .bm25 import BM25Index
 from .config import RAGConfig
 from .example_policy import (
+    example_is_allowed,
     prompt_tool_call_from_metadata,
 )
 
@@ -53,8 +54,8 @@ class RAGRetriever:
 
     **Hybrid mode** (default, configurable via ``hybrid_alpha``):
     combines dense semantic scores with sparse BM25 keyword scores.
-    ``alpha=1.0`` uses cosine ranking; ``alpha=0.0`` uses BM25 ranking within
-    the semantically admitted pool, not a separate keyword-only search.
+    ``alpha=1.0`` uses only dense recall/ranking; other values rank the union
+    of dense and lexical candidates (``alpha=0.0`` uses only their BM25 scores).
 
     Attributes:
         client: The ``QdrantClient`` instance (``None`` until initialized).
@@ -371,20 +372,18 @@ class RAGRetriever:
 
             # Filter inside search: unavailable examples must not consume the
             # candidate budget before the eligible examples can be ranked.
+            query_conditions: list[models.FieldCondition] = []
             query_filter = None
             if allowed_tool_names is not None:
-                query_filter = models.Filter(
-                    must=[
-                        models.FieldCondition(
-                            key="metadata.decision_name",
-                            match=models.MatchAny(
-                                any=sorted(
-                                    allowed_tool_names | {MODEL_RESPONSE_TOOL_NAME}
-                                ),
-                            ),
+                query_conditions.append(
+                    models.FieldCondition(
+                        key="metadata.decision_name",
+                        match=models.MatchAny(
+                            any=sorted(allowed_tool_names | {MODEL_RESPONSE_TOOL_NAME}),
                         ),
-                    ],
+                    ),
                 )
+                query_filter = models.Filter(must=query_conditions)
             dense_k = max(safe_k * 3, 10)
             search_result = lease.client.query_points(
                 collection_name=RAGConfig.COLLECTION_NAME,
@@ -396,74 +395,85 @@ class RAGRetriever:
             if self._is_closed():
                 return ""
 
-            if not search_result:
-                return ""
-
-            # ── 2. Build candidate pool with dense scores ──
-            # Admission uses raw cosine scores, before BM25 reranking.
-            semantically_admitted = [
-                point
+            # ── 2. Independent lexical recall under the same publication ──
+            # Keep all sparse scores for dense candidates outside lexical top-k.
+            # Neither rank nor a positive BM25 score is a confidence probability.
+            bm25_results = (
+                lease.bm25_index.query(
+                    query,
+                    k=lease.bm25_index.doc_count,
+                    allowed_tool_names=allowed_tool_names,
+                )
+                if lease.bm25_index is not None and lease.hybrid_alpha < 1
+                else []
+            )
+            lexical_ids = {row[1] for row in bm25_results[:dense_k]}
+            dense_ids = {
+                str((point.payload or {}).get("metadata", {}).get("id") or point.id)
                 for point in search_result
-                if float(point.score) >= RAGConfig.SIMILARITY_THRESHOLD
-            ]
-            if not semantically_admitted:
+            }
+            missing_ids = lexical_ids - dense_ids
+            if self._is_closed():
+                return ""
+            if missing_ids:
+                # Ask the same vector index for true cosine scores: assigning
+                # zero to lexical-only candidates would penalize sparse rescue.
+                search_result += lease.client.query_points(
+                    collection_name=RAGConfig.COLLECTION_NAME,
+                    query=query_vector,
+                    limit=len(missing_ids),
+                    with_payload=True,
+                    query_filter=models.Filter(
+                        must=[
+                            *query_conditions,
+                            models.FieldCondition(
+                                key="metadata.id",
+                                match=models.MatchAny(any=sorted(missing_ids)),
+                            ),
+                        ],
+                    ),
+                ).points
+            if self._is_closed():
                 return ""
 
             candidates: dict[str, dict] = {}
-            for p in semantically_admitted:
+            sparse_scores = {row[1]: row[0] for row in bm25_results}
+            for p in search_result:
                 payload = p.payload or {}
                 content = payload.get("page_content", "") or payload.get(
                     "input",
                     "",
                 )
-                doc_id = str(p.id)
+                metadata = payload.get("metadata", {})
+                doc_id = str(metadata.get("id") or p.id)
+                if (
+                    float(p.score) < RAGConfig.SIMILARITY_THRESHOLD
+                    and doc_id not in lexical_ids
+                ) or not example_is_allowed(
+                    metadata, allowed_tool_names=allowed_tool_names
+                ):
+                    continue
                 candidates[doc_id] = {
                     "content": content,
-                    "metadata": payload.get("metadata", {}),
+                    "metadata": metadata,
                     "dense_score": float(p.score),
-                    "bm25_score": 0.0,
+                    "bm25_score": sparse_scores.get(doc_id, 0.0),
                 }
-            candidates = {
-                doc_id: candidate
-                for doc_id, candidate in candidates.items()
-                if self._example_is_allowed(
-                    candidate.get("metadata", {}),
-                    allowed_tool_names=allowed_tool_names,
-                )
-            }
+            bm25_max = max((c["bm25_score"] for c in candidates.values()), default=0.0)
 
-            # ── 3. BM25 sparse scoring (if available) ──
-            if lease.bm25_index is not None and lease.hybrid_alpha < 1:
-                candidates_by_id = {
-                    str(candidate["metadata"].get("id") or doc_id): candidate
-                    for doc_id, candidate in candidates.items()
-                }
-                bm25_results = lease.bm25_index.query(
-                    query, k=dense_k, candidate_ids=frozenset(candidates_by_id)
-                )
-                if self._is_closed():
-                    return ""
-                if bm25_results:
-                    bm25_max = bm25_results[0][0]  # already sorted desc
-                    for score, bm_id, _bm_text, _bm_meta in bm25_results:
-                        norm_bm25 = score / bm25_max if bm25_max > 0 else 0.0
-                        if bm_id in candidates_by_id:
-                            candidates_by_id[bm_id]["bm25_score"] = norm_bm25
-                        # BM25 may rerank semantically admitted candidates, but
-                        # it cannot admit a tool example on keyword overlap alone.
-
-            # ── 4. Hybrid interpolation ──
+            # ── 3. Hybrid interpolation ──
             alpha = lease.hybrid_alpha
             ranked: list[tuple[float, str, dict]] = []
             for c in candidates.values():
-                hybrid = alpha * c["dense_score"] + (1 - alpha) * c["bm25_score"]
+                normalized = c["bm25_score"] / bm25_max if bm25_max > 0 else 0.0
+                hybrid = alpha * c["dense_score"] + (1 - alpha) * normalized
                 ranked.append((hybrid, c["content"], c["metadata"]))
 
             ranked.sort(key=lambda x: x[0], reverse=True)
             if not ranked or self._is_closed():
                 return ""
 
-            # ── 5. Encode top-k as typed, provenance-labelled data ──
+            # ── 4. Encode top-k as typed, provenance-labelled data ──
             context_items: list[UntrustedContextItem] = []
             for _score, content, meta in ranked[:safe_k]:
                 prompt_call = prompt_tool_call_from_metadata(meta)
@@ -493,18 +503,3 @@ class RAGRetriever:
             )
         finally:
             self._release_retrieval_lease()
-
-    @staticmethod
-    def _example_is_allowed(
-        metadata: dict,
-        *,
-        allowed_tool_names: frozenset[str] | None,
-    ) -> bool:
-        prompt_call = prompt_tool_call_from_metadata(metadata)
-        if prompt_call is None:
-            return False
-        if allowed_tool_names is None:
-            return True
-        return prompt_call["tool_name"] in (
-            allowed_tool_names | {MODEL_RESPONSE_TOOL_NAME}
-        )

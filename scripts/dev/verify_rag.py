@@ -211,7 +211,7 @@ def summarize_positive_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
 def compare_baseline(
     report: dict[str, Any], baseline: dict[str, Any]
 ) -> dict[str, Any]:
-    """Require comparable frozen probes/configuration and no loss of Top-3 hits."""
+    """Require comparable frozen probes and no individual Top-3 regression."""
     keys = (
         "probe_sha256",
         "embedding_model",
@@ -229,13 +229,27 @@ def compare_baseline(
     current_hits = _verified_top3_hits(report)
     previous_hits = _verified_top3_hits(baseline)
     comparable = comparable and current_hits is not None and previous_hits is not None
+    regressed = []
+    if comparable:
+        current_passes = {
+            row["id"]
+            for row in report["retrieval_cases"]
+            if row["expected_tool"] in row["candidate_tools"]
+        }
+        regressed = sorted(
+            row["id"]
+            for row in baseline["retrieval_cases"]
+            if row["expected_tool"] in row["candidate_tools"]
+            and row["id"] not in current_passes
+        )
     return {
         "name": "baseline_non_regression",
-        "ok": comparable
-        and current_hits is not None
-        and previous_hits is not None
-        and current_hits >= previous_hits,
-        "detail": f"Comparable={comparable}; verified Top-3 hits {current_hits} versus {previous_hits}.",
+        "ok": comparable and not regressed,
+        "regressed_case_ids": regressed,
+        "detail": (
+            f"Comparable={comparable}; verified Top-3 hits {current_hits} versus "
+            f"{previous_hits}; regressed cases={regressed}."
+        ),
     }
 
 

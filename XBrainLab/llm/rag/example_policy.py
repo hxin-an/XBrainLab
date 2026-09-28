@@ -127,3 +127,15 @@ def prompt_tool_call_from_metadata(
 def is_primary_workflow_example(metadata: dict[str, Any] | None) -> bool:
     """Return whether a RAG example is safe for primary product prompting."""
     return prompt_tool_call_from_metadata(metadata) is not None
+
+
+def example_is_allowed(
+    metadata: dict, *, allowed_tool_names: frozenset[str] | None
+) -> bool:
+    """Apply the same schema and publication boundary to both retrieval routes."""
+    prompt_call = prompt_tool_call_from_metadata(metadata)
+    if prompt_call is None:
+        return False
+    return allowed_tool_names is None or prompt_call["tool_name"] in (
+        allowed_tool_names | {MODEL_RESPONSE_TOOL_NAME}
+    )

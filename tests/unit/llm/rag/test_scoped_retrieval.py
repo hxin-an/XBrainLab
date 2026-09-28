@@ -7,6 +7,7 @@ from typing import Any, cast
 import pytest
 from qdrant_client import QdrantClient, models
 
+from XBrainLab.llm.rag.bm25 import BM25Index
 from XBrainLab.llm.rag.config import RAGConfig
 from XBrainLab.llm.rag.retriever import RAGRetriever
 
@@ -94,3 +95,68 @@ def test_no_callable_actions_still_allows_response_examples(scoped_retriever):
         "Do not perform any operation.", allowed_tool_names=frozenset()
     )
     assert _decisions(context) == ["respond_to_user"]
+
+
+@pytest.mark.parametrize("dense_distractors", [1, 12])
+def test_keyword_recall_rescues_eligible_example_outside_dense_admission(
+    scoped_retriever, dense_distractors
+):
+    """A real sparse index must recover an example below .7 or outside top-10."""
+    client = scoped_retriever.client
+    bm25 = BM25Index()
+    rows = [
+        (
+            100 + index,
+            "Apply min-max scaling to the EEG.",
+            "normalize_data",
+            {"method": "min-max"},
+            0.8,
+        )
+        for index in range(dense_distractors)
+    ] + [
+        (
+            200,
+            "Reset preprocessing and return to the imported EEG data.",
+            "reset_preprocessing",
+            {},
+            0.64,
+        )
+    ]
+    points = []
+    for point_id, text, tool, parameters, score in rows:
+        metadata = {
+            "id": str(point_id),
+            "decision_name": tool,
+            "tool_calls": [{"tool_name": tool, "parameters": parameters}],
+        }
+        bm25.add_document(str(point_id), text, metadata)
+        points.append(
+            models.PointStruct(
+                id=point_id,
+                vector=[score, math.sqrt(1 - score**2)],
+                payload={"page_content": text, "metadata": metadata},
+            )
+        )
+    client.upsert(RAGConfig.COLLECTION_NAME, points=points)
+    scoped_retriever.bm25_index = bm25
+
+    context = scoped_retriever.get_similar_examples(
+        "Reset preprocessing so I can start again from the imported data.",
+        allowed_tool_names=frozenset({"reset_preprocessing", "normalize_data"}),
+    )
+
+    decisions = _decisions(context)
+    assert "reset_preprocessing" in decisions
+    assert len(decisions) <= 3
+    assert set(decisions) <= {
+        "reset_preprocessing",
+        "normalize_data",
+        "respond_to_user",
+    }
+
+    # The same lexical match must never resurrect a now-unavailable action.
+    unavailable = scoped_retriever.get_similar_examples(
+        "Reset preprocessing so I can start again from the imported data.",
+        allowed_tool_names=frozenset({"normalize_data"}),
+    )
+    assert "reset_preprocessing" not in _decisions(unavailable)

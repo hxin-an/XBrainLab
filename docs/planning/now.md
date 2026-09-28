@@ -2,7 +2,45 @@
 
 最後更新：`2026-09-28`
 
-## Next — 討論 Agent 決策／追問；RAG 部件工程已收尾
+## Active — 重開 RAG 檢索品質，完成失敗歸因後才收尾
+
+2026-09-28 使用者批准重新處理檢索候選策略直到獨立覆核／部件收尾，不開始下一個
+Agent 組件、不 merge、不把本輪結果稱為整體 Assistant handoff-ready。先前「工程已收尾」
+不足以支撐檢索品質結案：真 MiniLM 的 epochs／reset 正確例原排第二／第三，卻被 cosine
+0.7 門檻排除，錯誤例反而留下；BM25 只重排 dense 准入集合，不能補召回。重新編碼145筆
+与儲存向量一致，CPU／wrapper query一致，兩題沒有截斷；不是已證明需要換模型。
+
+Outcome：在不增加模型／router／owner、保留 UI／工具／安全契約下，消除單路否決造成的
+候選遺漏，逐筆解釋剩餘失敗；不以34/36或reviewer通過代替設計合理性的證據。
+Scope為既有retriever、BM25、直接tests、既有verification runner與canonical文件。
+固定145語料、embedding/model revision、prompt、最多三例/context上限；正式研究題庫不碰。
+可用工具／schema／publication recheck為不變量；cosine、權重、候選數為待驗證策略。
+UI沒有layout／互動改動。原settings及舊報告保留。
+
+步驟：
+1. 固定現行、兩路獨立召回＋分數融合、同候選＋RRF的有界離線比較；保留完整逐題
+   ranks、候選被排除位置、BM25實際貢獻與不相關／否定案例。不按兩個失敗題反覆調參。
+2. 依證據選定一個簡單策略，先更新target、寫真漏召回RED測試再實作；沿用Retriever與
+   BM25 owner，刪除舊dense-only否決與被取代的專屬測試，不新增第二套production retriever。
+3. 驗直接RAG/context/lifecycle/tests、真offline與完整既有模型診斷；記錄檢索与模型錯誤
+   分層歸因、正常empty與degraded分離。不以後端擋錯誤算語意答對。
+4. 獨立覆核設計假設、實際diff與失敗產物；處理in-scope findings後更新canonical事實、
+   適用static／CI，回報部件結案與仍屬下一組件的限制，不自動開整體手測或merge。
+
+完成準則：每個已觀察失敗有定位；無未釐清的基本機制問題；改善不只修兩題、必要安全
+保護不退步。開發題非holdout，額外未參與選擇的工程案例另記。保留已通過且未受影響的
+工程證據；新source需要新相關證據。Rollback為此slice source/tests/docs一起回退。
+複雜度：owner前後不變；預期局部替換ranking／admission，不加權限或生命週期分支。
+Next：執行固定候選比較，同時建立失敗可觀察性與回歸保護。
+
+比較進度：72題現行重算與production一致；union weighted正例Top1/3 35/36、36/36，
+RRF為34/36、36/36，故選保留加權方式而不加RRF。原始comparison保留；選定後的12題
+確認發現無關問題只因the被BM25召回，是本輪直接缺陷。這12題已轉為development evidence，
+不冒稱holdout。補既有sklearn英文停用詞處理（保留否定詞），不加語句分流／LLM judge；
+先RED再修，全部既有72題與真模型重驗。範例語意不適切、缺資訊／否定語料覆蓋不足須
+逐項披露，不能把respond_to_user類別命中當回答正確。
+
+## 歷史 — 前次 RAG 工程收尾（檢索品質判斷由上節取代）
 
 2026-09-28 使用者要求先做到 RAG 收尾，再討論下一組件。本輪 source 為 `f89f3f89`，
 已推送既有 PR #149，未 merge；本機只有受保護的 `settings.json` 差異。獨立 reviewer

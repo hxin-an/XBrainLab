@@ -329,9 +329,13 @@ RAG／examples規則（2026-09-27批准的部件打磨目標）：
   不以文字關鍵字先判定是否檢索，也不按callable數量切換固定範例與semantic retrieval兩套policy。
 - 搜尋前限制為當次callable action examples及既有`respond_to_user` examples；後者不是新增可執行
   action。示範須以actual action schema或strict response parser驗證，不允許額外欄位或多action。
-- 保留dense admission＋BM25 reranking；BM25不得靠keyword命中擴大semantic准入集合。
-  第一輪保持cosine門檻`0.7`、最多三例及既有context上限，允許正常零命中。Dense-only消融須
+- 2026-09-28批准修正：dense與BM25在相同合法範例集合獨立召回；dense前十且cosine≥0.7，
+  與positive BM25前十取聯集。0.7只控制dense分支，不否決lexical補召回；以候選真cosine及
+  全corpus IDF／合法候選最高BM25正規化，沿用0.7／0.3加權，最多三例與既有context上限。
+  門檻／權重是待驗證策略，不是權限或信心機率；兩路無候選仍正常零命中。Dense-only消融須
   真正省去BM25建置／查詢，不另維護一套production retriever；hybrid缺BM25時不得silent fallback。
+- BM25建索引及查詢使用同一英文tokenizer，重用既有sklearn停用詞並保留no／not／never／
+  without／cannot，避免只靠the等功能詞補召回；不依文字判定是否允許action或另建intent router。
 - 範例內容涵蓋參數與相鄰操作差異、概念詢問、只要說明、明確禁止操作與無法辨識的指涉；
   不機械湊數、不複製驗收題，不把缺參數範例教成略過既有clarification流程。
 - RAG延遲後，最終prompt以同一份publication組schemas／state card並重查範例資格；
@@ -389,6 +393,10 @@ command policy或fake backend。
 
 RAG 工程完成與整合 candidate 通過分開判定。前者要求範例契約、檢索資格、生命週期與
 可追溯性可靠，不要求找到特定模型／提示組合的最佳準確率；不豁免下列整合 gates。
+部件結案亦須逐筆歸因已觀察失敗：語料覆蓋、候選召回／門檻、排序、下游決策與評分分開。
+必要契約（資格／schema／publication）不可與待驗證策略（門檻／權重／候選預算）混為一談。
+獨立覆核須挑戰策略假設並檢查各檢索路徑實際貢獻；總分過關或兩種模式打平不代表結案。
+工具類別命中，尤其`respond_to_user`，不證明範例語意適切；同總分也不能掩蓋逐題退步。
 現有 corpus 規模、top-k、threshold 與 hybrid 權重是可重現候選設定，不是永久最佳值。
 後續 Development 先固定其餘組件，再於重要模型／prompt／工具呈現變更時按假設比較
 RAG 開關或原／候選組合；不以正式 Test 選設定，不新增第二套實驗 runner。

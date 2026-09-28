@@ -242,6 +242,15 @@ def test_baseline_comparison_rejects_fewer_hits_or_changed_probe_identity() -> N
     }
     baseline = json.loads(json.dumps(report))
     assert verify_rag.compare_baseline(report, baseline)["ok"] is True
+    # One repaired case must not conceal a different pass-to-fail regression.
+    exchanged = json.loads(json.dumps(report))
+    exchanged["retrieval_cases"][0]["candidate_tools"] = []
+    exchanged["retrieval_cases"][34]["candidate_tools"] = [
+        exchanged["retrieval_cases"][34]["expected_tool"]
+    ]
+    comparison = verify_rag.compare_baseline(exchanged, baseline)
+    assert comparison["ok"] is False
+    assert comparison["regressed_case_ids"] == [report["retrieval_cases"][0]["id"]]
     baseline["retrieval_summary"]["top3_hits"] = 35
     baseline["retrieval_cases"][34]["candidate_tools"] = [
         baseline["retrieval_cases"][34]["expected_tool"]

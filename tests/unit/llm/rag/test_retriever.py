@@ -127,37 +127,7 @@ def test_raw_semantic_score_below_threshold_is_not_injected(mock_retriever):
     assert result == ""
 
 
-def test_bm25_cannot_admit_a_candidate_below_semantic_threshold(mock_retriever):
-    low_relevance = MagicMock(
-        id="low",
-        score=RAGConfig.SIMILARITY_THRESHOLD - 0.01,
-        payload={
-            "page_content": "start training with EEGNet",
-            "metadata": {
-                "tool_calls": ('[{"tool_name":"start_training","parameters":{}}]')
-            },
-        },
-    )
-    mock_retriever.client.query_points.return_value.points = [low_relevance]
-    mock_retriever.bm25_index = MagicMock()
-    mock_retriever.bm25_index.query.return_value = [
-        (
-            8.0,
-            "bm25-match",
-            "start training with EEGNet",
-            {"tool_calls": ('[{"tool_name":"start_training","parameters":{}}]')},
-        )
-    ]
-
-    result = mock_retriever.get_similar_examples(
-        "start training with EEGNet",
-        allowed_tool_names=frozenset({"start_training"}),
-    )
-
-    assert result == ""
-
-
-def test_bm25_reranks_only_semantically_admitted_candidates():
+def test_bm25_scores_can_change_the_dense_order():
     class _Embeddings:
         @staticmethod
         def embed_query(_query: str) -> list[float]:
@@ -184,18 +154,15 @@ def test_bm25_reranks_only_semantically_admitted_candidates():
         def query_points(**_kwargs):
             return SimpleNamespace(points=[semantic_first, keyword_first])
 
-    class _BM25:
-        @staticmethod
-        def query(_query: str, *, k: int, candidate_ids: frozenset[str]):
-            assert k >= 2
-            assert "keyword-first" in candidate_ids
-            return [(10.0, "keyword-first", "current workflow status", metadata)]
+    bm25 = BM25Index()
+    bm25.add_document("semantic-first", "inspect current state", metadata)
+    bm25.add_document("keyword-first", "current workflow status", metadata)
 
     retriever = RAGRetriever()
     retriever.is_initialized = True
     retriever.embeddings = cast(Any, _Embeddings())
     retriever.client = cast(Any, _Client())
-    retriever.bm25_index = cast(Any, _BM25())
+    retriever.bm25_index = bm25
 
     payload = json.loads(
         retriever.get_similar_examples(
@@ -293,6 +260,49 @@ def test_retrieval_failure_propagates_and_releases_lifecycle_lease():
     assert retriever._active_operations == 0
     client.query_points.assert_not_called()
     retriever.close()
+    client.close.assert_called_once_with()
+
+
+@pytest.mark.parametrize("terminate", ["close", "error"])
+def test_lexical_score_lookup_does_not_publish_after_close_or_failure(terminate):
+    """The new second search shares the existing cancellation/error fence."""
+    retriever = RAGRetriever()
+    client = MagicMock()
+    retriever.client = client
+    retriever.embeddings = MagicMock(embed_query=MagicMock(return_value=[1.0, 0.0]))
+    retriever.bm25_index = BM25Index()
+    retriever.bm25_index.add_document(
+        "reset",
+        "reset preprocessing",
+        {
+            "id": "reset",
+            "tool_calls": [{"tool_name": "reset_preprocessing", "parameters": {}}],
+        },
+    )
+
+    def second_search(**_kwargs):
+        retriever.close()
+        client.close.assert_not_called()  # the active lease still owns the client
+        if terminate == "error":
+            raise RuntimeError("lexical score lookup failed")
+        return SimpleNamespace(points=[])
+
+    # Use a function to close during, not before, the second lookup.
+    calls = 0
+
+    def query_points(**kwargs):
+        nonlocal calls
+        calls += 1
+        return SimpleNamespace(points=[]) if calls == 1 else second_search(**kwargs)
+
+    client.query_points.side_effect = query_points
+    if terminate == "error":
+        with pytest.raises(RuntimeError, match="lexical score lookup failed"):
+            retriever.get_similar_examples("reset preprocessing")
+    else:
+        assert retriever.get_similar_examples("reset preprocessing") == ""
+    assert calls == 2
+    assert retriever._active_operations == 0
     client.close.assert_called_once_with()
 
 
