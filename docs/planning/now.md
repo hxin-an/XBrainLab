@@ -2,10 +2,354 @@
 
 最後更新：`2026-09-28`
 
-## Active — RAG／決策與追問聯合修理未結案
+## Active — Agent可靠基線整合施工（已授權至集中手測）
 
-本節是唯一續作入口；下方歷史的 Next／完成宣稱不能用來dispatch。使用者已授權一起修理
-RAG示範呈現與模型決策／追問交互，不因compaction停止；但public contract仍须先核准。
+2026-09-28最新授權：「開工吧做到我手測」。依下方M0–M5實作、focused驗證、獨立覆核與
+同版本handoff gates，最後開Windows完整程式供集中手測；沒有merge授權。
+已完成flat五欄契約與直接consumer遷移；續驗整合RAG後的補值／更正路徑。保留settings及使用者資料。
+下方原討論紀錄的「只改文件／待核准施工」不再限制已批准的本輪實作；實質scope擴張仍須決策。
+
+施工起點：source HEAD `3fba4af60677150ac679adba633f3fa8396501e4`；兩份設計文件由本對話修改，
+`settings.json`是使用者既存修改。主agent負責runtime與整合；`consumer_migration`先唯讀
+盤點研究consumer，不共享source寫入責任。
+當前M1/M2實作及直接research consumer遷移已落地，舊Host補值／排序／receipt已刪。
+M0基本可用性、M3准入及模型受益、M5同版本交付仍未完成，不能交手測。既有Windows
+環境、Granite exact revision及embedding快取完整，本輪不下載／换模型／改settings。
+Complexity review：改變既有跨turn receipt及模型public envelope，故先明列：pending owner
+仍為PendingInteractionCoordinator，backend仍為唯一workflow／execution owner，不新增owner。
+刪除Host補值捷徑、bandpass特殊排序、舊parser／prompt契約與專屬測試；DTO／純validator
+只表達跨turn資料與驗證，不建立新控制層。每個coherent slice另記實際production增刪；
+使用者已明確批准「這次就是單一PR例外」：本輪累積production churn可超過1,500 LOC，
+採單一整合PR，仍保留可回退commit、分項complexity review及一次集中手測；不豁免其他gate。
+Focused floor：strict proposal parsing、完整欄位合併／來源／取消／更正與超限零推論；
+保留Command執行、confirmation、stale、Qt lifecycle保護。M0少量真模型互通不取代M5獨立覆核。
+UI確認：已批准的對話流程／回報依target遷移，不改layout或新增可執行工具。
+
+### 當前 next step（優先於下方診斷沿革）
+
+單一prior-turn接線、固定v3檢索准入與一次閱讀順序整理均已完成；沒有M0/M3整體通過。
+剩餘阻擋為模型未可靠遵守執行／追問／換要求／插話契約，以及RAG示範仍可干擾回覆。
+已用真實完整input排除本輪assembly／來源遺失／截斷問題，不能再把缺口泛稱接線未完成。
+停止本輪候選搜尋；下一步須先對齊是否重開模型提案／上下文契約設計，而非再調RAG門檻、
+加示範或改評分。沒有授權改模型、加第二輪決策模型、Host intent救援或放寬gate。
+該決策前不跑已知不合格版本的完整81題／CI，不交手測／不merge；M5仍未閉合。
+
+v3真離線驗證已通過：154筆、固定24題最後選例相關性與指定sparse正例全過；既有36題
+top1=34、top3=35，stage／pair safety及重開索引通過。報告在隔離cache的
+`offline-report.json`；舊v1/v2失敗不改。這不是模型受益或final-head證據。
+下一個固定同source開關比較選E01／E02／E03a／E04／E06／E07／E08／E10a／E10b，涵蓋
+完整操作、補值、更正、取消／換要求、插話、解釋及否定；不改題／oracle／模型／prompt，
+不掃參數候選。兩組均保留每次真輸入與輸出，報告分開記raw／Host／產品結果。
+Contextual切片production +170/-61（net+109，另有主agent共用函式抽取）；必要新增是
+前輪可驗來源與transport/render分離，無新module／owner。獨立覆核未見剩餘blocker；
+RAG147與consumer202項focused測試通過（不相加跨輪數量），Basedpyright零新增diagnostic。
+同source固定9題比較已完成：hybrid4/9、off5/9，各16次生成，無改善且E10a出現一次
+範例數值污染；E01／E03a／E07／E08在off也失敗。證據在上述cache的hybrid/與off/，
+不得宣稱M0/M3或小模型完整輸入覆核通過。獨立review已讀完整capture，未見截斷、來源
+灌入草稿或角色模板错误；不能將所有失敗推給RAG，亦不能拿來源驗證擋錯冒稱模型答對。
+唯一後續有界整理是固定範例閱讀順序（標籤／來源→input／context→expected_proposal）；
+現行字母排序將答案置於輸入前。保持語意、角色、schema、全部值與資格／packing保護，
+不加案例／改檢索／改prompt規則；先測semantic roundtrip與整例packing，再一次固定比較。
+這是降低閱讀負擔，不是已證實的失敗根因；若仍不能閉合，停止候選搜尋並明列需要的新
+設計決策，不跑完整81題或交不合格版本給使用者。
+最後閱讀順序版本保存於`ordered-hybrid/`與`ordered-off/`：RAG-on 5/9（18次生成）、
+off 5/9（16次生成）。E03a由失敗變成功，E10a由正常解釋變成重複compound範例追問；
+E01完整7–30、E07改做notch、E08插話在兩邊仍失敗。不是淨受益或可靠基線，不用總分打平
+掩蓋退步。舊hybrid/off（4/9、5/9）保留，沒有覆寫報告或重新標註題目。
+最新版Assistant unit suite931通過；直接整合89項（含真Command濾波）及context/RAG198項
+通過，互有重疊不相加成總coverage。Ruff通過；來源／權限保護通過不代表模型會答對。
+本輪所有失敗capture及offline報告留在ignored `build/dev-artifacts/`，尚非final-head交付證據。
+
+### 施工診斷沿革（保留失敗，不作為目前操作順序）
+
+最新focused證據：controller／累積來源／真Command與GUI／format recovery 270項通過；
+包含15個新整合案例，模型仍隔離。RAG及研究接點298項、補齊逐輪diagnostic後runner
+135項通過；這些集合有重疊，不相加冒稱唯一測試總量。此前擴大runtime套件的12個
+失敗已分組修理／重驗；不把這些dirty證據當final head全套。Ruff、Basedpyright零新增
+diagnostic及developer/user docs strict皆通過，最後小改動仍按focused測試處理。
+來源數字截取、跨輪未解來源、失敗後舊值續用、超限錯誤跨process傳遞均已修正；
+獨立review已核對M1/M2相關風險，不等於M5完整模型輸入或模型理解通過。
+拒絕提案／多提案、空白／失敗生成及超限會保留值但撤銷continue；格式耗盡／Stop／
+New Chat依既有規則清除。不新增owner、第二套state machine或Host文字救援。
+最新使用者要求「繼續做」：原先把模型互通失敗當成必須改public契約的結論過早，
+恢復既有契約內的直接診斷／修理，不把尚未證明必要的改契約當整輪停止條件。
+下一步先隔離固定示範污染：失敗輸出4 Hz正好出現在多個system示範；只移除這批示範
+做一次明確標為diagnostic的對照，不換schema／模型／題目／scorer。若成立才落產品修正，
+再驗相鄰補值／更正／取消；不得用診斷覆寫当作未修改產品的證據。M3依同樣原則續查。
+該對照未解決；完整rendered input獨立覆核未見截斷／模板錯誤，但無草稿只用欄位缺省，
+且catalog的execution required欄位未就地區分於partial changes。下一個有界同契約修理：
+每次明列pending_request（無則null），明示工具required只約束完整執行、不是每輪changes；
+不加示範、不變schema／模型／Host推理。先保護必需輸入投影與consumer，再重跑E03a／E06
+及相鄰補值；若仍失敗，保留證據，不宣稱此歧義已被證明是模型失敗的全部原因。
+實測explicit-state：134項直接相關測試通過；8次真模型生成中E02兩輪7→30通過，
+E03a／E06重開缺值要求仍message錯層，修復後填null；mode已改為正確replace，但基本
+互通未通過。完整capture在`agent-baseline-explicit-state/`。不繼續追加範例或模型run；
+已非阻擋式詢問是否授權簡化巢狀提案結構（保留決策／操作mode／來源驗證）。回覆前
+不改輸出schema，繼續既有verifier證據接線及靜態驗證；不能把此checkpoint當handoff。
+使用者隨後明確授權「簡化結構，保留語意與驗證」：移除request外層，模型輸出固定
+decision／mode／action／changes／message五欄；mode=null表示不修改草稿（action=null、
+changes={}），其餘continue／replace／cancel與逐參數value／source_turn／quote語意不變。
+內部RequestUpdate及pending／backend owners保留，parser只接受新格式、不設雙格式相容。
+先完成parser／prompt同一投影的focused測試及固定E02／E03a／E04／E06小模型互通；通過
+才遷移145筆語料及其他research consumers。失敗時不擴大遷移或重跑大批推論。
+Flat小驗證已保留在`agent-baseline-flat-proposal/`（v16）：10次生成、零格式重試；
+E02補上限、E03a全缺值逐步補齊、E06取消後重開通過，E04更正低頻仍誤選replace。
+Parser93項通過；parser／prompt／assembler合跑167通過、3項舊巢狀fixture／schema断言
+待同契約遷移，不以它們當模型失敗。輸入capture確認草稿及更正原句完整。
+繼續獨立核對mode命名是否混淆「替換參數值」與「取代整個要求」，不放寬E04評分或用
+Host自動改寫mode；尚未展開語料遷移。
+獨立覆核支持一次語意範圍明確化：public mode改名update_pending／new_request／
+cancel_pending，分別一對一對應既有continue／replace／cancel；null不改。只由parser
+做固定名稱轉換、proposal_dict反向投影，不接受舊alias、不猜intent。這屬已批准簡化
+結構並保留語意／驗證；internal RequestUpdate owner及規則不增加。補更正保留其他值、
+新要求清舊值的直接測試，先重跑固定互通集合再決定完整遷移，不把命名當已證實根因。
+Explicit-modes實測9次生成全為合法格式，E02／E04／E06通過，E03a初句擅填4 Hz仍被
+來源驗證拒絕；114項parser／prompt／累積驗證通過。不存在M0整體通過的宣稱。
+停止追加prompt候選；新格式已具互通可行性，剩餘是模型參數理解，不再把RAG-off的
+單項語意失敗當作不能測完整產品RAG-on路徑的理由。原「四題全通過才遷移」施工順序
+調整為先完成必要同格式接線，再驗完整產品；不降低M0/M3出口、不改題目／oracle。
+遷移只攤平語料輸出及mode名稱，保留145筆ID／input／category／值／message，按新hash
+建隔離索引；舊失敗證據不改寫，所有來源／stale／取消保護及語料資格仍保留。
+使用者最新批准RAG有界修正並保留失敗證據：雙路／RRF不變；至少兩個不同詞命中，
+採max(query-IDF-coverage, document-IDF-coverage)>=0.5，處理查詢／範例長短不對稱。
+兩側均以各自不同token的同一corpus IDF總和為分母，OOV維持df=0；不新增門檻搜尋。
+交付相關性gate改為最後實際送出的範例；分路top10錯例仍明列，不標成已修好／零誤召回。
+指定詞法正例仍須sparse補回，無關要求仍不得送例，原24題文字及標註不改。版本化新
+規則／corpus身分，保留v1/v2原fixture與失敗報告；單次候選驗證不能宣稱廣泛效果。
+Focused測試先重現長query被拒，再測短query／長doc／無關詞／OOV／資格與穩定排序；
+完整離線retrieval及有限RAGon/off模型比較仍未通過，不能因方法批准就交付。
+語料完整性盤點發現已核准的「缺值／部分值追問」仍未補齊：145筆沒有known-action
+clarify範例（只有execute或action=null追問）。下一步依5個direct工具schema補最小一般
+缺值覆蓋，以及多參數bandpass的兩種partial方向，不複製任何工程／研究評測原句。
+先核對例子只保存user給值及其quote、缺值不填null；known-action追問須依該action的
+publication資格，不藉respond_to_user分類跨stage。新增例子的主題標註先於檢索觀測，
+原題文字及既有ID標註不變。這是補已批准語料能力，不是因分數不高反覆擴語料。
+多輪RAG缺口的獨立architecture review完成：採單一optional prior_turn={input,
+expected_proposal}（只允許clarify＋new_request），不接受手造serialized pending或任意
+深度歷史。先按既有純schema／來源規則驗前輪，推導單一DTO，再核對本輪U2及合併值；
+execute額外驗完整schema。僅補一個補值及一個更正示範，不複製工程題。
+Complexity review：owner數不增；從coordinator抽現有純參數合併／來源validator，刪
+example_policy的重複驗證；DTO共用純投影。Publication／freshness／confirmation仍只屬
+runtime，語料不偽造當前可執行publication。Indexer/BM25搜尋字串與示範source分開，
+retriever／assembler保留prior metadata並重驗，oversize整例丟棄。不新增module／replay
+平台／model call；切片後記實際增刪並独立覆核來源與stage風險。
+單一PR大小例外已批准；不再因1,500 production churn拆成多個交付PR。
+M3的長句漏召回及近鄰誤召回仍要處理／決策，不能隨契約遷移默默忽略。
+M3證據接線：在既有verify_rag入口納入固定v2准入fixture，分開報各路候選與融合後實際
+選例，避免舊offline gate單獨綠燈掩蓋新准入失敗。保持fixture／門檻／模型不變；不新增
+runner或產品控制層。先用錯例／漏例的報告判定red，再驗verifier相鄰測試；此項只補證據，
+不把報告接線當成RAG准入已修好。
+
+### 已批准的施工邊界
+
+設計權威是[Agent target](../target/agent.md#agent-baseline-design-discussion)。
+模型理解意圖／指涉／補值；Host保存與驗證單一要求；後端掌管workflow truth與執行。
+RAG提供短小正確參考，不做意圖分流，不另建Host英文補值捷徑或第二套控制層。
+既有UI layout、工具名稱／副作用／confirmation、模型與生成設定不擴張。
+本輪RAG須有實際受益證據，封存後才進研究；DEV不承接未完成的RAG調參。
+少量必要互通與安全驗證不等於候選排行榜，不用固定案例刷滿分，也不取消適用gate。
+
+待完成：M0基本流程真模型通過、M3准入設計缺口、M4研究consumer與canonical契約一致、
+M5獨立完整context覆核與同版本Windows／CI交付。當前不是handoff-ready。
+
+### 當前驗證與設計缺口
+
+- 最新授權「授權修正，繼續做到手測」：保留BM25＋dense＋RRF，修正raw-score准入
+  及fixture的query／標註契約。先固定至少2詞且IDF覆蓋0.5的單一候選，再量測；
+  不換模型、不加reranker、不重寫舊失敗、不依覆核題反覆調參。具體規則在target。
+- M1/M2已補來源數字截取、跨輪未解原文遺失、空白／失敗生成後誤用舊值；超限保持值、
+  撤銷continue，New chat可清除並恢復。獨立覆核已檢查這些修正，非全Agent通過。
+- application_state移入必保留request；RAG與重複歷史可省略，不能省略當前產品事實、
+  有效參數或必要user來源。完整schema的重複prompt投影已刪，parser仍嚴格驗證三欄提案。
+- M0初版五個工程family全失敗，保留capture在`agent-baseline-engineering/`；
+  收斂提示後E01直接7–30及E02初句low7→補upper30分別在multifield／compact通過。
+  `agent-baseline-policy-scope/`中插話能回答，但更正／插話後補值誤選replace，取消
+  仍輸出非法decision=cancel。補齊有限契約組合的示範及格式修復說明，不以Host救援掩飾。
+  這些都在`build/dev-artifacts/`，屬dirty施工證據，不能當最終head gate。
+- M0再核對：request-modes的E04更正、E08插話後完成已通過；E06取消成功但重開要求
+  抄示範值，empty-draft補示範後仍失敗，另見message層級錯誤及null缺值。独立review確認
+  不是草稿未清或原文遺失。停止堆情境示範；只做一次短輸出schema投影修理，補齊執行
+  工具schema與回應schema的表示不對稱。若結構正確後仍誤判語意，如實列模型／契約
+  基本可用性缺口，不用Host捷徑或反覆調prompt掩蓋。
+- 後續source review定位同類一致性缺口：更正提案若因來源／schema被拒絕，原草稿尚未
+  invalidated，下一句可能沿用被使用者否定的舊值。先加真Command整合red，再沿用同一
+  失效語意（保留值、撤銷continue）修正，不新增自然語言判斷；交獨立review核對。
+  多個JSON提案拒絕亦獨立重現同一缺口，兩個early exit一起修理；生成重試／耗盡／
+  Stop／New Chat／執行交接相鄰分支已覆核，不把模型錯判意圖說成Host已能攔截。
+- 短輸出schema修理後，缺值抄範例／錯誤層級仍存在；後續只移除固定示範的diagnostic
+  對照仍出現無草稿卻continue及null缺值，未解決基本互通。不落地此診斷覆寫，不再
+  以堆示範處理；獨立覆核完整實際輸入，區分契約表示歧義與模型限制。來源輸出schema
+  未獲另行修改批准，維持現有契約及驗收要求。單一整合PR大小例外已另獲明確批准。
+- M3的145筆語料已遷移新提案格式；ID／input／category／操作值不變，雙路獨立召回及RRF
+  實作與確定性測試已落地，但准入**尚未成立**：校準鎖定的BM25原分數門檻
+  21.669012286575004在未參與校準的R01短句漏掉必要範例（分數14.07897231476198）。
+  不回頭調門檻或改覆核題刷綠。觀察保存在
+  `build/dev-artifacts/agent-rag-m3/admission-observation.json`。
+- 准入fixture另有四題含Assistant問句／role prefix，與產品user-only query不符，
+  不能用它們宣稱產品結果；正／反例標成不同可接受集合造成的違反，也不等於主題無關
+  或模型退步。需分開處理fixture契約與真正的短句漏召回，不將舊結果改寫為成功。
+- v2覆蓋准入找回R01，但R02長句僅0.3478覆蓋仍漏例，R10dense召回bandpass近鄰超出
+  預定notch集合。獨立覆核確認R02不是query截斷／metadata錯誤；R10不相關例位於dense
+  ranks 8–10，依保存分數重播產品融合後top3皆為預定允許的notch主題，不能描述為模型
+  已收到bandpass。但分路准入的既定要求仍未通過，不以最後三例正確抹去此失敗。
+  v2失敗保存在`admission-observation-v2.json`，不改門檻／標註。
+  真實隔離索引的既有offline gate通過（145點、top3 34/36、各工具有命中及stage安全）；
+  這不取消新增准入缺口，也不是模型受益或最終head證據。
+
+### 完整施工計畫（已授權） { #agent-baseline-construction-plan }
+
+#### Outcome、現況與範圍
+
+Outcome：建立可維護、可驗證的Agent共同基線，讓後續Development改善模型效果，而非
+補救缺失上下文、遺失參數、分裂的語意流程或錯誤成功訊息。設計權威只在
+[Agent target](../target/agent.md#agent-baseline-design-discussion)，本節只管理施工順序與出口。
+
+2026-09-28盤點起點為`fix/rag-component-baseline`的`3fba4af60677150ac679adba633f3fa8396501e4`，
+本輪僅兩份設計文件未提交，另有使用者既存`settings.json`修改；不得把此HEAD冒稱main。
+執行前重新核對Git／PR／環境，現有PR #149、舊CI與已撤回候選不代表新整合版本通過。
+已核對缺口：typed clarification入口未帶入原句已給參數；prompt歷史只保留最近一筆Assistant；
+超限fallback可移除必要context；BM25只能重排dense准入候選。這些是施工理由，不是全模組審完。
+
+Scope包含Assistant輸入／parser與驗證、單一pending要求、RAG與語料、直接相關產品／實驗
+入口、測試及canonical docs。模型選擇、工具名稱／副作用、既有confirmation、Command owner、
+EEG語意、UI layout均不擴張。不新增查詢工具、通用記憶／任務平台、reranker、第二次查詢
+改寫模型或新實驗runner；不以最小diff保留舊捷徑，也不為縮檔數或LOC新增抽象。
+共用環境／cache／原始資料不清理，不下載新模型，不覆寫root settings。實機前核對支援的
+exact模型／revision、模板與環境；若本機設定不符已核准產品模型，明示處理，不silent fallback。
+
+#### 施工順序與直接證據
+
+每個slice含source、對應測試與必要文件，使用可獨立回退的commit；下列slice不是要求
+使用者逐段手測或merge的單位。M1/M2及M3完成後提早做直接整合，最後才做集中整體驗收。
+每次schema遷移同步核對產品與既有研究decoder／runner最小互通，不將整合缺口全部延到M4。
+
+| Slice | 施工內容與既有責任 | 完成此slice的證據 |
+| --- | --- | --- |
+| M0 契約與基線 | 將模型提案／累積參數／來源的確切schema與一次回覆的生命週期列清楚，對齊parser、decoder、verifier與研究入口；盤點實際caller及刪除候選，保留可重現基線。 | 每個新欄位有producer／consumer、來源與驗證規則；來源匹配不冒稱語意正確。跨public contract的具體變化須先落target並核准，不能由source反推授權。 |
+| M1 單一要求與統一理解 | 沿用／重構`pending_interaction.py`、`turn.py`及controller接線；一般文字補值走同一模型流程，程式累積已核對參數／原文，實作核准的更正、取消、插話、取代與失效行為。 | 原句部分參數＋後續補值不遺失；多回合省略舊欄位不刪除；更正有來源，取消／換要求不誤繼承，已執行結果不被當草稿。 |
+| M2 完整輸入與token邊界 | 收斂`assembler.py`、`prompt_policy.py`、`context_encoding.py`與local backend的輸入投影；必要資訊與可省略RAG／歷史分開，實際template＋tokenizer計數。 | 長訊息／多輪補值／更正仍保留必要來源；可移除參考後容納與必要內容仍超限兩條路均有確定性測試；超限零推論，不以字元數假裝token數。 |
+| M3 雙路RAG與語料 | 在既有retriever／BM25／indexer／example policy內做獨立召回、RRF融合、穩定去重與有界query；語料依正式schema與情境覆蓋更新，保留單一索引身分／更新路徑。 | 區分候選召回、最終排序與模型效果；BM25可找回dense漏例；零命中／一路故障／過期索引／取消及stage eligibility保護仍有效。准入規則、候選數、融合常數與token分配明列封存，不拿RRF分數當信心。 |
+| M4 執行與研究整合 | 對齊啟動／停止訓練的回報與fresh-state執行保護；既有實驗入口使用相同assembler、template、parser與驗證路徑，不手造新prompt或注入已確認參數。 | 產品與capture／runner輸入身分可核對；啟動不誤報完成、停止要求不誤報已停止；語料／schema／source版本可重現，舊成績不重算成新基線。 |
+| M5 整體審查與交付 | 逐項收斂下方出口；整合版本產生真實完整context後，由獨立subagent按小模型負擔審查，再配合實際小模型結果與適用native／CI gate。 | 沒有未解的in-scope阻擋項或缺失證據，才交同一版本集中手測；不以局部測試或reviewer摘要冒稱完成。 |
+
+#### M0開工檢查與有限驗收草案 { #agent-m0-acceptance }
+
+以下是建議值與出口，須與target新契約一併核准；不是現有gate已被替換或新gate已通過。
+
+- 開工包包含target提案的完整schema／合法組合表、12條工程trajectory的逐回合預期、
+  RAG校準／覆核query及相關example標註、既有81-case逐項遷移對照。先固定後看新版輸出；
+  本次文件不假裝已有case檔或source實作，以下表格為要落實的案例契約。
+- 原生產品與研究接點先各追一條「原句已有部分值→追問→補值→真實Command」路徑；
+  共用parser／參數來源／assembler，不以fake pending、重抄gold參數或攔截所有執行取代。
+  M1／M2同步補此最小互通證據，M4再完成其餘直接受影響的整合。
+- 模型來源以catalog primary的精確revision為預設工程對象；其他已支援模型依既有
+  applicable gate檢查，不升級為5模型研究。先核對本機模型／環境與既有計時估算；不改
+  使用者settings、不換模型或默認下載。來源／來源驗證／backend結果不混成一個分數。
+
+| ID | 固定工程情境（正式測試使用英文） | 必須觀察到的結果 |
+| --- | --- | --- |
+| E01 | 直接要求bandpass 7–30 Hz | 一次合法操作，參數正確；不是只回一句答應。 |
+| E02 | 先給下限7→補上限30 | 保存7，補30後正常執行一次。 |
+| E03 | 只說bandpass→先補下限7→再補上限30；另一分支先說filter下限7→確認bandpass→補上限30 | 保留必要原文，確定操作後核對原值；不丟前值、不猜操作或另一值。 |
+| E04 | 下限7待補上限→改下限8→補上限30 | 只更正指定欄位，最終8–30。 |
+| E05 | 同草稿→「Change it to 8.」 | 指涉不明先問，保留原值且不執行。 |
+| E06 | 同草稿→明確取消→重新要求bandpass | 清除舊值；新要求缺值就追問，不恢復舊操作。 |
+| E07 | 同草稿→明確改做notch 50 Hz | 只執行新要求，不繼承bandpass值或多做一次。 |
+| E08 | 同草稿→詢問bandpass用途→補上限30 | 問說明時不執行；保留要求，之後可完成。 |
+| E09 | 同草稿，先切panel再補值；另一獨立分支更換資料使草稿失效 | 前者保留值但重查能力；後者不得執行舊提案。兩分支各自重置fixture。 |
+| E10 | 純說明／明確禁止操作，含與可執行工具相近用詞 | 不執行、不開額外confirmation或替代操作。 |
+| E11 | 正常零命中與RAG故障兩分支下的明確合法操作 | 固定規則與工具契約仍完整；故障照既有規則呈現，不偽裝零命中。 |
+| E12 | 合法start training→下一回合查狀態／要求stop | 啟動不等於完成、停止要求不等於已停止；不自動接下一操作。 |
+
+12是情境family數，不是聲稱只有12次推論或12個assertions。M0在版本化case資料展開分支、
+state、原句、oracle與最大回合數；計算實際分母。來源造假、非法schema、重複／stale callback、
+取消生成、工具失敗、過期索引及context超限等另用確定性整合測試。超限案例須證明零推論，
+不能計成小模型答對；最終完整context覆核仍在M5，不提前冒稱獨立審查完成。
+
+完成判定分三層，禁止用總分掩蓋失敗：
+
+1. **工程不變量**：有效參數與必要來源不遺失、不靜默覆寫、非法／過期提案不執行、
+   取消不續作、真實結果不虛報。相關確定性測試必須全部通過，並檢查真實runtime證據。
+2. **基本可用性**：E01–E12定義功能覆蓋，先以確定性測試保護程式行為；不要求每個測試
+   分支都跑真模型。實跑前列出少量必要代表情境與預期，涵蓋直接操作、累積補值、更正、
+   取消／不操作及插話，取得真實完整輸入與產品結果，不用預填parser代替模型理解。
+   模型失敗但Host擋住仍記為模型失敗；不反覆調prompt把固定案例刷成滿分，也不刪案例
+   或重抽成功覆蓋失敗。可重現的基本流程失效必須定位，不能一律推給Development。
+3. **既有回歸與限制**：81-case及既有applicable gate沿用；只有舊Host捷徑／舊schema等
+   已被核准行為取代的期待可做預先批准的遷移，保留原case身分、user意圖與歷史分母。
+   不適用的舊期待標成契約變更，不冒稱同指標改善；未變契約的pass→fail須解釋並處理，
+   不能以總分補償。僅在前兩層與既有gate通過後，其餘已揭露的模型措辭／泛化限制才
+   可交Development，不代表本輪達Stable或所有自然語言都可靠。
+
+資源與收尾原則：本輪是工程施工與必要驗證，不是候選排行榜、prompt搜尋或準確率最佳化。
+先用便宜的schema／狀態／來源／檢索測試排除程式問題，再做必要的少量真模型互通與整合
+驗證；已有適用同版本證據不重跑。RAG離線准入核對不呼叫生成模型，但不能取代
+[RAG模型受益驗證](../target/agent.md#rag-benefit-acceptance)：整合版本補少量
+同版本開／關對照，根據原因做必要調整，不依總分反覆換語料／門檻；不以固定案例滿分
+作為可泛化或最佳設計證明。回報改善、退步與成本，未能證明有幫助就不算RAG完成。
+每次新增模型run須對應未解的具體驗證問題，修正後只重跑受影響與必要相鄰路徑；不因
+「也許能再高一點」擴大測試。Codex端不重複廣泛審查或為湊角色開subagent，保留已要求
+的完工獨立覆核。既有applicable gate不因此靜默取消；成本超出可用資源時先明示需決策，
+不自行加碼、不省略必要證據冒稱通過，也不把缺失驗證轉嫁給使用者手測。
+合理設計落實、已知直接缺陷修好、RAG受益及其他必要驗證與獨立覆核通過後就交付。
+RAG必要調整本輪完成並封存；Development只處理研究規格允許的提示詞、工具資訊呈現、
+格式修復等調整，不承接未完成的RAG調參，也不在基線階段追逐局部最佳。
+
+Focused證據優先沿用現有`tests/unit/llm/agent/`、`tests/unit/llm/rag/`、
+`tests/integration/agent/test_product_flow.py`、`test_long_session_product_flow.py`、
+`test_controller_lifecycle_faults.py`、`test_strict_recovery_execution_boundary.py`及
+`tests/integration/llm/test_model_context_boundary.py`，按實際改動選case，不每個slice跑全套。
+研究相鄰保護沿用`tests/unit/scripts/test_assistant_dev_context.py`、
+`test_assistant_pilot_rag.py`、`test_stable_assistant_model_eval.py`等實際入口；現有測試名稱
+不是有效性證明，須檢查是否繞過production路徑，關鍵行為補低mock整合證據。
+
+#### 刪除、責任與review
+
+- 遷移後刪除被取代的Host文字補值捷徑、bandpass特殊收集／排序分支、強制清空重啟政策、
+  假設補值不經模型的專屬測試與fixture；先補新行為證據，不刪仍有用的來源／安全驗證。
+- 刪除失效prompt文字／舊schema範例、dense先准入再讓BM25重排的舊實作及重複policy；
+  不保留平行相容模式，不搬進legacy目錄。舊實驗artifact與score仍保留原版本身分。
+- Owner目標不增加：後端繼續掌管workflow truth與執行，單一pending owner掌管未完要求；
+  formatter／DTO不冒充新owner，controller保留組合責任而不是再堆另一套判斷。
+- 每slice review實際diff、caller與測試；在來源驗證、pending生命週期、publication／
+  async等高風險邊界採獨立覆核。最終完整context審查只在M5，不以現在的設計review冒充。
+- 每slice記錄production/tests/scripts實際增刪與保留理由，LOC是複雜度訊號而非目標；
+  新owner／receipt／compatibility或超repo門檻時先做complexity review。若需PR大小例外，
+  明列取得批准，不把一次手測視為已授權突破門檻，也不為方便跳過正式CI。
+
+#### 整合完成與handoff出口
+
+1. 核准行為、source、工具／輸出schema、語料及canonical docs一致；被取代路徑無殘存caller，
+   沒有新的權限／狀態owner或隱藏semantic router。主agent驗收實際diff，不只信子agent摘要。
+2. 必要正向／拒絕／狀態轉移案例通過，包含補值、更正、取消、插話、明確取代、相關資料
+   變動、純切面板、執行失敗、context超限、RAG缺失與背景training；錯誤／過期／取消後
+   不得出現未授權副作用或自動續作。獨立reviewer具體列出查過的邊界、問題與限制。
+3. 完工後審同一source的實際完整prompt及各必要follow-up／repair；capture與推論次數逐項
+   對帳，超限拒絕另證零推論。審查按產品小模型負擔而非強reviewer能否推理補足；見
+   [target驗收要求](../target/agent.md#agent-baseline-design-discussion)，不得以示意prompt代替。
+4. 同版本真小模型跑產品等價流程，分開報告raw決策、Host驗證、產品結果與各段延遲；
+   不把mock成功、Host擋錯或token放得下當模型理解成功。先前聯集退步案例保留並核對。
+   不要求任意100%總準確率，也不把可重現的資訊／流程缺陷丟給Development；既有gate
+   不靜默放寬。新追問使舊81-case Host-specific gate不適用的部分，M0列遷移對照並核准，
+   保存案例身分／分母及歷史結果，不藉改題、重跑抽成功或混算版本遮蔽失敗。
+5. 交付依[validation contract](../validation/README.md)與既有handoff workflow：同head適用
+   CI、真模型／GUI journey及資料／native gates；同head成功CI不在本機重跑等價全套。
+   變更Assistant可見回覆／狀態須實際Windows walkthrough；不以offscreen取代。
+6. 上述通過後提供一次集中手測清單，開啟確切版本的Windows完整程式與PowerShell即時log，
+   確認有回應後交回。手測後修正只要求重測受影響及必要相鄰流程；merge仍需使用者明確同意。
+
+測試／capture使用受控工程資料與既有環境；native測試加`prlimit --core=0`及timeout。
+不收集無關真實聊天／EEG資料，不把5模型正式DEV／VALID／TEST當本輪產品驗收。
+新基線納入研究前同步版本、語料hash、schema、模型／template與設定；正式題庫與指標不擅改。
+
+核准施工後，compaction、單slice完成或CI pending都不是停止條件；依此計畫繼續安全且
+in-scope工作。只在handoff-ready、使用者要求暫停或真正需要新權限／資源／產品決策時停止。
+已有施工source與focused證據；完整context審查及handoff-ready證據仍未閉合。
+
+## 歷史 — RAG／決策與追問聯合修理與撤回（不再派工）
+
+以下保留前次修理範圍、撤回與證據，已由頁首的整體設計討論取代；其中Next與舊授權
+不是本次施工指令。Public contract仍須先核准，撤回不代表RAG品質已完成。
 
 ### Outcome、scope與現況
 

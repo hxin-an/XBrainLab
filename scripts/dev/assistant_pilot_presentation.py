@@ -591,7 +591,15 @@ def _render_detailed_markdown(
 ) -> list[str]:
     """Retain technical statistics in README, separate from the simple HTML view."""
     current = is_experiment_protocol(report.get("experiment"))
-    dev = report["schema"] == "xbrainlab.assistant_dev_report.v1" or current
+    dev = (
+        report["schema"]
+        in {
+            "xbrainlab.assistant_dev_report.v1",
+            "xbrainlab.assistant_dev_report.v2",
+            "xbrainlab.assistant_dev_report.v3",
+        }
+        or current
+    )
     md = []
 
     def paragraph(value: str) -> None:
@@ -997,11 +1005,11 @@ def write_presentation(report: dict, output: Path) -> None:
     """Write a local report and case index without changing aggregate report JSON."""
     root = Path(report["run"])
     (output / "cases").mkdir()
-    dev = report[
-        "schema"
-    ] == "xbrainlab.assistant_dev_report.v1" or is_experiment_protocol(
-        report.get("experiment")
-    )
+    dev = report["schema"] in {
+        "xbrainlab.assistant_dev_report.v1",
+        "xbrainlab.assistant_dev_report.v2",
+        "xbrainlab.assistant_dev_report.v3",
+    } or is_experiment_protocol(report.get("experiment"))
     details = {
         row["id"]: _details(root, row, require_generation=dev)
         for row in report["cases"]

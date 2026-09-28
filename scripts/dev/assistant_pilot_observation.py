@@ -35,7 +35,7 @@ def _plain(value: Any) -> Any:
             if value.generation_profile is not GenerationProfile.STRUCTURED_DECISION:
                 raise ValueError("Unsupported Assistant generation evidence profile")
             # Preserve the persisted research contract, not a product request field.
-            payload["response_contract"] = "structured_action"
+            payload["response_contract"] = "assistant_proposal.v2"
         return payload
     if isinstance(value, dict) and all(isinstance(key, str) for key in value):
         return {key: _plain(item) for key, item in value.items()}

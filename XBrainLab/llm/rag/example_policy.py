@@ -10,9 +10,14 @@ from typing import TYPE_CHECKING, Any
 
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.decision_contract import MODEL_RESPONSE_TOOL_NAME
-from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
+from XBrainLab.llm.agent.parser import (
+    CommandParser,
+    ToolEnvelopeParseResult,
+    ToolEnvelopeStatus,
+)
 
 if TYPE_CHECKING:
+    from XBrainLab.llm.agent.turn import AssistantPendingRequest
     from XBrainLab.llm.agent.verifier import ToolSchemaValidator
 
 logger = logging.getLogger(__name__)
@@ -50,80 +55,166 @@ def _is_strict_json_value(value: Any) -> bool:
     return False
 
 
-def tool_calls_from_metadata(metadata: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """Return normalized tool-call metadata from RAG payload metadata."""
-    if not metadata:
-        return []
-    raw = metadata.get("tool_calls")
-    if raw is None:
-        raw = metadata.get("expected_tool_calls")
-    if isinstance(raw, str):
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            return []
-    else:
-        parsed = raw
-    if isinstance(parsed, dict):
-        parsed = [parsed]
-    if not isinstance(parsed, list) or any(
-        not isinstance(item, dict) for item in parsed
-    ):
-        return []
-    return parsed
+def _parse_proposal(raw: Any) -> ToolEnvelopeParseResult | None:
+    if not isinstance(raw, (dict, str)):
+        return None
+    if isinstance(raw, dict):
+        if not _is_strict_json_value(raw):
+            return None
+        raw = json.dumps(raw)
+    parsed = CommandParser.parse_product(raw)
+    return (
+        parsed
+        if parsed.status in (ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL)
+        else None
+    )
 
 
-def prompt_tool_call_from_metadata(
+def _validated_example(
     metadata: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    """Return one schema-valid action/response envelope or reject the metadata.
-
-    RAG context uses the same two-field envelope as model output.
-    A response uses the existing non-executing decision
-    contract; it does not become a callable action. Legacy, multi-action and
-    malformed examples are unsuitable for the product prompt.
-    """
-    calls = tool_calls_from_metadata(metadata)
-    if len(calls) != 1:
+) -> tuple[dict[str, Any], AssistantPendingRequest | None] | None:
+    """Validate one example and derive, never trust, its optional prior draft."""
+    if not isinstance(metadata, dict):
         return None
-    call = calls[0]
-    if set(call) != {"tool_name", "parameters"}:
+    parsed = _parse_proposal(metadata.get("proposal"))
+    if parsed is None:
         return None
-    tool_name = call.get("tool_name")
-    parameters = call.get("parameters")
-    if (
-        not isinstance(tool_name, str)
-        or not tool_name.strip()
-        or tool_name != tool_name.strip()
-        or not isinstance(parameters, dict)
-        or tool_name
-        not in AGENT_ACTION_CONTRACTS.model_tool_names() | {MODEL_RESPONSE_TOOL_NAME}
-        or not _is_strict_json_value(parameters)
-    ):
-        return None
-    if tool_name == MODEL_RESPONSE_TOOL_NAME:
-        # Reuse the actual response parser (the action validator intentionally
-        # handles only action schemas, not this contract's oneOf branches).
-        result = CommandParser.parse_product(
-            json.dumps(call),
-        )
-        return call if result.status is ToolEnvelopeStatus.NO_TOOL else None
+    update = parsed.request
+    prior = metadata.get("prior_turn")
+    pending = None
+    source = metadata.get("source_text")
+    sources = {"U1": source} if isinstance(source, str) else {}
     validator = _live_tool_schema_validator()
     if validator is None:
         return None
-    try:
-        if not validator.validate(tool_name, parameters).is_valid:
+    from XBrainLab.llm.agent.tool_attempt_coordinator import (  # noqa: PLC0415
+        merge_parameter_changes,
+    )
+    from XBrainLab.llm.agent.turn import AssistantPendingRequest  # noqa: PLC0415
+
+    def schema_for(action: str | None) -> dict | None:
+        if action is None:
             return None
-    except Exception:
-        logger.debug(
-            "RAG example tool-schema validation failed for %s",
-            tool_name,
-            exc_info=True,
-        )
+        if action not in AGENT_ACTION_CONTRACTS.model_tool_names():
+            raise ValueError("Unsupported example action.")
+        return validator.tool_schemas.get(action)
+
+    try:
+        if "prior_turn" in metadata:
+            if not isinstance(prior, dict) or set(prior) != {
+                "input",
+                "expected_proposal",
+            }:
+                return None
+            prior_text = prior["input"]
+            if (
+                not isinstance(prior_text, str)
+                or not prior_text.strip()
+                or not isinstance(source, str)
+                or not source.strip()
+            ):
+                return None
+            previous = _parse_proposal(prior["expected_proposal"])
+            if (
+                previous is None
+                or previous.decision != "clarify"
+                or previous.request is None
+                or previous.request.mode != "replace"
+            ):
+                return None
+            previous_update = previous.request
+            prior_sources = {"U1": prior_text}
+            parameters = merge_parameter_changes(
+                previous_update.action,
+                schema_for(previous_update.action),
+                previous_update.changes,
+                sources=prior_sources,
+            )
+            pending = AssistantPendingRequest(
+                command_name=previous_update.action,
+                original_turn_id="U1",
+                publication_generation=None,
+                parameters=tuple(parameters.items()),
+                sources=tuple(prior_sources.items()),
+                question=previous.message,
+            )
+            if (
+                update is None
+                or update.mode != "continue"
+                or pending.command_name not in {None, update.action}
+            ):
+                return None
+            sources = {**prior_sources, "U2": source}
+        elif update is not None and update.mode != "replace":
+            return None
+        if update is not None:
+            merged = merge_parameter_changes(
+                update.action,
+                schema_for(update.action),
+                update.changes,
+                parameters=pending.parameters if pending is not None else (),
+                sources=sources,
+            )
+            if parsed.decision == "execute" and (
+                update.action is None
+                or not validator.validate(
+                    update.action,
+                    {name: change.value for name, change in merged.items()},
+                ).is_valid
+            ):
+                return None
+    except (ValueError, TypeError):
         return None
-    return {"tool_name": tool_name, "parameters": parameters}
+    proposal = parsed.proposal_dict()
+    return (proposal, pending) if proposal is not None else None
+
+
+def prompt_proposal_from_metadata(
+    metadata: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Return only a source/schema-validated proposal, never execution authority."""
+    validated = _validated_example(metadata)
+    return validated[0] if validated is not None else None
+
+
+def example_search_text(metadata: dict[str, Any]) -> str | None:
+    """Build the real product query while keeping U1/U2 evidence separate."""
+    validated = _validated_example(metadata)
+    source = metadata.get("source_text")
+    if validated is None or not isinstance(source, str) or not source.strip():
+        return None
+    from XBrainLab.llm.agent.assembler import ContextAssembler  # noqa: PLC0415
+
+    return ContextAssembler.retrieval_query(source, pending_request=validated[1])
+
+
+def prompt_example_from_metadata(metadata: dict[str, Any]) -> dict[str, Any] | None:
+    """Revalidate transport data and render the product's compact pending view."""
+    validated = _validated_example(metadata)
+    if validated is None:
+        return None
+    proposal, pending = validated
+    source = metadata.get("source_text")
+    data = {"input": source}
+    if pending is not None:
+        data["context"] = {
+            "current_user": {"id": "U2", "text": source},
+            "pending_request": pending.prompt_context(),
+        }
+    data["expected_proposal"] = proposal
+    return data
+
+
+def example_decision_name(metadata: dict[str, Any] | None) -> str | None:
+    """Derive action-scoped eligibility, not whether the example executes."""
+    proposal = prompt_proposal_from_metadata(metadata)
+    if proposal is None:
+        return None
+    if proposal["action"] is not None:
+        return proposal["action"]
+    return MODEL_RESPONSE_TOOL_NAME
 
 
 def is_primary_workflow_example(metadata: dict[str, Any] | None) -> bool:
-    """Return whether a RAG example is safe for primary product prompting."""
-    return prompt_tool_call_from_metadata(metadata) is not None
+    """Return whether an example satisfies the current source-backed contract."""
+    return prompt_proposal_from_metadata(metadata) is not None

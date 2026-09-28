@@ -13,11 +13,14 @@ from typing import Any
 from XBrainLab.backend.application.pipeline_stage import PipelineStage
 from XBrainLab.llm.agent.decision_contract import MODEL_RESPONSE_TOOL_NAME
 from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
-from XBrainLab.llm.agent.verifier import DIRECT_PARAMETER_TOOLS, ToolSchemaValidator
+from XBrainLab.llm.agent.prompt_policy import STRICT_TOOL_RESPONSE_PROMPT_POLICY
+from XBrainLab.llm.agent.verifier import ToolSchemaValidator
 from XBrainLab.llm.pipeline_state import STAGE_CONFIG
 from XBrainLab.llm.tools import get_all_tools
 
 _CATEGORIES = {"Action", "Clarification", "No-call"}
+SCORER_SCHEMA = "xbrainlab.assistant_decision_scores.v5"
+RESPONSE_CONTRACT = "assistant_proposal.v2"
 
 
 def _finite_json(value: Any) -> bool:
@@ -58,7 +61,9 @@ def score_decision(
     Invalid oracles raise a measurement error. Invalid/missing model output is
     an incorrect decision. Caller must separately establish trace completeness,
     case identity, decision timeout and whether this was first or final output.
-    Neither a correct response nor a parser result proves Host admission.
+    Neither a correct response nor a parser result proves Host admission or
+    source validity. Only new_request (internal replace) supplies standalone
+    parameters; update_pending/cancel_pending require unavailable request history.
     """
     category = case.get("decision")
     stage = case.get("expected_workflow_stage")
@@ -97,7 +102,11 @@ def score_decision(
         scored = {**result, "correct": bool(correct), "reason": reason}
         if explain:
             mismatches = []
-            if reason in {"missing_response", "invalid_envelope"}:
+            if reason in {
+                "missing_response",
+                "invalid_envelope",
+                "unsupported_request_context",
+            }:
                 mismatches.append(reason)
             else:
                 if result["observed_tool"] != tool:
@@ -133,21 +142,33 @@ def score_decision(
     parsed = CommandParser.parse_product(response)
     if parsed.status not in {ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL}:
         return finish("invalid_envelope")
+    request = parsed.request
+    if request is not None and request.mode != "replace":
+        return finish("unsupported_request_context")
     if parsed.status is ToolEnvelopeStatus.NO_TOOL:
         result["observed_tool"] = MODEL_RESPONSE_TOOL_NAME
-        # Static output validity uses the same direct-tool/schema/stage sources
-        # as product clarification admission; it cannot establish live admission.
-        if parsed.pending_action and (
-            parsed.pending_action not in DIRECT_PARAMETER_TOOLS
-            or parsed.pending_action not in STAGE_CONFIG[PipelineStage(stage)]["tools"]
-            or not set(parsed.missing_inputs).issubset(
-                schemas.get(parsed.pending_action, {}).get("required", [])
-            )
-        ):
-            return finish("invalid_envelope")
+        if request is not None and request.action is not None:
+            # Partial changes have no missing-value defaults. This structural
+            # check does not claim that their quotes actually support the values.
+            schema = schemas.get(request.action)
+            if (
+                schema is None
+                or request.action not in STAGE_CONFIG[PipelineStage(stage)]["tools"]
+                or not ToolSchemaValidator({request.action: {**schema, "required": []}})
+                .validate(
+                    request.action,
+                    {name: change.value for name, change in request.changes},
+                )
+                .is_valid
+            ):
+                return finish("invalid_envelope")
         correct = category != "Action" and bool(parsed.message.strip())
     else:
-        actual_tool, actual_parameters = parsed.commands[0]
+        if request is None or request.action is None:
+            # The strict product parser rejects this combination.
+            return finish("invalid_envelope")
+        actual_tool = request.action
+        actual_parameters = {name: change.value for name, change in request.changes}
         result["observed_tool"] = actual_tool
         correct = (
             category == "Action"
@@ -179,9 +200,10 @@ def score_case_decisions(
         or max_format_recovery_attempts < 0
     ):
         raise ValueError("Invalid frozen format recovery limit")
-    # No policy is the actual historical migration path, not today's product default.
     recovery_limit = (
-        2 if max_format_recovery_attempts is None else max_format_recovery_attempts
+        STRICT_TOOL_RESPONSE_PROMPT_POLICY.max_format_recovery_attempts
+        if max_format_recovery_attempts is None
+        else max_format_recovery_attempts
     )
     score_decision(case, None)  # Invalid oracles remain measurement errors.
     issues = list(trace.get("measurement_issues", []))
@@ -218,7 +240,7 @@ def score_case_decisions(
             if (
                 not isinstance(request, dict)
                 or request.get("generation_id") != identity
-                or request.get("response_contract") != "structured_action"
+                or request.get("response_contract") != RESPONSE_CONTRACT
                 or not request.get("messages")
             ):
                 issues.append(f"invalid_generation_request:{identity}")
@@ -266,6 +288,8 @@ def score_case_decisions(
                 }
             )
             attempts.append({"generation_id": identity, **result})
+            if result["reason"] == "unsupported_request_context":
+                issues.append(f"unsupported_request_context:{identity}")
         if (
             decision_timed_out
             and generations
@@ -296,14 +320,11 @@ def score_case_decisions(
         else "completed"
     )
     return {
-        **(
-            {
-                "max_format_recovery_attempts": recovery_limit,
-            }
-            if max_format_recovery_attempts is not None
-            else {}
-        ),
-        "scorer_schema": "xbrainlab.assistant_decision_scores.v3",
+        "max_format_recovery_attempts": recovery_limit,
+        "scorer_schema": SCORER_SCHEMA,
+        "response_contract": RESPONSE_CONTRACT,
+        "parameter_scope": "single_turn_new_request_changes",
+        "source_validation": "not_evaluated",
         "measurement_valid": valid,
         "measurement_issues": list(dict.fromkeys(issues)),
         "execution_status": status,

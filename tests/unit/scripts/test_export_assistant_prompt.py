@@ -3,9 +3,38 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from scripts.dev.export_assistant_prompt import _source_identity, export_prompt_dossier
 from scripts.dev.run_stable_assistant_model_eval import ProductRAGContextEvidence
 from XBrainLab.llm.core.backends.local import LocalBackend
+
+
+@pytest.mark.parametrize("product_rag", [False, True])
+def test_continuation_export_requires_real_capture_before_retrieval_or_tokenizer(
+    tmp_path, product_rag
+):
+    from scripts.dev.run_stable_assistant_model_eval import (
+        load_clarification_cases,
+        load_precision_cases,
+    )
+
+    cases = load_clarification_cases(precision_cases=load_precision_cases())
+    output = tmp_path / "continuation.md"
+    with (
+        patch(
+            "scripts.dev.export_assistant_prompt.ProcessRAGRetrieverLifecycle"
+        ) as rag,
+        patch(
+            "scripts.dev.export_assistant_prompt._load_pinned_tokenizer"
+        ) as tokenizer,
+    ):
+        for case in cases:
+            with pytest.raises(ValueError, match="actual runtime capture"):
+                export_prompt_dossier(case.case_id, output, product_rag=product_rag)
+    rag.assert_not_called()
+    tokenizer.assert_not_called()
+    assert not output.exists()
 
 
 def test_exporter_writes_exact_processed_and_rendered_prompt_without_model_load(

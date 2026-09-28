@@ -10,6 +10,7 @@ from collections.abc import Iterator
 import pytest
 
 from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.chat_contract import LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import GenerationProfile
 from XBrainLab.llm.core.runtime_process import (
@@ -62,6 +63,39 @@ class _FiniteEngine(_CooperativeEngine):
         del messages, profile
         yield "one"
         yield "two"
+
+
+class _BoundaryTokenizer:
+    def apply_chat_template(self, messages, *, tokenize, **_kwargs):
+        text = " ".join(message["content"] for message in messages)
+        return list(range(len(text))) if tokenize else text
+
+
+class _OverflowEngine(_FiniteEngine):
+    """Exercise the real backend input boundary, without loading any model."""
+
+    def generate_stream(self, messages, *, profile):
+        from XBrainLab.llm.core.backends.local import LocalBackend
+
+        backend = LocalBackend(self.config)
+        backend._fit_prompt_to_runtime_context(
+            _BoundaryTokenizer(),
+            messages,
+            max_input_tokens=8,
+        )
+        yield from super().generate_stream(messages, profile=profile)
+
+
+class _PrivateGenerationFailureEngine(_FiniteEngine):
+    def generate_stream(self, messages, *, profile):
+        if messages:
+            error = (
+                PreconditionError
+                if messages[0]["content"] == "expected"
+                else RuntimeError
+            )
+            raise error("private clinical subject detail /private/cache/model")
+        yield from super().generate_stream(messages, profile=profile)
 
 
 class _StubbornEngine(_CooperativeEngine):
@@ -450,6 +484,72 @@ def test_recoverable_load_failure_crosses_process_boundary_without_traceback() -
     assert owner.is_alive is False
     assert owner.restart_required is True
     assert owner.close(wait_timeout=0.2) is True
+
+
+def test_input_overflow_crosses_real_process_and_worker_without_generating(qtbot):
+    from XBrainLab.llm.agent.turn import AssistantGenerationRequest
+    from XBrainLab.llm.agent.worker import GenerationThread
+
+    owner = LocalRuntimeProcessOwner(
+        _config(),
+        engine_factory=_OverflowEngine,
+        startup_timeout=_SPAWN_TEST_STARTUP_TIMEOUT_SECONDS,
+    )
+    owner.load_model()
+    try:
+        with pytest.raises(PreconditionError) as raised:
+            list(
+                owner.generate_stream(
+                    _messages(), profile=GenerationProfile.STRUCTURED_DECISION
+                )
+            )
+        assert str(raised.value) == LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE
+        assert raised.value.recoverable is True
+        assert raised.value.error_type.value == "precondition"
+
+        request = AssistantGenerationRequest.from_messages(_messages()).correlated(17)
+        thread = GenerationThread(owner, request)
+        errors, chunks, finished = [], [], []
+        thread.error_occurred.connect(errors.append)
+        thread.chunk_received.connect(chunks.append)
+        thread.finished_generation.connect(lambda: finished.append(True))
+        thread.start()
+        qtbot.waitUntil(lambda: bool(errors), timeout=5000)
+        assert thread.wait(1000)
+        assert errors == [LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE]
+        assert chunks == []
+        assert finished == []
+        assert owner.is_alive and not owner.restart_required
+        assert list(
+            owner.generate_stream(
+                [{"role": "user", "content": "short"}],
+                profile=GenerationProfile.STRUCTURED_DECISION,
+            )
+        ) == ["one", "two"]
+    finally:
+        assert owner.close(wait_timeout=0.2)
+
+
+def test_other_process_generation_errors_never_expose_private_details():
+    owner = LocalRuntimeProcessOwner(
+        _config(),
+        engine_factory=_PrivateGenerationFailureEngine,
+        startup_timeout=_SPAWN_TEST_STARTUP_TIMEOUT_SECONDS,
+    )
+    owner.load_model()
+    try:
+        for kind in ("expected", "unexpected"):
+            with pytest.raises(RuntimeError) as raised:
+                list(
+                    owner.generate_stream(
+                        [{"role": "user", "content": kind}],
+                        profile=GenerationProfile.STRUCTURED_DECISION,
+                    )
+                )
+            assert "private" not in str(raised.value)
+            assert "clinical subject" not in str(raised.value)
+    finally:
+        assert owner.close(wait_timeout=0.2)
 
 
 def test_close_during_model_load_terminates_owned_process_within_bound() -> None:

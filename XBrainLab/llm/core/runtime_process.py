@@ -10,7 +10,9 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from XBrainLab.backend.application.errors import ApplicationError
+from XBrainLab.backend.application.errors import ApplicationError, PreconditionError
+from XBrainLab.backend.application.results import ErrorType
+from XBrainLab.chat_contract import LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.engine import LLMEngine
 from XBrainLab.llm.core.generation import GenerationProfile
@@ -183,14 +185,25 @@ def _run_generation_command(
         terminal_kind = "cancelled" if cancel_requested.is_set() else "finished"
         event_connection.send(_RuntimeEvent(terminal_kind, generation_id))
     except BaseException as exc:
-        with contextlib.suppress(EOFError, OSError):
-            event_connection.send(
-                _RuntimeEvent(
-                    "generation_error",
-                    generation_id,
-                    f"Local model generation failed ({_exception_label(exc)}).",
-                )
+        event = _RuntimeEvent(
+            "generation_error",
+            generation_id,
+            f"Local model generation failed ({_exception_label(exc)}).",
+        )
+        if (
+            isinstance(exc, PreconditionError)
+            and exc.recoverable
+            and exc.message == LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE
+        ):
+            event = _RuntimeEvent(
+                "generation_error",
+                generation_id,
+                LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE,
+                error_code=ErrorType.PRECONDITION.value,
+                recoverable=True,
             )
+        with contextlib.suppress(EOFError, OSError):
+            event_connection.send(event)
     finally:
         monitor_finished.set()
         cancel_monitor.join(timeout=0.1)
@@ -399,6 +412,12 @@ class LocalRuntimeProcessOwner:
                 if event.kind in {"finished", "cancelled"}:
                     return
                 if event.kind == "generation_error":
+                    if (
+                        event.recoverable
+                        and event.error_code == ErrorType.PRECONDITION.value
+                        and event.payload == LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE
+                    ):
+                        raise PreconditionError(LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE)
                     raise RuntimeError(
                         event.payload or "Local model generation failed."
                     )

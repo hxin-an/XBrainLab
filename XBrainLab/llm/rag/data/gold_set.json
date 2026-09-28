@@ -3,1143 +3,926 @@
     "id": "import_eeg_data_01",
     "category": "data_entry",
     "input": "Import an EEG dataset.",
-    "expected_tool_calls": [{"tool_name": "import_eeg_data", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"import_eeg_data","changes":{},"message":null}
   },
   {
     "id": "select_channels_01",
     "category": "data_setup",
     "input": "Let me choose which EEG channels to keep.",
-    "expected_tool_calls": [{"tool_name": "select_channels", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"select_channels","changes":{},"message":null}
   },
   {
     "id": "set_montage_01",
     "category": "data_setup",
     "input": "Open the montage settings.",
-    "expected_tool_calls": [{"tool_name": "set_montage", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"set_montage","changes":{},"message":null}
   },
   {
     "id": "create_epochs_01",
     "category": "epoch",
     "input": "Open the epoch settings so I can create epochs.",
-    "expected_tool_calls": [{"tool_name": "create_epochs", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"create_epochs","changes":{},"message":null}
   },
   {
     "id": "configure_dataset_split_01",
     "category": "training_setup",
     "input": "Open the dataset split settings.",
-    "expected_tool_calls": [{"tool_name": "configure_dataset_split", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"configure_dataset_split","changes":{},"message":null}
   },
   {
     "id": "select_model_01",
     "category": "training_setup",
     "input": "Open model selection.",
-    "expected_tool_calls": [{"tool_name": "select_model", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"select_model","changes":{},"message":null}
   },
   {
     "id": "configure_training_01",
     "category": "training_setup",
     "input": "Open the training settings.",
-    "expected_tool_calls": [{"tool_name": "configure_training", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"configure_training","changes":{},"message":null}
   },
   {
     "id": "apply_bandpass_filter_01",
     "category": "preprocess",
     "input": "Apply a 4 to 38 Hz bandpass filter.",
-    "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 4, "high_freq": 38}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":4,"source_turn":"U1","quote":"Apply a 4 to 38 Hz bandpass filter."},"high_freq":{"value":38,"source_turn":"U1","quote":"Apply a 4 to 38 Hz bandpass filter."}},"message":null}
   },
   {
     "id": "apply_bandpass_filter_02",
     "category": "preprocess",
     "input": "Apply a 1 to 40 Hz bandpass filter.",
-    "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 1, "high_freq": 40}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":1,"source_turn":"U1","quote":"Apply a 1 to 40 Hz bandpass filter."},"high_freq":{"value":40,"source_turn":"U1","quote":"Apply a 1 to 40 Hz bandpass filter."}},"message":null}
   },
   {
     "id": "apply_notch_filter_01",
     "category": "preprocess",
     "input": "Apply a 60 Hz notch filter.",
-    "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 60}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_notch_filter","changes":{"freq":{"value":60,"source_turn":"U1","quote":"Apply a 60 Hz notch filter."}},"message":null}
   },
   {
     "id": "apply_notch_filter_02",
     "category": "preprocess",
     "input": "Apply a 50 Hz notch filter.",
-    "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 50}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_notch_filter","changes":{"freq":{"value":50,"source_turn":"U1","quote":"Apply a 50 Hz notch filter."}},"message":null}
   },
   {
     "id": "resample_data_01",
     "category": "preprocess",
     "input": "Resample the EEG data to 128 Hz.",
-    "expected_tool_calls": [{"tool_name": "resample_data", "parameters": {"rate": 128}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"resample_data","changes":{"rate":{"value":128,"source_turn":"U1","quote":"Resample the EEG data to 128 Hz."}},"message":null}
   },
   {
     "id": "resample_data_02",
     "category": "preprocess",
     "input": "Resample the EEG data to 256 Hz.",
-    "expected_tool_calls": [{"tool_name": "resample_data", "parameters": {"rate": 256}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"resample_data","changes":{"rate":{"value":256,"source_turn":"U1","quote":"Resample the EEG data to 256 Hz."}},"message":null}
   },
   {
     "id": "set_reference_01",
     "category": "preprocess",
     "input": "Use average reference for the EEG data.",
-    "expected_tool_calls": [{"tool_name": "set_reference", "parameters": {"method": "average"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"set_reference","changes":{"method":{"value":"average","source_turn":"U1","quote":"Use average reference for the EEG data."}},"message":null}
   },
   {
     "id": "normalize_data_01",
     "category": "preprocess",
     "input": "Normalize the EEG data with z-score.",
-    "expected_tool_calls": [{"tool_name": "normalize_data", "parameters": {"method": "z-score"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"normalize_data","changes":{"method":{"value":"z-score","source_turn":"U1","quote":"Normalize the EEG data with z-score."}},"message":null}
   },
   {
     "id": "normalize_data_02",
     "category": "preprocess",
     "input": "Normalize the EEG data with min-max.",
-    "expected_tool_calls": [{"tool_name": "normalize_data", "parameters": {"method": "min-max"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"normalize_data","changes":{"method":{"value":"min-max","source_turn":"U1","quote":"Normalize the EEG data with min-max."}},"message":null}
   },
   {
     "id": "start_training_01",
     "category": "training_lifecycle",
     "input": "Start training now.",
-    "expected_tool_calls": [{"tool_name": "start_training", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"start_training","changes":{},"message":null}
   },
   {
     "id": "stop_training_01",
     "category": "training_lifecycle",
     "input": "Stop the current training run.",
-    "expected_tool_calls": [{"tool_name": "stop_training", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"stop_training","changes":{},"message":null}
   },
   {
     "id": "reset_preprocessing_01",
     "category": "lifecycle",
     "input": "Reset all preprocessing changes.",
-    "expected_tool_calls": [{"tool_name": "reset_preprocessing", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"reset_preprocessing","changes":{},"message":null}
   },
   {
     "id": "clear_training_history_01",
     "category": "lifecycle",
     "input": "Clear the training history.",
-    "expected_tool_calls": [{"tool_name": "clear_training_history", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"clear_training_history","changes":{},"message":null}
   },
   {
     "id": "compute_saliency_01",
     "category": "analysis_execution",
     "input": "Compute saliency for the selected completed run.",
-    "expected_tool_calls": [{"tool_name": "compute_saliency", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"compute_saliency","changes":{},"message":null}
   },
   {
     "id": "switch_panel_01",
     "category": "navigation",
     "input": "Open the Evaluation panel.",
-    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "evaluation"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"evaluation","source_turn":"U1","quote":"Open the Evaluation panel."}},"message":null}
   },
   {
     "id": "switch_panel_02",
     "category": "navigation",
     "input": "Open the Visualization panel in Saliency Map view.",
-    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "visualization", "view_mode": "saliency_map"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"visualization","source_turn":"U1","quote":"Open the Visualization panel in Saliency Map view."},"view_mode":{"value":"saliency_map","source_turn":"U1","quote":"Open the Visualization panel in Saliency Map view."}},"message":null}
   },
   {
     "id": "import_eeg_data_02",
     "category": "data_entry",
     "input": "Open the import wizard to load my EEG recordings.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "import_eeg_data",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"import_eeg_data","changes":{},"message":null}
   },
   {
     "id": "import_eeg_data_03",
     "category": "data_entry",
     "input": "I want to bring a new EEG dataset into XBrainLab.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "import_eeg_data",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"import_eeg_data","changes":{},"message":null}
   },
   {
     "id": "import_eeg_data_04",
     "category": "data_entry",
     "input": "Show the dialog for loading EEG data from disk.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "import_eeg_data",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"import_eeg_data","changes":{},"message":null}
   },
   {
     "id": "select_channels_02",
     "category": "data_setup",
     "input": "Open channel selection for the loaded recordings.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "select_channels",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"select_channels","changes":{},"message":null}
   },
   {
     "id": "select_channels_03",
     "category": "data_setup",
     "input": "I want to pick the channels to include in my analysis.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "select_channels",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"select_channels","changes":{},"message":null}
   },
   {
     "id": "select_channels_04",
     "category": "data_setup",
     "input": "Show the EEG channel picker.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "select_channels",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"select_channels","changes":{},"message":null}
   },
   {
     "id": "set_montage_02",
     "category": "data_setup",
     "input": "Open the montage dialog to assign EEG sensor locations.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "set_montage",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"set_montage","changes":{},"message":null}
   },
   {
     "id": "set_montage_03",
     "category": "data_setup",
     "input": "Show the montage selection dialog.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "set_montage",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"set_montage","changes":{},"message":null}
   },
   {
     "id": "set_montage_04",
     "category": "data_setup",
     "input": "I want to choose an electrode montage.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "set_montage",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"set_montage","changes":{},"message":null}
   },
   {
     "id": "create_epochs_02",
     "category": "epoch",
     "input": "Let me set the time windows for epoching.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "create_epochs",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"create_epochs","changes":{},"message":null}
   },
   {
     "id": "create_epochs_03",
     "category": "epoch",
     "input": "Show the dialog for segmenting my data into epochs.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "create_epochs",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"create_epochs","changes":{},"message":null}
   },
   {
     "id": "create_epochs_04",
     "category": "epoch",
     "input": "Create event-locked trials by cutting the continuous EEG recording into epochs.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "create_epochs",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"create_epochs","changes":{},"message":null}
   },
   {
     "id": "configure_dataset_split_02",
     "category": "training_setup",
     "input": "Let me choose how to divide the data for training and testing.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "configure_dataset_split",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"configure_dataset_split","changes":{},"message":null}
   },
   {
     "id": "configure_dataset_split_03",
     "category": "training_setup",
     "input": "Open the dataset splitting settings for the epoched data.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "configure_dataset_split",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"configure_dataset_split","changes":{},"message":null}
   },
   {
     "id": "configure_dataset_split_04",
     "category": "training_setup",
     "input": "I want to set up subject-based dataset splitting.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "configure_dataset_split",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"configure_dataset_split","changes":{},"message":null}
   },
   {
     "id": "select_model_02",
     "category": "training_setup",
     "input": "Let me choose the neural network architecture for training.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "select_model",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"select_model","changes":{},"message":null}
   },
   {
     "id": "select_model_03",
     "category": "training_setup",
     "input": "Show the model selection dialog so I can pick EEGNet.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "select_model",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"select_model","changes":{},"message":null}
   },
   {
     "id": "select_model_04",
     "category": "training_setup",
     "input": "I want to select which classifier to train.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "select_model",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"select_model","changes":{},"message":null}
   },
   {
     "id": "configure_training_02",
     "category": "training_setup",
     "input": "Let me adjust the batch size and training epoch count.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "configure_training",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"configure_training","changes":{},"message":null}
   },
   {
     "id": "configure_training_03",
     "category": "training_setup",
     "input": "Show the dialog for setting training hyperparameters.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "configure_training",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"configure_training","changes":{},"message":null}
   },
   {
     "id": "configure_training_04",
     "category": "training_setup",
     "input": "I want to configure the optimizer and learning rate.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "configure_training",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"configure_training","changes":{},"message":null}
   },
   {
     "id": "apply_bandpass_filter_03",
     "category": "preprocess",
     "input": "Bandpass the EEG between 8 and 30 Hz.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "apply_bandpass_filter",
-        "parameters": {
-          "low_freq": 8,
-          "high_freq": 30
-        }
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":8,"source_turn":"U1","quote":"Bandpass the EEG between 8 and 30 Hz."},"high_freq":{"value":30,"source_turn":"U1","quote":"Bandpass the EEG between 8 and 30 Hz."}},"message":null}
   },
   {
     "id": "apply_bandpass_filter_04",
     "category": "preprocess",
     "input": "Filter the recordings with a lower cutoff of 0.5 Hz and an upper cutoff of 45 Hz.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "apply_bandpass_filter",
-        "parameters": {
-          "low_freq": 0.5,
-          "high_freq": 45
-        }
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":0.5,"source_turn":"U1","quote":"Filter the recordings with a lower cutoff of 0.5 Hz and an upper cutoff of 45 Hz."},"high_freq":{"value":45,"source_turn":"U1","quote":"Filter the recordings with a lower cutoff of 0.5 Hz and an upper cutoff of 45 Hz."}},"message":null}
   },
   {
     "id": "apply_notch_filter_03",
     "category": "preprocess",
     "input": "Remove the 50 Hz power-line interference with a notch filter.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "apply_notch_filter",
-        "parameters": {
-          "freq": 50
-        }
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_notch_filter","changes":{"freq":{"value":50,"source_turn":"U1","quote":"Remove the 50 Hz power-line interference with a notch filter."}},"message":null}
   },
   {
     "id": "apply_notch_filter_04",
     "category": "preprocess",
     "input": "Notch-filter the EEG at 60 Hz.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "apply_notch_filter",
-        "parameters": {
-          "freq": 60
-        }
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_notch_filter","changes":{"freq":{"value":60,"source_turn":"U1","quote":"Notch-filter the EEG at 60 Hz."}},"message":null}
   },
   {
     "id": "resample_data_03",
     "category": "preprocess",
     "input": "Set the recording's sampling frequency to 256 Hz.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "resample_data",
-        "parameters": {
-          "rate": 256
-        }
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"resample_data","changes":{"rate":{"value":256,"source_turn":"U1","quote":"Set the recording's sampling frequency to 256 Hz."}},"message":null}
   },
   {
     "id": "resample_data_04",
     "category": "preprocess",
     "input": "Downsample these recordings to 100 Hz.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "resample_data",
-        "parameters": {
-          "rate": 100
-        }
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"resample_data","changes":{"rate":{"value":100,"source_turn":"U1","quote":"Downsample these recordings to 100 Hz."}},"message":null}
   },
   {
     "id": "set_reference_02",
     "category": "preprocess",
     "input": "Re-reference all EEG channels to their common average.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "set_reference",
-        "parameters": {
-          "method": "average"
-        }
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"set_reference","changes":{"method":{"value":"average","source_turn":"U1","quote":"Re-reference all EEG channels to their common average."}},"message":null}
   },
   {
     "id": "set_reference_03",
     "category": "preprocess",
     "input": "Apply an average EEG reference.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "set_reference",
-        "parameters": {
-          "method": "average"
-        }
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"set_reference","changes":{"method":{"value":"average","source_turn":"U1","quote":"Apply an average EEG reference."}},"message":null}
   },
   {
     "id": "set_reference_04",
     "category": "preprocess",
     "input": "Use Cz as the reference channel.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "set_reference",
-        "parameters": {
-          "method": "Cz"
-        }
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"set_reference","changes":{"method":{"value":"Cz","source_turn":"U1","quote":"Use Cz as the reference channel."}},"message":null}
   },
   {
     "id": "normalize_data_03",
     "category": "preprocess",
     "input": "Standardize the data using z-score normalization.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "normalize_data",
-        "parameters": {
-          "method": "z-score"
-        }
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"normalize_data","changes":{"method":{"value":"z-score","source_turn":"U1","quote":"Standardize the data using z-score normalization."}},"message":null}
   },
   {
     "id": "normalize_data_04",
     "category": "preprocess",
     "input": "Apply min-max scaling to the EEG.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "normalize_data",
-        "parameters": {
-          "method": "min-max"
-        }
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"normalize_data","changes":{"method":{"value":"min-max","source_turn":"U1","quote":"Apply min-max scaling to the EEG."}},"message":null}
   },
   {
     "id": "start_training_02",
     "category": "training_lifecycle",
     "input": "Begin the configured training run.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "start_training",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"start_training","changes":{},"message":null}
   },
   {
     "id": "start_training_03",
     "category": "training_lifecycle",
     "input": "Run training with the settings I have selected.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "start_training",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"start_training","changes":{},"message":null}
   },
   {
     "id": "start_training_04",
     "category": "training_lifecycle",
     "input": "Launch model training now.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "start_training",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"start_training","changes":{},"message":null}
   },
   {
     "id": "stop_training_02",
     "category": "training_lifecycle",
     "input": "Cancel the training job that is currently running.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "stop_training",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"stop_training","changes":{},"message":null}
   },
   {
     "id": "stop_training_03",
     "category": "training_lifecycle",
     "input": "Halt the active model training.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "stop_training",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"stop_training","changes":{},"message":null}
   },
   {
     "id": "stop_training_04",
     "category": "training_lifecycle",
     "input": "Please end this training run now.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "stop_training",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"stop_training","changes":{},"message":null}
   },
   {
     "id": "reset_preprocessing_02",
     "category": "lifecycle",
     "input": "Reset preprocessing and return to the imported EEG data.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "reset_preprocessing",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"reset_preprocessing","changes":{},"message":null}
   },
   {
     "id": "reset_preprocessing_03",
     "category": "lifecycle",
     "input": "Discard the preprocessing results and the derived workflow state.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "reset_preprocessing",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"reset_preprocessing","changes":{},"message":null}
   },
   {
     "id": "reset_preprocessing_04",
     "category": "lifecycle",
     "input": "Revert all preprocessing operations.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "reset_preprocessing",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"reset_preprocessing","changes":{},"message":null}
   },
   {
     "id": "clear_training_history_02",
     "category": "lifecycle",
     "input": "Remove the records of previous training runs.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "clear_training_history",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"clear_training_history","changes":{},"message":null}
   },
   {
     "id": "clear_training_history_03",
     "category": "lifecycle",
     "input": "Delete the training history entries.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "clear_training_history",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"clear_training_history","changes":{},"message":null}
   },
   {
     "id": "clear_training_history_04",
     "category": "lifecycle",
     "input": "Erase the saved training-run history.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "clear_training_history",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"clear_training_history","changes":{},"message":null}
   },
   {
     "id": "compute_saliency_02",
     "category": "analysis_execution",
     "input": "Calculate saliency for the completed training result I selected.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "compute_saliency",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"compute_saliency","changes":{},"message":null}
   },
   {
     "id": "compute_saliency_03",
     "category": "analysis_execution",
     "input": "Run saliency computation for this finished model.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "compute_saliency",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"compute_saliency","changes":{},"message":null}
   },
   {
     "id": "compute_saliency_04",
     "category": "analysis_execution",
     "input": "Generate saliency results for the selected completed run.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "compute_saliency",
-        "parameters": {}
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"compute_saliency","changes":{},"message":null}
   },
   {
     "id": "switch_panel_03",
     "category": "navigation",
     "input": "Take me to the Preprocess panel.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "switch_panel",
-        "parameters": {
-          "panel_name": "preprocess"
-        }
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"preprocess","source_turn":"U1","quote":"Take me to the Preprocess panel."}},"message":null}
   },
   {
     "id": "switch_panel_04",
     "category": "navigation",
     "input": "Show the training status panel.",
-    "expected_tool_calls": [
-      {
-        "tool_name": "switch_panel",
-        "parameters": {
-          "panel_name": "training"
-        }
-      }
-    ]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"training","source_turn":"U1","quote":"Show the training status panel."}},"message":null}
   },
   {
     "id": "import_eeg_data_05",
     "category": "data_entry",
     "input": "Bring up Import EEG Data; I will choose the BIDS directory myself.",
-    "expected_tool_calls": [{"tool_name": "import_eeg_data", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"import_eeg_data","changes":{},"message":null}
   },
   {
     "id": "select_channels_05",
     "category": "data_setup",
     "input": "Bring up the channel list so I can exclude electrodes, without changing their montage.",
-    "expected_tool_calls": [{"tool_name": "select_channels", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"select_channels","changes":{},"message":null}
   },
   {
     "id": "set_montage_05",
     "category": "data_setup",
     "input": "I need to fix the sensor positions, not change the reference. Open Montage Settings.",
-    "expected_tool_calls": [{"tool_name": "set_montage", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"set_montage","changes":{},"message":null}
   },
   {
     "id": "create_epochs_05",
     "category": "epoch",
     "input": "Open the epoch dialog so I can choose the baseline interval for my trials.",
-    "expected_tool_calls": [{"tool_name": "create_epochs", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"create_epochs","changes":{},"message":null}
   },
   {
     "id": "configure_dataset_split_05",
     "category": "training_setup",
     "input": "Bring up Dataset Splitting so I can decide which sessions to hold out.",
-    "expected_tool_calls": [{"tool_name": "configure_dataset_split", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"configure_dataset_split","changes":{},"message":null}
   },
   {
     "id": "select_model_05",
     "category": "training_setup",
     "input": "Open Model Selection for review; do not launch a training run.",
-    "expected_tool_calls": [{"tool_name": "select_model", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"select_model","changes":{},"message":null}
   },
   {
     "id": "configure_training_05",
     "category": "training_setup",
     "input": "Let me choose the training device and output directory in Training Settings.",
-    "expected_tool_calls": [{"tool_name": "configure_training", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"configure_training","changes":{},"message":null}
   },
   {
     "id": "apply_bandpass_filter_05",
     "category": "preprocess",
     "input": "For the bandpass, use 2 Hz for the high-pass edge and 35 Hz for the low-pass edge. Apply it.",
-    "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 2, "high_freq": 35}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":2,"source_turn":"U1","quote":"For the bandpass, use 2 Hz for the high-pass edge and 35 Hz for the low-pass edge. Apply it."},"high_freq":{"value":35,"source_turn":"U1","quote":"For the bandpass, use 2 Hz for the high-pass edge and 35 Hz for the low-pass edge. Apply it."}},"message":null}
   },
   {
     "id": "apply_bandpass_filter_06",
     "category": "preprocess",
     "input": "Pass frequencies from 7.5 through 28.5 Hz using a bandpass filter on the EEG.",
-    "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 7.5, "high_freq": 28.5}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":7.5,"source_turn":"U1","quote":"Pass frequencies from 7.5 through 28.5 Hz using a bandpass filter on the EEG."},"high_freq":{"value":28.5,"source_turn":"U1","quote":"Pass frequencies from 7.5 through 28.5 Hz using a bandpass filter on the EEG."}},"message":null}
   },
   {
     "id": "apply_bandpass_filter_07",
     "category": "preprocess",
     "input": "Apply only a 3-32 Hz bandpass. Leave the sampling rate and reference unchanged.",
-    "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 3, "high_freq": 32}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":3,"source_turn":"U1","quote":"Apply only a 3-32 Hz bandpass. Leave the sampling rate and reference unchanged."},"high_freq":{"value":32,"source_turn":"U1","quote":"Apply only a 3-32 Hz bandpass. Leave the sampling rate and reference unchanged."}},"message":null}
   },
   {
     "id": "apply_notch_filter_05",
     "category": "preprocess",
     "input": "The interference peak is at 50 Hz. Suppress that narrow frequency with a notch filter.",
-    "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 50}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_notch_filter","changes":{"freq":{"value":50,"source_turn":"U1","quote":"The interference peak is at 50 Hz. Suppress that narrow frequency with a notch filter."}},"message":null}
   },
   {
     "id": "apply_notch_filter_06",
     "category": "preprocess",
     "input": "Use 60 Hz as the notch center frequency, without changing the sampling rate.",
-    "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 60}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_notch_filter","changes":{"freq":{"value":60,"source_turn":"U1","quote":"Use 60 Hz as the notch center frequency, without changing the sampling rate."}},"message":null}
   },
   {
     "id": "apply_notch_filter_07",
     "category": "preprocess",
     "input": "Notch out 50 Hz only; do not notch its harmonics or resample the signal.",
-    "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 50}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_notch_filter","changes":{"freq":{"value":50,"source_turn":"U1","quote":"Notch out 50 Hz only; do not notch its harmonics or resample the signal."}},"message":null}
   },
   {
     "id": "resample_data_05",
     "category": "preprocess",
     "input": "The recording is sampled at 1000 Hz; resample it to 250 Hz.",
-    "expected_tool_calls": [{"tool_name": "resample_data", "parameters": {"rate": 250}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"resample_data","changes":{"rate":{"value":250,"source_turn":"U1","quote":"The recording is sampled at 1000 Hz; resample it to 250 Hz."}},"message":null}
   },
   {
     "id": "resample_data_06",
     "category": "preprocess",
     "input": "Resample to 200 samples per second without applying a 200 Hz notch filter.",
-    "expected_tool_calls": [{"tool_name": "resample_data", "parameters": {"rate": 200}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"resample_data","changes":{"rate":{"value":200,"source_turn":"U1","quote":"Resample to 200 samples per second without applying a 200 Hz notch filter."}},"message":null}
   },
   {
     "id": "resample_data_07",
     "category": "preprocess",
     "input": "Resample to 160 Hz, not 128 Hz. Do not apply normalization.",
-    "expected_tool_calls": [{"tool_name": "resample_data", "parameters": {"rate": 160}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"resample_data","changes":{"rate":{"value":160,"source_turn":"U1","quote":"Resample to 160 Hz, not 128 Hz. Do not apply normalization."}},"message":null}
   },
   {
     "id": "set_reference_05",
     "category": "preprocess",
     "input": "Use channel Pz as the EEG reference, not Cz.",
-    "expected_tool_calls": [{"tool_name": "set_reference", "parameters": {"method": "Pz"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"set_reference","changes":{"method":{"value":"Pz","source_turn":"U1","quote":"Use channel Pz as the EEG reference, not Cz."}},"message":null}
   },
   {
     "id": "set_reference_06",
     "category": "preprocess",
     "input": "Apply common average referencing, leaving the electrode positions unchanged.",
-    "expected_tool_calls": [{"tool_name": "set_reference", "parameters": {"method": "average"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"set_reference","changes":{"method":{"value":"average","source_turn":"U1","quote":"Apply common average referencing, leaving the electrode positions unchanged."}},"message":null}
   },
   {
     "id": "set_reference_07",
     "category": "preprocess",
     "input": "Re-reference the EEG to the single electrode named FCz.",
-    "expected_tool_calls": [{"tool_name": "set_reference", "parameters": {"method": "FCz"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"set_reference","changes":{"method":{"value":"FCz","source_turn":"U1","quote":"Re-reference the EEG to the single electrode named FCz."}},"message":null}
   },
   {
     "id": "normalize_data_05",
     "category": "preprocess",
     "input": "Use Z score standardization on the EEG samples.",
-    "expected_tool_calls": [{"tool_name": "normalize_data", "parameters": {"method": "z-score"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"normalize_data","changes":{"method":{"value":"z-score","source_turn":"U1","quote":"Use Z score standardization on the EEG samples."}},"message":null}
   },
   {
     "id": "normalize_data_06",
     "category": "preprocess",
     "input": "Scale the EEG with min max normalization, not z-score.",
-    "expected_tool_calls": [{"tool_name": "normalize_data", "parameters": {"method": "min-max"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"normalize_data","changes":{"method":{"value":"min-max","source_turn":"U1","quote":"Scale the EEG with min max normalization, not z-score."}},"message":null}
   },
   {
     "id": "normalize_data_07",
     "category": "preprocess",
     "input": "Apply z-score normalization only; keep the reference and sampling rate as they are.",
-    "expected_tool_calls": [{"tool_name": "normalize_data", "parameters": {"method": "z-score"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"normalize_data","changes":{"method":{"value":"z-score","source_turn":"U1","quote":"Apply z-score normalization only; keep the reference and sampling rate as they are."}},"message":null}
   },
   {
     "id": "start_training_05",
     "category": "training_lifecycle",
     "input": "Begin training with the saved setup. Leave the previous run history in place.",
-    "expected_tool_calls": [{"tool_name": "start_training", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"start_training","changes":{},"message":null}
   },
   {
     "id": "stop_training_05",
     "category": "training_lifecycle",
     "input": "Request a stop for the active training job; keep XBrainLab open.",
-    "expected_tool_calls": [{"tool_name": "stop_training", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"stop_training","changes":{},"message":null}
   },
   {
     "id": "reset_preprocessing_05",
     "category": "lifecycle",
     "input": "Reset the whole preprocessing pipeline, not just the latest filter. I accept losing the derived workflow state.",
-    "expected_tool_calls": [{"tool_name": "reset_preprocessing", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"reset_preprocessing","changes":{},"message":null}
   },
   {
     "id": "clear_training_history_05",
     "category": "lifecycle",
     "input": "Clear all training plans and run history so I can configure a fresh set of runs.",
-    "expected_tool_calls": [{"tool_name": "clear_training_history", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"clear_training_history","changes":{},"message":null}
   },
   {
     "id": "compute_saliency_05",
     "category": "analysis_execution",
     "input": "Run the saliency calculation for the selected completed run using the existing saliency settings.",
-    "expected_tool_calls": [{"tool_name": "compute_saliency", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"compute_saliency","changes":{},"message":null}
   },
   {
     "id": "compute_saliency_06",
     "category": "analysis_execution",
     "input": "Recompute saliency for the selected completed training run.",
-    "expected_tool_calls": [{"tool_name": "compute_saliency", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"compute_saliency","changes":{},"message":null}
   },
   {
     "id": "switch_panel_05",
     "category": "navigation",
     "input": "Take me back to the Dataset panel, without opening an import dialog.",
-    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "dataset"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"dataset","source_turn":"U1","quote":"Take me back to the Dataset panel, without opening an import dialog."}},"message":null}
   },
   {
     "id": "switch_panel_06",
     "category": "navigation",
     "input": "Show the spectrogram view in Visualization.",
-    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "visualization", "view_mode": "spectrogram"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"visualization","source_turn":"U1","quote":"Show the spectrogram view in Visualization."},"view_mode":{"value":"spectrogram","source_turn":"U1","quote":"Show the spectrogram view in Visualization."}},"message":null}
   },
   {
     "id": "switch_panel_07",
     "category": "navigation",
     "input": "Switch Visualization to the topographic map.",
-    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "visualization", "view_mode": "topographic_map"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"visualization","source_turn":"U1","quote":"Switch Visualization to the topographic map."},"view_mode":{"value":"topographic_map","source_turn":"U1","quote":"Switch Visualization to the topographic map."}},"message":null}
   },
   {
     "id": "switch_panel_08",
     "category": "navigation",
     "input": "Open the 3D plot in the Visualization panel.",
-    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "visualization", "view_mode": "3d_plot"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"visualization","source_turn":"U1","quote":"Open the 3D plot in the Visualization panel."},"view_mode":{"value":"3d_plot","source_turn":"U1","quote":"Open the 3D plot in the Visualization panel."}},"message":null}
   },
   {
     "id": "switch_panel_09",
     "category": "navigation",
     "input": "Show Evaluation so I can examine the confusion matrix.",
-    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "evaluation"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"evaluation","source_turn":"U1","quote":"Show Evaluation so I can examine the confusion matrix."}},"message":null}
   },
   {
     "id": "switch_panel_10",
     "category": "navigation",
     "input": "Open the Training panel to inspect progress; do not start another run.",
-    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "training"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"training","source_turn":"U1","quote":"Open the Training panel to inspect progress; do not start another run."}},"message":null}
   },
   {
     "id": "switch_panel_11",
     "category": "navigation",
     "input": "Navigate to Preprocess, but do not apply a filter.",
-    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "preprocess"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"preprocess","source_turn":"U1","quote":"Navigate to Preprocess, but do not apply a filter."}},"message":null}
   },
   {
     "id": "switch_panel_12",
     "category": "navigation",
     "input": "Display the existing saliency map without recomputing it.",
-    "expected_tool_calls": [{"tool_name": "switch_panel", "parameters": {"panel_name": "visualization", "view_mode": "saliency_map"}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"visualization","source_turn":"U1","quote":"Display the existing saliency map without recomputing it."},"view_mode":{"value":"saliency_map","source_turn":"U1","quote":"Display the existing saliency map without recomputing it."}},"message":null}
   },
   {
     "id": "apply_bandpass_filter_08",
     "category": "preprocess",
     "input": "Set the bandpass upper cutoff to 40 Hz and the lower cutoff to 1 Hz.",
-    "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 1, "high_freq": 40}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":1,"source_turn":"U1","quote":"Set the bandpass upper cutoff to 40 Hz and the lower cutoff to 1 Hz."},"high_freq":{"value":40,"source_turn":"U1","quote":"Set the bandpass upper cutoff to 40 Hz and the lower cutoff to 1 Hz."}},"message":null}
   },
   {
     "id": "set_montage_06",
     "category": "data_setup",
     "input": "Let me review the electrode positions in Montage Settings before applying them.",
-    "expected_tool_calls": [{"tool_name": "set_montage", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"set_montage","changes":{},"message":null}
   },
   {
     "id": "configure_dataset_split_06",
     "category": "training_setup",
     "input": "Open Dataset Splitting so I can configure cross-validation folds.",
-    "expected_tool_calls": [{"tool_name": "configure_dataset_split", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"configure_dataset_split","changes":{},"message":null}
   },
   {
     "id": "configure_training_06",
     "category": "training_setup",
     "input": "Open Training Settings to adjust the evaluation strategy and number of repeats.",
-    "expected_tool_calls": [{"tool_name": "configure_training", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"configure_training","changes":{},"message":null}
   },
   {
     "id": "apply_notch_filter_08",
     "category": "preprocess",
     "input": "Reject the narrow power-line component at 60 Hz with a notch, without applying a bandpass.",
-    "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 60}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"apply_notch_filter","changes":{"freq":{"value":60,"source_turn":"U1","quote":"Reject the narrow power-line component at 60 Hz with a notch, without applying a bandpass."}},"message":null}
   },
   {
     "id": "start_training_06",
     "category": "training_lifecycle",
     "input": "Train with the existing configuration; do not reopen Training Settings.",
-    "expected_tool_calls": [{"tool_name": "start_training", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"start_training","changes":{},"message":null}
   },
   {
     "id": "stop_training_06",
     "category": "training_lifecycle",
     "input": "Stop training, but do not clear its history.",
-    "expected_tool_calls": [{"tool_name": "stop_training", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"stop_training","changes":{},"message":null}
   },
   {
     "id": "clear_training_history_06",
     "category": "lifecycle",
     "input": "Clear the training plans and run history; do not reset preprocessing.",
-    "expected_tool_calls": [{"tool_name": "clear_training_history", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"clear_training_history","changes":{},"message":null}
   },
   {
     "id": "compute_saliency_07",
     "category": "analysis_execution",
     "input": "Compute saliency for the selected result, rather than just opening the Visualization panel.",
-    "expected_tool_calls": [{"tool_name": "compute_saliency", "parameters": {}}]
+    "expected_proposal": {"decision":"execute","mode":"new_request","action":"compute_saliency","changes":{},"message":null}
   },
   {
     "id": "apply_bandpass_filter_09",
     "category": "response_compound_request",
     "input": "Briefly explain bandpass filtering, then apply a bandpass from 2 to 35 Hz.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "I can explain bandpass filtering or apply the 2 to 35 Hz filter, one at a time. Which would you like first?"}}]
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":null,"changes":{},"message":"I can explain bandpass filtering or apply the 2 to 35 Hz filter, one at a time. Which would you like first?"}
   },
   {
     "id": "apply_notch_filter_09",
     "category": "response_compound_request",
     "input": "Why is a notch filter used for mains interference? Please also apply a 60 Hz notch filter.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Would you like the explanation of notch filtering or the 60 Hz filter applied first? I can handle one request at a time."}}]
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":null,"changes":{},"message":"Would you like the explanation of notch filtering or the 60 Hz filter applied first? I can handle one request at a time."}
   },
   {
     "id": "resample_data_08",
     "category": "response_compound_request",
     "input": "I would like to understand resampling. Resample the EEG to 200 Hz as well.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Should I explain resampling or resample the EEG to 200 Hz first? I can do one of these per request."}}]
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":null,"changes":{},"message":"Should I explain resampling or resample the EEG to 200 Hz first? I can do one of these per request."}
   },
   {
     "id": "normalize_data_08",
     "category": "response_compound_request",
     "input": "Tell me what min-max normalization does, and normalize the EEG with min-max.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "I can explain min-max normalization or apply it to the EEG. Which would you like me to do first?"}}]
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":null,"changes":{},"message":"I can explain min-max normalization or apply it to the EEG. Which would you like me to do first?"}
   },
   {
     "id": "respond_concept_01",
     "category": "response_concept",
     "input": "What is the difference between a bandpass filter and a notch filter?",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "A bandpass retains a frequency range while attenuating frequencies outside it. A notch attenuates a narrow band, such as power-line interference."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"A bandpass retains a frequency range while attenuating frequencies outside it. A notch attenuates a narrow band, such as power-line interference."}
   },
   {
     "id": "respond_concept_02",
     "category": "response_concept",
     "input": "Is changing the sampling rate the same as choosing bandpass cutoffs?",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "No. Resampling changes the number of samples per second; bandpass cutoffs specify a frequency range to retain. They are different preprocessing operations."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"No. Resampling changes the number of samples per second; bandpass cutoffs specify a frequency range to retain. They are different preprocessing operations."}
   },
   {
     "id": "respond_concept_03",
     "category": "response_concept",
     "input": "How does an EEG reference differ from an electrode montage?",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "The reference determines the baseline used for EEG voltage differences. A montage describes electrode positions; assigning positions does not itself re-reference the signals."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"The reference determines the baseline used for EEG voltage differences. A montage describes electrode positions; assigning positions does not itself re-reference the signals."}
   },
   {
     "id": "respond_concept_04",
     "category": "response_concept",
     "input": "Does creating EEG epochs mean the same thing as setting training epochs?",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "No. EEG epoching divides recordings into time segments. A training epoch is a pass through the training data during model fitting."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"No. EEG epoching divides recordings into time segments. A training epoch is a pass through the training data during model fitting."}
   },
   {
     "id": "respond_concept_05",
     "category": "response_concept",
     "input": "Explain the basic difference between z-score normalization and min-max scaling.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Z-score normalization centers values using a mean and scales them using a standard deviation. Min-max scaling uses the minimum and maximum to map values into a target range."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"Z-score normalization centers values using a mean and scales them using a standard deviation. Min-max scaling uses the minimum and maximum to map values into a target range."}
   },
   {
     "id": "respond_concept_06",
     "category": "response_concept",
     "input": "Does a high saliency value prove that an EEG channel caused the model prediction?",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "No. Saliency attributes a model output to aspects of its input under a particular method. It is not proof of causation or physiological importance."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"No. Saliency attributes a model output to aspects of its input under a particular method. It is not proof of causation or physiological importance."}
   },
   {
     "id": "respond_instructions_01",
     "category": "response_instructions",
     "input": "Tell me how to choose EEG channels manually; keep all dialogs closed.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "When you are ready, open Channel Selection, review the channel list, choose the channels to retain, and confirm your selection. I will not open it for you."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"When you are ready, open Channel Selection, review the channel list, choose the channels to retain, and confirm your selection. I will not open it for you."}
   },
   {
     "id": "respond_instructions_02",
     "category": "response_instructions",
     "input": "Describe how I would assign sensor positions in XBrainLab, without opening Montage Settings.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Use Montage Settings to review the available position information, resolve the channel positions, and apply your choice when satisfied. Nothing is opened or changed by this explanation."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"Use Montage Settings to review the available position information, resolve the channel positions, and apply your choice when satisfied. Nothing is opened or changed by this explanation."}
   },
   {
     "id": "respond_instructions_03",
     "category": "response_instructions",
     "input": "Give me written guidance for choosing epoch time windows. Do not create any epochs.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Choose a window relative to the event that includes the interval your analysis needs. Review event timing and any baseline interval in Epoch Settings before applying your choice."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"Choose a window relative to the event that includes the interval your analysis needs. Review event timing and any baseline interval in Epoch Settings before applying your choice."}
   },
   {
     "id": "respond_instructions_04",
     "category": "response_instructions",
     "input": "How would I set up a subject-based split? I only want instructions, not a dialog.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "In Dataset Splitting, choose subject-based splitting and review which subjects belong to each partition before applying it. Keep held-out subjects separate according to your evaluation protocol."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"In Dataset Splitting, choose subject-based splitting and review which subjects belong to each partition before applying it. Keep held-out subjects separate according to your evaluation protocol."}
   },
   {
     "id": "respond_instructions_05",
     "category": "response_instructions",
     "input": "Where would I select a neural network architecture? Please answer without navigating anywhere.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Use Model Selection to review and choose the architecture. Selecting a model is separate from starting training."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"Use Model Selection to review and choose the architecture. Selecting a model is separate from starting training."}
   },
   {
     "id": "respond_instructions_06",
     "category": "response_instructions",
     "input": "Explain where I can adjust the learning rate and batch size, but leave the application as it is.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "You can adjust those options in Training Settings. Review the learning rate and batch size there before applying your settings; this explanation makes no changes."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"You can adjust those options in Training Settings. Review the learning rate and batch size there before applying your settings; this explanation makes no changes."}
   },
   {
     "id": "respond_prohibition_01",
     "category": "response_prohibition",
     "input": "Do not clear the training history. I want to keep every run entry.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Understood. I will not clear the training history."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"Understood. I will not clear the training history."}
   },
   {
     "id": "respond_prohibition_02",
     "category": "response_prohibition",
     "input": "I am not asking you to start training. Leave the training controls alone.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Understood. I will not start training or change the training controls."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"Understood. I will not start training or change the training controls."}
   },
   {
     "id": "respond_prohibition_03",
     "category": "response_prohibition",
     "input": "Do not calculate or recalculate saliency, and do not open a plot.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Understood. I will not run saliency computation or open a plot."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"Understood. I will not run saliency computation or open a plot."}
   },
   {
     "id": "respond_prohibition_04",
     "category": "response_prohibition",
     "input": "Leave the import wizard closed; I am not ready to load another dataset.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Understood. I will not open the import wizard or load another dataset."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"Understood. I will not open the import wizard or load another dataset."}
   },
   {
     "id": "respond_prohibition_05",
     "category": "response_prohibition",
     "input": "Do not apply the 50 Hz notch filter. Keep the data unchanged.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Understood. I will not apply a notch filter or change the data."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"Understood. I will not apply a notch filter or change the data."}
   },
   {
     "id": "respond_prohibition_06",
     "category": "response_prohibition",
     "input": "I do not want preprocessing reset. Preserve the work already done.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Understood. I will not reset preprocessing."}}]
+    "expected_proposal": {"decision":"reply","mode":null,"action":null,"changes":{},"message":"Understood. I will not reset preprocessing."}
   },
   {
     "id": "respond_reference_01",
     "category": "response_ungrounded_reference",
     "input": "Do the task I described in another chat, which is not included here.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Please describe the task here so I can identify what you want me to do."}}]
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":null,"changes":{},"message":"Please describe the task here so I can identify what you want me to do."}
   },
   {
     "id": "respond_reference_02",
     "category": "response_ungrounded_reference",
     "input": "Use the option my supervisor recommended offline. I have not shared that recommendation.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "What option did your supervisor recommend, and which operation is it for?"}}]
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":null,"changes":{},"message":"What option did your supervisor recommend, and which operation is it for?"}
   },
   {
     "id": "respond_reference_03",
     "category": "response_ungrounded_reference",
     "input": "Choose the second alternative from my notebook; you do not have the list.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Please share the alternatives or name the one you want. I cannot identify the second option without the list."}}]
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":null,"changes":{},"message":"Please share the alternatives or name the one you want. I cannot identify the second option without the list."}
   },
   {
     "id": "respond_reference_04",
     "category": "response_ungrounded_reference",
     "input": "Perform the operation I circled on paper. No photo or description is attached.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Please name or describe the circled operation before I take any action."}}]
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":null,"changes":{},"message":"Please name or describe the circled operation before I take any action."}
   },
   {
     "id": "respond_reference_05",
     "category": "response_ungrounded_reference",
     "input": "Use the setup from an earlier session whose details I have not provided here.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Please provide that setup and the operation you want to apply it to, so I do not guess at your earlier choices."}}]
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":null,"changes":{},"message":"Please provide that setup and the operation you want to apply it to, so I do not guess at your earlier choices."}
   },
   {
     "id": "respond_reference_06",
     "category": "response_ungrounded_reference",
     "input": "Make the changes from my lab notes. The notes have not been shared with you.",
-    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Please share the relevant changes from your notes before I modify anything."}}]
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":null,"changes":{},"message":"Please share the relevant changes from your notes before I modify anything."}
+  },
+  {
+    "id": "apply_bandpass_filter_missing_01",
+    "category": "response_missing_parameter",
+    "input": "Prepare bandpass filtering for this recording.",
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":"apply_bandpass_filter","changes":{},"message":"What lower and upper cutoff frequencies should I use?"}
+  },
+  {
+    "id": "apply_bandpass_filter_partial_low_01",
+    "category": "response_partial_parameter",
+    "input": "For bandpass preprocessing, make the lower cutoff 6 Hz.",
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":6,"source_turn":"U1","quote":"For bandpass preprocessing, make the lower cutoff 6 Hz."}},"message":"What upper cutoff frequency should I use?"}
+  },
+  {
+    "id": "apply_bandpass_filter_partial_high_01",
+    "category": "response_partial_parameter",
+    "input": "Use bandpass preprocessing with an upper cutoff of 44 Hz.",
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":"apply_bandpass_filter","changes":{"high_freq":{"value":44,"source_turn":"U1","quote":"Use bandpass preprocessing with an upper cutoff of 44 Hz."}},"message":"What lower cutoff frequency should I use?"}
+  },
+  {
+    "id": "apply_notch_filter_missing_01",
+    "category": "response_missing_parameter",
+    "input": "Please run notch filtering on this recording.",
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":"apply_notch_filter","changes":{},"message":"What notch frequency should I use?"}
+  },
+  {
+    "id": "resample_data_missing_01",
+    "category": "response_missing_parameter",
+    "input": "Change the sampling rate of this recording.",
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":"resample_data","changes":{},"message":"What new sampling rate in Hz should I use?"}
+  },
+  {
+    "id": "set_reference_missing_01",
+    "category": "response_missing_parameter",
+    "input": "Re-reference this recording before further processing.",
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":"set_reference","changes":{},"message":"Which reference method or channel should I use?"}
+  },
+  {
+    "id": "normalize_data_missing_01",
+    "category": "response_missing_parameter",
+    "input": "Perform normalization on this recording.",
+    "expected_proposal": {"decision":"clarify","mode":"new_request","action":"normalize_data","changes":{},"message":"Which normalization method should I use: z-score or min-max?"}
+  },
+  {
+    "id": "apply_bandpass_filter_supplement_01",
+    "category": "response_contextual_parameter",
+    "input": "Set its upper cutoff to 47 Hz.",
+    "prior_turn": {"input":"Please prepare a bandpass with its lower cutoff at 11 Hz.","expected_proposal":{"decision":"clarify","mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":11,"source_turn":"U1","quote":"Please prepare a bandpass with its lower cutoff at 11 Hz."}},"message":"What upper cutoff frequency should I use?"}},
+    "expected_proposal": {"decision":"execute","mode":"update_pending","action":"apply_bandpass_filter","changes":{"high_freq":{"value":47,"source_turn":"U2","quote":"Set its upper cutoff to 47 Hz."}},"message":null}
+  },
+  {
+    "id": "apply_bandpass_filter_correction_01",
+    "category": "response_contextual_parameter",
+    "input": "Revise that lower cutoff to 13 Hz.",
+    "prior_turn": {"input":"Please prepare a bandpass with its lower cutoff at 11 Hz.","expected_proposal":{"decision":"clarify","mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":11,"source_turn":"U1","quote":"Please prepare a bandpass with its lower cutoff at 11 Hz."}},"message":"What upper cutoff frequency should I use?"}},
+    "expected_proposal": {"decision":"clarify","mode":"update_pending","action":"apply_bandpass_filter","changes":{"low_freq":{"value":13,"source_turn":"U2","quote":"Revise that lower cutoff to 13 Hz."}},"message":"What upper cutoff frequency should I use?"}
   }
 ]

@@ -22,7 +22,7 @@ from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 from XBrainLab.llm.agent.verifier import ToolSchemaValidator
 from XBrainLab.llm.tools import get_all_tools
 
-SCHEMA = "xbrainlab.assistant_benchmark_calibration.v2"
+SCHEMA = "xbrainlab.assistant_benchmark_calibration.v4"
 DEFAULT_CASES = Path(__file__).with_name("assistant_benchmark_calibration_cases.json")
 LAYERS = ("raw", "agent", "outcome")
 _CASE_FIELDS = {
@@ -208,25 +208,44 @@ def _decision_score(
     envelope = CommandParser.parse_product(response)
     if envelope.status not in {ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL}:
         return {"passed": False, "decision": "invalid", "reason": "invalid_envelope"}
-    decision = (
-        "action"
-        if envelope.status is ToolEnvelopeStatus.VALID
-        else ("clarification" if envelope.pending_action else "no_call")
+    decision = {"execute": "action", "clarify": "clarification", "reply": "no_call"}[
+        envelope.decision
+    ]
+    request = envelope.request
+    if request is not None and request.mode != "replace":
+        return {
+            "passed": False,
+            "decision": decision,
+            "reason": "unsupported_request_context",
+        }
+    parameters = (
+        {name: change.value for name, change in request.changes}
+        if request is not None
+        else {}
     )
     passed = decision == case["decision"]
     if decision == "action":
-        tool, parameters = envelope.commands[0]
+        tool = request.action if request is not None else None
         passed = (
             passed
+            and tool is not None
             and tool == case["tool"]
             and _equal(parameters, case["parameters"])
             and ToolSchemaValidator(schemas).validate(tool, parameters).is_valid
         )
     elif decision == "clarification":
+        tool = request.action if request is not None else None
+        schema = schemas.get(tool, {}) if tool is not None else {}
+        missing = set(schema.get("required", [])) - parameters.keys()
         passed = (
             passed
-            and envelope.pending_action == case["tool"]
-            and set(envelope.missing_inputs) == set(case["missing_inputs"])
+            and tool is not None
+            and tool == case["tool"]
+            and bool(schema)
+            and ToolSchemaValidator({tool: {**schema, "required": []}})
+            .validate(tool, parameters)
+            .is_valid
+            and missing == set(case["missing_inputs"])
         )
     return {
         "passed": bool(passed),
@@ -367,6 +386,8 @@ def calibrate(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema": SCHEMA,
         "evidence_kind": "synthetic_development_calibration",
+        "parameter_scope": "single_turn_replace_changes",
+        "source_validation": "not_evaluated",
         "model_executed": False,
         "product_benchmark_score": None,
         "human_agreement": None,

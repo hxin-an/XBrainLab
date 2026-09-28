@@ -25,6 +25,18 @@ from scripts.dev.run_assistant_pilot import (
 
 CATEGORIES = ("Action", "Clarification", "No-call")
 _MAX_ARTIFACT_BYTES = 32 * 1024**2
+_PROPOSAL_SCORERS = {
+    "xbrainlab.assistant_decision_scores.v4": (
+        "assistant_proposal.v1",
+        "single_turn_replace_changes",
+        2,
+    ),
+    "xbrainlab.assistant_decision_scores.v5": (
+        "assistant_proposal.v2",
+        "single_turn_new_request_changes",
+        3,
+    ),
+}
 
 
 def _read(path: Path, expected_sha256: str | None = None) -> tuple[dict, str]:
@@ -313,7 +325,7 @@ def _case(
             )
             or result.get("seed") != 0
             or result.get("scores", {}).get("scorer_schema")
-            != "xbrainlab.assistant_decision_scores.v3"
+            not in {"xbrainlab.assistant_decision_scores.v3", *_PROPOSAL_SCORERS}
             or result.get("scores", {}).get("max_format_recovery_attempts")
             != experiment["max_format_recovery_attempts"]
         ):
@@ -336,6 +348,18 @@ def _case(
         ):
             raise ValueError("Case/model/condition identity mismatch")  # noqa: TRY301 - preserve a per-case invalid-evidence row
         scores = result.get("scores", {})
+        proposal_contract = _PROPOSAL_SCORERS.get(scores.get("scorer_schema"))
+        if proposal_contract is not None and (
+            scores.get("response_contract") != proposal_contract[0]
+            or scores.get("parameter_scope") != proposal_contract[1]
+            or scores.get("source_validation") != "not_evaluated"
+            or any(
+                generation.get("request", {}).get("response_contract")
+                != proposal_contract[0]
+                for generation in result.get("trace", {}).get("generations", [])
+            )
+        ):
+            raise ValueError("Proposal score contract identity mismatch")  # noqa: TRY301
         provenance_issues = _provenance_issues(result)
         valid = scores.get("measurement_valid") is True and not provenance_issues
         if valid and (
@@ -360,6 +384,7 @@ def _case(
         product = result.get("product_outcome")
         row.update(
             evidence_status="verified",
+            scorer_schema=scores.get("scorer_schema"),
             decision_valid=valid,
             execution_status=scores.get("execution_status", "invalid_measurement"),
             first=scores.get("first_decision_correct") if valid else None,
@@ -796,6 +821,21 @@ def build_report(run: Path) -> dict:
         _case(root, job, starts.get(job["id"]), ends.get(job["id"]), experiment)
         for job in jobs
     ]
+    scorer_schemas = {
+        row.get("scorer_schema")
+        for row in rows + previous
+        if row["evidence_status"] == "verified"
+    }
+    if scorer_schemas.intersection(_PROPOSAL_SCORERS) and len(scorer_schemas) != 1:
+        raise ValueError("Cannot aggregate historical and proposal decision contracts")
+    report_version = next(
+        (
+            values[2]
+            for schema, values in _PROPOSAL_SCORERS.items()
+            if schema in scorer_schemas
+        ),
+        1,
+    )
     if dev:
         for row in rows:
             issues = _details(root, row, require_generation=True)["issues"]
@@ -932,12 +972,9 @@ def build_report(run: Path) -> dict:
         raise ValueError(
             "Journal changed during report; retain artifacts and read a stable snapshot"
         )
+    report_kind = "experiment" if current else "dev" if dev else "pilot"
     return {
-        "schema": "xbrainlab.assistant_experiment_report.v1"
-        if current
-        else "xbrainlab.assistant_dev_report.v1"
-        if dev
-        else "xbrainlab.assistant_pilot_report.v1",
+        "schema": f"xbrainlab.assistant_{report_kind}_report.v{report_version}",
         "experiment": experiment,
         "latency_protocol": {
             "population": "valid_recorded_decision_terminals"

@@ -30,11 +30,31 @@ def example(corpus, case_id):
 
 
 def response(tool="resample_data", parameters=None, stage=None):
+    parameters = {"rate": 128} if parameters is None else parameters
+    if tool == "respond_to_user":
+        action = parameters.get("action")
+        payload = {
+            "decision": "clarify" if action else "reply",
+            "mode": ("new_request" if action else None),
+            "action": (action if action else None),
+            "changes": {},
+            "message": parameters.get("message"),
+        }
+    else:
+        payload = {
+            "decision": "execute",
+            "mode": "new_request",
+            "action": tool,
+            "changes": {
+                key: {"value": value, "source_turn": "U1", "quote": str(value)}
+                for key, value in parameters.items()
+            },
+            "message": None,
+        }
     return json.dumps(
         {
             **({"workflow_stage": stage} if stage is not None else {}),
-            "tool_name": tool,
-            "parameters": {"rate": 128} if parameters is None else parameters,
+            **payload,
         }
     )
 
@@ -147,18 +167,33 @@ def test_no_call_rejects_unnecessary_pending_action(corpus):
     assert score_observation(case, observation)["outcome"]["passed"] is False
 
 
-@pytest.mark.parametrize("missing", [["low_freq"], ["high_freq"], ["rate"], []])
-def test_clarification_requires_exact_structured_missing_fields(corpus, missing):
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"low_freq": 4},
+        {"high_freq": 38},
+        {"rate": 128},
+        {"low_freq": 4, "high_freq": 38},
+    ],
+)
+def test_clarification_missing_fields_derive_from_schema_and_changes(corpus, changes):
     case, observation = example(corpus, "clarify")
-    observation["raw_response"] = response(
-        "respond_to_user",
-        {
-            "message": "Which cutoffs?",
-            "pending_action": "apply_bandpass_filter",
-            "missing_inputs": missing,
-        },
-    )
+    payload = json.loads(response("apply_bandpass_filter", changes))
+    payload.update(decision="clarify", message="Which cutoffs?")
+    observation["raw_response"] = json.dumps(payload)
     assert score_observation(case, observation)["raw"]["passed"] is False
+
+
+def test_calibration_does_not_invent_pending_context_for_continue(corpus):
+    case, observation = example(corpus, "resample")
+    payload = json.loads(response())
+    payload["mode"] = "update_pending"
+    observation["raw_response"] = json.dumps(payload)
+    assert score_observation(case, observation)["raw"] == {
+        "passed": False,
+        "decision": "action",
+        "reason": "unsupported_request_context",
+    }
 
 
 def test_clarification_is_not_a_keyword_matching_task(corpus):
@@ -167,8 +202,7 @@ def test_clarification_is_not_a_keyword_matching_task(corpus):
         "respond_to_user",
         {
             "message": "Please provide both cutoffs.",
-            "pending_action": "apply_bandpass_filter",
-            "missing_inputs": ["high_freq", "low_freq"],
+            "action": "apply_bandpass_filter",
         },
     )
     assert score_observation(case, observation)["raw"]["passed"] is True

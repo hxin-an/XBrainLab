@@ -1,6 +1,6 @@
 # XBrainLab Assistant 研究與實驗規格
 
-最後更新：`2026-09-23`
+最後更新：`2026-09-28`
 
 ## 文件狀態與接續方式
 
@@ -10,8 +10,9 @@
 設計確認不代表已實作或實驗已完成。壓縮後依上述文件及 Git 接續，不重開舊清理。
 
 完整 DEV 起始基準已完成：五模型各 264 題，1,320 次執行計入每模型最多五套設定中的第一套。
-目前批准封存包／Linux evaluator 工程及固定20題 smoke，不自動調優、不執行正式 VALID、
-不讀取／執行 TEST、不修改公開工具／UI、不重新下載模型。Now 擁有本輪施工與驗收出口。
+研究執行授權停在封存包／Linux evaluator 工程及固定20題 smoke，不自動調優、
+不執行正式 VALID、不讀取／執行 TEST、不重新下載模型。後續產品契約施工另依Now的
+明確授權；不自動擴張正式研究矩陣或把新source當作舊輪次的延續。
 舊 B0/B1/B2 搜尋安排、最多 30 條件 VALID、TEST 加跑同模型 B0、P95 10 秒門檻
 已被新版設計取代，不再派工；歷史決策留 Git，舊 B0 封存／分數／入口不追改。
 
@@ -43,7 +44,16 @@ Gemma 使用 NF4 4-bit 權重／BF16 compute，不 double quantization、不 CPU
 新封存協定將三次 repeats 排在同一 run 內，各有獨立 case／condition 身分及分母；
 不是複製同一次輸出，也不把 repeat 當失敗補跑。可執行排程不等於已執行正式 VALID。
 
-RAG 固定 all-MiniLM-L6-v2 snapshot、最多三範例、相似度門檻 0.7；語料／embedding 保存 hash。
+已封存起始配置的RAG固定all-MiniLM-L6-v2 snapshot、最多三範例、相似度門檻0.7；
+保留其原語料／embedding hash與檢索規則。本輪產品source已改為獨立dense／BM25加RRF，
+准入與模型收益仍未驗收；不是已封存研究配置的無差別替換。新研究候選須另行固定
+source、提案契約、語料及完整檢索protocol，不能只沿用同一embedding名稱冒稱同配置。
+當前產品語料為154筆、flat五欄及新mode、index schema 5；含7筆缺值／部分值追問及
+2筆附單一`prior_turn`的補值／更正示範。前輪來源驗證、推導草稿及最終context投影由
+[Agent架構](../architecture/agent.md)說明，不以手造pending作few-shot。
+V3採至少兩詞及對稱IDF覆蓋0.5，交付gate檢查實際送例相關性與指定sparse正例；
+候選池診斷不等於模型收到的內容。這仍不是研究封存配置或模型受益證明，保留v1／v2
+失敗報告、原工程題目及既有ID標註；新範例標註另於觀測前固定。
 DEV 不調 RAG 語料與檢索設定；degraded retrieval 不算 RAG on。題庫／oracle 不進 RAG 或 few-shot。
 
 | 階段 | 已確認矩陣 | 次數與出口 |
@@ -91,6 +101,19 @@ training progress 的匿名 subject reference 按出現順序改成穩定別名�
 ## 4. 評分、計時與量測完整性
 
 ### 決策正確性
+
+目前產品與研究consumer共用`decision / mode / action / changes / message`五欄parser；
+舊巢狀envelope及mode alias不再是當前runtime輸入。public mode為null／update_pending／
+new_request／cancel_pending；後三者固定映射至內部continue／replace／cancel，驗證語意不變。
+`execute`提案仍須完整驗證才可執行；`reply / clarify`不是可執行工具，
+`respond_to_user`僅保留為既有oracle／報表的非操作語意標籤。
+目前單題scorer只接受mode=null或fresh `new_request`，不假造update_pending／cancel_pending歷史；
+操作分數比較proposal中的action與變更值，部分草稿另檢查已提供欄位的schema。
+這個分數不證明quote來源有效或Host admission通過；多輪累積、一般文字經LLM理解及
+單一pending要求的產品驗收另外記錄，不混入下列凍結題庫分母。
+新scorer身分為`xbrainlab.assistant_decision_scores.v5`，response contract為
+`assistant_proposal.v2`。歷史封存保留原scorer／契約與已存分數；report reader辨識其版本，
+不以目前parser重新評分舊capture，也不把v4／assistant_proposal.v1改標成新格式通過。
 
 - Action：最後一次輸出符合 parser/schema，工具與參數符合 oracle。
 - Clarification／No-call：符合允許的非操作結構且未提出工具操作；不評文字內容，

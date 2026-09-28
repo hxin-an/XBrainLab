@@ -24,10 +24,10 @@ class RAGConfig:
     )
 
     GOLD_SET_SHA256 = (
-        "e1fe770beb2a1c72caf182d92647942fd"  # pragma: allowlist secret
-        "ffe7357a71181080d35c269a9da0b0a"  # pragma: allowlist secret
+        "9dd41af8d3f43f9d302f566d6cacf25d"  # pragma: allowlist secret
+        "7b21b20047b7c426c7ed34713e968ebf"  # pragma: allowlist secret
     )
-    INDEX_SCHEMA_VERSION = 2
+    INDEX_SCHEMA_VERSION = 5
     VECTOR_SIZE = 384
 
     # Changing either the pinned embedding or bundled corpus invalidates old
@@ -37,6 +37,11 @@ class RAGConfig:
     )
 
     SIMILARITY_THRESHOLD = 0.7
+    # Lexical coverage is a minimum-match rule, not relevance confidence.
+    MIN_SPARSE_MATCHED_TERMS = 2
+    MIN_SPARSE_COVERAGE = 0.5
+    CANDIDATES_PER_BRANCH = 10
+    RRF_RANK_CONSTANT = 60
     TOP_K = 3
     MAX_EXAMPLE_CONTENT_CHARS = 768
     MAX_CONTEXT_CHARS = 4_096

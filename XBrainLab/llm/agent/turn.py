@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, replace
@@ -18,6 +17,8 @@ from XBrainLab.chat_contract import (
     bounded_chat_string,
 )
 from XBrainLab.llm.core.generation import GenerationProfile
+
+from .parser import ParameterChange
 
 
 class AssistantGenerationEventPhase(str, Enum):
@@ -193,93 +194,46 @@ class AssistantTurnCorrelation:
 
 
 @dataclass(frozen=True, slots=True)
-class AssistantToolInputReceipt:
-    """Bounded reply evidence linking direct input to an earlier action."""
+class AssistantPendingRequest:
+    """Validated, non-executable draft owned by the pending interaction owner.
 
-    command_name: str
-    original_user_text: str
-    question: str
-    publication_generation: int
-    missing_inputs: tuple[str, ...]
-    verified_parameters: tuple[tuple[str, Any], ...] = ()
-    unassigned_bandpass_cutoff: float | int | None = None
-    remaining_reply_budget: int = 2
+    Sources are user-authored evidence, never policy. Publication identity is
+    retained across clarification so a later reply cannot revive stale work.
+    """
 
-    def __post_init__(self) -> None:
-        fields = {
-            "command_name": ("command", self.command_name, 128),
-            "original_user_text": (
-                "original request",
-                self.original_user_text,
-                MAX_CHAT_MESSAGE_CONTENT_LENGTH,
-            ),
-            "question": ("question", self.question, MAX_CHAT_MESSAGE_CONTENT_LENGTH),
+    command_name: str | None
+    original_turn_id: str
+    publication_generation: int | None
+    parameters: tuple[tuple[str, ParameterChange], ...]
+    sources: tuple[tuple[str, str], ...]
+    question: str = ""
+    invalidated: bool = False
+
+    def parameter_values(self) -> dict[str, Any]:
+        return {name: deepcopy(change.value) for name, change in self.parameters}
+
+    def prompt_context(self) -> dict[str, Any]:
+        """Project only draft facts and user evidence, never execution authority."""
+        return {
+            "action": self.command_name,
+            "parameters": {
+                name: {
+                    "value": deepcopy(change.value),
+                    "source_turn": change.source_turn,
+                    "quote": change.quote,
+                }
+                for name, change in self.parameters
+            },
+            "user_sources": dict(self.sources),
+            "question": self.question,
+            "invalidated": self.invalidated,
         }
-        for field, (label, value, limit) in fields.items():
-            bounded = bounded_chat_string(
-                value,
-                field_name=f"Assistant tool-input {label}",
-                maximum_length=limit,
-            ).strip()
-            if not bounded:
-                raise ValueError("Assistant tool-input receipt text must not be empty.")
-            object.__setattr__(self, field, bounded)
-        generation = self.publication_generation
-        if (
-            isinstance(generation, bool)
-            or not isinstance(generation, int)
-            or generation < 0
-        ):
-            raise ValueError("Tool-input publication generation must be non-negative.")
-        missing_inputs = tuple(self.missing_inputs)
-        if (
-            not 1 <= len(missing_inputs) <= 2
-            or any(
-                not isinstance(name, str) or not name.strip() for name in missing_inputs
-            )
-            or len(set(missing_inputs)) != len(missing_inputs)
-        ):
-            raise ValueError(
-                "Tool-input receipt requires one or two unique missing-field names."
-            )
-        object.__setattr__(
-            self,
-            "missing_inputs",
-            tuple(name.strip() for name in missing_inputs),
-        )
-        verified_parameters = tuple(self.verified_parameters)
-        if any(
-            not isinstance(item, tuple)
-            or len(item) != 2
-            or not isinstance(item[0], str)
-            or item[0] not in self.missing_inputs
-            for item in verified_parameters
-        ) or len({item[0] for item in verified_parameters}) != len(verified_parameters):
-            raise ValueError(
-                "Tool-input receipt verified parameters must match missing fields."
-            )
-        object.__setattr__(self, "verified_parameters", verified_parameters)
-        cutoff = self.unassigned_bandpass_cutoff
-        if cutoff is not None and (
-            self.command_name != "apply_bandpass_filter"
-            or verified_parameters
-            or isinstance(cutoff, bool)
-            or not isinstance(cutoff, (int, float))
-            or not math.isfinite(cutoff)
-            or cutoff <= 0
-        ):
-            raise ValueError(
-                "Tool-input unassigned bandpass cutoff must be a finite positive "
-                "value on an otherwise unassigned bandpass receipt."
-            )
-        if self.remaining_reply_budget not in {1, 2}:
-            raise ValueError("Tool-input receipt reply budget must be one or two.")
 
-    def matches(self, command_name: str, publication_generation: int | None) -> bool:
-        """Return whether this receipt can inform one current proposal."""
+    def matches(self, command_name: str, generation: int | None) -> bool:
         return (
-            self.command_name == command_name
-            and self.publication_generation == publication_generation
+            not self.invalidated
+            and self.command_name == command_name
+            and self.publication_generation == generation
         )
 
 

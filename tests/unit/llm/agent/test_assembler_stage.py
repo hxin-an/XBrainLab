@@ -155,12 +155,7 @@ class TestStageBasedFiltering:
             ["import_eeg_data", "switch_panel", "select_model"],
         )
 
-        assert (
-            STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
-                include_preprocessing_guidance=False
-            )
-            in prompt
-        )
+        assert STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions() in prompt
         assert "backend-stage-published action contracts" in prompt
         assert "Current backend workflow stage: empty\n" in prompt
         assert "Workflow Decision Context" not in prompt
@@ -273,12 +268,7 @@ class TestPromptContent:
                 messages = assembler.get_messages(
                     [{"role": "user", "content": "Explain the current state."}]
                 )
-            context = json.loads(messages[1]["content"])
-            state_card = next(
-                item["data"]
-                for item in context["items"]
-                if item["type"] == "state_card"
-            )
+            state_card = json.loads(messages[-1]["content"])["application_state"]
             assert state_card["workflow_stage"] == stage.value
             assert assembler.latest_tool_publication.workflow_stage == stage.value
             assert (

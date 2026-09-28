@@ -17,11 +17,7 @@ from scripts.dev.run_stable_assistant_model_eval import (
     DEFAULT_CHALLENGES,
     DEFAULT_CLARIFICATION_CASES,
     DEFAULT_PRECISION_CASES,
-    ClarificationCase,
-    PrecisionCase,
-    admit_clarification_receipt,
     build_case_messages,
-    build_clarification_messages,
     build_product_rag_case_messages,
     load_challenge_cases,
     load_clarification_cases,
@@ -74,43 +70,22 @@ def _source_identity() -> dict[str, Any]:
     }
 
 
-def _direct_clarification_messages(
-    case: ClarificationCase,
-    precision_cases: tuple[PrecisionCase, ...],
-) -> list[dict[str, str]]:
-    source = next(
-        item for item in precision_cases if item.case_id == case.source_case_id
+def _require_first_turn_case(case_id: str) -> None:
+    """Never invent a model answer or pending values to export a continuation."""
+    continuations = load_clarification_cases(
+        DEFAULT_CLARIFICATION_CASES,
+        precision_cases=load_precision_cases(DEFAULT_PRECISION_CASES),
     )
-    first_response = json.dumps(
-        {
-            "workflow_stage": source.workflow_stage,
-            "tool_name": "respond_to_user",
-            "parameters": {
-                "message": "Please provide the missing parameter values.",
-                "pending_action": case.expected_tool,
-                "missing_inputs": sorted(case.expected_parameters),
-            },
-        }
-    )
-    registry = target_tool_registry()
-    admission = admit_clarification_receipt(
-        source,
-        first_response,
-        expected_tool=case.expected_tool,
-        registry=registry,
-    )
-    if admission is None:
-        raise RuntimeError(f"Could not construct synthetic receipt for {case.case_id}.")
-    return build_clarification_messages(
-        case,
-        source,
-        receipt=admission.receipt,
-        registry=registry,
-    )[0]
+    if any(case.case_id == case_id for case in continuations):
+        raise ValueError(
+            f"Continuation {case_id!r} requires an actual runtime capture of the "
+            "admitted conversation and pending request; synthetic export is unsupported."
+        )
 
 
 def _resolve_case_messages(case_id: str) -> tuple[dict[str, Any], list[dict[str, str]]]:
     """Resolve one checked-in synthetic case through the product assembler."""
+    _require_first_turn_case(case_id)
     registry = target_tool_registry()
     precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
     for case in (
@@ -121,18 +96,6 @@ def _resolve_case_messages(case_id: str) -> tuple[dict[str, Any], list[dict[str,
         if case.case_id == case_id:
             return asdict(case), build_case_messages(case, registry)
 
-    for case in load_clarification_cases(
-        DEFAULT_CLARIFICATION_CASES,
-        precision_cases=precision_cases,
-    ):
-        if case.case_id != case_id:
-            continue
-        if case.trajectory_kind != "direct":
-            raise ValueError(
-                "Prompt export currently supports direct receipt continuations; "
-                f"{case_id!r} is a multi-turn trajectory."
-            )
-        return asdict(case), _direct_clarification_messages(case, precision_cases)
     raise ValueError(f"Unknown synthetic Assistant case id: {case_id!r}.")
 
 
@@ -194,6 +157,7 @@ def export_prompt_dossier(
 ) -> dict[str, Any]:
     """Write one reproducible prompt dossier without constructing a model."""
     if product_rag:
+        _require_first_turn_case(case_id)
         lifecycle = ProcessRAGRetrieverLifecycle()
         try:
             case, raw_messages, rag_evidence = build_product_rag_case_messages(

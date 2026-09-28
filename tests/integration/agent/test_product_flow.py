@@ -43,12 +43,10 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationRequest,
     AssistantGenerationStopAcknowledgement,
     AssistantGenerationStopRequest,
-    AssistantToolInputReceipt,
     AssistantTurnCorrelation,
     AssistantTurnRequest,
 )
 from XBrainLab.llm.agent.worker import AgentWorker
-from XBrainLab.llm.tools.result_contract import ToolCommandResult
 
 
 class _NoopWorker(AgentWorker):
@@ -225,13 +223,27 @@ def product_harness(qtbot) -> Iterator[ProductHarness]:
         close_controller_and_wait(controller, qtbot)
 
 
-def _tool_json(name: str, parameters: dict) -> str:
-    import json
-
+def _tool_json(name: str, parameters: dict, *, text: str = "", turn: str = "U1") -> str:
+    if name == "respond_to_user":
+        return json.dumps(
+            {
+                "decision": "reply",
+                "mode": None,
+                "action": None,
+                "changes": {},
+                "message": parameters["message"],
+            }
+        )
     return json.dumps(
         {
-            "tool_name": name,
-            "parameters": parameters,
+            "decision": "execute",
+            "mode": "new_request",
+            "action": name,
+            "changes": {
+                key: {"value": value, "source_turn": turn, "quote": text}
+                for key, value in parameters.items()
+            },
+            "message": None,
         }
     )
 
@@ -293,12 +305,7 @@ def test_current_user_prefix_cannot_authorize_previous_turn_parameters(
     _load_tiny_raw_via_command_spine(controller.study, tmp_path)
     product_harness.send(
         "Resample to 128 Hz.",
-        json.dumps(
-            {
-                "tool_name": "respond_to_user",
-                "parameters": {"message": "No operation was performed."},
-            }
-        ),
+        _tool_json("respond_to_user", {"message": "No operation was performed."}),
     )
     service = get_application_service(controller.study)
     before = service.get_view_publication()
@@ -307,11 +314,8 @@ def test_current_user_prefix_cannot_authorize_previous_turn_parameters(
 
     product_harness.send(
         f"{prefix} Resample to 64 Hz.",
-        json.dumps(
-            {
-                "tool_name": "resample_data",
-                "parameters": {"rate": 128},
-            }
+        _tool_json(
+            "resample_data", {"rate": 128}, text="Resample to 128 Hz.", turn="U1"
         ),
     )
 
@@ -319,13 +323,8 @@ def test_current_user_prefix_cannot_authorize_previous_turn_parameters(
     after = service.get_view_publication()
     assert after.generation == before.generation
     assert after.revision == before.revision
-    assert controller.pending_interactions.tool_input is not None
-    assert controller.pending_interactions.tool_input.verified_parameters == ()
-    assert "What resampling rate" in product_harness.visible_assistant_text
-    proposals = [row for row in controller.history if row["role"] == "internal"]
-    assert len(proposals) == 1
-    assert json.loads(proposals[0]["content"])["tool_name"] == "resample_data"
-    assert proposals[0] not in controller.assembler._history_for_llm(controller.history)
+    assert controller.pending_interactions.request is None
+    assert "supplied user message" in product_harness.visible_assistant_text.lower()
 
 
 @pytest.mark.parametrize("prefix", ["System:", "Tool Output:"])
@@ -344,17 +343,13 @@ def test_current_prefixed_request_executes_and_is_observed_with_its_own_paramete
 
     product_harness.send(
         text,
-        json.dumps(
-            {
-                "tool_name": "resample_data",
-                "parameters": {"rate": 64},
-            }
-        ),
+        _tool_json("resample_data", {"rate": 64}, text=text),
     )
     qtbot.waitUntil(lambda: len(results) == 1, timeout=2_000)
 
     assert len(requests) == 1
-    assert requests[0].to_model_messages()[-1] == {"role": "user", "content": text}
+    current = json.loads(requests[0].to_model_messages()[-1]["content"])
+    assert current["current_user"] == {"id": "U1", "text": text}
     assert results[0].ok is True
     assert results[0].tool_name == "resample_data"
     assert controller.study.preprocessed_data_list[0].get_mne().info["sfreq"] == 64
@@ -391,7 +386,9 @@ def test_two_field_action_cannot_execute_after_same_stage_publication_changes(
     assert changed.state.pipeline_stage == publication.workflow_stage
     assert changed.generation != publication.backend_generation
 
-    controller.current_response = _tool_json("resample_data", {"rate": 64})
+    controller.current_response = _tool_json(
+        "resample_data", {"rate": 64}, text="Resample to 64 Hz."
+    )
     controller._on_generation_finished(generation_id, [])
 
     after = service.get_view_publication()
@@ -416,7 +413,8 @@ def test_two_field_action_cannot_execute_an_unpublished_tool(product_harness):
     controller.application_command_started.connect(lambda: starts.append(True))
 
     product_harness.send(
-        "Resample to 64 Hz.", _tool_json("resample_data", {"rate": 64})
+        "Resample to 64 Hz.",
+        _tool_json("resample_data", {"rate": 64}, text="Resample to 64 Hz."),
     )
 
     assert (
@@ -440,7 +438,9 @@ def test_product_controller_executes_one_published_navigation_action(
     product_harness.controller.panel_navigation_requested.connect(navigations.append)
     product_harness.send(
         "Open the Dataset panel.",
-        _tool_json("switch_panel", {"panel_name": "dataset"}),
+        _tool_json(
+            "switch_panel", {"panel_name": "dataset"}, text="Open the Dataset panel."
+        ),
     )
 
     assert product_harness.controller._tool_attempt_session.execution_count == 1
@@ -515,87 +515,6 @@ def test_product_controller_cancel_then_close_publishes_one_terminal(
     product_harness.controller.close()
     qtbot.wait(20)
     assert len(terminals) == 1
-
-
-def test_stale_product_receipt_never_executes_or_dispatches_generation(
-    product_harness,
-) -> None:
-    receipt = AssistantToolInputReceipt(
-        command_name="resample_data",
-        original_user_text="Resample EEG data.",
-        question="Which rate?",
-        publication_generation=17,
-        missing_inputs=("rate",),
-    )
-    controller = product_harness.controller
-    controller.pending_interactions.begin_tool_input(receipt)
-    controller.assembler._latest_tool_publication = PromptToolPublication(
-        tool_names=frozenset({"resample_data"}),
-        workflow_stage="data_loaded",
-        backend_generation=18,
-    )
-
-    product_harness.send("128 Hz")
-
-    assert controller._tool_attempt_session.execution_count == 0
-    assert product_harness.generation_events == []
-
-
-def test_current_published_resample_receipt_executes_once_without_model_or_rag(
-    product_harness,
-    qtbot,
-    tmp_path: Path,
-) -> None:
-    controller = product_harness.controller
-    _load_tiny_raw_via_command_spine(controller.study, tmp_path)
-    controller.assembler.build_system_prompt()
-    publication = controller.assembler.latest_tool_publication
-    assert publication.permits("resample_data")
-
-    completions: list[ToolCommandResult] = []
-    terminals = []
-    navigations: list[AssistantPanelNavigationRequest] = []
-    controller.application_command_completed.connect(completions.append)
-    controller.turn_finished.connect(terminals.append)
-    controller.panel_navigation_requested.connect(navigations.append)
-    controller.pending_interactions.begin_tool_input(
-        AssistantToolInputReceipt(
-            command_name="resample_data",
-            original_user_text="Resample the EEG data.",
-            question="Which rate?",
-            publication_generation=publication.backend_generation,
-            missing_inputs=("rate",),
-        )
-    )
-
-    product_harness.send("128 Hz")
-    qtbot.waitUntil(
-        lambda: len(completions) == 1 and len(terminals) == 1,
-        timeout=2_000,
-    )
-
-    assert controller.pending_interactions.tool_input is None
-    assert controller.pending_interactions.active_tool_input is None
-    assert len(completions) == 1
-    assert len(terminals) == 1
-    result = completions[0]
-    assert result.ok is True
-    assert result.tool_name == "resample_data"
-    assert result.command_name == "preprocess"
-    assert result.changed_state["preprocessed_changed"] is True
-    assert controller.study.preprocessed_data_list[0].get_mne().info["sfreq"] == 128
-    assert len(navigations) == 1
-    assert isinstance(navigations[0], AssistantPanelNavigationRequest)
-    assert navigations[0].target is AssistantPanelTarget.PREPROCESS
-    assert product_harness.rag_lifecycle.retrieve_calls == []
-    assert product_harness.generation_events == []
-    feedback = [row for row in controller.history if row["role"] == "internal"]
-    assert len(feedback) == 1
-    assert feedback[0]["content"].startswith("Tool Output:")
-    assert controller._conversation.latest_user_request_text() == "128 Hz"
-    messages = controller.assembler.get_messages(controller.history)
-    assert messages[-1] == {"role": "user", "content": "128 Hz"}
-    assert "Tool Output:" not in json.dumps(messages)
 
 
 def test_qt_chat_wiring_rejects_prose_prefixed_target_action_without_execution(

@@ -36,6 +36,21 @@ from XBrainLab.llm.tools.definitions.training_def import BaseStartTrainingTool
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
 
+def _current_user_message(messages: list[dict]) -> dict:
+    """Read the required user text inside its source-labelled request envelope."""
+    assert messages[-1]["role"] == "user"
+    request = json.loads(messages[-1]["content"])
+    assert request["current_user"]["id"] == "U1"
+    return {"role": "user", "content": request["current_user"]["text"]}
+
+
+def _required_context(messages: list[dict]) -> dict:
+    payload = json.loads(messages[-1]["content"])
+    assert messages[-1]["role"] == "user"
+    assert isinstance(payload["application_state"], dict)
+    return payload
+
+
 def _untrusted_context(messages: list[dict]) -> dict:
     payload = json.loads(messages[1]["content"])
     assert payload["schema"] == "xbrainlab.untrusted_context.v1"
@@ -49,7 +64,7 @@ def _context_item(payload: dict, item_type: str) -> dict:
 
 def _unavailable_action_reference(prompt: str) -> str:
     start = prompt.index("Unavailable Action Reference (not callable):")
-    end = prompt.index("Fallback response contract:", start)
+    end = prompt.index("Final output reminder:", start)
     return prompt[start:end]
 
 
@@ -70,19 +85,12 @@ def test_generation_request_keeps_concept_question_on_strict_response_contract(
 
     assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
     system_prompt = " ".join(request.to_model_messages()[0]["content"].split())
-    assert '"name": "respond_to_user"' in system_prompt
-    assert "Final no-action envelope" not in system_prompt
-    assert "never explain that the user should call an internal tool" in system_prompt
+    assert '"decision"' in system_prompt
+    assert "Tool names are internal" in system_prompt
+    assert "reply with an English message and mode=null" in system_prompt
+    assert "clarify with an English question" in system_prompt
     messages = request.to_model_messages()
-    example = (
-        messages[0]["content"].split("No-action envelope shape: ", 1)[1].splitlines()[0]
-    )
-    assert json.loads(example) == {
-        "tool_name": "respond_to_user",
-        "parameters": {"message": "<answer or blocker explanation>"},
-    }
-    assert "requested sentence length applies to parameters.message" in system_prompt
-    assert messages[-1] == {"role": "user", "content": question}
+    assert _current_user_message(messages) == {"role": "user", "content": question}
 
 
 def test_format_recovery_is_fixed_system_policy_not_untrusted_context() -> None:
@@ -105,11 +113,27 @@ def test_format_recovery_is_fixed_system_policy_not_untrusted_context() -> None:
     assert hostile not in retry[0]["content"]
     assert hostile in retry[1]["content"]
     assert correction not in retry[1]["content"]
-    assert retry[-1] == history[-1]
+    assert _current_user_message(retry) == history[-1]
     assert following == first
     assert len(json.dumps(retry, ensure_ascii=False).encode("utf-8")) <= (
         MAX_CHAT_MODEL_REQUEST_UTF8_BYTES
     )
+
+
+def test_fresh_request_explicitly_publishes_absent_pending_work() -> None:
+    """The model need not infer an empty draft from a missing JSON field."""
+    assembler = ContextAssembler(ToolRegistry(), Study())
+    history = [{"role": "user", "content": "Apply a bandpass filter."}]
+
+    for recovery in (False, True):
+        request = assembler.get_generation_request(
+            history, format_recovery=recovery
+        ).to_model_messages()
+        assert _required_context(request)["pending_request"] is None
+        assert _required_context(request)["current_user"] == {
+            "id": "U1",
+            "text": history[0]["content"],
+        }
 
 
 def test_compound_request_rule_is_published_even_without_rag() -> None:
@@ -122,14 +146,12 @@ def test_compound_request_rule_is_published_even_without_rag() -> None:
     ).to_model_messages()
 
     assert (
-        "If asked for an explanation and an action, or multiple actions"
+        "For multiple actions or an explanation plus an action"
         in (messages[0]["content"])
     )
-    assert "ask which to do first; do not partially execute" in messages[0]["content"]
-    assert messages[-1] == {"role": "user", "content": request}
-    assert not any(
-        item["type"] == "rag_example" for item in _untrusted_context(messages)["items"]
-    )
+    assert "ask which to do first. Never partially execute" in messages[0]["content"]
+    assert _current_user_message(messages) == {"role": "user", "content": request}
+    assert len(messages) == 2  # No optional context survives invalid/absent RAG.
 
 
 def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> None:
@@ -152,11 +174,12 @@ def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> No
                     source=UntrustedContextSource(kind="bundled_example"),
                     data={
                         "input": "What is an EEG alpha rhythm?",
-                        "expected_action": {
-                            "tool_name": "respond_to_user",
-                            "parameters": {
-                                "message": "Alpha rhythm is discussed around 8-12 Hz."
-                            },
+                        "expected_proposal": {
+                            "decision": "reply",
+                            "mode": None,
+                            "action": None,
+                            "changes": {},
+                            "message": "Alpha rhythm is discussed around 8-12 Hz.",
                         },
                     },
                 ),
@@ -174,7 +197,7 @@ def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> No
     assert "external_context:workflow_decision" in item_types
     assert "rag_example" in item_types
     rag_item = next(item for item in items if item["type"] == "rag_example")
-    assert rag_item["data"]["expected_action"]["parameters"]["message"] == (
+    assert rag_item["data"]["expected_proposal"]["message"] == (
         "Alpha rhythm is discussed around 8-12 Hz."
     )
 
@@ -205,12 +228,12 @@ def test_question_does_not_narrow_backend_stage_published_actions() -> None:
     )
     messages = request.to_model_messages()
     prompt = messages[0]["content"]
-    context = _untrusted_context(messages)
-    card = _context_item(context, "state_card")["data"]
+    context = _required_context(messages)
+    card = context["application_state"]
 
     assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
     assert "Final no-action envelope" not in prompt
-    assert '"name": "respond_to_user"' in prompt
+    assert '"decision"' in prompt
     assert runtime.publication_reads == 1
     assert assembler.latest_tool_publication.tool_names == frozenset(
         {"select_channels", "switch_panel"}
@@ -270,7 +293,7 @@ def test_empty_stage_separates_callable_schemas_from_unavailable_reference() -> 
     )
     assert '"parameters"' not in reference
     assert "informational status, not callable action contracts" in reference
-    assert "use respond_to_user with its listed blocker reason" in reference
+    assert "reply with its listed blocker reason" in reference
     assert assembler.latest_tool_publication.blocked_reason("create_epochs") == (
         "Load raw data before creating EEG epochs."
     )
@@ -346,7 +369,17 @@ def test_rag_notes_cannot_publish_actions_absent_from_final_prompt_scope():
                     source=UntrustedContextSource(kind="xbrainlab_bundled_gold_set"),
                     data={
                         "input": query,
-                        "expected_action": {"tool_name": name, "parameters": params},
+                        "expected_proposal": {
+                            "decision": "reply"
+                            if name == "respond_to_user"
+                            else "execute",
+                            "mode": None
+                            if name == "respond_to_user"
+                            else "new_request",
+                            "action": None if name == "respond_to_user" else name,
+                            "changes": {},
+                            "message": params.get("message"),
+                        },
                     },
                 )
                 for query, name, params in [
@@ -364,8 +397,14 @@ def test_rag_notes_cannot_publish_actions_absent_from_final_prompt_scope():
         for item in _untrusted_context(messages)["items"]
         if item["type"] == "rag_example"
     ]
-    assert [item["data"]["expected_action"] for item in examples] == [
-        {"tool_name": "respond_to_user", "parameters": {"message": "I will not act."}}
+    assert [item["data"]["expected_proposal"] for item in examples] == [
+        {
+            "decision": "reply",
+            "mode": None,
+            "action": None,
+            "changes": {},
+            "message": "I will not act.",
+        }
     ]
 
 
@@ -384,9 +423,7 @@ def test_malformed_rag_data_does_not_crash_prompt_assembly(malformed):
         )
     )
     messages = assembler.get_messages([{"role": "user", "content": "Hello"}])
-    assert not any(
-        item["type"] == "rag_example" for item in _untrusted_context(messages)["items"]
-    )
+    assert len(messages) == 2  # No optional context survives invalid/absent RAG.
 
 
 def test_rag_result_is_rechecked_when_publication_changes_during_retrieval():
@@ -413,9 +450,12 @@ def test_rag_result_is_rechecked_when_publication_changes_during_retrieval():
                     source=UntrustedContextSource(kind="xbrainlab_bundled_gold_set"),
                     data={
                         "input": "Stop the run.",
-                        "expected_action": {
-                            "tool_name": "stop_training",
-                            "parameters": {},
+                        "expected_proposal": {
+                            "decision": "execute",
+                            "message": None,
+                            "mode": "new_request",
+                            "action": "stop_training",
+                            "changes": {},
                         },
                     },
                 )
@@ -432,9 +472,7 @@ def test_rag_result_is_rechecked_when_publication_changes_during_retrieval():
     ).to_model_messages()
     assert runtime.publication_reads == 1
     assert "stop_training" not in assembler.latest_tool_publication.tool_names
-    assert not any(
-        item["type"] == "rag_example" for item in _untrusted_context(messages)["items"]
-    )
+    assert len(messages) == 2  # No optional context survives invalid/absent RAG.
 
 
 def test_rag_scope_excludes_backend_enabled_action_outside_target_stage() -> None:
@@ -466,7 +504,7 @@ def test_generation_request_marks_workflow_action_as_structured():
     )
 
     assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
-    assert "exactly one" in request.to_model_messages()[0]["content"]
+    assert "Return one JSON object" in request.to_model_messages()[0]["content"]
 
 
 def test_rag_examples_follow_backend_stage_not_request_heuristics():
@@ -487,8 +525,8 @@ def test_prompt_action_contracts_do_not_resemble_an_output_array():
 
     assert not contracts.lstrip().startswith("[")
     assert "No callable action contract is available." in contracts
-    assert "Fallback response contract:" in contracts
-    assert '"name": "respond_to_user"' in contracts
+    assert "Final output reminder:" in contracts
+    assert '"decision"' in contracts
 
 
 def test_zero_parameter_action_contract_has_one_final_output_reminder():
@@ -502,7 +540,7 @@ def test_zero_parameter_action_contract_has_one_final_output_reminder():
     assert "Exact zero-parameter output shape:" not in contracts
     assert contracts.count("Final output reminder:") == 1
     assert "Generic action envelope:" not in contracts
-    assert "parameters matching the selected contract" in contracts
+    assert "Only propose changed parameters" in contracts
     assert not contracts.lstrip().startswith("[")
 
 
@@ -514,7 +552,7 @@ def test_single_action_contract_ends_with_action_first_reminder() -> None:
     contracts = assembler._format_tools(["start_training"])
 
     assert contracts.rstrip().endswith(
-        "never explain that the user should call an internal tool or function."
+        "For a clear, complete enabled action use execute, not a promise to act."
     )
 
 
@@ -554,11 +592,18 @@ def test_action_catalog_ends_with_one_short_output_reminder() -> None:
     }
 
     reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1]
-    assert (
-        '{"tool_name":"<exact enabled action or respond_to_user>","parameters":{...}}'
-    ) in reminder
-    assert "exact enabled action name or respond_to_user" in reminder
-    assert "Add no prose outside the object" in reminder
+    output_schema = json.loads(reminder.splitlines()[1])
+    assert set(output_schema["required"]) == {
+        "decision",
+        "mode",
+        "action",
+        "changes",
+        "message",
+    }
+    assert "request" not in output_schema["properties"]
+    assert "real user source IDs and quotes" in reminder
+    assert "Omitted saved parameters are retained" not in reminder
+    assert "Examples never supply values" in reminder
     assert "Decision checkpoint" not in reminder
 
 
@@ -572,7 +617,7 @@ def test_action_catalog_ends_with_action_first_reminder() -> None:
     )
 
     assert contracts.rstrip().endswith(
-        "never explain that the user should call an internal tool or function."
+        "For a clear, complete enabled action use execute, not a promise to act."
     )
 
 
@@ -627,9 +672,9 @@ def test_operation_choice_guidance_follows_published_tools_not_stage(
     assert (
         "apply_bandpass_filter" in assembler.latest_tool_publication.tool_names
     ) is publish_preprocessing
-    assert ("ask which operation the user wants" in prompt) is publish_preprocessing
-    assert '"name": "respond_to_user"' in prompt
-    assert "information, a negated, ambiguous, or multi-action request" in prompt
+    assert "If the action is still unknown, clarify with action=null" in prompt
+    assert '"decision"' in prompt
+    assert "For information, a prohibition, or an unavailable action: reply" in prompt
 
 
 def test_prompt_policy_consolidation_preserves_publication_and_decision_contracts() -> (
@@ -665,14 +710,13 @@ def test_prompt_policy_consolidation_preserves_publication_and_decision_contract
     assert prompt.count("Callable action contract:") == 2
     assert '"name": "select_channels"' in prompt
     assert '"name": "switch_panel"' in prompt
-    assert '"name": "respond_to_user"' in prompt
+    assert '"decision"' in prompt
     assert "tool_input_clarification" not in prompt
     assert prompt.rstrip().endswith(
-        "For a clear enabled action, choose it now; never explain that the user "
-        "should call an internal tool or function.\n"
+        "For a clear, complete enabled action use execute, not a promise to act.\n"
         "Only the listed workflow actions are available at this stage."
     )
-    assert "Never claim that an action completed" in prompt
+    assert "never report completion without a trusted tool result" in prompt
 
 
 @pytest.mark.parametrize(
@@ -723,19 +767,10 @@ def test_state_card_never_projects_private_directory_path(
         ]
     )
 
-    context = _untrusted_context(messages)
-    state_card = _context_item(context, "state_card")
-    state_card_data = json.dumps(state_card["data"])
-    assert state_card["source"] == {
-        "kind": "application_service_publication",
-    }
-    assert context["bounds"] == {
-        "max_chars": 8192,
-        "max_utf8_bytes": 8192,
-        "max_items": 8,
-        "max_string_chars": 1024,
-    }
-    assert state_card["data"] == {
+    context = _required_context(messages)
+    state_card = context["application_state"]
+    state_card_data = json.dumps(state_card)
+    assert state_card == {
         "workflow_stage": "data_loaded",
         "backend_generation": 8,
         "state_reliable": True,
@@ -845,10 +880,7 @@ def test_system_prompt_uses_exactly_one_publication_for_all_workflow_sections():
         [{"role": "user", "content": "What can I do next?"}]
     )
     prompt = messages[0]["content"]
-    state_card = _context_item(
-        _untrusted_context(messages),
-        "state_card",
-    )["data"]
+    state_card = _required_context(messages)["application_state"]
 
     assert runtime.publication_reads == 1
     assert state_card == {
@@ -859,7 +891,7 @@ def test_system_prompt_uses_exactly_one_publication_for_all_workflow_sections():
     }
     assert "No data loaded" not in prompt
     assert "recommended_next_step" not in prompt
-    assert "STRICT RESPONSE CONTRACT - DECISION ORDER" in prompt
+    assert "STRICT RESPONSE CONTRACT" in prompt
     assert "Operation policy" not in prompt
     assert '"unavailable_operations"' not in prompt
     assert "No executable workflow actions are available" in prompt
@@ -891,10 +923,7 @@ def test_preprocessed_publication_aligns_model_and_decision_context() -> None:
     )
     messages = assembler.get_messages([{"role": "user", "content": "Create epochs"}])
     prompt = messages[0]["content"]
-    state_card = _context_item(
-        _untrusted_context(messages),
-        "state_card",
-    )["data"]
+    state_card = _required_context(messages)["application_state"]
 
     assert runtime.publication_reads == 1
     assert "## Current Stage: Preprocessed" not in prompt
@@ -1015,7 +1044,7 @@ def test_explanatory_no_tool_turn_publishes_no_workflow_tools() -> None:
 
     assert "STRICT RESPONSE CONTRACT" in prompt
     assert "Final no-action envelope" not in prompt
-    assert '"name": "respond_to_user"' in prompt
+    assert '"decision"' in prompt
     assert "unique description for epoch_data" not in prompt
     assert assembler.latest_tool_publication.tool_names == frozenset()
     assert runtime.publication_reads == 1
@@ -1049,7 +1078,10 @@ def test_standalone_explanation_keeps_only_prior_assistant_visible_message() -> 
             "text": "No data loaded. Next: Scan data source.",
         }
     ]
-    assert messages[-1] == {"role": "user", "content": latest_question}
+    assert _current_user_message(messages) == {
+        "role": "user",
+        "content": latest_question,
+    }
 
 
 def test_long_history_cannot_displace_current_workflow_publication() -> None:
@@ -1091,8 +1123,8 @@ def test_long_history_cannot_displace_current_workflow_publication() -> None:
     request = assembler.get_generation_request(history)
 
     messages = request.to_model_messages()
-    context = _untrusted_context(messages)
-    state_card = _context_item(context, "state_card")["data"]
+    context = _required_context(messages)
+    state_card = context["application_state"]
     assert state_card["workflow_stage"] == "data_loaded"
     assert state_card["backend_generation"] == 41
     assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
@@ -1161,15 +1193,14 @@ def test_prompt_projects_only_minimal_setup_state_card() -> None:
         application_runtime=_ApplicationRuntimeFake(publication),
     )
 
-    context = _untrusted_context(
+    context = _required_context(
         assembler.get_messages(
             [{"role": "user", "content": "Can I start training now?"}]
         )
     )
 
-    card = _context_item(context, "state_card")
-    assert card["source"] == {"kind": "application_service_publication"}
-    assert card["data"] == {
+    card = context["application_state"]
+    assert card == {
         "workflow_stage": "dataset_ready",
         "backend_generation": 44,
         "state_reliable": True,
@@ -1207,10 +1238,10 @@ def test_state_card_projects_only_stage_relevant_readiness() -> None:
             Study(),
             application_runtime=_ApplicationRuntimeFake(publication),
         )
-        context = _untrusted_context(
+        context = _required_context(
             assembler.get_messages([{"role": "user", "content": "What is ready?"}])
         )
-        return _context_item(context, "state_card")["data"]
+        return context["application_state"]
 
     epoch_ready = _state(
         pipeline_stage="epoch_ready",
@@ -1291,44 +1322,10 @@ def test_prompt_history_keeps_only_latest_visible_assistant_message() -> None:
     assert conversation["messages"] == [
         {"speaker": "assistant", "text": "Latest visible answer"}
     ]
-    assert messages[-1] == {"role": "user", "content": "Why is that useful?"}
-
-
-def test_tool_input_receipt_is_never_projected_into_prompt_context() -> None:
-    state = _state(
-        pipeline_stage="data_loaded",
-        raw=RawStateSnapshot(loaded=True, count=1),
-        active_dataset=ActiveDatasetSnapshot(has_raw_data=True),
-    )
-    publication = ApplicationViewPublication(
-        generation=81,
-        state=state,
-        capabilities=build_capability_policy(state),
-    )
-    registry = ToolRegistry()
-    registry.register(_NamedTool("resample_data"))
-    assembler = ContextAssembler(
-        registry,
-        Study(),
-        application_runtime=_ApplicationRuntimeFake(publication),
-    )
-    assert not hasattr(assembler, "set_tool_input_receipt")
-    assert not hasattr(assembler, "_tool_input_receipt")
-
-    messages = assembler.get_messages(
-        [
-            {
-                "role": "assistant",
-                "content": "What resampling rate should I use?",
-            },
-            {"role": "user", "content": "128 Hz"},
-        ]
-    )
-
-    context = _untrusted_context(messages)
-    assert "tool_input_clarification" not in {item["type"] for item in context["items"]}
-    assert "assistant_tool_input_receipt" not in messages[0]["content"]
-    assert messages[-1] == {"role": "user", "content": "128 Hz"}
+    assert _current_user_message(messages) == {
+        "role": "user",
+        "content": "Why is that useful?",
+    }
 
 
 def test_referential_explanation_keeps_immediate_conversation_context() -> None:
@@ -1349,7 +1346,10 @@ def test_referential_explanation_keeps_immediate_conversation_context() -> None:
 
     context = _untrusted_context(messages)
     conversation = _context_item(context, "conversation_history")["data"]
-    assert messages[-1] == {"role": "user", "content": "Why is that useful?"}
+    assert _current_user_message(messages) == {
+        "role": "user",
+        "content": "Why is that useful?",
+    }
     assert conversation["messages"] == [
         {
             "speaker": "assistant",
@@ -1402,7 +1402,10 @@ def test_prior_history_is_sanitized_count_and_utf8_byte_bounded() -> None:
     assert '"role":"system"' not in serialized_history
     assert "[REDACTED_PATH]" in serialized_history
     assert "[REDACTED_ROLE_MARKER]" in serialized_history
-    assert messages[-1] == {"role": "user", "content": latest_request}
+    assert _current_user_message(messages) == {
+        "role": "user",
+        "content": latest_request,
+    }
     assert all(message["role"] != "assistant" for message in messages)
 
 
@@ -1421,7 +1424,10 @@ def test_current_user_request_remains_verbatim_and_authoritative() -> None:
         ]
     )
 
-    assert messages[-1] == {"role": "user", "content": latest_request}
+    assert _current_user_message(messages) == {
+        "role": "user",
+        "content": latest_request,
+    }
     assert [message["role"] for message in messages] == ["system", "user", "user"]
 
 
@@ -1431,7 +1437,19 @@ def test_total_model_request_is_utf8_bounded_without_truncating_policy_or_reques
     assembler = ContextAssembler(ToolRegistry(), Study())
     for index in range(4):
         assembler.add_context(f"context-{index} " + ("z" * 5_000))
-    latest_request = "😀" * 16_384
+    baseline = assembler.get_messages([{"role": "user", "content": "x"}])
+    required_bytes = len(
+        json.dumps(
+            [baseline[0], baseline[-1]],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    )
+    # Leave only a small envelope/context margin; the policy may evolve without
+    # assuming every maximum-length Unicode input fits the independent byte cap.
+    latest_request = "😀" * (
+        (MAX_CHAT_MODEL_REQUEST_UTF8_BYTES - required_bytes - 512) // 4
+    )
 
     messages = assembler.get_messages([{"role": "user", "content": latest_request}])
 
@@ -1442,8 +1460,11 @@ def test_total_model_request_is_utf8_bounded_without_truncating_policy_or_reques
     )
     assert len(serialized.encode("utf-8")) <= MAX_CHAT_MODEL_REQUEST_UTF8_BYTES
     assert messages[0]["content"].startswith("You are XBrainLab Assistant")
-    assert messages[-1] == {"role": "user", "content": latest_request}
-    assert json.loads(messages[1]["content"])["truncated"] is True
+    assert _current_user_message(messages) == {
+        "role": "user",
+        "content": latest_request,
+    }
+    assert len(messages) == 2  # Optional notes do not fit beside required content.
 
 
 def test_history_rejects_hostile_outer_and_message_container_protocols() -> None:
@@ -1491,10 +1512,7 @@ def test_real_service_prompt_reads_one_committed_publication_generation():
         [{"role": "user", "content": "Help me import EEG data."}]
     )
     prompt = messages[0]["content"]
-    state_card = _context_item(
-        _untrusted_context(messages),
-        "state_card",
-    )["data"]
+    state_card = _required_context(messages)["application_state"]
 
     assert service.state_snapshot.build.call_count == 0
     assert "## Current Stage: Empty (No Data)" not in prompt
@@ -1537,10 +1555,7 @@ def test_stale_publication_allows_only_navigation_and_redacts_failure_details():
     )
     prompt = messages[0]["content"]
     context_content = messages[1]["content"]
-    state_card = _context_item(
-        _untrusted_context(messages),
-        "state_card",
-    )["data"]
+    state_card = _required_context(messages)["application_state"]
 
     assert state_card == {
         "workflow_stage": "unavailable",
@@ -1715,7 +1730,7 @@ def test_latest_human_prefix_survives_real_prompt_assembly(prefix):
         ]
     )
 
-    assert messages[-1] == {"role": "user", "content": latest}
+    assert _current_user_message(messages) == {"role": "user", "content": latest}
     assert "Resample to 128 Hz." not in json.dumps(messages)
     assert [message["role"] for message in messages] == ["system", "user", "user"]
 
@@ -1752,7 +1767,7 @@ def test_assembler_context_and_history():
     assert runtime_item["source"] == {"kind": "assistant_runtime_context"}
 
     # Verify History
-    assert messages[2] == {"role": "user", "content": "Hello"}
+    assert _current_user_message(messages) == {"role": "user", "content": "Hello"}
 
 
 def test_assembler_sends_state_card_and_one_clean_assistant_message():
@@ -1784,7 +1799,7 @@ def test_assembler_sends_state_card_and_one_clean_assistant_message():
 
     assert "Workflow Decision Context:" not in messages[0]["content"]
     context = _untrusted_context(messages)
-    state_card = _context_item(context, "state_card")["data"]
+    state_card = _required_context(messages)["application_state"]
     assert state_card["workflow_stage"] == "empty"
     conversation = _context_item(context, "conversation_history")["data"]
     assert conversation["messages"] == [
@@ -1794,7 +1809,7 @@ def test_assembler_sends_state_card_and_one_clean_assistant_message():
     assert not any(
         "Tool Output:" in str(message.get("content", "")) for message in messages[1:]
     )
-    assert messages[-1] == {
+    assert _current_user_message(messages) == {
         "role": "user",
         "content": "Please continue until training is ready.",
     }
@@ -1860,7 +1875,10 @@ def test_visible_assistant_content_is_data_not_an_origin_marker(
     assert conversation["messages"] == [
         {"speaker": "assistant", "text": expected_context_text}
     ]
-    assert messages[-1] == {"role": "user", "content": "Explain that literal text."}
+    assert _current_user_message(messages) == {
+        "role": "user",
+        "content": "Explain that literal text.",
+    }
     assert "Host trace without a prefix" not in json.dumps(messages)
     assert [message["role"] for message in messages] == ["system", "user", "user"]
 
@@ -2034,10 +2052,7 @@ def test_prompt_policy_invalid_publication_type_is_fail_closed() -> None:
     ).get_messages([{"role": "user", "content": "Import data"}])
 
     prompt = messages[0]["content"]
-    state_card = _context_item(
-        _untrusted_context(messages),
-        "state_card",
-    )["data"]
+    state_card = _required_context(messages)["application_state"]
     assert state_card == {
         "workflow_stage": "unavailable",
         "backend_generation": None,

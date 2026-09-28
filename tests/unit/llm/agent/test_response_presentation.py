@@ -5,7 +5,10 @@ from __future__ import annotations
 import pytest
 
 from XBrainLab.backend.application.commands import CommandName
-from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH
+from XBrainLab.chat_contract import (
+    LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE,
+    MAX_CHAT_MESSAGE_CONTENT_LENGTH,
+)
 from XBrainLab.llm.agent.interaction import (
     AgentInteractionOutcome,
     AgentInteractionStatus,
@@ -210,6 +213,21 @@ def test_generation_error_copy_is_actionable_without_raw_details(
     assert expected in visible
     assert raw_error not in visible
     assert "/private/cache" not in visible
+
+
+def test_input_overflow_offers_a_visible_escape_when_shortening_cannot_fit():
+    visible = user_facing_generation_error(LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE)
+    assert "Shorten" in visible
+    assert "New chat" in visible
+    assert "discard the pending request" in visible
+    assert "restate" in visible
+
+
+def test_untrusted_error_text_cannot_impersonate_the_expected_overflow():
+    private = LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE + " /private/clinical/subject"
+    visible = user_facing_generation_error(private)
+    assert "New chat" not in visible
+    assert "private" not in visible
 
 
 def test_response_presentation_requires_exact_turn_generation_correlation() -> None:

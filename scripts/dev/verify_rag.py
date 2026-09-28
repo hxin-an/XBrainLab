@@ -21,8 +21,9 @@ from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.context_encoding import decode_untrusted_context
 from XBrainLab.llm.rag import RAGConfig, RAGRetriever
 from XBrainLab.llm.rag.example_policy import (
+    example_decision_name,
     is_primary_workflow_example,
-    prompt_tool_call_from_metadata,
+    prompt_proposal_from_metadata,
 )
 from XBrainLab.llm.rag.indexer import RAGIndexer
 
@@ -32,6 +33,9 @@ PROBE_PATH = Path(__file__).with_name("rag_verification_probes.json")
 PROBE_SHA256 = "d4222a3e1595db23d45622ec0b29348e65482c0cb7eb3c3cb4bf880ad2d96822"  # pragma: allowlist secret
 PAIRED_PROBE_PATH = Path(__file__).with_name("rag_paired_probes.json")
 PAIRED_PROBE_SHA256 = "bd9608f783c9ef9d534153bf0e6135c249ae9c989546a6db3124f0a6e88c3f5e"  # pragma: allowlist secret
+ADMISSION_PATH = ROOT / "tests/unit/llm/rag/retrieval_admission_cases_v3.json"
+ADMISSION_SHA256 = "c5308ccb0d062b845b0e1728b2d10c4c3016094d69eb12d3852719a46ad5edd0"  # pragma: allowlist secret
+ADMISSION_CORPUS_SHA256 = "9dd41af8d3f43f9d302f566d6cacf25d7b21b20047b7c426c7ed34713e968ebf"  # pragma: allowlist secret
 _ALLOWED_GIT_ARGUMENTS = frozenset(
     {
         ("rev-parse", "--show-toplevel"),
@@ -146,17 +150,28 @@ def evaluate_probe_context(
     tools: list[str | None] = []
     valid = not encoded_context or decoded is not None
     for item in decoded or ():
-        action = (
-            item.data.get("expected_action") if isinstance(item.data, dict) else None
+        metadata = (
+            {
+                "proposal": item.data.get("expected_proposal"),
+                "source_text": item.data.get("input"),
+            }
+            if isinstance(item.data, dict)
+            else {}
         )
-        tool = action.get("tool_name") if isinstance(action, dict) else None
+        if isinstance(item.data, dict) and "prior_turn" in item.data:
+            metadata["prior_turn"] = item.data["prior_turn"]
+        proposal = prompt_proposal_from_metadata(metadata)
+        # Keep a malformed proposal's claimed action visible to the safety report.
+        raw = metadata.get("proposal")
+        action = raw.get("action") if isinstance(raw, dict) else None
+        tool = example_decision_name(metadata) if proposal is not None else action
         tools.append(tool if isinstance(tool, str) else None)
         valid = (
             valid
             and item.item_type == "rag_example"
             and isinstance(tool, str)
             and bool(tool)
-            and prompt_tool_call_from_metadata({"tool_calls": [action]}) is not None
+            and proposal is not None
         )
     if decoded is not None:
         # The production decoder deliberately skips malformed rows; a verifier
@@ -188,6 +203,125 @@ def evaluate_probe_context(
         "context_utf8_bytes": len(encoded_context.encode("utf-8")),
         "bounded": len(encoded_context.encode("utf-8")) <= RAGConfig.MAX_CONTEXT_CHARS
         and len(tools) <= RAGConfig.TOP_K,
+    }
+
+
+def load_admission_cases() -> dict[str, Any]:
+    """Preserve the fixed v3 labels and the corpus against which they were set."""
+    content = ADMISSION_PATH.read_bytes()
+    if hashlib.sha256(content).hexdigest() != ADMISSION_SHA256:
+        raise ValueError("Frozen v3 RAG admission fixture changed.")
+    if (
+        hashlib.sha256(RAGConfig.get_gold_set_path().read_bytes()).hexdigest()
+        != ADMISSION_CORPUS_SHA256
+    ):
+        raise ValueError("Frozen v3 RAG admission corpus changed.")
+    return json.loads(content)
+
+
+def evaluate_admission_cases(
+    retriever: RAGRetriever, fixture: dict[str, Any]
+) -> dict[str, Any]:
+    """Measure actual packed examples and an independent product sparse query.
+
+    Dense candidates are not exposed by the product API. Do not recreate its
+    admission or RRF here, or call the final three examples the entire branch.
+    """
+    from XBrainLab.llm.agent.assembler import ContextAssembler
+    from XBrainLab.llm.agent.turn import AssistantPendingRequest
+
+    allowed = frozenset(fixture["eligible_tool_names"])
+    rows = []
+    for split in ("calibration", "review"):
+        for case in fixture[split]:
+            turns = case["user_turns"]
+            pending = (
+                AssistantPendingRequest(
+                    command_name=case.get("pending_action"),
+                    original_turn_id="U1",
+                    publication_generation=1,
+                    parameters=(),
+                    sources=tuple(
+                        (f"U{i}", text) for i, text in enumerate(turns[:-1], 1)
+                    ),
+                )
+                if len(turns) > 1
+                else None
+            )
+            query = ContextAssembler.retrieval_query(turns[-1], pending_request=pending)
+            context = retriever.get_similar_examples(
+                query, k=RAGConfig.TOP_K, allowed_tool_names=allowed
+            )
+            selected = evaluate_probe_context(
+                context, expected_tool=None, allowed_tools=allowed
+            )
+            acceptable = set(fixture["acceptable_sets"][case["acceptable"]])
+            selected_ids = selected["candidate_ids"]
+            selected_wrong = sorted(set(selected_ids) - acceptable)
+            selected_ok = (
+                selected["membership_ok"] and selected["bounded"] and not selected_wrong
+            )
+            sparse = retriever.bm25_index
+            sparse_ids = (
+                [
+                    row[1]
+                    for row in sparse.query(
+                        query,
+                        k=RAGConfig.CANDIDATES_PER_BRANCH,
+                        eligible=lambda metadata: retriever._example_is_allowed(
+                            metadata, allowed_tool_names=allowed
+                        ),
+                    )
+                ]
+                if sparse is not None
+                else []
+            )
+            sparse_wrong = sorted(set(sparse_ids) - acceptable)
+            missing = sorted(set(case.get("required_sparse_ids", [])) - set(sparse_ids))
+            rows.append(
+                {
+                    "id": case["id"],
+                    "split": split,
+                    "family": case["family"],
+                    "query": query,
+                    "acceptable_ids": sorted(acceptable),
+                    "selected_examples": {
+                        "ids": selected_ids,
+                        "wrong_ids": selected_wrong,
+                        "ok": selected_ok,
+                    },
+                    "sparse_candidates": {
+                        "status": "observed" if sparse is not None else "not_assessed",
+                        "ids": sparse_ids,
+                        "wrong_ids": sparse_wrong,
+                        "missing_required_ids": missing,
+                        "ok": sparse is not None and not missing,
+                    },
+                }
+            )
+    rule_matches = fixture["rule"] == {
+        "minimum_matched_terms": RAGConfig.MIN_SPARSE_MATCHED_TERMS,
+        "minimum_coverage": RAGConfig.MIN_SPARSE_COVERAGE,
+        "coverage_metric": "matched_idf_over_min_query_document_idf",
+        "include_oov_in_query_denominator": True,
+        "unique_query_and_document_terms": True,
+    }
+    return {
+        "fixture_sha256": ADMISSION_SHA256,
+        "corpus_sha256": ADMISSION_CORPUS_SHA256,
+        "dense_candidates": {
+            "status": "not_assessed",
+            "reason": "Product API exposes only final packed examples, not dense branch admission.",
+        },
+        "acceptance_scope": "selected_relevance_and_required_sparse_ids",
+        "rule_matches": rule_matches,
+        "measured_checks_ok": rule_matches
+        and len(rows) == 24
+        and all(
+            row["selected_examples"]["ok"] and row["sparse_candidates"]["ok"]
+            for row in rows
+        ),
+        "cases": rows,
     }
 
 
@@ -292,11 +426,12 @@ def _verified_top3_hits(report: dict[str, Any]) -> int | None:
     return hits if type(declared_hits) is int and declared_hits == hits else None
 
 
-def run_verification(*, hybrid_alpha: float | None = None) -> dict[str, Any]:
+def run_verification(*, dense_only: bool = False) -> dict[str, Any]:
     """Run the real local-only RAG gate and return a bounded report."""
     started = perf_counter()
     probes = load_probes()
     paired_probes = load_paired_probes()
+    admission_fixture = load_admission_cases()
     checks: list[dict[str, object]] = []
     provenance = _git_provenance()
     _add_check(
@@ -327,7 +462,7 @@ def run_verification(*, hybrid_alpha: float | None = None) -> dict[str, Any]:
 
     expected_document_count = _count_indexable_examples() if corpus_ok else 0
     report: dict[str, Any] = {
-        "schema": "xbrainlab.rag-verification.v1",
+        "schema": "xbrainlab.rag-verification.v3",
         "generated_at": datetime.now(UTC).isoformat(),
         "ok": False,
         "provenance": provenance,
@@ -342,11 +477,13 @@ def run_verification(*, hybrid_alpha: float | None = None) -> dict[str, Any]:
             "offline_only": True,
             "probe_sha256": PROBE_SHA256,
             "paired_probe_sha256": PAIRED_PROBE_SHA256,
-            "hybrid_alpha": (
-                RAGRetriever.DEFAULT_HYBRID_ALPHA
-                if hybrid_alpha is None
-                else hybrid_alpha
-            ),
+            "admission_fixture_sha256": ADMISSION_SHA256,
+            "ranking": "dense" if dense_only else "rrf",
+            "sparse_minimum_matched_terms": RAGConfig.MIN_SPARSE_MATCHED_TERMS,
+            "sparse_minimum_coverage": RAGConfig.MIN_SPARSE_COVERAGE,
+            "sparse_coverage_metric": "matched_idf_over_min_query_document_idf",
+            "candidates_per_branch": RAGConfig.CANDIDATES_PER_BRANCH,
+            "rrf_rank_constant": RAGConfig.RRF_RANK_CONSTANT,
             "top_k": RAGConfig.TOP_K,
             "max_context_bytes": RAGConfig.MAX_CONTEXT_CHARS,
             "max_example_content_chars": RAGConfig.MAX_EXAMPLE_CONTENT_CHARS,
@@ -357,14 +494,17 @@ def run_verification(*, hybrid_alpha: float | None = None) -> dict[str, Any]:
         "paired_cases": [],
         "claim_boundary": (
             "This verifies local embedding/index/retrieval behavior. It does not "
-            "measure end-to-end local-LLM tool-call accuracy."
+            "measure end-to-end local-LLM tool-call accuracy. Fixed v3 checks separate "
+            "sparse candidates from final packed examples; dense candidate admission "
+            "is not observed. Acceptance checks returned-example relevance and required "
+            "sparse IDs, not candidate-pool purity or end-to-end model benefit."
         ),
     }
     if not corpus_ok or not embedding_ready or expected_document_count <= 0:
         report["ok"] = False
         return report
 
-    retriever = RAGRetriever(hybrid_alpha=hybrid_alpha)
+    retriever = RAGRetriever(dense_only=dense_only)
     first_point_count = 0
     try:
         initialization_started = perf_counter()
@@ -421,6 +561,14 @@ def run_verification(*, hybrid_alpha: float | None = None) -> dict[str, Any]:
             stage: sorted(publication.tool_names)
             for stage, publication in publications.items()
         }
+        admission = evaluate_admission_cases(retriever, admission_fixture)
+        report["fixed_v3_admission"] = admission
+        _add_check(
+            checks,
+            "fixed_v3_retrieval_admission",
+            admission["measured_checks_ok"],
+            "Fixed 12+12 cases: actual packed example relevance and product sparse candidates/required IDs.",
+        )
         retrieval_cases = []
         boundary_cases = []
         for case in probes["positive_cases"] + probes["boundary_cases"]:
@@ -527,7 +675,7 @@ def run_verification(*, hybrid_alpha: float | None = None) -> dict[str, Any]:
     finally:
         retriever.close()
 
-    second = RAGRetriever(hybrid_alpha=hybrid_alpha)
+    second = RAGRetriever(dense_only=dense_only)
     try:
         repeat_started = perf_counter()
         second.initialize()
@@ -572,7 +720,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         try:
             report = (
-                run_verification(hybrid_alpha=1.0)
+                run_verification(dense_only=True)
                 if args.ranking == "dense"
                 else run_verification()
             )
@@ -583,7 +731,7 @@ def main(argv: list[str] | None = None) -> int:
                 report["ok"] = bool(report["ok"]) and comparison["ok"]
         except Exception as error:
             report = {
-                "schema": "xbrainlab.rag-verification.v1",
+                "schema": "xbrainlab.rag-verification.v3",
                 "generated_at": datetime.now(UTC).isoformat(),
                 "ok": False,
                 "checks": [
@@ -621,8 +769,11 @@ def _count_indexable_examples() -> int:
         metadata = {
             "id": item.get("id"),
             "category": item.get("category"),
-            "tool_calls": json.dumps(item.get("expected_tool_calls")),
+            "proposal": item.get("expected_proposal"),
+            "source_text": item["input"],
         }
+        if "prior_turn" in item:
+            metadata["prior_turn"] = item["prior_turn"]
         if is_primary_workflow_example(metadata):
             count += 1
     return count

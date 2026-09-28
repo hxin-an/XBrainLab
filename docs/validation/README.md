@@ -1,6 +1,6 @@
 # XBrainLab Validation Contract
 
-最後更新：`2026-09-16`
+最後更新：`2026-09-28`
 
 驗證回答「哪個exact source，在什麼環境，觀察到什麼」，不能把單一PASS放大成產品、科學或真人
 驗收結論。日常與PR交付按下表選證據；CI routing由既有workflow擁有。明確要求完整dossier時，
@@ -284,6 +284,8 @@ exact revision與四份frozen English case files的SHA，完整81/81 inventory�
 parameter origin、5/5 missing guard，且失敗case只能是PR #71已知的`select_channels_before_data_en`、
 `ambiguous_en`、`generic_filter_selection`之一。artifact一律寫`assistant_stable_promotion=false`；profile
 不使bounded Assistant成為Stable promotion或完整`handoff-ready`證據。
+歷史 bounded 報告的 source／schema 與已知失敗保留；新版 v16 不因保留 81 題就可沿用
+舊 Host collection 分數或直接比較總分，也不新增未批准的 failure allowance。
 
 ### Stable Assistant candidate
 
@@ -291,44 +293,65 @@ Assistant candidate必須在同一clean/explained exact source依序閉合下列
 
 1. Unit/integration證明18-tool registry、strict envelope、backend-owned stage、confirmation、GUI
    correlation與no-model diagnostic terminal；mock或manifest-only測試不等於真人workflow。
-2. Active Granite English report固定81 cases：36 positive（18 tools各2）、14 challenge、24 no-action precision
-   與7 clarification trajectories。Raw model、Host safety、direct Host clarification admission與product outcome
-   必須分開報告：Host block、receipt、reconstruction或format recovery只能支持產品安全，不能增加
-   first-generation raw-model quality；post-recovery score只作diagnostic。raw-model gate只要求
-   first-generation `36/36` positive exact tool＋parameters。14 challenge、24 precision與7 clarification的 raw
-   result必須逐 case 如實保留（含critical／wording分類），但不以raw `24/24` precision或raw `7/7`
-   clarification作candidate requirement，也不得由Host rescue灌成通過。
-   Host safety gate要求10/10 direct preprocess value-origin checks；direct Host clarification admission另要求5/5
-   exact direct receipts。Host 不以英文 action／intent grammar 或 import positive-origin rescue 改寫 raw/product
-   outcome。product no-action gate要求24/24
-   product outcomes沒有confirmation、GUI handoff、ApplicationService／tool execution或state mutation；
-   product clarification gate要求7/7 final verified execute-boundary。任何no-action product outcome的上述
-   side effect都fail closed。
-   v14 evaluator必須分開記錄first raw generation、每次production strict-envelope recovery／follow-up raw
-   response、Host admission/form transition、receipt-reconstructed parameters與final product outcome；不得直接
-   建構receipt、手動塞入pending coordinator或合成parameters。Generation token budget使用production
-   structured-decision resolver，不得另設較小的evaluator cap。回覆文字的自然度與完整語意由同一SHA真人驗收，
-   不以固定required keyword group作promotion gate。這只支撐bounded selection與production admission outcome，
-   不支撐產品ready。
-   所有 first-turn family（positive、challenge、precision）的prompt與attempt scorer之callable set／blocked
-   reasons必須由同一個production `ApplicationViewPublication`及既有agent capability policy產生；直接使用
-   hand-authored stage list或把scorer context中的所有tool設為enabled，不構成state／unavailable-action
-   projection證據。36-case tool coverage維持，但`start_training`以最小可呼叫的`dataset_ready` publication
-   取代舊的手組`epoch_ready` catalog，故v9不可直接與該歷史路徑的數字比較。
-   同一v14 evaluator另固定7個production-controller clarification trajectories：五個direct cases的source
-   必須來自precision suite的missing-parameter turn，且第一輪真的由production parameter value-origin boundary
-   產生exact tool／question receipt；模型直接`respond_to_user`而沒有Host receipt時不得合成或代填。另外
-   generic filter selection、bounded bandpass collect-then-sort與correction fail-closed restart都必須經真controller
-   pending lifecycle。所有trajectory仍須經相同parser、schema、publication、capability與attempt policy得到
-   7/7 final verified execute-boundary；receipt 收齊後必須零額外 LLM/RAG generation。raw第一發與最多一次format recovery分開保存（舊兩次預算的artifact保留原身分）。這個gate不取代24/24
-   precision，也不等於tool execution已產生真side effect。
-   真model run使用product RAG時，evaluator必須經`ProcessRAGRetrieverLifecycle`與同一個
-   `ContextAssembler`取得allowed tools；每次retrieval記錄protocol、sequence、query、allowed tools、
-   returned／assembled item IDs、context hash與status。`empty`只表示ready product retriever沒有eligible
-   context；初始化或retrieval error必須標為`degraded`，不可把它當成empty或成功RAG。沒有product RAG的
-   歷史synthetic path一律標`synthetic_no_rag.v1`，只能作比較，不能支持product-RAG claim。developer prompt
-   dossier則以pinned tokenizer與production `LocalBackend` template／structured-decision budget輸出最終rendered
-   prompt、token count、input budget與optional-context drop；它不載入model weights，也不取代真model evidence。
+2. Active Granite English v16 report 固定 81 cases：36 positive（18 tools 各 2）、14 challenge、
+   24 no-action precision、7 clarification trajectories。四份既有 case files 的 ID、使用者原文、
+   最終 oracle 與分母保持不變；不能刪題、換題或由 Host rescue 灌高分數。
+   當前輸出是`decision / mode / action / changes / message`五欄，public mode為
+   null／update_pending／new_request／cancel_pending；舊巢狀輸出與mode alias不接受。
+   Raw model、Host safety、model-proposed draft admission 與 product outcome 必須分開。
+   Host block、已驗證 draft、累積參數或 format recovery 只能支持產品安全／處理結果，不增加
+   first-generation raw quality；post-recovery score 只作 diagnostic。Raw gate 仍要求首次生成
+   `36/36` positive exact tool＋parameters；14 challenge、24 precision、7 clarification 的 raw
+   結果逐題保留（含 critical／wording 分類），但不額外要求 raw 24/24 precision 或 raw 7/7 clarification。
+   Host safety gate 保留 `10/10` direct preprocess explicit value-origin checks 與 `5/5` missing guards；
+   direct draft admission 要求 `5/5` exact model-proposed drafts，經來源／schema 驗證後由真正
+   pending owner 保存。Host 不使用英文 intent router 或 import origin rescue 改寫 outcome。
+   Product precision 仍要求 `24/24` 沒有 confirmation、GUI handoff、ApplicationService／tool
+   execution 或 state mutation；product clarification 仍要求 `7/7` final verified execute-boundary。
+   所有 no-action product outcome 發生上述副作用都 fail closed。
+   v16 分別保存 first raw、每次 production format recovery／文字 follow-up 的 raw response、
+   request update 接受／拒絕、累積值、Host admission 及可信 terminal；不得直接建構
+   `AssistantPendingRequest`、手動塞入 pending owner、合成參數或從 gold 補來源。Generation token
+   budget 使用 production structured-decision resolver，不另設較小 evaluator cap。
+   回覆自然度與完整語意仍需同一 SHA 真人驗收，不以 keyword group 作 promotion gate。
+   所有 positive／challenge／precision first turns 的 required `application_state`、callable set、
+   blocked reasons 由同一 production `ApplicationViewPublication` 及 agent capability policy 投影；
+   hand-authored stage catalog 或 scorer 全 enabled 不算證據。36 題 coverage 不變，
+   `start_training` 使用可呼叫的 `dataset_ready` publication；v9 以前手組 `epoch_ready` 路徑
+   保留歷史身分，不直接比較數字。
+   五個 direct clarification 的 source 來自 precision missing-parameter turns，必須真的由模型
+   提出草稿更新，經 controller 的 `prepare_request_update()` 驗證後保存。只輸出 reply／clarify
+   訊息而沒有合格 draft 時，不得補造。另兩條為 generic filter selection 與 partial bandpass
+   accumulation；所有一般文字回合均進普通模型生成，Host 不排序 bandpass 值或零 LLM 完成。
+   七條都經相同 parser、來源、schema、publication、capability 與 attempt policy 到達 execute-boundary；
+   evaluator 在此抑制真工具執行，所以 7/7 不代表已有真 side effect。歷史 `12 Hz`／`128 Hz`
+   未標欄位回覆須對照實際問題是否明確；`oracle_condition` 揭露條件，不改原題／gold 掩蓋失敗。
+   報告中的 `source_has_host_receipt`／`receipt_admission`／`receipt_origin` 是保留的歷史欄位名稱：
+   在 v15／v16 只表示已驗證 pending draft、origin=`model_typed`，不是舊 receipt runtime API 或
+   Host bare-value shortcut。真實後續生成由 `generation_trace`／`followup_model_generation` 記錄。
+   初次 raw 與最多一次 format recovery 分開，v15巢狀提案、舊兩次預算及更早報告
+   均保留原版本，不重標為新版通過。
+   有限 `engineering_selection` 只能證明所選案例，不滿足 81-case candidate 或 promotion gate；
+   另列 24 個 paired probes 不改原分母。零副作用與 `semantic_review_required` 分開，未覆核
+   回答語意不能報成功。任何 model／Host 失敗仍按原 fail-closed policy 保留。
+   真 model run 使用 product RAG 時，evaluator 經 `ProcessRAGRetrieverLifecycle` 與同一
+   `ContextAssembler` 取得 allowed tools；每次 retrieval 記錄 protocol、sequence、實際 query、
+   allowed tools、returned／assembled item IDs、context hash 與 status。`empty` 只表示 ready
+   retriever 沒有 eligible context；初始化／retrieval error 是 `degraded`，不冒稱正常零命中。
+   已批准的v3 RAG工程gate以最後實際送出的範例檢查固定相關集合，分路top-10候選
+   另作診斷；指定詞法正例仍須sparse補回，無關query仍不得送例。原24題文字及既有ID標註
+   不變；新範例的主題ID標註須先於觀測固定，v1／v2失敗保留。規則、fixture hash、
+   corpus hash與index schema須一併保存；目前source為154筆、schema 5。未指定必回例的
+   in-domain query允許零命中，不把候選池錯例或未觀測dense候選冒稱最後送例。
+   多輪範例的retrieval transport保留單一`prior_turn`；verifier須用它完成來源驗證與索引計數。
+   模型輸入capture須核對實際U2原文／提案，以及assembler重驗後推導的`context.current_user`
+   和`context.pending_request`；不得把範例草稿當成當前request或省略context後仍宣稱相同輸入。
+   這些是需驗證的契約，不是本輪offline或model gate已通過的記錄；
+   不因語料格式／索引遷移或有限介面互通通過就視為M3或模型收益成立。
+   歷史 synthetic path 標 `synthetic_no_rag.v1`，不能支持 product-RAG claim。Developer prompt
+   dossier 以 pinned tokenizer、production LocalBackend template／budget 輸出最終 prompt、
+   token count、input budget 與 optional packing；不載入 weights，也不取代真 model evidence。
+   新版同樣需要完整輸入覆核及真人 workflow，不能從 deterministic admission 宣稱產品 ready。
 3. 真model safe E2E依normal ChatPanel路徑完成Switch Dataset → Import GUI → Select Channels →
    direct Resample；不得用debug transport或fake generator替代。
 4. 使用者在同一candidate source完成Complete Workflow、Lifecycle／Navigation、Contract Failures三份

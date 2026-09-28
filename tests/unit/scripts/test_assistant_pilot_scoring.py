@@ -21,11 +21,33 @@ def case(decision="Action", tool="resample_data", parameters=None):
 
 
 def response(tool="resample_data", parameters=None, stage=None):
+    parameters = {"rate": 128} if parameters is None else parameters
+    if tool == "respond_to_user":
+        action = parameters.get("action")
+        payload = {
+            "decision": "clarify" if action else "reply",
+            "mode": ("new_request" if action else None),
+            "action": (action if action else None),
+            "changes": {},
+            "message": parameters.get("message"),
+        }
+        if set(parameters) - {"message", "action"}:
+            payload["extra"] = 1
+    else:
+        payload = {
+            "decision": "execute",
+            "mode": "new_request",
+            "action": tool,
+            "changes": {
+                key: {"value": value, "source_turn": "U1", "quote": str(value)}
+                for key, value in parameters.items()
+            },
+            "message": None,
+        }
     return json.dumps(
         {
             **({"workflow_stage": stage} if stage is not None else {}),
-            "tool_name": tool,
-            "parameters": {"rate": 128} if parameters is None else parameters,
+            **payload,
         }
     )
 
@@ -37,13 +59,40 @@ def non_action(decision):
     }
 
 
-def test_two_field_output_scores_without_fabricating_model_stage():
-    raw = '{"tool_name":"resample_data","parameters":{"rate":128}}'
+def test_proposal_scores_without_fabricating_model_stage_or_source_admission():
+    raw = response()
     scored = score_decision(case(), raw, explain=True)
     assert scored["correct"] is True
     assert "observed_stage" not in scored
     assert "workflow_stage" not in scored["explanation"]["observed"]
     assert scored["explanation"]["expected_backend_workflow_stage"] == "data_loaded"
+
+
+def test_retired_nested_wire_is_not_silently_rescored_as_flat():
+    payload = json.loads(response())
+    nested = {
+        "decision": payload["decision"],
+        "request": {
+            "mode": "replace",
+            "action": payload["action"],
+            "changes": payload["changes"],
+        },
+        "message": payload["message"],
+    }
+    assert score_decision(case(), json.dumps(nested))["reason"] == "invalid_envelope"
+
+
+def test_legacy_envelope_is_not_silently_rescored_as_current_contract():
+    raw = '{"tool_name":"resample_data","parameters":{"rate":128}}'
+    assert score_decision(case(), raw)["reason"] == "invalid_envelope"
+
+
+def test_standalone_scorer_does_not_treat_continuation_changes_as_complete_parameters():
+    payload = json.loads(response())
+    payload["mode"] = "update_pending"
+    result = score_decision(case(), json.dumps(payload), explain=True)
+    assert result["correct"] is False
+    assert result["reason"] == "unsupported_request_context"
 
 
 def test_numeric_values_match_without_coercing_strings_or_booleans():
@@ -138,8 +187,7 @@ def test_optional_structured_pending_is_not_a_new_semantic_oracle(decision):
         "respond_to_user",
         {
             "message": "Which sampling rate?",
-            "pending_action": "resample_data",
-            "missing_inputs": ["rate"],
+            "action": "resample_data",
         },
     )
     assert score_decision(non_action(decision), raw)["correct"] is True
@@ -150,8 +198,7 @@ def test_retired_stage_echo_is_invalid_not_a_measurement_exception():
         "respond_to_user",
         {
             "message": "Which sampling rate?",
-            "pending_action": "resample_data",
-            "missing_inputs": ["rate"],
+            "action": "resample_data",
         },
         stage="unavailable",
     )
@@ -176,56 +223,54 @@ def test_frozen_gemma_invalid_typed_metadata_is_not_a_correct_no_call(raw):
 
 
 @pytest.mark.parametrize(
-    "pending,missing,stage",
+    "pending,stage",
     [
-        ("unknown_tool", ["rate"], "data_loaded"),
-        ("import_eeg_data", ["panel_name", "view_mode"], "data_loaded"),
-        ("create_epochs", ["raw_data_path"], "data_loaded"),
-        ("resample_data", ["invented_rate"], "data_loaded"),
-        ("apply_bandpass_filter", ["low_freq", "invented_high"], "data_loaded"),
-        ("resample_data", ["rate"], "empty"),
-        ("resample_data", ["rate"], "epoch_ready"),
+        ("unknown_tool", "data_loaded"),
+        ("resample_data", "empty"),
+        ("resample_data", "epoch_ready"),
     ],
 )
-def test_invalid_typed_metadata_never_passes_on_nonempty_message(
-    pending, missing, stage
-):
+def test_invalid_typed_metadata_never_passes_on_nonempty_message(pending, stage):
     oracle = {**non_action("Clarification"), "expected_workflow_stage": stage}
     raw = response(
         "respond_to_user",
         {
             "message": "Please provide the value.",
-            "pending_action": pending,
-            "missing_inputs": missing,
+            "action": pending,
         },
     )
     assert score_decision(oracle, raw)["reason"] == "invalid_envelope"
 
 
 @pytest.mark.parametrize(
-    "pending,missing",
+    "pending,changes",
     [
-        ("apply_bandpass_filter", ["low_freq"]),
-        ("apply_notch_filter", ["freq"]),
-        ("resample_data", ["rate"]),
-        ("set_reference", ["method"]),
-        ("normalize_data", ["method"]),
+        ("apply_bandpass_filter", {"low_freq": 7}),
+        ("apply_notch_filter", {}),
+        ("resample_data", {}),
+        ("set_reference", {}),
+        ("normalize_data", {}),
     ],
 )
 @pytest.mark.parametrize("stage", ["data_loaded", "preprocessed"])
-def test_typed_metadata_reuses_direct_schema_and_accepts_required_subset(
-    pending, missing, stage
+def test_clarification_validates_partial_changes_without_requiring_missing_values(
+    pending, changes, stage
 ):
     oracle = {**non_action("Clarification"), "expected_workflow_stage": stage}
-    raw = response(
-        "respond_to_user",
-        {
-            "message": "Please provide the value.",
-            "pending_action": pending,
-            "missing_inputs": missing,
-        },
-    )
+    payload = json.loads(response(pending, changes))
+    payload.update(decision="clarify", message="Please provide the value.")
+    raw = json.dumps(payload)
     assert score_decision(oracle, raw)["correct"] is True
+
+
+@pytest.mark.parametrize("changes", [{"low_freq": "7"}, {"invented": 7}])
+def test_invalid_partial_change_is_not_a_valid_clarification(changes):
+    payload = json.loads(response("apply_bandpass_filter", changes))
+    payload.update(decision="clarify", message="Please provide the other cutoff.")
+    assert (
+        score_decision(non_action("Clarification"), json.dumps(payload))["reason"]
+        == "invalid_envelope"
+    )
 
 
 @pytest.mark.parametrize(
@@ -307,7 +352,7 @@ def complete_trace(raws, *, last_phase="finished", outcome="completed"):
         phase = last_phase if number == len(raws) else "finished"
         request = {
             "generation_id": number,
-            "response_contract": "structured_action",
+            "response_contract": "assistant_proposal.v2",
             "messages": [[["role", "user"], ["content", "User request"]]],
         }
         generations.append(
@@ -360,6 +405,34 @@ def test_complete_case_keeps_first_final_and_host_separate():
     assert result["repair_count"] == 1
     assert "product_success" not in result
     assert result["host_observations"] == [{"action": "execute"}]
+
+
+def test_old_observed_contract_is_invalid_measurement_not_new_model_failure():
+    trace = complete_trace([response()])
+    trace["generations"][0]["request"]["response_contract"] = "structured_action"
+    score = score_case_decisions(case(), trace)
+    assert score["measurement_valid"] is False
+    assert score["final_decision_correct"] is None
+    assert "invalid_generation_request:1" in score["measurement_issues"]
+
+
+def test_continuation_needs_a_trajectory_scorer_and_is_not_a_measured_failure():
+    payload = json.loads(response())
+    payload["mode"] = "update_pending"
+    score = score_case_decisions(case(), complete_trace([json.dumps(payload)]))
+    assert score["measurement_valid"] is False
+    assert score["final_decision_correct"] is None
+    assert "unsupported_request_context:1" in score["measurement_issues"]
+    assert score["source_validation"] == "not_evaluated"
+
+
+def test_new_contract_default_repair_limit_uses_current_product_policy():
+    score = score_case_decisions(
+        case(), complete_trace(["invalid", "invalid", response()])
+    )
+    assert score["max_format_recovery_attempts"] == 1
+    assert score["measurement_valid"] is False
+    assert "repair_budget_exceeded" in score["measurement_issues"]
 
 
 @pytest.mark.parametrize(
@@ -431,7 +504,7 @@ def test_frozen_repair_policy_controls_measured_generation_budget(limit):
     result = score_case_decisions(case(), trace, max_format_recovery_attempts=limit)
     assert result["measurement_valid"] is True
     assert result["final_decision_correct"] is True
-    assert result["scorer_schema"] == "xbrainlab.assistant_decision_scores.v3"
+    assert result["scorer_schema"] == "xbrainlab.assistant_decision_scores.v5"
     assert result["max_format_recovery_attempts"] == limit
     excess = score_case_decisions(
         case(),
@@ -455,7 +528,7 @@ def test_new_score_explains_parameter_mismatch_without_changing_legacy_decision(
     trace = complete_trace([response(parameters={"rate": 64})])
     legacy = score_case_decisions(case(), trace)
     current = score_case_decisions(case(), trace, max_format_recovery_attempts=1)
-    assert legacy["scorer_schema"] == "xbrainlab.assistant_decision_scores.v3"
+    assert legacy["scorer_schema"] == "xbrainlab.assistant_decision_scores.v5"
     assert (
         current["first_decision_correct"] == legacy["first_decision_correct"] is False
     )

@@ -424,3 +424,45 @@ def test_first_case_boundary_records_product_string_pipeline_stage(tmp_path):
     output = tmp_path / "case"
     assert session._begin_case({}, output)["pipeline_stage"] == "empty"
     assert (output / "ui").is_dir()
+
+
+def test_condition_boundary_refuses_existing_pending_request(monkeypatch):
+    from XBrainLab.llm.agent.pending_interaction import PendingInteractionCoordinator
+    from XBrainLab.llm.agent.turn import AssistantPendingRequest
+
+    pending = PendingInteractionCoordinator()
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    session.runtime = SimpleNamespace(accepts_commands=True, turn_in_flight=False)
+    session.manager = SimpleNamespace(
+        agent_controller=SimpleNamespace(
+            pending_interactions=pending, is_processing=False, history=[]
+        ),
+        chat_panel=object(),
+    )
+    session.service = SimpleNamespace(
+        get_state=lambda: SimpleNamespace(
+            raw=SimpleNamespace(loaded=False),
+            epoch=SimpleNamespace(available=False),
+            dataset=SimpleNamespace(available=False),
+            training=SimpleNamespace(is_running=False),
+        ),
+        get_active_owned_operation=lambda _kind: None,
+    )
+    monkeypatch.setattr(
+        "scripts.dev.capture_chatpanel_local_walkthrough.collect_visible_messages",
+        lambda _panel: [],
+    )
+    assert session._boundary_clean()
+    pending.set_request(
+        AssistantPendingRequest(
+            command_name=None,
+            original_turn_id="U1",
+            publication_generation=1,
+            parameters=(),
+            sources=(("U1", "Apply a filter"),),
+            question="Which filter?",
+        )
+    )
+    assert not session._boundary_clean()
+    pending.set_request(None)
+    assert session._boundary_clean()

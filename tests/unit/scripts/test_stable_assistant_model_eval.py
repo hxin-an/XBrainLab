@@ -34,7 +34,6 @@ from scripts.dev.run_stable_assistant_model_eval import (
     _trajectory_payload,
     admit_clarification_receipt,
     build_case_messages,
-    build_clarification_messages,
     evaluate_case_trajectory,
     evaluate_clarification_trajectory,
     evaluate_discriminated_clarification_trajectory,
@@ -54,7 +53,6 @@ from scripts.dev.run_stable_assistant_model_eval import (
     target_tool_registry,
 )
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
-from XBrainLab.llm.agent.controller import LLMController
 from XBrainLab.llm.agent.strict_envelope_recovery import (
     DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY,
 )
@@ -74,6 +72,49 @@ EVALUATOR_POSITIVE_CASES_SHA256 = (
     "5d60662ce3f43e36c346dbda238a23f7"  # pragma: allowlist secret
     "b22377c04043e1833a77296931546577"  # pragma: allowlist secret
 )
+
+
+def _model_response(tool_name, parameters, *, turn="U1", mode="replace"):
+    """Author a new-contract model fixture; runtime never adapts old envelopes."""
+    if tool_name == "respond_to_user":
+        action = parameters.get("pending_action")
+        return json.dumps(
+            {
+                "decision": "clarify" if action else "reply",
+                "mode": (
+                    {
+                        "replace": "new_request",
+                        "continue": "update_pending",
+                        "cancel": "cancel_pending",
+                    }[mode]
+                    if action
+                    else None
+                ),
+                "action": (action if action else None),
+                "changes": {},
+                "message": parameters.get("message", ""),
+            }
+        )
+    return json.dumps(
+        {
+            "decision": "execute",
+            "message": None,
+            "mode": {
+                "replace": "new_request",
+                "continue": "update_pending",
+                "cancel": "cancel_pending",
+            }[mode],
+            "action": tool_name,
+            "changes": {
+                name: {
+                    "value": value,
+                    "source_turn": turn,
+                    "quote": value if isinstance(value, str) else json.dumps(value),
+                }
+                for name, value in parameters.items()
+            },
+        }
+    )
 
 
 class _ImmediateProductRAGLifecycle:
@@ -132,6 +173,77 @@ def test_product_rag_cache_reuses_only_the_same_case_turn_query() -> None:
     assert [
         evidence.sequence for evidence in builder.evidence_for_case(case.case_id)
     ] == [1, 2]
+
+
+@pytest.mark.parametrize("suffix", ["supplement", "correction"])
+def test_contextual_rag_model_messages_keep_derived_prior_and_actual_u2(suffix):
+    from scripts.dev.assistant_pilot_case import audit_initial_input
+    from XBrainLab.llm.agent.context_encoding import (
+        UntrustedContextItem,
+        UntrustedContextSource,
+        decode_untrusted_context,
+        encode_untrusted_context,
+    )
+
+    corpus = json.loads(RAGConfig.get_gold_set_path().read_text())
+    row = next(
+        row for row in corpus if row["id"] == f"apply_bandpass_filter_{suffix}_01"
+    )
+    context = encode_untrusted_context(
+        [
+            UntrustedContextItem(
+                item_type="rag_example",
+                source=UntrustedContextSource(
+                    kind="xbrainlab_bundled_gold_set",
+                    id=row["id"],
+                    category=row["category"],
+                ),
+                data={
+                    key: row[key]
+                    for key in ("input", "expected_proposal", "prior_turn")
+                },
+            )
+        ],
+        max_chars=4096,
+        max_items=1,
+        max_string_chars=768,
+    )
+    case = next(
+        case
+        for case in load_target_cases(DEFAULT_CASES)
+        if case.expected_tool == "apply_bandpass_filter"
+    )
+    builder = _ProductRAGCaseMessages(
+        target_tool_registry(), _ImmediateProductRAGLifecycle(context)
+    )
+    messages = builder.messages(case)
+    examples = [
+        item
+        for message in messages
+        for item in decode_untrusted_context(message["content"]) or ()
+        if item.item_type == "rag_example"
+    ]
+    assert len(examples) == 1
+    actual = examples[0].data
+    assert actual["input"] == row["input"]
+    assert actual["expected_proposal"] == row["expected_proposal"]
+    assert "prior_turn" not in actual
+    assert actual["context"]["current_user"] == {"id": "U2", "text": row["input"]}
+    pending = actual["context"]["pending_request"]
+    assert (
+        pending["parameters"]["low_freq"]
+        == row["prior_turn"]["expected_proposal"]["changes"]["low_freq"]
+    )
+    assert pending["user_sources"] == {"U1": row["prior_turn"]["input"]}
+    assert builder.evidence_for(case).assembled_context_item_ids == (row["id"],)
+    # The case's real U1 remains separate from the example's derived U1/U2.
+    audit = audit_initial_input(
+        {"input": case.user_input},
+        {},
+        {"generations": [{"request": {"messages": messages}}]},
+    )
+    assert audit["issues"] == []
+    assert audit["untrusted_rag_example_count"] == 1
 
 
 def test_product_rag_error_discards_context_but_healthy_empty_is_distinct() -> None:
@@ -220,7 +332,7 @@ def _bounded_baseline_report() -> dict[str, object]:
         for row in json.loads(path.read_text(encoding="utf-8"))
     ]
     return {
-        "schema_version": "xbrainlab.stable_assistant_model_eval.v14",
+        "schema_version": "xbrainlab.stable_assistant_model_eval.v16",
         "model": {
             "id": BOUNDED_BASELINE_MODEL_ID,
             "revision": BOUNDED_BASELINE_MODEL_REVISION,
@@ -565,10 +677,7 @@ def test_run_eval_records_every_lower_engine_generation_in_global_order(
     monkeypatch,
 ) -> None:
     """The report trace is runner-owned, not a reconstruction of policy attempts."""
-    raw_response = (
-        ' \n{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"I need more information."}}\n'
-    )
+    raw_response = ' {"decision":"reply","message":"I need more information.","mode":null,"action":null,"changes":{}}\n'
     config = _stable_eval_config(LLMConfig(), device="cpu")
     monkeypatch.setattr(config, "local_backend_ready", lambda _model_id: True)
     precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
@@ -627,8 +736,7 @@ def test_run_eval_without_capture_does_not_probe_capture_filesystem(
     engine = MagicMock()
     engine.generate_stream.side_effect = lambda *_args, **_kwargs: iter(
         (
-            '{"tool_name":"respond_to_user",'
-            '"parameters":{"message":"I need more information."}}',
+            '{"decision":"reply","message":"I need more information.","mode":null,"action":null,"changes":{}}',
         )
     )
 
@@ -673,10 +781,7 @@ def test_run_eval_validates_opt_in_capture_with_dynamic_trace_and_redacted_repor
         DEFAULT_CLARIFICATION_CASES,
         precision_cases=precision_cases,
     )
-    raw_output = (
-        ' {"tool_name":"respond_to_user",'
-        '"parameters":{"message":"I need more information."}}\n'
-    )
+    raw_output = ' {"decision":"reply","message":"I need more information.","mode":null,"action":null,"changes":{}}\n'
     engine = MagicMock()
     engine.generate_stream.side_effect = lambda *_args, **_kwargs: iter((raw_output,))
     checkpoint_reports: list[dict[str, object]] = []
@@ -750,10 +855,7 @@ def test_run_eval_capture_mismatch_or_ambiguous_session_fails_candidate_evidence
         DEFAULT_CLARIFICATION_CASES,
         precision_cases=precision_cases,
     )
-    raw_output = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"I need more information."}}'
-    )
+    raw_output = '{"decision":"reply","message":"I need more information.","mode":null,"action":null,"changes":{}}'
     engine = MagicMock()
     engine.generate_stream.side_effect = lambda *_args, **_kwargs: iter((raw_output,))
 
@@ -825,77 +927,69 @@ def test_capture_audit_reports_raw_hash_mismatch_without_disclosing_content(
     assert raw_output not in rendered
 
 
-def test_clarification_prompt_and_score_use_product_receipt_boundary() -> None:
+def test_clarification_prompt_and_score_use_product_request_boundary() -> None:
     registry = target_tool_registry()
-    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
+    sources = load_precision_cases(DEFAULT_PRECISION_CASES)
     case = next(
         item
         for item in load_clarification_cases(
             DEFAULT_CLARIFICATION_CASES,
-            precision_cases=precision_cases,
+            precision_cases=sources,
         )
         if item.expected_tool == "resample_data"
     )
-    source = next(
-        item for item in precision_cases if item.case_id == case.source_case_id
-    )
-    first_response = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"What resampling rate should I use?",'
-        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
-    )
+    source = next(item for item in sources if item.case_id == case.source_case_id)
     admission = admit_clarification_receipt(
         source,
-        first_response,
+        json.dumps(
+            {
+                "decision": "clarify",
+                "mode": "new_request",
+                "action": "resample_data",
+                "changes": {},
+                "message": "What resampling rate should I use?",
+            }
+        ),
         expected_tool=case.expected_tool,
         registry=registry,
     )
     assert admission is not None
-    receipt = admission.receipt
-    messages, _prompt_publication, _backend_publication = build_clarification_messages(
-        case,
-        source,
-        receipt=receipt,
-        registry=registry,
-    )
+    generated = []
 
-    assert messages[-1] == {"role": "user", "content": "128 Hz"}
-    assert "tool_input_clarification" not in messages[1]["content"]
-    generated_messages: list[list[dict[str, str]]] = []
-
-    def generate(messages: list[dict[str, str]]) -> str:
-        generated_messages.append(messages)
-        return "unused"
-
-    owner = LLMController._complete_tool_input_receipt
-    owner_calls: list[tuple[object, object, str]] = []
-
-    def observe_owner(controller, pending_receipt, latest_user_text):
-        owner_calls.append((controller, pending_receipt, latest_user_text))
-        return owner(controller, pending_receipt, latest_user_text)
-
-    with patch.object(LLMController, "_complete_tool_input_receipt", observe_owner):
-        trajectory = evaluate_clarification_trajectory(
-            case,
-            source,
-            admission=admission,
-            registry=registry,
-            generate_response=generate,
+    def generate(messages):
+        generated.append(messages)
+        return json.dumps(
+            {
+                "decision": "execute",
+                "message": None,
+                "mode": "update_pending",
+                "action": "resample_data",
+                "changes": {
+                    "rate": {"value": 128, "source_turn": "U2", "quote": "128 Hz"},
+                },
+            }
         )
 
-    assert trajectory.final_score.passed is True
-    assert generated_messages == []
-    assert len(owner_calls) == 1
-    controller, completed_receipt, latest_user_text = owner_calls[0]
-    assert controller is admission.harness
-    assert latest_user_text == case.reply
-    assert dict(completed_receipt.verified_parameters) == {"rate": 128}
-    active_receipt = admission.harness.pending_interactions.active_tool_input
-    assert active_receipt is None
-    assert trajectory.receipt_origin == "model_typed"
-    assert trajectory.final_score.product_outcome is not None
-    assert trajectory.final_score.product_outcome.disposition == "execute_boundary"
-    assert trajectory.final_score.product_outcome.tool_executor_permitted is True
+    recorder = GenerationTraceRecorder()
+    trajectory = evaluate_clarification_trajectory(
+        case,
+        source,
+        admission=admission,
+        registry=registry,
+        generate_response=generate,
+        generation_recorder=recorder,
+    )
+    assert len(generated) == len(recorder.entries) == 1
+    assert json.loads(generated[0][-1]["content"])["current_user"] == {
+        "id": "U2",
+        "text": "128 Hz",
+    }
+    assert "pending_request" in str(generated[0])
+    assert source.user_input in str(generated[0])
+    assert trajectory.final_score.passed
+    assert admission.harness._observed_decision.params == {"rate": 128}
+    assert trajectory.product_terminal["execution_boundary_reached"]
+    assert trajectory.product_terminal["execution_suppressed"]
 
 
 def test_clarification_admission_rejects_incomplete_tool_call_fixture() -> None:
@@ -908,7 +1002,9 @@ def test_clarification_admission_rejects_incomplete_tool_call_fixture() -> None:
 
     admission = admit_clarification_receipt(
         source,
-        ('{"tool_name":"resample_data","parameters":{}}'),
+        (
+            '{"decision":"execute","message":null,"mode":"new_request","action":"resample_data","changes":{}}'
+        ),
         expected_tool="resample_data",
         registry=registry,
     )
@@ -916,7 +1012,7 @@ def test_clarification_admission_rejects_incomplete_tool_call_fixture() -> None:
     assert admission is None
 
 
-def test_clarification_admission_records_host_parameter_origin_for_all_direct_tools() -> (
+def test_clarification_admission_never_synthesizes_requests_from_guessed_values() -> (
     None
 ):
     registry = target_tool_registry()
@@ -930,11 +1026,8 @@ def test_clarification_admission_records_host_parameter_origin_for_all_direct_to
     }
 
     for source in (case for case in cases if case.category == "missing_parameter"):
-        response = json.dumps(
-            {
-                "tool_name": source.requested_tool,
-                "parameters": invented_parameters[source.requested_tool],
-            }
+        response = _model_response(
+            source.requested_tool, invented_parameters[source.requested_tool]
         )
         admission = admit_clarification_receipt(
             source,
@@ -943,9 +1036,7 @@ def test_clarification_admission_records_host_parameter_origin_for_all_direct_to
             registry=registry,
         )
 
-        assert admission is not None
-        assert admission.receipt_origin == "host_parameter_origin"
-        assert admission.harness.pending_interactions.tool_input == admission.receipt
+        assert admission is None
 
 
 def test_clarification_admission_keeps_model_typed_origin_and_never_synthesizes() -> (
@@ -957,18 +1048,14 @@ def test_clarification_admission_keeps_model_typed_origin_and_never_synthesizes(
         for case in load_precision_cases(DEFAULT_PRECISION_CASES)
         if case.case_id == "missing_resample_en"
     )
-    typed = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"What resampling rate should I use?",'
-        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
-    )
+    typed = '{"decision":"clarify","message":"What resampling rate should I use?","mode":"new_request","action":"resample_data","changes":{}}'
 
     admission = admit_clarification_receipt(
         source, typed, expected_tool="resample_data", registry=registry
     )
     missing = admit_clarification_receipt(
         source,
-        '{"tool_name":"resample_data","parameters":{}}',
+        '{"decision":"execute","message":null,"mode":"new_request","action":"resample_data","changes":{}}',
         expected_tool="resample_data",
         registry=registry,
     )
@@ -985,10 +1072,12 @@ def test_clarification_admission_accepts_a_long_legal_typed_response() -> None:
         for item in load_precision_cases(DEFAULT_PRECISION_CASES)
         if item.case_id == "missing_resample_en"
     )
-    response = (
-        '{"tool_name":"respond_to_user",'
-        f'"parameters":{{"message":{json.dumps("rate? " + "x" * 1_100)},'
-        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
+    response = _model_response(
+        "respond_to_user",
+        {
+            "message": "rate? " + "x" * 1_100,
+            "pending_action": "resample_data",
+        },
     )
 
     admission = admit_clarification_receipt(
@@ -1003,100 +1092,58 @@ def test_clarification_admission_accepts_a_long_legal_typed_response() -> None:
     assert admission.receipt.command_name == "resample_data"
 
 
-def test_completed_clarification_skips_product_format_recovery() -> None:
-    registry = target_tool_registry()
-    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
-    case = next(
-        item
-        for item in load_clarification_cases(
-            DEFAULT_CLARIFICATION_CASES,
-            precision_cases=precision_cases,
-        )
-        if item.expected_tool == "resample_data"
-    )
-    source = next(
-        item for item in precision_cases if item.case_id == case.source_case_id
-    )
-
-    first_response = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"What resampling rate should I use?",'
-        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
-    )
-    admission = admit_clarification_receipt(
-        source,
-        first_response,
-        expected_tool=case.expected_tool,
-        registry=registry,
-    )
-    assert admission is not None
+@pytest.mark.parametrize("malformed", [False, True])
+def test_clarification_records_actual_followup_and_recovery_generations(
+    malformed,
+) -> None:
+    registry, source, case, admission = _resample_clarification_fixture()
+    valid = _model_response("resample_data", {"rate": 128}, turn="U2", mode="continue")
+    responses = iter(["broken JSON", valid] if malformed else [valid])
     recorder = GenerationTraceRecorder()
-    trajectory = evaluate_clarification_trajectory(
+    result = evaluate_clarification_trajectory(
         case,
         source,
         admission=admission,
         registry=registry,
-        generate_response=lambda _messages: (_ for _ in ()).throw(
-            AssertionError("completed receipt must not generate")
+        generate_response=lambda messages: next(responses),
+        generation_recorder=recorder,
+    )
+    assert len(recorder.entries) == (2 if malformed else 1)
+    assert result.raw_score.passed is (not malformed)
+    assert result.final_score.passed
+    assert [entry.turn_purpose for entry in recorder.entries] == (
+        ["clarification_proposal", "format_retry"]
+        if malformed
+        else ["clarification_proposal"]
+    )
+
+
+def _resample_clarification_fixture():
+    registry = target_tool_registry()
+    sources = load_precision_cases(DEFAULT_PRECISION_CASES)
+    case = next(
+        item
+        for item in load_clarification_cases(
+            DEFAULT_CLARIFICATION_CASES,
+            precision_cases=sources,
+        )
+        if item.expected_tool == "resample_data"
+    )
+    source = next(item for item in sources if item.case_id == case.source_case_id)
+    admission = admit_clarification_receipt(
+        source,
+        _model_response(
+            "respond_to_user",
+            {
+                "message": "What resampling rate should I use?",
+                "pending_action": "resample_data",
+            },
         ),
-        generation_recorder=recorder,
-    )
-
-    assert trajectory.raw_score.passed is True
-    assert trajectory.final_score.passed is True
-    assert trajectory.attempts == ()
-    assert recorder.entries == []
-
-
-def test_completed_clarification_does_not_replay_model_typed_reply() -> None:
-    registry = target_tool_registry()
-    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
-    case = next(
-        item
-        for item in load_clarification_cases(
-            DEFAULT_CLARIFICATION_CASES,
-            precision_cases=precision_cases,
-        )
-        if item.expected_tool == "resample_data"
-    )
-    source = next(
-        item for item in precision_cases if item.case_id == case.source_case_id
-    )
-    first_response = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"What resampling rate should I use?",'
-        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
-    )
-    admission = admit_clarification_receipt(
-        source,
-        first_response,
         expected_tool=case.expected_tool,
         registry=registry,
     )
     assert admission is not None
-    generated_messages: list[list[dict[str, str]]] = []
-    recorder = GenerationTraceRecorder()
-
-    def generate(messages: list[dict[str, str]]) -> str:
-        generated_messages.append(messages)
-        raise AssertionError("completed receipt must not generate")
-
-    trajectory = evaluate_clarification_trajectory(
-        case,
-        source,
-        admission=admission,
-        registry=registry,
-        generate_response=generate,
-        generation_recorder=recorder,
-    )
-
-    assert trajectory.raw_score.passed is True
-    assert trajectory.attempts == ()
-    assert recorder.entries == []
-    assert generated_messages == []
-    assert trajectory.final_score.passed is True
-    assert trajectory.product_terminal is not None
-    assert trajectory.product_terminal["kind"] == "execution_boundary_suppressed"
+    return registry, source, case, admission
 
 
 def test_first_turn_invalid_typed_precision_rows_replay_controller_recovery() -> None:
@@ -1127,10 +1174,7 @@ def test_first_turn_invalid_typed_precision_rows_replay_controller_recovery() ->
             f'"pending_action":"{pending_action}",'
             f'"missing_inputs":["{missing_input}"]}}}}'
         )
-        repaired = (
-            f'{{"tool_name":"respond_to_user",'
-            f'"parameters":{{"message":"{safe_message}"}}}}'
-        )
+        repaired = _model_response("respond_to_user", {"message": safe_message})
         responses = iter((invalid_typed, repaired))
         generated_messages: list[list[dict[str, str]]] = []
         recorder = GenerationTraceRecorder()
@@ -1178,11 +1222,8 @@ def test_first_turn_invalid_typed_precision_exhaustion_has_failure_type() -> Non
         for item in load_precision_cases(DEFAULT_PRECISION_CASES)
         if item.case_id == "set_montage_after_epochs_en"
     )
-    invalid_typed = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"I need one value first.",'
-        '"pending_action":"set_montage","missing_inputs":["montage_name"]}}'
-    )
+    invalid_typed = '{"decision":"clarify","request":{},"message":"Need a value"}'
+
     recorder = GenerationTraceRecorder()
     trajectory = evaluate_case_trajectory(
         case,
@@ -1214,58 +1255,33 @@ def test_first_turn_invalid_typed_precision_exhaustion_has_failure_type() -> Non
     ]
 
 
-def test_explicit_clarification_cancellation_skips_generation() -> None:
-    registry = target_tool_registry()
-    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
-    case = next(
-        item
-        for item in load_clarification_cases(
-            DEFAULT_CLARIFICATION_CASES,
-            precision_cases=precision_cases,
+def test_explicit_clarification_cancellation_uses_model_and_clears_request() -> None:
+    registry, source, case, admission = _resample_clarification_fixture()
+    recorder = GenerationTraceRecorder()
+    generate = MagicMock(
+        return_value=json.dumps(
+            {
+                "decision": "reply",
+                "mode": "cancel_pending",
+                "action": None,
+                "changes": {},
+                "message": "The pending request is cancelled.",
+            }
         )
-        if item.expected_tool == "resample_data"
     )
-    source = next(
-        item for item in precision_cases if item.case_id == case.source_case_id
+    result = evaluate_clarification_trajectory(
+        replace(case, reply="cancel"),
+        source,
+        admission=admission,
+        registry=registry,
+        generate_response=generate,
+        generation_recorder=recorder,
     )
-    first_response = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"What resampling rate should I use?",'
-        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
-    )
-
-    for reply in ("cancel",):
-        admission = admit_clarification_receipt(
-            source,
-            first_response,
-            expected_tool=case.expected_tool,
-            registry=registry,
-        )
-        assert admission is not None
-        recorder = GenerationTraceRecorder()
-        generate = MagicMock(
-            side_effect=AssertionError("Host-terminal clarification must not generate.")
-        )
-        trajectory = evaluate_clarification_trajectory(
-            replace(case, reply=reply),
-            source,
-            admission=admission,
-            registry=registry,
-            generate_response=generate,
-            generation_recorder=recorder,
-        )
-
-        assert trajectory.final_score.passed is False
-        assert trajectory.final_score.failure_type == "clarification_collection"
-        assert trajectory.raw_score.response == ""
-        assert trajectory.attempts == ()
-        assert recorder.entries == []
-        generate.assert_not_called()
-        assert admission.harness.pending_interactions.active_tool_input is None
-        assert admission.harness.pending_interactions.tool_input is None
-        outcome = trajectory.final_score.product_outcome
-        assert outcome is not None
-        assert outcome.tool_executor_permitted is False
+    generate.assert_called_once()
+    assert len(recorder.entries) == 1
+    assert admission.harness.pending_interactions.request is None
+    assert not result.final_score.passed  # Original case oracle requires execution.
+    assert not result.product_terminal["execution_boundary_reached"]
 
 
 def test_synthetic_clarification_continuation_passes_messages_to_generator() -> None:
@@ -1282,11 +1298,7 @@ def test_synthetic_clarification_continuation_passes_messages_to_generator() -> 
     source = next(
         item for item in precision_cases if item.case_id == case.source_case_id
     )
-    first_response = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"What resampling rate should I use?",'
-        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
-    )
+    first_response = '{"decision":"clarify","message":"What resampling rate should I use?","mode":"new_request","action":"resample_data","changes":{}}'
     admission = admit_clarification_receipt(
         source,
         first_response,
@@ -1303,135 +1315,143 @@ def test_synthetic_clarification_continuation_passes_messages_to_generator() -> 
         registry=registry,
         generate_response=lambda messages: (
             received.append(messages)
-            or '{"tool_name":"respond_to_user",'
-            '"parameters":{"message":"Please provide the resampling rate."}}'
+            or '{"decision":"reply","message":"Please provide the resampling rate.","mode":null,"action":null,"changes":{}}'
         ),
     )
 
     assert received and isinstance(received[0], list)
-    assert received[0][-1] == {"role": "user", "content": "I do not know the rate."}
+    assert (
+        json.loads(received[0][-1]["content"])["current_user"]["text"]
+        == "I do not know the rate."
+    )
     assert trajectory.attempts
 
 
-def test_discriminated_clarification_trajectories_use_scripted_model_turns() -> None:
+@pytest.mark.parametrize(
+    "kind", ["generic_filter_selection", "partial_bandpass_accumulation"]
+)
+@pytest.mark.parametrize("invalid_final_source", [False, True])
+def test_discriminated_clarification_trajectories_use_each_actual_user_turn(
+    kind,
+    invalid_final_source,
+) -> None:
     registry = target_tool_registry()
-    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
-    cases = load_clarification_cases(
-        DEFAULT_CLARIFICATION_CASES,
-        precision_cases=precision_cases,
-    )
-    generic = next(
-        case for case in cases if case.trajectory_kind == "generic_filter_selection"
-    )
-    partial = next(
-        case
-        for case in cases
-        if case.trajectory_kind == "partial_bandpass_accumulation"
-    )
-    generic_responses = iter(
-        (
-            '{"tool_name":"respond_to_user",'
-            '"parameters":{"message":"Should I apply a bandpass or notch filter?"}}',
-            '{"tool_name":"respond_to_user",'
-            '"parameters":{"message":"What low and high cutoffs should I use?",'
-            '"pending_action":"apply_bandpass_filter",'
-            '"missing_inputs":["low_freq","high_freq"]}}',
-            '{"tool_name":"apply_bandpass_filter",'
-            '"parameters":{"low_freq":12,"high_freq":40}}',
-        )
-    )
-    partial_responses = iter(
-        (
-            '{"tool_name":"respond_to_user",'
-            '"parameters":{"message":"What low and high cutoffs should I use?",'
-            '"pending_action":"apply_bandpass_filter",'
-            '"missing_inputs":["low_freq","high_freq"]}}',
-            '{"tool_name":"apply_bandpass_filter","parameters":{"high_freq":128}}',
-        )
-    )
-    lifecycle = _ImmediateProductRAGLifecycle("")
-    product_rag_messages = _ProductRAGCaseMessages(
-        registry,
-        lifecycle,  # type: ignore[arg-type]
-    )
-
-    generic_result = evaluate_discriminated_clarification_trajectory(
-        generic,
-        registry,
-        lambda _messages: next(generic_responses),
-        trace_case_id=generic.case_id,
-        product_rag_messages=product_rag_messages,
-    )
-    partial_result = evaluate_discriminated_clarification_trajectory(
-        partial,
-        registry,
-        lambda _messages: next(partial_responses),
-        trace_case_id=partial.case_id,
-        product_rag_messages=product_rag_messages,
-    )
-
-    assert generic_result.final_score.passed is True
-    assert partial_result.final_score.passed is True
-    assert generic_result.final_score.product_outcome is not None
-    assert partial_result.final_score.product_outcome is not None
-    assert [
-        evidence.sequence
-        for evidence in product_rag_messages.evidence_for_case(generic.case_id)
-    ] == [1, 2]
-    assert [
-        evidence.sequence
-        for evidence in product_rag_messages.evidence_for_case(partial.case_id)
-    ] == [3]
-
-
-def test_generic_clarification_uses_the_checked_in_second_turn() -> None:
-    """The evaluated prompt must use the transcript persisted in the corpus."""
-    registry = target_tool_registry()
-    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
-    generic = next(
-        case
-        for case in load_clarification_cases(
+    sources = load_precision_cases(DEFAULT_PRECISION_CASES)
+    case = next(
+        item
+        for item in load_clarification_cases(
             DEFAULT_CLARIFICATION_CASES,
-            precision_cases=precision_cases,
+            precision_cases=sources,
         )
-        if case.trajectory_kind == "generic_filter_selection"
+        if item.trajectory_kind == kind
     )
-    responses = iter(
-        (
-            '{"tool_name":"respond_to_user",'
-            '"parameters":{"message":"Should I apply a bandpass or notch filter?"}}',
-            '{"tool_name":"respond_to_user",'
-            '"parameters":{"message":"What low and high cutoffs should I use?",'
-            '"pending_action":"apply_bandpass_filter",'
-            '"missing_inputs":["low_freq","high_freq"]}}',
-            '{"tool_name":"apply_bandpass_filter",'
-            '"parameters":{"low_freq":12,"high_freq":40}}',
-        )
-    )
-    generated_messages: list[list[dict[str, str]]] = []
+    generic = kind == "generic_filter_selection"
+    responses = [
+        json.dumps(
+            {
+                "decision": "clarify",
+                "mode": "new_request",
+                "action": None if generic else case.expected_tool,
+                "changes": {},
+                "message": "Which filter?" if generic else "What lower cutoff?",
+            }
+        ),
+        json.dumps(
+            {
+                "decision": "clarify",
+                "mode": "update_pending",
+                "action": case.expected_tool,
+                "changes": {}
+                if generic
+                else {"low_freq": {"value": 12, "source_turn": "U2", "quote": "12 Hz"}},
+                "message": "What low and high cutoffs?"
+                if generic
+                else "What upper cutoff?",
+            }
+        ),
+        _model_response(
+            case.expected_tool,
+            case.expected_parameters if generic else {"high_freq": 128},
+            turn="U9" if invalid_final_source else "U3",
+            mode="continue",
+        ),
+    ]
+    generated = []
 
-    def generate(messages: list[dict[str, str]]) -> str:
-        generated_messages.append(messages)
-        return next(responses)
+    def generate(messages):
+        generated.append(messages)
+        return responses[len(generated) - 1]
 
+    recorder = GenerationTraceRecorder()
+    rag = _ProductRAGCaseMessages(registry, _ImmediateProductRAGLifecycle(""))
     result = evaluate_discriminated_clarification_trajectory(
-        generic,
+        case,
         registry,
         generate,
+        generation_recorder=recorder,
+        product_rag_messages=rag,
     )
+    assert result.final_score.passed is not invalid_final_source
+    assert len(result.attempts) == len(recorder.entries) == 3
+    assert [
+        json.loads(messages[-1]["content"])["current_user"]["text"]
+        for messages in generated
+    ] == list(case.turns)
+    assert [
+        json.loads(messages[-1]["content"])["current_user"]["id"]
+        for messages in generated
+    ] == ["U1", "U2", "U3"]
+    assert len(rag.evidence_for_case(case.case_id)) == 3
+    assert (
+        result.product_terminal["execution_boundary_reached"]
+        is not invalid_final_source
+    )
+    assert [turn["user_turn_id"] for turn in result.turn_observations] == [
+        "U1",
+        "U2",
+        "U3",
+    ]
+    updates = [
+        turn["host_admission"]["request_update"] for turn in result.turn_observations
+    ]
+    assert all(update["accepted"] for update in updates[:2])
+    assert updates[0]["parameters"] == {}
+    assert updates[1]["parameters"] == ({} if generic else {"low_freq": 12})
+    if invalid_final_source:
+        assert updates[2]["accepted"] is False
+        assert updates[2]["error"]
+        assert result.turn_observations[2]["raw_score"]["passed"]
+        assert not result.turn_observations[2]["product_score"]["passed"]
+    else:
+        assert updates[2]["accepted"]
+        assert updates[2]["parameters"] == case.expected_parameters
+    if not generic:
+        draft = json.loads(generated[-1][-1]["content"])["pending_request"]
+        assert draft["parameters"]["low_freq"]["value"] == 12
+        assert draft["user_sources"]["U2"] == "12 Hz"
 
-    assert result.final_score.passed is True
-    assert generated_messages[1][-1] == {
-        "role": "user",
-        "content": generic.turns[1],
-    }
-    assert result.final_score.parsed_tool == "apply_bandpass_filter"
-    assert result.final_score.parsed_parameters == {"low_freq": 12, "high_freq": 40}
-    assert len(result.attempts) == 2
-    # The final value-only receipt is completed by the controller: only the
-    # general question and the typed clarification require model generations.
-    assert len(generated_messages) == 2
-    assert result.receipt_origin == "model_typed"
+
+def test_discriminated_clarification_does_not_continue_after_unexpected_execution() -> (
+    None
+):
+    registry = target_tool_registry()
+    sources = load_precision_cases(DEFAULT_PRECISION_CASES)
+    case = next(
+        item
+        for item in load_clarification_cases(
+            DEFAULT_CLARIFICATION_CASES,
+            precision_cases=sources,
+        )
+        if item.trajectory_kind == "generic_filter_selection"
+    )
+    generate = MagicMock(
+        return_value=_model_response(
+            "apply_bandpass_filter", {"low_freq": 12, "high_freq": 40}
+        )
+    )
+    result = evaluate_discriminated_clarification_trajectory(case, registry, generate)
+    assert not result.final_score.passed
+    generate.assert_called_once()
 
 
 def test_generation_trace_preserves_pre_strip_raw_identity_and_bounds_preview() -> None:
@@ -1442,14 +1462,7 @@ def test_generation_trace_preserves_pre_strip_raw_identity_and_bounds_preview() 
         if item.case_id == "general_en"
     )
     raw_response = (
-        " \n"
-        + json.dumps(
-            {
-                "tool_name": "respond_to_user",
-                "parameters": {"message": "x" * 1_100},
-            }
-        )
-        + "\n"
+        " \n" + _model_response("respond_to_user", {"message": "x" * 1_100}) + "\n"
     )
     recorder = GenerationTraceRecorder()
 
@@ -1489,8 +1502,7 @@ def test_generation_trace_records_each_format_retry_in_order() -> None:
         (
             '{"tool_name":"respond_to_user",',
             (
-                '{"tool_name":"respond_to_user",'
-                '"parameters":{"message":"I can explain the EEG workflow."}}'
+                '{"decision":"reply","message":"I can explain the EEG workflow.","mode":null,"action":null,"changes":{}}'
             ),
         )
     )
@@ -1515,8 +1527,7 @@ def test_generation_trace_records_each_format_retry_in_order() -> None:
         for response in (
             '{"tool_name":"respond_to_user",',
             (
-                '{"tool_name":"respond_to_user",'
-                '"parameters":{"message":"I can explain the EEG workflow."}}'
+                '{"decision":"reply","message":"I can explain the EEG workflow.","mode":null,"action":null,"changes":{}}'
             ),
         )
     ]
@@ -1551,58 +1562,24 @@ def test_trajectory_payload_separates_policy_from_actual_generation_calls() -> N
     assert payload["format_recovery_attempts"] == 0
 
 
-def test_partial_bandpass_reply_requeues_without_model_generation_before_final_proposal() -> (
-    None
-):
+def test_partial_bandpass_does_not_report_success_after_unresolved_first_turn() -> None:
     registry = target_tool_registry()
-    precision_cases = load_precision_cases(DEFAULT_PRECISION_CASES)
-    partial = next(
-        case
-        for case in load_clarification_cases(
+    sources = load_precision_cases(DEFAULT_PRECISION_CASES)
+    case = next(
+        item
+        for item in load_clarification_cases(
             DEFAULT_CLARIFICATION_CASES,
-            precision_cases=precision_cases,
+            precision_cases=sources,
         )
-        if case.trajectory_kind == "partial_bandpass_accumulation"
+        if item.trajectory_kind == "partial_bandpass_accumulation"
     )
-    responses = iter(
-        (
-            '{"tool_name":"respond_to_user",'
-            '"parameters":{"message":"What low and high cutoffs should I use?",'
-            '"pending_action":"apply_bandpass_filter",'
-            '"missing_inputs":["low_freq","high_freq"]}}',
-            '{"tool_name":"apply_bandpass_filter","parameters":{"high_freq":128}}',
-        )
+    response = _model_response(
+        "respond_to_user", {"message": "I cannot interpret this reply."}
     )
-    recorder = GenerationTraceRecorder()
-    generated_messages: list[list[dict[str, str]]] = []
-
-    def generate(messages: list[dict[str, str]]) -> str:
-        generated_messages.append(messages)
-        return next(responses)
-
-    result = evaluate_discriminated_clarification_trajectory(
-        partial,
-        registry,
-        generate,
-        generation_recorder=recorder,
-        trace_case_id=partial.case_id,
-    )
-
-    assert result.final_score.passed is True
-    assert [messages[-1]["content"] for messages in generated_messages] == [
-        partial.turns[0],
-    ]
-    assert [entry.global_call_index for entry in recorder.entries] == [1]
-    assert [entry.turn_purpose for entry in recorder.entries] == ["first_turn"]
-    assert all(entry.turn_purpose != "partial_reply" for entry in recorder.entries)
-    assert [entry.raw_output_sha256 for entry in recorder.entries] == [
-        hashlib.sha256(
-            b'{"tool_name":"respond_to_user",'
-            b'"parameters":{"message":"What low and high cutoffs should I use?",'
-            b'"pending_action":"apply_bandpass_filter",'
-            b'"missing_inputs":["low_freq","high_freq"]}}'
-        ).hexdigest()
-    ]
+    generate = MagicMock(return_value=response)
+    result = evaluate_discriminated_clarification_trajectory(case, registry, generate)
+    assert not result.final_score.passed
+    assert not result.product_terminal["execution_boundary_reached"]
 
 
 def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -> None:
@@ -1614,26 +1591,12 @@ def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -
     )
     general = next(case for case in cases if case.case_id == "general_en")
 
-    direct_response = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"Please provide the cutoff values."}}'
-    )
-    false_completion = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"The filter has been completed."}}'
-    )
-    placeholder_response = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"<concise response or one clarifying question>"}}'
-    )
-    model_default = (
-        '{"tool_name":"apply_bandpass_filter",'
-        '"parameters":{"low_freq":0.5,"high_freq":45}}'
-    )
-    blocked_start = '{"tool_name":"start_training","parameters":{}}'
-    accidental_navigation = (
-        '{"tool_name":"switch_panel","parameters":{"panel_name":"training"}}'
-    )
+    direct_response = '{"decision":"reply","message":"Please provide the cutoff values.","mode":null,"action":null,"changes":{}}'
+    false_completion = '{"decision":"reply","message":"The filter has been completed.","mode":null,"action":null,"changes":{}}'
+    placeholder_response = '{"decision":"reply","message":"<concise response or one clarifying question>","mode":null,"action":null,"changes":{}}'
+    model_default = '{"decision":"execute","message":null,"mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":0.5,"source_turn":"U1","quote":"0.5"},"high_freq":{"value":45,"source_turn":"U1","quote":"45"}}}'
+    blocked_start = '{"decision":"execute","message":null,"mode":"new_request","action":"start_training","changes":{}}'
+    accidental_navigation = '{"decision":"execute","message":null,"mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"training","source_turn":"U1","quote":"training"}}}'
     retired_stage_echo = (
         '{"workflow_stage":"data_loaded","tool_name":"start_training","parameters":{}}'
     )
@@ -1725,7 +1688,7 @@ def test_import_precision_score_does_not_restore_host_intent_rescue() -> None:
     epochs_before_data = next(
         item for item in cases if item.case_id == "epochs_before_data_en"
     )
-    import_response = '{"tool_name":"import_eeg_data","parameters":{}}'
+    import_response = '{"decision":"execute","message":null,"mode":"new_request","action":"import_eeg_data","changes":{}}'
 
     product_score = score_precision_response(
         negated_import,
@@ -1762,18 +1725,9 @@ def test_raw_missing_parameter_score_requires_the_exact_missing_fields() -> None
         for item in load_precision_cases(DEFAULT_PRECISION_CASES)
         if item.case_id == "missing_bandpass_en"
     )
-    incomplete_question = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"Which bandpass filter should I apply?"}}'
-    )
-    exact_question = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"What low and high bandpass cutoffs should I use?"}}'
-    )
-    invented_default = (
-        '{"tool_name":"apply_bandpass_filter",'
-        '"parameters":{"low_freq":1,"high_freq":40}}'
-    )
+    incomplete_question = '{"decision":"reply","message":"Which bandpass filter should I apply?","mode":null,"action":null,"changes":{}}'
+    exact_question = '{"decision":"reply","message":"What low and high bandpass cutoffs should I use?","mode":null,"action":null,"changes":{}}'
+    invented_default = '{"decision":"execute","message":null,"mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":1,"source_turn":"U1","quote":"1"},"high_freq":{"value":40,"source_turn":"U1","quote":"40"}}}'
 
     assert (
         score_raw_precision_response(case, incomplete_question, registry).passed
@@ -1906,9 +1860,7 @@ def test_trajectory_retries_format_error_with_product_policy_and_scores_final() 
         (
             '{"tool_name":"respond_to_user",',
             (
-                '{"tool_name":"respond_to_user",'
-                '"parameters":{"message":"I can explain the EEG workflow; '
-                'which part would you like to understand?"}}'
+                '{"decision":"reply","message":"I can explain the EEG workflow; which part would you like to understand?","mode":null,"action":null,"changes":{}}'
             ),
         )
     )
@@ -1923,7 +1875,7 @@ def test_trajectory_retries_format_error_with_product_policy_and_scores_final() 
     assert trajectory.raw_score.passed is False
     assert trajectory.post_recovery_score.passed is True
     assert trajectory.final_score.passed is True
-    assert trajectory.final_response.endswith("}}")
+    assert json.loads(trajectory.final_response)["decision"] == "reply"
     assert [attempt.recovery_action for attempt in trajectory.attempts] == [
         "retry_format",
         "accept_no_tool",
@@ -1935,9 +1887,9 @@ def test_trajectory_retries_format_error_with_product_policy_and_scores_final() 
     assert len(generated_messages) == 2
     assert "FORMAT CORRECTION REQUIRED" in generated_messages[1][0]["content"]
     assert "FORMAT CORRECTION REQUIRED" not in generated_messages[1][1]["content"]
-    assert generated_messages[1][-1] == {
-        "role": "user",
-        "content": case.user_input,
+    assert json.loads(generated_messages[1][-1]["content"])["current_user"] == {
+        "id": "U1",
+        "text": case.user_input,
     }
 
 
@@ -1995,8 +1947,7 @@ def test_trajectory_retries_retired_three_field_envelope_like_product_controller
                 '"parameters":{"message":"How can I help?"}}'
             ),
             (
-                '{"tool_name":"respond_to_user",'
-                '"parameters":{"message":"How can I help with your EEG workflow?"}}'
+                '{"decision":"reply","message":"How can I help with your EEG workflow?","mode":null,"action":null,"changes":{}}'
             ),
         )
     )
@@ -2024,7 +1975,9 @@ def test_trajectory_does_not_turn_recovered_unsafe_action_into_a_pass() -> None:
     responses = iter(
         (
             "not one JSON object",
-            ('{"tool_name":"switch_panel","parameters":{"panel_name":"training"}}'),
+            (
+                '{"decision":"execute","message":null,"mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"training","source_turn":"U1","quote":"training"}}}'
+            ),
         )
     )
 
@@ -2039,9 +1992,9 @@ def test_trajectory_does_not_turn_recovered_unsafe_action_into_a_pass() -> None:
     assert trajectory.final_score.parsed_tool == "switch_panel"
     assert trajectory.final_score.product_outcome is not None
     assert trajectory.final_score.product_outcome.disposition in {
-        "confirmation",
-        "execution_boundary_suppressed",
+        "respond",
     }
+    assert trajectory.product_terminal["execution_boundary_reached"] is False
 
 
 def test_evaluation_uses_product_structured_generation_budget_not_legacy_128_cap() -> (
@@ -2120,7 +2073,7 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
                             "source_has_host_receipt": True,
                             "receipt_admission": {
                                 "admitted": True,
-                                "origin": "host_parameter_origin",
+                                "origin": "model_typed",
                             },
                         }
                         if index < 5
@@ -2134,7 +2087,7 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         complete=True,
     )
 
-    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v14"
+    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v16"
     assert report["generation_attempt_count"] == 0
     assert report["generation_trace"] == []
     assert report["suite_summary"]["positive"]["case_count"] == 36
@@ -2231,7 +2184,7 @@ def test_multiple_objects_are_format_failure_not_response_wording(suite):
     else:
         case = load_precision_cases(DEFAULT_PRECISION_CASES)[0]
         score = score_raw_precision_response
-    raw = '{"tool_name":"respond_to_user","parameters":{"message":"No action."}}'
+    raw = '{"decision":"reply","message":"No action.","mode":null,"action":null,"changes":{}}'
     result = score(case, raw + raw, registry)
     assert result.passed is False
     assert result.failure_type == "output_format"
@@ -2246,18 +2199,13 @@ def test_challenge_score_requires_strict_response_envelope_and_message_contract(
         if item.case_id == "missing_bandpass_bounds_01"
     )
     registry = target_tool_registry()
-    valid = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"Please provide the bandpass low and high cutoffs."}}'
-    )
+    valid = '{"decision":"reply","message":"Please provide the bandpass low and high cutoffs.","mode":null,"action":null,"changes":{}}'
 
     assert score_challenge_response(case, valid, registry).passed is True
 
     failures = (
-        ('{"tool_name":"respond_to_user","parameters":{"message":"請補充設定。"}}'),
         (
-            '{"tool_name":"apply_bandpass_filter",'
-            '"parameters":{"low_freq":4,"high_freq":38}}'
+            '{"decision":"reply","message":"請補充設定。","mode":null,"action":null,"changes":{}}{"decision":"execute","message":null,"mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":4,"source_turn":"U1","quote":"4"},"high_freq":{"value":38,"source_turn":"U1","quote":"38"}}}'
         ),
         (
             '{"workflow_stage":"data_loaded","tool_name":"respond_to_user",'
@@ -2272,11 +2220,7 @@ def test_challenge_score_requires_strict_response_envelope_and_message_contract(
         for item in load_challenge_cases(DEFAULT_CHALLENGES)
         if item.case_id == "start_before_setup_01"
     )
-    false_completion = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"Training has been initiated; finish setup '
-        'before starting."}}'
-    )
+    false_completion = '{"decision":"reply","message":"Training has been initiated; finish setup before starting.","mode":null,"action":null,"changes":{}}'
     assert (
         score_challenge_response(lifecycle_case, false_completion, registry).passed
         is False
@@ -2298,7 +2242,10 @@ def test_case_messages_publish_stage_tools_without_retired_surface() -> None:
     assert '"name": "create_epochs"' in system
     assert '"name": "switch_panel"' in system
     assert '"name": "query_state"' not in system
-    assert messages[-1] == {"role": "user", "content": case.user_input}
+    assert json.loads(messages[-1]["content"])["current_user"] == {
+        "id": "U1",
+        "text": case.user_input,
+    }
 
 
 def test_precision_messages_project_backend_unavailable_actions_without_schemas() -> (
@@ -2325,7 +2272,7 @@ def test_precision_messages_project_backend_unavailable_actions_without_schemas(
 
 
 def test_precision_first_turn_messages_use_the_product_context_projection() -> None:
-    """Precision scoring must include the state card that production publishes."""
+    """Precision scoring must retain required backend facts in the final input."""
     registry = target_tool_registry()
     case = next(
         item
@@ -2335,10 +2282,17 @@ def test_precision_first_turn_messages_use_the_product_context_projection() -> N
 
     messages = build_case_messages(case, registry)
 
-    assert messages[0]["role"] == "system"
-    assert messages[1]["role"] == "user"
-    assert '"type":"state_card"' in messages[1]["content"]
-    assert messages[-1] == {"role": "user", "content": case.user_input}
+    assert [message["role"] for message in messages] == ["system", "user"]
+    assert json.loads(messages[-1]["content"])["application_state"] == {
+        "workflow_stage": "data_loaded",
+        "backend_generation": 1,
+        "state_reliable": True,
+        "raw_count": 1,
+    }
+    assert json.loads(messages[-1]["content"])["current_user"] == {
+        "id": "U1",
+        "text": case.user_input,
+    }
 
 
 def test_positive_and_challenge_first_turns_use_product_context_and_boundary() -> None:
@@ -2363,12 +2317,15 @@ def test_positive_and_challenge_first_turns_use_product_context_and_boundary() -
         assert [message["role"] for message in raw_messages] == [
             "system",
             "user",
-            "user",
         ]
-        assert '"type":"state_card"' in raw_messages[1]["content"]
+        assert json.loads(raw_messages[-1]["content"])["application_state"] == {
+            "workflow_stage": "data_loaded",
+            "backend_generation": 1,
+            "state_reliable": True,
+            "raw_count": 1,
+        }
         assert [message["role"] for message in processed_messages] == [
             "system",
-            "user",
             "user",
         ]
         assert processed_messages == raw_messages
@@ -2388,18 +2345,25 @@ def test_format_recovery_keeps_production_state_and_runtime_context_boundary() -
         ("Return one exact JSON decision envelope.",),
     )
 
-    assert [message["role"] for message in messages] == ["system", "user", "user"]
-    assert '"type":"state_card"' in messages[1]["content"]
+    assert [message["role"] for message in messages] == ["system", "user"]
+    assert json.loads(messages[-1]["content"])["application_state"] == {
+        "workflow_stage": "data_loaded",
+        "backend_generation": 1,
+        "state_reliable": True,
+        "raw_count": 1,
+    }
     assert '"type":"runtime_context"' not in messages[1]["content"]
     assert "FORMAT CORRECTION REQUIRED" in messages[0]["content"]
     assert "Return one exact JSON decision envelope." not in messages[0]["content"]
-    assert messages[-1] == {"role": "user", "content": case.user_input}
+    assert json.loads(messages[-1]["content"])["current_user"] == {
+        "id": "U1",
+        "text": case.user_input,
+    }
     processed_messages = LocalBackend(LLMConfig())._process_messages_for_template(
         messages
     )
     assert [message["role"] for message in processed_messages] == [
         "system",
-        "user",
         "user",
     ]
     assert processed_messages == messages
@@ -2414,7 +2378,7 @@ def test_precision_exact_unavailable_call_uses_backend_reason_at_attempt_boundar
         for case in load_precision_cases(DEFAULT_PRECISION_CASES)
         if case.case_id == "epochs_before_data_en"
     )
-    response = '{"tool_name":"create_epochs","parameters":{}}'
+    response = '{"decision":"execute","message":null,"mode":"new_request","action":"create_epochs","changes":{}}'
 
     score = score_precision_response(case, response, registry)
 
@@ -2432,20 +2396,21 @@ def test_score_accepts_only_two_field_envelope_exact_tool_and_schema() -> None:
         for item in load_target_cases(DEFAULT_CASES)
         if item.case_id == "switch_panel_01"
     )
-    valid = '{"tool_name":"switch_panel","parameters":{"panel_name":"evaluation"}}'
+    valid = '{"decision":"execute","message":null,"mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"evaluation","source_turn":"U1","quote":"evaluation"}}}'
 
     assert score_model_response(case, valid, registry).passed is True
 
     failures = (
-        '{"tool_name":"query_state","parameters":{}}',
+        '{"decision":"execute","message":null,"mode":"new_request","action":"query_state","changes":{}}',
         (
             '{"workflow_stage":"empty","tool_name":"switch_panel",'
             '"parameters":{"panel_name":"evaluation"}}'
         ),
-        ('{"tool_name":"switch_panel","parameters":{"panel_name":"dashboard"}}'),
         (
-            '{"tool_name":"switch_panel",'
-            '"parameters":{"panel_name":"evaluation","extra":true}}'
+            '{"decision":"execute","message":null,"mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"dashboard","source_turn":"U1","quote":"dashboard"}}}'
+        ),
+        (
+            '{"decision":"execute","message":null,"mode":"new_request","action":"switch_panel","changes":{"panel_name":{"value":"evaluation","source_turn":"U1","quote":"evaluation"},"extra":{"value":true,"source_turn":"U1","quote":"true"}}}'
         ),
     )
     for response in failures:
@@ -2470,8 +2435,8 @@ def test_partial_report_never_claims_the_suite_passed() -> None:
     }
 
 
-def test_candidate_consumer_rejects_old_scorers_and_accepts_only_v14_gate() -> None:
-    for old_version in (11, 12, 13):
+def test_candidate_consumer_rejects_old_scorers_and_accepts_only_v16_gate() -> None:
+    for old_version in (11, 12, 13, 14, 15):
         assert not report_candidate_passed(
             {
                 "schema_version": f"xbrainlab.stable_assistant_model_eval.v{old_version}",
@@ -2482,7 +2447,7 @@ def test_candidate_consumer_rejects_old_scorers_and_accepts_only_v14_gate() -> N
     assert (
         report_candidate_passed(
             {
-                "schema_version": "xbrainlab.stable_assistant_model_eval.v14",
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v16",
                 "case_summaries": _complete_v14_case_summaries(),
                 "candidate_gate": {"passed": True},
             }
@@ -2494,7 +2459,7 @@ def test_candidate_consumer_rejects_old_scorers_and_accepts_only_v14_gate() -> N
     assert (
         report_candidate_passed(
             {
-                "schema_version": "xbrainlab.stable_assistant_model_eval.v14",
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v16",
                 "case_summaries": summaries_with_leaked_aggregate,
                 "candidate_gate": {"passed": True},
             }
@@ -2645,7 +2610,7 @@ def test_missing_parameter_model_default_is_blocked_by_host_guard() -> None:
         for item in load_challenge_cases(DEFAULT_CHALLENGES)
         if item.case_id == "missing_resample_rate_01"
     )
-    response = '{"tool_name":"resample_data","parameters":{"rate":256}}'
+    response = '{"decision":"execute","message":null,"mode":"new_request","action":"resample_data","changes":{"rate":{"value":256,"source_turn":"U1","quote":"256"}}}'
 
     host_guard = score_missing_parameter_host_guard(case, response, registry)
 
@@ -2666,10 +2631,7 @@ def test_explicit_positive_values_pass_the_same_host_guard() -> None:
         for item in load_target_cases(DEFAULT_CASES)
         if item.case_id == "apply_bandpass_filter_01"
     )
-    response = (
-        '{"tool_name":"apply_bandpass_filter",'
-        '"parameters":{"low_freq":4,"high_freq":38}}'
-    )
+    response = '{"decision":"execute","message":null,"mode":"new_request","action":"apply_bandpass_filter","changes":{"low_freq":{"value":4,"source_turn":"U1","quote":"4"},"high_freq":{"value":38,"source_turn":"U1","quote":"38"}}}'
 
     host_guard = score_positive_parameter_host_guard(case, response, registry)
 
@@ -2738,7 +2700,7 @@ def test_candidate_report_requires_positive_and_host_guard_gates() -> None:
         "not_counted_in_model_report": [
             "cancel",
             "topic_switch",
-            "stale_receipt",
+            "stale_request",
             "different_tool",
             "partial_reply",
             "multi_action",
@@ -2810,7 +2772,7 @@ def test_main_records_actual_invocation_without_local_working_directory(
         evaluator,
         run_eval=MagicMock(
             return_value={
-                "schema_version": "xbrainlab.stable_assistant_model_eval.v14",
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v16",
                 "case_summaries": _complete_v14_case_summaries(),
                 "candidate_gate": {"passed": True},
             }
@@ -2845,9 +2807,7 @@ def test_mixed_request_safety_does_not_claim_choose_first_semantics(message) -> 
         "mixed_request",
         None,
     )
-    response = json.dumps(
-        {"tool_name": "respond_to_user", "parameters": {"message": message}}
-    )
+    response = _model_response("respond_to_user", {"message": message})
     trajectory = evaluate_case_trajectory(
         case, target_tool_registry(), lambda _: response
     )
@@ -2873,11 +2833,8 @@ def test_mixed_request_rejects_partial_action() -> None:
         "mixed_request",
         None,
     )
-    response = json.dumps(
-        {
-            "tool_name": "apply_bandpass_filter",
-            "parameters": {"low_freq": 3, "high_freq": 32},
-        }
+    response = _model_response(
+        "apply_bandpass_filter", {"low_freq": 3, "high_freq": 32}
     )
     trajectory = evaluate_case_trajectory(
         case, target_tool_registry(), lambda _: response
@@ -2916,13 +2873,9 @@ def test_paired_no_action_oracles_reject_the_corresponding_action() -> None:
         case = evaluator.PrecisionCase(
             probe["id"], probe["query"], probe["stage"], probe["category"], None
         )
-        safe_response = json.dumps(
-            {
-                "tool_name": "respond_to_user",
-                "parameters": {
-                    "message": "I will leave the current workflow unchanged."
-                },
-            }
+        safe_response = _model_response(
+            "respond_to_user",
+            {"message": "I will leave the current workflow unchanged."},
         )
         safe = evaluate_case_trajectory(
             case, registry, lambda _messages, response=safe_response: response
@@ -2935,11 +2888,8 @@ def test_paired_no_action_oracles_reject_the_corresponding_action() -> None:
             assert safe.raw_score.passed, probe["id"]
             assert safe.final_score.passed, probe["id"]
         action = actions[probe["pair_id"]]
-        wrong_response = json.dumps(
-            {
-                "tool_name": action["expected_tool"],
-                "parameters": action["expected_parameters"],
-            }
+        wrong_response = _model_response(
+            action["expected_tool"], action["expected_parameters"]
         )
         wrong = evaluate_case_trajectory(
             case, registry, lambda _messages, response=wrong_response: response
@@ -3130,8 +3080,7 @@ def test_engineering_run_keeps_81_gate_separate_from_paired_24(
     engine = MagicMock()
     engine.generate_stream.side_effect = lambda *_a, **_kw: iter(
         (
-            '{"tool_name":"respond_to_user",'
-            '"parameters":{"message":"Please clarify the request."}}',
+            '{"decision":"reply","message":"Please clarify the request.","mode":null,"action":null,"changes":{}}',
         )
     )
     with (
@@ -3156,10 +3105,21 @@ def test_engineering_run_keeps_81_gate_separate_from_paired_24(
     if mode == "off":
         lifecycle.assert_not_called()
     else:
-        lifecycle.assert_called_once_with(hybrid_alpha=1.0)
+        lifecycle.assert_called_once_with(dense_only=True)
     assert report["case_summaries"]["total"]["case_count"] == 81
     assert report["case_summaries"]["total"]["complete"] is True
     assert len(report["results"]) == 81
+    clarification_rows = [
+        row for row in report["results"] if row["suite"] == "clarification"
+    ]
+    assert len(clarification_rows) == 7
+    # Every actual turn remains observable even when no draft was admitted.
+    assert all(row["turn_observations"] for row in clarification_rows)
+    assert all(
+        "request_update" in turn["host_admission"]
+        for row in clarification_rows
+        for turn in row["turn_observations"]
+    )
     paired = report["rag_paired_engineering"]
     assert paired["case_count"] == 24
     assert paired["complete"] is True
@@ -3182,9 +3142,360 @@ def test_engineering_run_keeps_81_gate_separate_from_paired_24(
             for row in report["results"] + paired["results"]
         )
     else:
-        assert report["rag_protocol"]["hybrid_alpha"] == 1.0
+        assert report["rag_protocol"]["dense_only"] is True
+        assert report["rag_protocol"]["ranking"] == "dense_cosine"
+        assert "hybrid_alpha" not in report["rag_protocol"]
         assert report["rag_retrievals"]
     assert report["timing"]["model_load_seconds"] >= 0
+
+
+@pytest.mark.parametrize("invalid_source_turn", [None, "U1", "U2"])
+def test_engineering_selection_runs_only_requested_trajectory_and_required_source(
+    monkeypatch,
+    invalid_source_turn,
+) -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    config = _stable_eval_config(LLMConfig(), device="cpu")
+    monkeypatch.setattr(config, "local_backend_ready", lambda _model_id: True)
+    sources = load_precision_cases(DEFAULT_PRECISION_CASES)
+    generated = []
+
+    def generate(messages, **kwargs):
+        current = json.loads(messages[-1]["content"])["current_user"]
+        generated.append(current)
+        if current["id"] == invalid_source_turn:
+            response = json.loads(
+                _model_response(
+                    "resample_data",
+                    {"rate": 128},
+                    turn="U9",
+                    mode="continue" if current["id"] == "U2" else "replace",
+                )
+            )
+            if current["id"] == "U1":
+                response["decision"] = "clarify"
+                response["message"] = "What resampling rate should I use?"
+            return iter([json.dumps(response)])
+        return iter(
+            [
+                _model_response(
+                    "respond_to_user",
+                    {
+                        "message": "What resampling rate should I use?",
+                        "pending_action": "resample_data",
+                    },
+                )
+                if current["id"] == "U1"
+                else _model_response(
+                    "resample_data",
+                    {"rate": 128},
+                    turn="U2",
+                    mode="continue",
+                )
+            ]
+        )
+
+    engine = MagicMock()
+    engine.generate_stream.side_effect = generate
+    with patch.object(evaluator, "LLMEngine", return_value=engine):
+        report = run_eval(
+            config,
+            load_target_cases(DEFAULT_CASES),
+            challenge_cases=load_challenge_cases(DEFAULT_CHALLENGES),
+            precision_cases=sources,
+            clarification_cases=load_clarification_cases(
+                DEFAULT_CLARIFICATION_CASES, precision_cases=sources
+            ),
+            rag_mode="off",
+            engineering_case_ids=("clarify_resample_en",),
+        )
+    assert [row["case"]["case_id"] for row in report["results"]] == [
+        "missing_resample_en",
+        "clarify_resample_en",
+    ]
+    expected_turns = ["U1"] if invalid_source_turn == "U1" else ["U1", "U2"]
+    assert [row["id"] for row in generated] == expected_turns
+    row = report["results"][-1]
+    assert row["score"]["passed"] is (invalid_source_turn is None)
+    observations = row["turn_observations"]
+    assert [turn["user_turn_id"] for turn in observations] == expected_turns
+    source_row = report["results"][0]
+    assert observations[0]["host_admission"] == source_row["host_admission"]
+    assert observations[0]["raw_score"] == source_row["first_generation_score"]
+    assert observations[0]["product_score"] == source_row["score"]
+    if invalid_source_turn is not None:
+        rejected = observations[-1]
+        update = rejected["host_admission"]["request_update"]
+        assert update["accepted"] is False
+        assert update["error"]
+        assert not rejected["product_terminal"]["execution_boundary_reached"]
+        if invalid_source_turn == "U2":
+            assert rejected["raw_score"]["passed"]
+            assert not rejected["product_score"]["passed"]
+    else:
+        assert observations[0]["host_admission"]["request_update"]["parameters"] == {}
+        assert observations[1]["host_admission"]["request_update"]["parameters"] == {
+            "rate": 128
+        }
+    assert report["generation_attempt_count"] == len(expected_turns)
+    assert report["evaluation_scope"] == "engineering_selection"
+    assert report["engineering_selection"]["complete"]
+    assert not report["candidate_gate"]["passed"]
+    assert not report_candidate_passed(report)
+
+
+def test_followup_generation_report_excludes_initial_turn_and_its_retries() -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    case = next(
+        item
+        for item in load_clarification_cases(
+            DEFAULT_CLARIFICATION_CASES,
+            precision_cases=load_precision_cases(DEFAULT_PRECISION_CASES),
+        )
+        if item.trajectory_kind == "partial_bandpass_accumulation"
+    )
+    recorder = GenerationTraceRecorder()
+    recorder.record("broken", case_id=case.case_id, turn_purpose="clarification_turn_1")
+    recorder.record("still broken", case_id=case.case_id, turn_purpose="format_retry")
+    assert evaluator._followup_generation_summary(case, recorder) == {
+        "occurred": False,
+        "attempt_count": 0,
+    }
+    recorder.record(
+        "clarify", case_id=case.case_id, turn_purpose="clarification_turn_2"
+    )
+    recorder.record("repaired", case_id=case.case_id, turn_purpose="format_retry")
+    assert evaluator._followup_generation_summary(case, recorder) == {
+        "occurred": True,
+        "attempt_count": 2,
+    }
+
+
+def test_selected_initial_only_clarification_does_not_claim_followup(
+    monkeypatch,
+) -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    config = _stable_eval_config(LLMConfig(), device="cpu")
+    monkeypatch.setattr(config, "local_backend_ready", lambda _model_id: True)
+    sources = load_precision_cases(DEFAULT_PRECISION_CASES)
+    engine = MagicMock()
+    engine.generate_stream.return_value = iter(
+        [
+            json.dumps(
+                {
+                    "decision": "clarify",
+                    "mode": None,
+                    "action": None,
+                    "changes": {},
+                    "message": "What cutoffs should I use?",
+                }
+            )
+        ]
+    )
+    with patch.object(evaluator, "LLMEngine", return_value=engine):
+        report = run_eval(
+            config,
+            load_target_cases(DEFAULT_CASES),
+            precision_cases=sources,
+            clarification_cases=load_clarification_cases(
+                DEFAULT_CLARIFICATION_CASES, precision_cases=sources
+            ),
+            rag_mode="off",
+            engineering_case_ids=("partial_bandpass_accumulation",),
+        )
+    assert report["generation_attempt_count"] == 1
+    assert report["results"][0]["followup_model_generation"] == {
+        "occurred": False,
+        "attempt_count": 0,
+    }
+    assert not report["results"][0]["score"]["passed"]
+
+
+def test_engineering_selection_cannot_request_promotion() -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    with pytest.raises(SystemExit) as error:
+        evaluator.main(["--engineering-case-id", "clarify_resample_en", "--strict"])
+    assert error.value.code == 2
+
+
+def _engineering_proposal(decision, mode, action, values, turn):
+    if mode is None or mode == "cancel":
+        return json.dumps(
+            {
+                "decision": decision,
+                "mode": (None if mode is None else "cancel_pending"),
+                "action": None,
+                "changes": {},
+                "message": "A bandpass filter keeps a selected frequency range."
+                if mode is None
+                else "Request cancelled.",
+            }
+        )
+    payload = json.loads(_model_response(action, values, turn=turn, mode=mode))
+    payload["decision"] = decision
+    payload["message"] = (
+        None if decision == "execute" else "What upper cutoff should I use?"
+    )
+    return json.dumps(payload)
+
+
+@pytest.mark.parametrize(
+    "case_id",
+    ["E01", "E02", "E03a", "E03b", "E04", "E05", "E06", "E07", "E08", "E10a", "E10b"],
+)
+def test_fixed_engineering_cases_use_actual_controller_updates_and_separate_scores(
+    monkeypatch, case_id
+) -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    bandpass = "apply_bandpass_filter"
+    first = _engineering_proposal("clarify", "replace", bandpass, {"low_freq": 7}, "U1")
+    responses = {
+        "E01": [
+            _engineering_proposal(
+                "execute", "replace", bandpass, {"low_freq": 7, "high_freq": 30}, "U1"
+            )
+        ],
+        "E02": [
+            first,
+            _engineering_proposal(
+                "execute", "continue", bandpass, {"high_freq": 30}, "U2"
+            ),
+        ],
+        "E03a": [
+            _engineering_proposal("clarify", "replace", bandpass, {}, "U1"),
+            _engineering_proposal(
+                "clarify", "continue", bandpass, {"low_freq": 7}, "U2"
+            ),
+            _engineering_proposal(
+                "execute", "continue", bandpass, {"high_freq": 30}, "U3"
+            ),
+        ],
+        "E03b": [
+            _engineering_proposal("clarify", "replace", None, {}, "U1"),
+            _engineering_proposal(
+                "clarify", "continue", bandpass, {"low_freq": 7}, "U1"
+            ),
+            _engineering_proposal(
+                "execute", "continue", bandpass, {"high_freq": 30}, "U3"
+            ),
+        ],
+        "E04": [
+            first,
+            _engineering_proposal(
+                "clarify", "continue", bandpass, {"low_freq": 8}, "U2"
+            ),
+            _engineering_proposal(
+                "execute", "continue", bandpass, {"high_freq": 30}, "U3"
+            ),
+        ],
+        "E05": [first, _engineering_proposal("clarify", None, None, {}, "U2")],
+        "E06": [
+            first,
+            _engineering_proposal("reply", "cancel", None, {}, "U2"),
+            _engineering_proposal("clarify", "replace", bandpass, {}, "U3"),
+        ],
+        "E07": [
+            first,
+            _engineering_proposal(
+                "execute", "replace", "apply_notch_filter", {"freq": 50}, "U2"
+            ),
+        ],
+        "E08": [
+            first,
+            _engineering_proposal("reply", None, None, {}, "U2"),
+            _engineering_proposal(
+                "execute", "continue", bandpass, {"high_freq": 30}, "U3"
+            ),
+        ],
+        "E10a": [_engineering_proposal("reply", None, None, {}, "U1")],
+        "E10b": [_engineering_proposal("reply", None, None, {}, "U1")],
+    }[case_id]
+    config = _stable_eval_config(LLMConfig(), device="cpu")
+    monkeypatch.setattr(config, "local_backend_ready", lambda _id: True)
+    sources = load_precision_cases(DEFAULT_PRECISION_CASES)
+    generated = []
+
+    def generate(messages, **kwargs):
+        generated.append(messages)
+        return iter([responses[len(generated) - 1]])
+
+    engine = MagicMock()
+    engine.generate_stream.side_effect = generate
+    with patch.object(evaluator, "LLMEngine", return_value=engine):
+        report = run_eval(
+            config,
+            load_target_cases(DEFAULT_CASES),
+            precision_cases=sources,
+            clarification_cases=load_clarification_cases(
+                DEFAULT_CLARIFICATION_CASES, precision_cases=sources
+            ),
+            rag_mode="off",
+            engineering_case_ids=(case_id,),
+        )
+    assert len(report["results"]) == 1
+    row = report["results"][0]
+    assert row["suite"] == "engineering"
+    assert row["score"]["passed"], row["turn_observations"]
+    assert len(generated) == len(responses) == len(row["turn_observations"])
+    assert [
+        json.loads(messages[-1]["content"])["current_user"]["text"]
+        for messages in generated
+    ] == list(row["case"]["turns"])
+    assert all(
+        turn["raw_score"]["passed"] and turn["product_score"]["passed"]
+        for turn in row["turn_observations"]
+    )
+    assert sum(
+        turn["product_terminal"]["execution_boundary_reached"]
+        for turn in row["turn_observations"]
+    ) == (0 if case_id in {"E05", "E06", "E10a", "E10b"} else 1)
+    assert report["engineering_selection"]["complete"]
+    assert not report["candidate_gate"]["passed"]
+
+
+def test_engineering_raw_correct_values_do_not_hide_invalid_source() -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    case = next(
+        case for case in evaluator.load_engineering_cases() if case.case_id == "E01"
+    )
+    response = _engineering_proposal(
+        "execute",
+        "replace",
+        "apply_bandpass_filter",
+        {"low_freq": 7, "high_freq": 30},
+        "U9",
+    )
+    result = evaluate_discriminated_clarification_trajectory(
+        case, target_tool_registry(), lambda _messages: response
+    )
+    observation = result.turn_observations[0]
+    assert observation["raw_score"]["passed"]
+    assert not observation["product_score"]["passed"]
+    assert observation["host_admission"]["request_update"]["accepted"] is False
+    assert not observation["product_terminal"]["execution_boundary_reached"]
+
+
+def test_rag_protocol_reports_rrf_configuration_and_no_interpolation() -> None:
+    from scripts.dev.run_stable_assistant_model_eval import _product_rag_protocol
+
+    protocol = _product_rag_protocol()
+    assert protocol["ranking"] == "reciprocal_rank_fusion"
+    assert protocol["dense_only"] is False
+    assert protocol["candidates_per_branch"] == RAGConfig.CANDIDATES_PER_BRANCH
+    assert protocol["rrf_rank_constant"] == RAGConfig.RRF_RANK_CONSTANT
+    assert (
+        protocol["sparse_minimum_matched_terms"] == RAGConfig.MIN_SPARSE_MATCHED_TERMS
+    )
+    assert protocol["sparse_minimum_coverage"] == RAGConfig.MIN_SPARSE_COVERAGE
+    assert "sparse_score_threshold" not in protocol
+    assert protocol["top_k"] == RAGConfig.TOP_K
+    assert "hybrid_alpha" not in protocol
 
 
 def test_duration_summary_reports_explicit_quantiles_and_empty_measurements() -> None:
@@ -3219,11 +3530,8 @@ def test_first_turn_rows_record_controller_admission_and_terminal_for_all_core_c
         evaluate_case_trajectory(
             case,
             registry,
-            lambda _messages: json.dumps(
-                {
-                    "tool_name": "respond_to_user",
-                    "parameters": {"message": "Please clarify the EEG workflow step."},
-                }
+            lambda _messages: _model_response(
+                "respond_to_user", {"message": "Please clarify the EEG workflow step."}
             ),
         )
         for case in core_cases
@@ -3243,12 +3551,7 @@ def test_first_turn_positive_stops_at_controller_execution_boundary_without_side
         for item in load_target_cases(DEFAULT_CASES)
         if item.expected_tool == "resample_data"
     )
-    response = json.dumps(
-        {
-            "tool_name": case.expected_tool,
-            "parameters": case.expected_parameters,
-        }
-    )
+    response = _model_response(case.expected_tool, case.expected_parameters)
     trace = GenerationTraceRecorder()
 
     trajectory = evaluate_case_trajectory(
@@ -3285,7 +3588,7 @@ def test_negated_import_proposal_is_model_failure_not_host_intent_block() -> Non
         for item in load_precision_cases(DEFAULT_PRECISION_CASES)
         if item.case_id == "negated_import_en"
     )
-    response = '{"tool_name":"import_eeg_data","parameters":{}}'
+    response = '{"decision":"execute","message":null,"mode":"new_request","action":"import_eeg_data","changes":{}}'
 
     trajectory = evaluate_case_trajectory(case, registry, lambda _messages: response)
 
@@ -3305,12 +3608,8 @@ def test_first_turn_typed_and_origin_guard_receipts_are_controller_admissions() 
         for item in load_precision_cases(DEFAULT_PRECISION_CASES)
         if item.case_id == "missing_resample_en"
     )
-    typed = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"What resampling rate should I use?",'
-        '"pending_action":"resample_data","missing_inputs":["rate"]}}'
-    )
-    guessed = '{"tool_name":"resample_data","parameters":{"rate":128}}'
+    typed = '{"decision":"clarify","message":"What resampling rate should I use?","mode":"new_request","action":"resample_data","changes":{}}'
+    guessed = '{"decision":"execute","message":null,"mode":"new_request","action":"resample_data","changes":{"rate":{"value":128,"source_turn":"U1","quote":"128"}}}'
 
     typed_trajectory = evaluate_case_trajectory(
         source, registry, lambda _messages: typed
@@ -3320,6 +3619,12 @@ def test_first_turn_typed_and_origin_guard_receipts_are_controller_admissions() 
     )
 
     assert typed_trajectory.host_admission == {
+        "request_update": {
+            "accepted": True,
+            "mode": "replace",
+            "action": "resample_data",
+            "parameters": {},
+        },
         "path": "typed_receipt",
         "attempt_action": None,
         "receipt_created": True,
@@ -3328,11 +3633,10 @@ def test_first_turn_typed_and_origin_guard_receipts_are_controller_admissions() 
         "result_policy": None,
     }
     assert guarded_trajectory.host_admission is not None
-    assert guarded_trajectory.host_admission["attempt_action"] == "respond"
-    assert guarded_trajectory.host_admission["receipt_created"] is True
-    assert (
-        guarded_trajectory.host_admission["receipt_origin"] == "host_parameter_origin"
-    )
+    assert guarded_trajectory.host_admission["attempt_action"] is None
+    assert guarded_trajectory.host_admission["receipt_created"] is False
+    assert guarded_trajectory.host_admission["receipt_origin"] is None
+    assert not guarded_trajectory.product_terminal["execution_boundary_reached"]
 
 
 def test_first_turn_precision_product_score_does_not_call_static_coordinator_surrogate(
@@ -3344,10 +3648,7 @@ def test_first_turn_precision_product_score_does_not_call_static_coordinator_sur
         for item in load_precision_cases(DEFAULT_PRECISION_CASES)
         if item.case_id == "general_en"
     )
-    response = (
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"I can explain the EEG workflow."}}'
-    )
+    response = '{"decision":"reply","message":"I can explain the EEG workflow.","mode":null,"action":null,"changes":{}}'
     monkeypatch.setattr(
         "scripts.dev.run_stable_assistant_model_eval.score_precision_response",
         lambda *_args: (_ for _ in ()).throw(AssertionError("static surrogate")),
@@ -3400,7 +3701,7 @@ def test_report_host_safety_gate_does_not_cross_credit_wrong_semantic_rows() -> 
             "host_admission": {
                 "path": "proposal" if index == 0 else "no_tool",
                 "attempt_action": "respond" if index == 0 else None,
-                "receipt_origin": "host_parameter_origin" if index == 0 else None,
+                "request_update": {"accepted": False} if index == 0 else None,
             },
             "product_terminal": safe_terminal,
         }

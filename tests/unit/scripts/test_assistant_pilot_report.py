@@ -792,6 +792,95 @@ def _change_result(root, mutate, index=0):
     path.write_text("".join(json.dumps(row) + "\n" for row in records))
 
 
+def _proposal_scores(result, *, historical=False):
+    result["scores"].update(
+        scorer_schema="xbrainlab.assistant_decision_scores.v4"
+        if historical
+        else "xbrainlab.assistant_decision_scores.v5",
+        response_contract="assistant_proposal.v1"
+        if historical
+        else "assistant_proposal.v2",
+        parameter_scope="single_turn_replace_changes"
+        if historical
+        else "single_turn_new_request_changes",
+        source_validation="not_evaluated",
+    )
+    for generation in result.get("trace", {}).get("generations", []):
+        generation["request"] = {
+            "response_contract": result["scores"]["response_contract"]
+        }
+
+
+@pytest.mark.parametrize("historical", [False, True])
+def test_proposal_report_identity_is_distinct_without_rescoring_artifacts(
+    tmp_path, historical
+):
+    root = _run(tmp_path, [("Action", True, True, "completed")])
+    _change_result(root, lambda result: _proposal_scores(result, historical=historical))
+    before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    actual = report.build_report(root)
+    assert (
+        actual["schema"]
+        == f"xbrainlab.assistant_pilot_report.v{2 if historical else 3}"
+    )
+    assert (
+        actual["conditions"]["phi4-rag-off"]["categories"]["Action"]["final"][
+            "numerator"
+        ]
+        == 1
+    )
+    assert before == {
+        path: path.read_bytes() for path in root.rglob("*") if path.is_file()
+    }
+
+
+def test_proposal_report_rejects_old_trace_identity(tmp_path):
+    root = _run(tmp_path, [("Action", True, True, "completed")])
+
+    def damage(result):
+        _proposal_scores(result)
+        result["trace"] = {
+            "generations": [{"request": {"response_contract": "structured_action"}}],
+        }
+
+    _change_result(root, damage)
+    actual = report.build_report(root)
+    assert (
+        actual["conditions"]["phi4-rag-off"]["categories"]["Action"]["final"][
+            "denominator"
+        ]
+        == 0
+    )
+
+
+def test_report_does_not_pool_historical_and_proposal_scores(tmp_path):
+    root = _run(tmp_path, [("Action", True, True, "completed")] * 2)
+    _change_result(root, _proposal_scores)
+    with pytest.raises(ValueError, match="historical and proposal"):
+        report.build_report(root)
+
+
+def test_report_does_not_pool_nested_and_flat_proposal_scores(tmp_path):
+    root = _run(tmp_path, [("Action", True, True, "completed")] * 2)
+    _change_result(root, _proposal_scores)
+    _change_result(
+        root, lambda result: _proposal_scores(result, historical=True), index=1
+    )
+    with pytest.raises(ValueError, match="historical and proposal"):
+        report.build_report(root)
+
+
+def test_new_dev_report_preserves_capture_checks_and_presentation(tmp_path):
+    root = _run(tmp_path, [("Action", True, True, "completed")], dev=True)
+    _change_result(root, _proposal_scores)
+    output = tmp_path / "proposal-report"
+    actual = report.write_report(root, output)
+    assert actual["schema"] == "xbrainlab.assistant_dev_report.v3"
+    assert actual["cases"][0]["capture_integrity"]["verified"] is True
+    assert (output / "README.md").is_file()
+    assert (output / "index.html").is_file()
+
+
 @pytest.mark.parametrize(
     "audit,missing",
     [

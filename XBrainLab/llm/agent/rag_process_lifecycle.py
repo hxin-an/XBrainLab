@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import math
 import multiprocessing
 import queue
 import threading
@@ -28,12 +27,12 @@ RAGProcessTarget = Callable[[Any, Any], None]
 
 
 def _run_rag_process(
-    command_queue: Any, result_queue: Any, *, hybrid_alpha: float | None = None
+    command_queue: Any, result_queue: Any, *, dense_only: bool = False
 ) -> None:
     """Own all heavyweight RAG state inside one terminable child process."""
     from XBrainLab.llm.rag import RAGRetriever  # noqa: PLC0415
 
-    retriever = RAGRetriever(hybrid_alpha=hybrid_alpha)
+    retriever = RAGRetriever(dense_only=dense_only)
     try:
         retriever.initialize()
         result_queue.put(("ready", bool(retriever.is_initialized)))
@@ -111,12 +110,10 @@ class ProcessRAGRetrieverLifecycle:
         retrieval_timeout_seconds: float = RAG_RETRIEVAL_TIMEOUT_SECONDS,
         shutdown_wait_seconds: float = RAG_PROCESS_SHUTDOWN_SECONDS,
         process_target: RAGProcessTarget = _run_rag_process,
-        hybrid_alpha: float | None = None,
+        dense_only: bool = False,
     ) -> None:
-        if hybrid_alpha is not None and (
-            not math.isfinite(hybrid_alpha) or not 0 <= hybrid_alpha <= 1
-        ):
-            raise ValueError("hybrid_alpha must be finite and between 0 and 1")
+        if type(dense_only) is not bool:
+            raise ValueError("dense_only must be a boolean")
         self._initialization_timeout_seconds = max(
             0.01,
             float(initialization_timeout_seconds),
@@ -126,12 +123,12 @@ class ProcessRAGRetrieverLifecycle:
             float(retrieval_timeout_seconds),
         )
         self._shutdown_wait_seconds = max(0.01, float(shutdown_wait_seconds))
-        if hybrid_alpha is None:
+        if not dense_only:
             self._process_target = process_target
         else:
             if process_target is not _run_rag_process:
-                raise ValueError("hybrid_alpha requires the product RAG process target")
-            self._process_target = partial(_run_rag_process, hybrid_alpha=hybrid_alpha)
+                raise ValueError("dense_only requires the product RAG process target")
+            self._process_target = partial(_run_rag_process, dense_only=True)
         self._context = multiprocessing.get_context("spawn")
         self._lock = threading.Lock()
         self._closed = False

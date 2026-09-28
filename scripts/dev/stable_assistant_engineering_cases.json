@@ -1,0 +1,49 @@
+{
+  "schema_version": "xbrainlab.assistant_engineering_cases.v1",
+  "cases": [
+    {"id":"E01","branches":[{"id":"E01","turns":[
+      {"input":"Apply a bandpass filter from 7 to 30 Hz.","decision":"execute","mode":"replace","action":"apply_bandpass_filter","parameters":{"low_freq":7,"high_freq":30}}
+    ]}]},
+    {"id":"E02","branches":[{"id":"E02","turns":[
+      {"input":"Apply a bandpass filter with lower cutoff 7 Hz.","decision":"clarify","mode":"replace","action":"apply_bandpass_filter","parameters":{"low_freq":7}},
+      {"input":"Upper cutoff 30 Hz.","decision":"execute","mode":"continue","action":"apply_bandpass_filter","parameters":{"low_freq":7,"high_freq":30}}
+    ]}]},
+    {"id":"E03","branches":[{"id":"E03a","turns":[
+      {"input":"Apply a bandpass filter.","decision":"clarify","mode":"replace","action":"apply_bandpass_filter","parameters":{}},
+      {"input":"Lower cutoff 7 Hz.","decision":"clarify","mode":"continue","action":"apply_bandpass_filter","parameters":{"low_freq":7}},
+      {"input":"Upper cutoff 30 Hz.","decision":"execute","mode":"continue","action":"apply_bandpass_filter","parameters":{"low_freq":7,"high_freq":30}}
+    ]},{"id":"E03b","turns":[
+      {"input":"Apply a filter with lower cutoff 7 Hz.","decision":"clarify","mode":"replace","action":null,"parameters":{}},
+      {"input":"Use a bandpass filter.","decision":"clarify","mode":"continue","action":"apply_bandpass_filter","parameters":{"low_freq":7}},
+      {"input":"Upper cutoff 30 Hz.","decision":"execute","mode":"continue","action":"apply_bandpass_filter","parameters":{"low_freq":7,"high_freq":30}}
+    ]}]},
+    {"id":"E04","branches":[{"id":"E04","turns":[
+      {"input":"Apply a bandpass filter with lower cutoff 7 Hz.","decision":"clarify","mode":"replace","action":"apply_bandpass_filter","parameters":{"low_freq":7}},
+      {"input":"Change the lower cutoff to 8 Hz.","decision":"clarify","mode":"continue","action":"apply_bandpass_filter","parameters":{"low_freq":8}},
+      {"input":"Upper cutoff 30 Hz.","decision":"execute","mode":"continue","action":"apply_bandpass_filter","parameters":{"low_freq":8,"high_freq":30}}
+    ]}]},
+    {"id":"E05","branches":[{"id":"E05","turns":[
+      {"input":"Apply a bandpass filter with lower cutoff 7 Hz.","decision":"clarify","mode":"replace","action":"apply_bandpass_filter","parameters":{"low_freq":7}},
+      {"input":"Change it to 8.","decision":"clarify","mode":null,"action":"apply_bandpass_filter","parameters":{"low_freq":7}}
+    ]}]},
+    {"id":"E06","branches":[{"id":"E06","turns":[
+      {"input":"Apply a bandpass filter with lower cutoff 7 Hz.","decision":"clarify","mode":"replace","action":"apply_bandpass_filter","parameters":{"low_freq":7}},
+      {"input":"Cancel that request.","decision":"reply","mode":"cancel","action":null,"parameters":{}},
+      {"input":"Apply a bandpass filter.","decision":"clarify","mode":"replace","action":"apply_bandpass_filter","parameters":{}}
+    ]}]},
+    {"id":"E07","branches":[{"id":"E07","turns":[
+      {"input":"Apply a bandpass filter with lower cutoff 7 Hz.","decision":"clarify","mode":"replace","action":"apply_bandpass_filter","parameters":{"low_freq":7}},
+      {"input":"Instead, apply a notch filter at 50 Hz.","decision":"execute","mode":"replace","action":"apply_notch_filter","parameters":{"freq":50}}
+    ]}]},
+    {"id":"E08","branches":[{"id":"E08","turns":[
+      {"input":"Apply a bandpass filter with lower cutoff 7 Hz.","decision":"clarify","mode":"replace","action":"apply_bandpass_filter","parameters":{"low_freq":7}},
+      {"input":"What does a bandpass filter do?","decision":"reply","mode":null,"action":"apply_bandpass_filter","parameters":{"low_freq":7}},
+      {"input":"Upper cutoff 30 Hz.","decision":"execute","mode":"continue","action":"apply_bandpass_filter","parameters":{"low_freq":7,"high_freq":30}}
+    ]}]},
+    {"id":"E10","branches":[{"id":"E10a","turns":[
+      {"input":"Explain what bandpass filtering does.","decision":"reply","mode":null,"action":null,"parameters":{}}
+    ]},{"id":"E10b","turns":[
+      {"input":"Do not apply a bandpass filter; explain it.","decision":"reply","mode":null,"action":null,"parameters":{}}
+    ]}]}
+  ]
+}

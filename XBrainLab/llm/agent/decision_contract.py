@@ -1,53 +1,40 @@
-"""Model-owned response envelope that never reaches backend execution."""
+"""Shared names and bounds for strict model proposals."""
 
-from __future__ import annotations
-
-from typing import Any
-
+# Semantic label retained for corpus eligibility and historical score categories.
 MODEL_RESPONSE_TOOL_NAME = "respond_to_user"
+MAX_NAME_LENGTH = 128
+MAX_SOURCE_TURN_LENGTH = 64
+MAX_QUOTE_LENGTH = 4096
+REQUEST_MODE_TO_INTERNAL = {
+    "update_pending": "continue",
+    "new_request": "replace",
+    "cancel_pending": "cancel",
+}
 
 
-def _message_schema() -> dict[str, Any]:
-    return {"type": "string", "pattern": r"\S"}
-
-
-def model_response_tool_contract() -> dict[str, Any]:
-    """Return the prompt-facing schema for one structured user response."""
+def model_proposal_schema() -> dict:
+    """Project flat output fields; parser and backend still enforce combinations."""
     return {
-        "name": MODEL_RESPONSE_TOOL_NAME,
-        "description": (
-            "Return a user-facing response without executing any workflow tool. "
-            "Use it for an informational answer, a clarification question, or "
-            "a specific blocked explanation. Never select an enabled prerequisite "
-            "or substitute action."
-        ),
-        "taxonomy": "Assistant Decision",
-        "parameters": {
-            "oneOf": [
-                {
+        "type": "object",
+        "required": ["decision", "mode", "action", "changes", "message"],
+        "additionalProperties": False,
+        "properties": {
+            "decision": {"enum": ["reply", "clarify", "execute"]},
+            "mode": {"enum": [None, *REQUEST_MODE_TO_INTERNAL]},
+            "action": {"type": ["string", "null"]},
+            "changes": {
+                "type": "object",
+                "additionalProperties": {
                     "type": "object",
-                    "properties": {"message": _message_schema()},
-                    "required": ["message"],
+                    "required": ["value", "source_turn", "quote"],
                     "additionalProperties": False,
-                },
-                {
-                    "type": "object",
                     "properties": {
-                        "message": _message_schema(),
-                        "pending_action": {"type": "string", "pattern": r"\S"},
-                        "missing_inputs": {
-                            "type": "array",
-                            "items": {"type": "string", "pattern": r"\S"},
-                            "minItems": 1,
-                            "maxItems": 2,
-                            "uniqueItems": True,
-                        },
+                        "value": {"not": {"type": "null"}},
+                        "source_turn": {"type": "string"},
+                        "quote": {"type": "string"},
                     },
-                    "required": ["message", "pending_action", "missing_inputs"],
-                    "additionalProperties": False,
                 },
-            ]
+            },
+            "message": {"type": ["string", "null"]},
         },
-        "requires_confirmation": False,
-        "decision_boundary": None,
     }

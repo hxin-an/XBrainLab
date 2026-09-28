@@ -17,7 +17,7 @@ from .confirmation import (
 )
 from .interaction import AgentInteractionOutcome, AgentInteractionStatus
 from .tool_attempt_coordinator import ToolAttemptDecision
-from .turn import AssistantToolInputReceipt
+from .turn import AssistantPendingRequest
 from .ui_handoff import (
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
@@ -82,11 +82,41 @@ class PendingInteractionCoordinator:
 
     def __init__(self) -> None:
         self._confirmation: PendingConfirmation | None = None
+        self._request: AssistantPendingRequest | None = None
         self._workflow_handoff: WorkflowUiHandoffSession | None = None
-        self._tool_input: AssistantToolInputReceipt | None = None
-        self._active_tool_input: AssistantToolInputReceipt | None = None
         self._last_confirmation_request_id: str | None = None
         self._last_workflow_handoff_request_id: str | None = None
+
+    @property
+    def request(self) -> AssistantPendingRequest | None:
+        """Return the one nonblocking draft, separate from UI confirmation."""
+        return self._request
+
+    def set_request(self, request: AssistantPendingRequest | None) -> None:
+        """Publish only a fully validated draft, without taking execution authority."""
+        if request is not None and not isinstance(request, AssistantPendingRequest):
+            raise TypeError("Pending requests require validated request data.")
+        if self.has_pending:
+            raise RuntimeError(
+                "Cannot change a request during confirmation or GUI handoff."
+            )
+        self._request = request
+
+    def record_clarification(self, turn_id: str, text: str, question: str) -> None:
+        """Retain unresolved user evidence without accepting any parameter change."""
+        pending = self._request
+        if pending is None:
+            return
+        sources = dict(pending.sources)
+        sources[turn_id] = text
+        self.set_request(
+            replace(pending, sources=tuple(sources.items()), question=question)
+        )
+
+    def invalidate_request(self) -> None:
+        """Retain saved values for visibility, but revoke continuation after failure."""
+        if self._request is not None:
+            self._request = replace(self._request, invalidated=True)
 
     @property
     def confirmation(self) -> PendingConfirmation | None:
@@ -98,81 +128,9 @@ class PendingInteractionCoordinator:
         return pending.request if pending is not None else None
 
     @property
-    def tool_input(self) -> AssistantToolInputReceipt | None:
-        """Return the receipt waiting for the next admitted user turn."""
-        return self._tool_input
-
-    @property
-    def active_tool_input(self) -> AssistantToolInputReceipt | None:
-        """Return the bounded-reply receipt leased to the current user turn."""
-        return self._active_tool_input
-
-    @property
     def has_pending(self) -> bool:
         """Return whether a blocking confirmation or UI handoff is pending."""
         return self._confirmation is not None or self._workflow_handoff is not None
-
-    def begin_tool_input(
-        self,
-        receipt: AssistantToolInputReceipt,
-    ) -> AssistantToolInputReceipt:
-        """Store one nonblocking receipt for the next admitted user turn."""
-        if not isinstance(receipt, AssistantToolInputReceipt):
-            raise TypeError("Pending tool input requires a typed receipt.")
-        if self._confirmation is not None or self._workflow_handoff is not None:
-            raise RuntimeError(
-                "Cannot begin tool input while a blocking interaction is pending."
-            )
-        if self._active_tool_input is not None:
-            raise RuntimeError("Assistant tool input is already active.")
-        if self._tool_input is not None:
-            raise RuntimeError("Assistant tool input is already pending.")
-        self._tool_input = receipt
-        return receipt
-
-    def activate_tool_input(self) -> AssistantToolInputReceipt | None:
-        """Lease a waiting receipt to exactly one admitted user turn."""
-        if self._active_tool_input is not None:
-            return None
-        receipt = self._tool_input
-        self._tool_input = None
-        self._active_tool_input = receipt
-        return receipt
-
-    def clear_active_tool_input(self) -> AssistantToolInputReceipt | None:
-        """End the current bounded clarification lease."""
-        receipt = self._active_tool_input
-        self._active_tool_input = None
-        return receipt
-
-    def requeue_active_tool_input_for_reply(self) -> AssistantToolInputReceipt | None:
-        """Return one typed clarification lease for its bounded next reply."""
-        receipt = self._active_tool_input
-        if receipt is None or receipt.remaining_reply_budget <= 1:
-            return None
-        if self._tool_input is not None:
-            raise RuntimeError("Assistant tool input is already pending.")
-        requeued = replace(
-            receipt,
-            remaining_reply_budget=receipt.remaining_reply_budget - 1,
-        )
-        self._active_tool_input = None
-        self._tool_input = requeued
-        return requeued
-
-    def replace_active_tool_input(
-        self,
-        receipt: AssistantToolInputReceipt,
-    ) -> AssistantToolInputReceipt:
-        """Persist verifier-approved user values on the current lease."""
-        active = self._active_tool_input
-        if active is None or not receipt.matches(
-            active.command_name,
-            active.publication_generation,
-        ):
-            raise RuntimeError("Assistant tool-input receipt is not active.")
-        self._active_tool_input = receipt
-        return receipt
 
     def begin_confirmation(
         self,
@@ -320,8 +278,7 @@ class PendingInteractionCoordinator:
         """Remove all pending interactions while retaining duplicate memory."""
         self._confirmation = None
         self._workflow_handoff = None
-        self._tool_input = None
-        self._active_tool_input = None
+        self._request = None
 
     def reset(self) -> None:
         """Clear pending state and correlation history for a new conversation."""

@@ -37,17 +37,63 @@ from XBrainLab.product_language import tool_action_label
 from .assembler import PromptToolPublication
 from .confirmation import AgentConfirmationRequest, AgentConfirmationRisk
 from .execution_policy import HostExecutionPolicy
-from .parser import ToolCommand
-from .turn import AssistantToolInputReceipt
+from .parser import ParameterChange, RequestUpdate, ToolCommand
+from .turn import AssistantPendingRequest
 from .verifier import (
-    DIRECT_PARAMETER_TOOLS,
+    ToolSchemaValidator,
     VerificationResult,
     add_start_training_confirmation_details,
-    verified_direct_parameter_origin_values,
     verify_direct_parameter_origins,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def merge_parameter_changes(
+    action: str | None,
+    schema: dict | None,
+    changes: tuple[tuple[str, ParameterChange], ...],
+    *,
+    parameters: tuple[tuple[str, ParameterChange], ...] = (),
+    sources: dict[str, str],
+) -> dict[str, ParameterChange]:
+    """Validate and merge source-backed values without granting execution authority.
+
+    Runtime admission owns publication and freshness. Corpus validation reuses
+    this pure parameter check without inventing a current backend publication.
+    Required-field completeness remains an execution-time schema check.
+    """
+    values = dict(parameters)
+    if action is None:
+        if changes:
+            raise ValueError("Choose an action before assigning parameter fields.")
+        return values
+    if schema is None:
+        raise ValueError("The requested action is not registered.")
+    checker = ToolSchemaValidator({action: {**schema, "required": []}})
+    checked = checker.validate(action, {name: change.value for name, change in changes})
+    if not checked.is_valid:
+        raise ValueError(checked.error_message)
+    for name, change in changes:
+        source = sources.get(change.source_turn)
+        if source is None or change.quote not in source:
+            raise ValueError("Parameter evidence must quote a supplied user message.")
+        previous = values.get(name)
+        if previous is not None and int(change.source_turn[1:]) < int(
+            previous.source_turn[1:]
+        ):
+            raise ValueError(
+                "A superseded parameter source cannot restore an old value."
+            )
+        # A substring may cut 7 out of 17; require both quoted and full evidence.
+        for evidence in (change.quote, source):
+            origin = verify_direct_parameter_origins(
+                action, {name: change.value}, evidence, partial=True
+            )
+            if not origin.is_valid:
+                raise ValueError(origin.error_message)
+        values[name] = change
+    return values
 
 
 def _resource_receipt_contract_error(
@@ -90,7 +136,7 @@ class ToolAttemptRequest:
     publication: PromptToolPublication
     latest_user_text: str
     enforce_direct_parameter_origins: bool = True
-    tool_input_receipt: AssistantToolInputReceipt | None = None
+    pending_request: AssistantPendingRequest | None = None
 
 
 @dataclass(frozen=True)
@@ -107,7 +153,6 @@ class ToolAttemptDecision:
     confirmation_kind: str | None = None
     resource_preflight_receipt: ResourceConfirmationChallenge | None = None
     feedback: ToolAttemptFeedback = ToolAttemptFeedback.SYSTEM_REJECTION
-    tool_input_receipt: AssistantToolInputReceipt | None = None
 
 
 class ToolContextSource(Protocol):
@@ -162,56 +207,76 @@ class ToolAttemptCoordinator:
         self._context_source = context_source
         self._execution_policy = execution_policy or HostExecutionPolicy()
 
-    def admit_typed_clarification(
+    def prepare_request_update(
         self,
+        update: RequestUpdate,
         *,
-        command_name: str,
-        missing_inputs: tuple[str, ...],
+        pending: AssistantPendingRequest | None,
+        user_turn_id: str,
+        user_text: str,
         question: str,
-        original_user_text: str,
         publication: PromptToolPublication,
-        verified_parameters: tuple[tuple[str, Any], ...] = (),
-    ) -> AssistantToolInputReceipt | None:
-        """Admit one exact direct-tool clarification without granting execution."""
-        if command_name not in DIRECT_PARAMETER_TOOLS or not publication.permits(
-            command_name
-        ):
+    ) -> AssistantPendingRequest | None:
+        """Validate an atomic draft change, leaving publication to its sole owner."""
+        if update.mode == "cancel":
             return None
-        generation = publication.backend_generation
-        if type(generation) is not int or generation < 0:
-            return None
-        tool = self._registry.get_tool(command_name)
-        schema = getattr(tool, "parameters", None)
-        required = schema.get("required") if isinstance(schema, dict) else None
-        if not isinstance(required, list):
-            return None
-        required_names = tuple(
-            name.strip() for name in required if isinstance(name, str) and name.strip()
+        if update.mode == "continue":
+            if pending is None:
+                raise ValueError("There is no pending request to continue.")
+            if pending.invalidated:
+                raise ValueError(
+                    "The previous request failed. "
+                    "Restate the complete request to start again."
+                )
+            if pending.command_name not in {None, update.action}:
+                raise ValueError("A different action requires a new request.")
+            if pending.publication_generation != publication.backend_generation:
+                raise ValueError("Workflow state changed. Review the request again.")
+        else:
+            pending = None
+        sources = dict(pending.sources) if pending is not None else {}
+        sources[user_turn_id] = user_text
+        action = update.action
+        schema = None
+        if action is not None:
+            if not publication.permits(action):
+                raise ValueError(
+                    publication.blocked_reason(action)
+                    or "The requested action is unavailable."
+                )
+            tool = self._registry.get_tool(action)
+            if tool is None:
+                raise ValueError("The requested action is not registered.")
+            schema = tool.parameters
+        values = merge_parameter_changes(
+            action,
+            schema,
+            update.changes,
+            parameters=pending.parameters if pending is not None else (),
+            sources=sources,
         )
-        if (
-            not 1 <= len(required_names) <= 2
-            or len(set(required_names)) != len(required_names)
-            or not 1 <= len(missing_inputs) <= 2
-            or len(set(missing_inputs)) != len(missing_inputs)
-            or bool(set(missing_inputs) - set(required_names))
-            or any(
-                not isinstance(item, tuple)
-                or len(item) != 2
-                or not isinstance(item[0], str)
-                or item[0] not in required_names
-                for item in verified_parameters
-            )
-            or len({item[0] for item in verified_parameters})
-            != len(verified_parameters)
-        ):
-            return None
-        return AssistantToolInputReceipt(
-            command_name=command_name,
-            original_user_text=original_user_text,
+        original_id = pending.original_turn_id if pending is not None else user_turn_id
+        # Discard only explicitly superseded value evidence. Unassigned user
+        # evidence can span several clarifications before its action is known.
+        required_ids = {original_id, user_turn_id} | {
+            item.source_turn for item in values.values()
+        }
+        superseded_ids = (
+            {item.source_turn for _, item in pending.parameters} - required_ids
+            if pending is not None
+            else set()
+        )
+        return AssistantPendingRequest(
+            command_name=action,
+            original_turn_id=original_id,
+            publication_generation=publication.backend_generation,
+            parameters=tuple(values.items()),
+            sources=tuple(
+                (key, value)
+                for key, value in sources.items()
+                if key not in superseded_ids
+            ),
             question=question,
-            publication_generation=generation,
-            missing_inputs=required_names,
-            verified_parameters=verified_parameters,
         )
 
     def admit_proposal(
@@ -321,65 +386,40 @@ class ToolAttemptCoordinator:
                     },
                 ),
             )
-        receipt = request.tool_input_receipt
-        receipt_complete = False
-        if receipt is not None:
-            if not receipt.matches(
-                command_name,
-                request.publication.backend_generation,
-            ):
+        draft = request.pending_request
+        if draft is not None:
+            if not draft.matches(command_name, request.publication.backend_generation):
                 return ToolAttemptDecision(
                     ToolAttemptAction.RESPOND,
                     command_name,
                     params,
                     context=context,
                     message=(
-                        "The pending action or workflow state changed. "
-                        "Please start the requested action again."
+                        "Workflow state changed. Review the requested action again."
                     ),
                 )
-            receipt_complete = set(dict(receipt.verified_parameters)) == set(
-                receipt.missing_inputs
-            )
-            if not receipt_complete:
+            if params != draft.parameter_values():
                 return ToolAttemptDecision(
                     ToolAttemptAction.RESPOND,
                     command_name,
                     params,
                     context=context,
                     message=(
-                        "I could not confirm all required values. Please start the "
-                        "action again with all required parameters."
+                        "The proposed parameters no longer match the verified request."
                     ),
                 )
-            params = dict(receipt.verified_parameters)
         if command_name == "start_training":
             add_start_training_confirmation_details(params, state=context.state)
 
         origin_validation = (
             VerificationResult(True)
-            if not request.enforce_direct_parameter_origins or receipt_complete
+            if not request.enforce_direct_parameter_origins or draft is not None
             else verify_direct_parameter_origins(
                 command_name,
                 params,
                 request.latest_user_text,
             )
         )
-        if not origin_validation.is_valid:
-            receipt = self._origin_receipt(request, context, origin_validation)
-            if receipt is not None:
-                return ToolAttemptDecision(
-                    ToolAttemptAction.RESPOND,
-                    command_name,
-                    params,
-                    context=context,
-                    message=(
-                        origin_validation.error_message
-                        or "What parameters should I use for this action?"
-                    ),
-                    tool_input_receipt=receipt,
-                )
-
         validation = self._verifier.verify_tool_call(
             (command_name, params),
         )
@@ -438,30 +478,6 @@ class ToolAttemptCoordinator:
             params,
             context=context,
             tool=tool,
-        )
-
-    def _origin_receipt(
-        self,
-        request: ToolAttemptRequest,
-        context: ToolAvailabilityContext,
-        origin: VerificationResult,
-    ) -> AssistantToolInputReceipt | None:
-        """Turn one safe direct-parameter rejection into bounded follow-up state."""
-        if request.tool_input_receipt is not None or not context.availability.enabled:
-            return None
-        return self.admit_typed_clarification(
-            command_name=request.command_name,
-            missing_inputs=tuple(request.params),
-            question=(
-                origin.error_message or "What parameters should I use for this action?"
-            ),
-            original_user_text=request.latest_user_text,
-            publication=request.publication,
-            verified_parameters=verified_direct_parameter_origin_values(
-                request.command_name,
-                request.params,
-                request.latest_user_text,
-            ),
         )
 
     def context_for(self, command_name: str) -> ToolAvailabilityContext:

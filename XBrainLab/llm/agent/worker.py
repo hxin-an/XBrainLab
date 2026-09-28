@@ -10,7 +10,9 @@ from collections.abc import Callable
 
 from PyQt6.QtCore import QCoreApplication, QEvent, QObject, QThread, QTimer, pyqtSignal
 
+from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.utils.logger import logger
+from XBrainLab.chat_contract import LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.runtime_process import (
     EngineFactory,
@@ -115,6 +117,13 @@ class GenerationThread(QThread):
                 self.chunk_received.emit(chunk)
             self.finished_generation.emit()
         except Exception as exc:
+            if (
+                isinstance(exc, PreconditionError)
+                and exc.recoverable
+                and exc.message == LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE
+            ):
+                self.error_occurred.emit(LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE)
+                return
             failure = safe_unexpected_failure(
                 logger,
                 exc,

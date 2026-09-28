@@ -59,7 +59,7 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptRequest,
 )
 from XBrainLab.llm.agent.tool_feedback import summarize_tool_result
-from XBrainLab.llm.agent.turn import AssistantToolInputReceipt
+from XBrainLab.llm.agent.turn import AssistantPendingRequest, AssistantTurnCorrelation
 from XBrainLab.llm.agent.turn_orchestrator import (
     AssistantToolAttemptSession,
     AssistantTurnOrchestrator,
@@ -95,7 +95,10 @@ DEFAULT_PRECISION_CASES = (
 DEFAULT_CLARIFICATION_CASES = (
     ROOT / "scripts" / "dev" / "stable_assistant_clarification_cases.json"
 )
-REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v14"
+REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v16"
+DEFAULT_ENGINEERING_CASES = (
+    ROOT / "scripts" / "dev" / "stable_assistant_engineering_cases.json"
+)
 PRECISION_CASE_COUNT = 24
 CLARIFICATION_CASE_COUNT = 7
 BOUNDED_BASELINE_FAILURE_CASE_IDS = frozenset(
@@ -183,6 +186,8 @@ class ClarificationCase:
     reply: str = ""
     trajectory_kind: str = "direct"
     turns: tuple[str, ...] = ()
+    engineering_expectations: tuple[dict[str, Any], ...] = ()
+    family_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,7 +303,8 @@ class _ProductRAGCaseMessages:
         case: ClarificationCase,
         source: PrecisionCase,
         *,
-        receipt: AssistantToolInputReceipt,
+        receipt: AssistantPendingRequest,
+        user_turn_id: str = "U2",
         recovery_messages: tuple[str, ...] = (),
         trace_case_id: str | None = None,
     ) -> list[dict[str, str]]:
@@ -309,7 +315,9 @@ class _ProductRAGCaseMessages:
             category="missing_parameter",
             requested_tool=case.expected_tool,
         )
-        context, evidence = self._context_for(rag_case, trace_case_id=trace_case_id)
+        context, evidence = self._context_for(
+            rag_case, trace_case_id=trace_case_id, pending_request=receipt
+        )
         publication = _case_application_publication(source)
         assembler = ContextAssembler(
             self._registry,
@@ -324,6 +332,8 @@ class _ProductRAGCaseMessages:
                 {"role": "user", "content": case.reply},
             ],
             format_recovery=bool(recovery_messages),
+            pending_request=receipt,
+            user_turn_id=user_turn_id,
         )
         self._record_assembled_context(rag_case, evidence, messages)
         return messages
@@ -363,9 +373,13 @@ class _ProductRAGCaseMessages:
         case: TargetEvalCase | TargetChallengeCase | PrecisionCase,
         *,
         trace_case_id: str | None = None,
+        pending_request: AssistantPendingRequest | None = None,
     ) -> tuple[str, ProductRAGContextEvidence]:
         trajectory_case_id = trace_case_id or case.case_id
-        key = (case.case_id, case.user_input, trajectory_case_id)
+        query = ContextAssembler.retrieval_query(
+            case.user_input, pending_request=pending_request
+        )
+        key = (case.case_id, query, trajectory_case_id)
         cached = self._contexts.get(key)
         if cached is not None:
             return cached
@@ -373,7 +387,7 @@ class _ProductRAGCaseMessages:
         self._next_turn_id += 1
         result = _retrieve_product_rag_context(
             assembler,
-            case.user_input,
+            query,
             lifecycle=self._lifecycle,
             turn_id=self._next_turn_id,
             trajectory_case_id=trajectory_case_id,
@@ -394,7 +408,7 @@ class _ProductRAGCaseMessages:
         )
         if assembled_ids == evidence.assembled_context_item_ids:
             return
-        key = (case.case_id, case.user_input, evidence.trajectory_case_id)
+        key = (case.case_id, evidence.query, evidence.trajectory_case_id)
         self._contexts[key] = (
             self._contexts[key][0],
             replace(evidence, assembled_context_item_ids=assembled_ids),
@@ -475,18 +489,18 @@ class CaseTrajectoryResult:
     final_response: str
     attempts: tuple[ModelGenerationAttempt, ...]
     receipt_origin: str | None = None
-    # First-turn evaluator rows carry controller-observed evidence separately
-    # from raw and semantic scores. Clarification trajectories already expose
-    # their own pending-receipt trace and therefore leave these unset.
+    # Controller-observed evidence remains separate from raw and semantic scores.
+    # Multi-turn trajectories retain the same projection per user turn.
     host_admission: dict[str, Any] | None = None
     product_terminal: dict[str, Any] | None = None
+    turn_observations: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class ClarificationAdmission:
-    """One controller-admitted typed receipt retained for evaluator follow-up."""
+    """One controller-validated pending request retained for evaluator follow-up."""
 
-    receipt: AssistantToolInputReceipt
+    receipt: AssistantPendingRequest
     receipt_origin: str
     harness: _EvaluatorControllerHarness
     prompt_publication: PromptToolPublication
@@ -898,6 +912,91 @@ class _PublicationBackedEvaluatorStudy(Study):
         pass
 
 
+def load_engineering_cases(
+    path: Path = DEFAULT_ENGINEERING_CASES,
+) -> tuple[ClarificationCase, ...]:
+    """Load fixed model trajectories without modifying the historical 81 cases."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if (
+        set(payload) != {"schema_version", "cases"}
+        or payload["schema_version"] != "xbrainlab.assistant_engineering_cases.v1"
+    ):
+        raise ValueError("Unsupported engineering case file.")
+    expected_families = {"E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08", "E10"}
+    families: set[str] = set()
+    ids: set[str] = set()
+    result = []
+    for family in payload["cases"]:
+        if set(family) != {"id", "branches"} or family["id"] in families:
+            raise ValueError("Invalid or duplicate engineering family.")
+        families.add(family["id"])
+        if not family["branches"]:
+            raise ValueError("Engineering families require executable branches.")
+        for branch in family["branches"]:
+            if (
+                set(branch) != {"id", "turns"}
+                or branch["id"] in ids
+                or not branch["id"].startswith(family["id"])
+            ):
+                raise ValueError("Invalid or duplicate engineering branch.")
+            ids.add(branch["id"])
+            if not 1 <= len(branch["turns"]) <= 3:
+                raise ValueError(
+                    "Engineering branches require one to three user turns."
+                )
+            for turn in branch["turns"]:
+                if (
+                    set(turn) != {"input", "decision", "mode", "action", "parameters"}
+                    or not isinstance(turn["input"], str)
+                    or not turn["input"].strip()
+                    or turn["decision"] not in {"reply", "clarify", "execute"}
+                    or turn["mode"] not in {None, "continue", "replace", "cancel"}
+                    or not isinstance(turn["parameters"], dict)
+                    or (
+                        turn["action"] is not None
+                        and turn["action"]
+                        not in AGENT_ACTION_CONTRACTS.model_tool_names()
+                    )
+                ):
+                    raise ValueError("Invalid engineering turn contract.")
+            last = branch["turns"][-1]
+            result.append(
+                ClarificationCase(
+                    case_id=branch["id"],
+                    expected_tool=last["action"] or "",
+                    expected_parameters=last["parameters"],
+                    trajectory_kind="engineering",
+                    turns=tuple(turn["input"] for turn in branch["turns"]),
+                    engineering_expectations=tuple(branch["turns"]),
+                    family_id=family["id"],
+                )
+            )
+    if families != expected_families:
+        raise ValueError(
+            "Engineering family inventory differs from the approved coverage."
+        )
+    return tuple(result)
+
+
+def _proposed_command(
+    envelope: ToolEnvelopeParseResult,
+    pending: AssistantPendingRequest | None = None,
+) -> ToolCommand:
+    """Project raw values for scoring; this does not authorize execution."""
+    request = envelope.request
+    if request is None or request.action is None:
+        raise ValueError("An executable proposal requires an action.")
+    parameters = (
+        pending.parameter_values()
+        if pending is not None
+        and request.mode == "continue"
+        and pending.command_name == request.action
+        else {}
+    )
+    parameters.update({name: change.value for name, change in request.changes})
+    return request.action, parameters
+
+
 class _EvaluatorSignal:
     """Minimal signal recorder for controller presentation calls without Qt."""
 
@@ -945,8 +1044,10 @@ class _EvaluatorControllerHarness:
         self.processing_finished = _EvaluatorSignal()
         self.is_processing = True
         self._observed_decision: ToolAttemptDecision | None = None
+        self._observed_request_update: dict[str, Any] | None = None
         self._observed_terminal: dict[str, Any] | None = None
         self.current_response = ""
+        self._user_turn_sequence = 0
         self._recovery_generation_requested = False
         self._recovery_context: str | None = None
         self._publication = publication
@@ -979,11 +1080,16 @@ class _EvaluatorControllerHarness:
     def _publish_activity(self, *_args: Any, **_kwargs: Any) -> None:
         """The evaluator intentionally has no activity presentation surface."""
 
-    def _observe_decision(self, _kind: str, **_details: Any) -> None:
-        """No live observer surface; replay records admission/terminal separately."""
+    def _observe_decision(self, kind: str, **details: Any) -> None:
+        """Retain the controller's actual draft validation before tool admission."""
+        if kind == "request_update":
+            self._observed_request_update = dict(details)
 
     def _emit_processing_finished(self, _outcome: str = "completed") -> None:
-        self.pending_interactions.clear_active_tool_input()
+        pass
+
+    def _require_active_turn_correlation(self) -> AssistantTurnCorrelation:
+        return AssistantTurnCorrelation(generation=1, turn_id=self._user_turn_sequence)
 
     def _finalize_turn(self, response_text: str) -> None:
         LLMController._finalize_turn(self, response_text)  # type: ignore[arg-type]
@@ -1003,7 +1109,10 @@ class _EvaluatorControllerHarness:
                 "Controller format retry did not record a recovery attempt."
             )
         request = self.assembler.get_generation_request(
-            self.history, format_recovery=True
+            self.history,
+            format_recovery=True,
+            pending_request=self.pending_interactions.request,
+            user_turn_id=f"U{self._user_turn_sequence}",
         )
         self._recovery_generation_requested = True
         self._recovery_context = request.to_model_messages()[0]["content"].rsplit(
@@ -1020,9 +1129,6 @@ class _EvaluatorControllerHarness:
             envelope,
         )
 
-    def _begin_typed_tool_input(self, envelope: ToolEnvelopeParseResult) -> bool:
-        return LLMController._begin_typed_tool_input(self, envelope)  # type: ignore[arg-type]
-
     def _process_tool_call(self, command: ToolCommand, response_text: str) -> None:
         LLMController._process_tool_call(self, command, response_text)  # type: ignore[arg-type]
 
@@ -1032,6 +1138,7 @@ class _EvaluatorControllerHarness:
     ) -> tuple[StrictEnvelopeRecoveryAction | None, str | None]:
         """Drive one evaluator output through the product controller path."""
         self._observed_decision = None
+        self._observed_request_update = None
         self._observed_terminal = None
         self._recovery_generation_requested = False
         self._recovery_context = None
@@ -1071,41 +1178,23 @@ class _EvaluatorControllerHarness:
             payload["kind"] = kind
         self._observed_terminal = payload
 
-    def _remaining_tool_input_question(self, receipt: AssistantToolInputReceipt) -> str:
-        return LLMController._remaining_tool_input_question(receipt)
-
-    def collect_active_tool_input_reply(self, text: str) -> bool:
-        """Delegate one reply to the controller before evaluator generation."""
-        return LLMController._collect_active_tool_input_reply(self, text)  # type: ignore[arg-type]
-
-    def _complete_tool_input_receipt(
-        self,
-        receipt: AssistantToolInputReceipt,
-        latest_user_text: str,
-    ) -> bool:
-        """Delegate receipt completion to the production controller owner."""
-        return LLMController._complete_tool_input_receipt(  # type: ignore[arg-type]
-            self,
-            receipt,
-            latest_user_text,
-        )
-
     def begin_turn(
         self,
         user_text: str,
         publication: PromptToolPublication,
-    ) -> AssistantToolInputReceipt | None:
+    ) -> AssistantPendingRequest | None:
+        self._user_turn_sequence += 1
         self._append_history("user", user_text)
         LLMController._reset_user_turn_state(self)  # type: ignore[arg-type]
         self._turn_orchestrator.active_publication = publication
-        return self.pending_interactions.active_tool_input
+        return self.pending_interactions.request
 
-    def admit_typed_response(self, response: str) -> AssistantToolInputReceipt | None:
+    def admit_typed_response(self, response: str) -> AssistantPendingRequest | None:
         envelope = CommandParser.parse_product(response)
         if envelope.status is not ToolEnvelopeStatus.NO_TOOL:
             return None
-        LLMController._begin_typed_tool_input(self, envelope)  # type: ignore[arg-type]
-        return self.pending_interactions.tool_input
+        self.replay_controller_generation(response)
+        return self.pending_interactions.request
 
     def _evaluate_tool_proposal(
         self,
@@ -1160,33 +1249,6 @@ class _EvaluatorControllerHarness:
     def _finalize_turn_after_tool(self, _outcome: str = "completed") -> None:
         self._record_terminal("proposal_not_selected")
 
-    def evaluate_proposal(
-        self,
-        response: str,
-    ) -> tuple[ToolAttemptDecision | None, dict[str, Any] | None]:
-        envelope = CommandParser.parse_product(response)
-        if envelope.status is not ToolEnvelopeStatus.VALID:
-            return None, None
-        command = self._tool_attempt_coordinator.admit_proposal(
-            envelope.commands[0],
-            execution_count=self._tool_attempt_session.execution_count,
-            cancelled=self._turn_orchestrator.cancelled,
-        )
-        if command is None:
-            return None, None
-        decision = self._evaluate_tool_proposal(command, response)
-        return decision, command[1]
-
-    def admit_origin_guard_response(
-        self, response: str
-    ) -> AssistantToolInputReceipt | None:
-        """Present a Host-origin clarification through the controller boundary."""
-        decision, _parameters = self.evaluate_proposal(response)
-        if decision is None or decision.tool_input_receipt is None:
-            return None
-        LLMController._present_tool_attempt_boundary(self, decision)  # type: ignore[arg-type]
-        return self.pending_interactions.tool_input
-
     def observed_controller_outcome(
         self,
         response: str,
@@ -1195,7 +1257,7 @@ class _EvaluatorControllerHarness:
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Project the most recent controller replay without another policy path."""
         envelope = CommandParser.parse_product(response)
-        receipt = self.pending_interactions.tool_input
+        receipt = self.pending_interactions.request
         action = (
             self._observed_decision.action.value
             if self._observed_decision is not None
@@ -1204,12 +1266,10 @@ class _EvaluatorControllerHarness:
         receipt_origin = (
             "model_typed"
             if envelope.status is ToolEnvelopeStatus.NO_TOOL and receipt is not None
-            else "host_parameter_origin"
-            if self._observed_decision is not None
-            and self._observed_decision.tool_input_receipt is not None
             else None
         )
         admission = {
+            "request_update": self._observed_request_update,
             "path": (
                 "typed_receipt"
                 if receipt_origin == "model_typed"
@@ -1246,6 +1306,26 @@ class _EvaluatorControllerHarness:
             # evaluator-facing choose-one classification.
             terminal = {**terminal, "kind": "choose_one"}
         return admission, terminal
+
+    def observed_turn(self, trajectory: CaseTrajectoryResult) -> dict[str, Any]:
+        """Snapshot the final controller replay for this actual user turn."""
+        admission, terminal = self.observed_controller_outcome(
+            trajectory.final_response,
+            recovery_action=trajectory.attempts[-1].recovery_action,
+        )
+        pending = self.pending_interactions.request
+        return {
+            "user_turn_id": f"U{self._user_turn_sequence}",
+            "raw_score": asdict(trajectory.raw_score),
+            "post_recovery_score": asdict(trajectory.post_recovery_score),
+            "product_score": asdict(trajectory.final_score),
+            "host_admission": admission,
+            "product_terminal": terminal,
+            "pending_action": pending.command_name if pending is not None else None,
+            "pending_parameters": pending.parameter_values()
+            if pending is not None
+            else {},
+        }
 
 
 def _case_application_publication(
@@ -1528,15 +1608,16 @@ def build_clarification_messages(
     case: ClarificationCase,
     source: PrecisionCase,
     *,
-    receipt: AssistantToolInputReceipt,
+    receipt: AssistantPendingRequest,
     registry: ToolRegistry,
+    user_turn_id: str = "U2",
     recovery_messages: tuple[str, ...] = (),
 ) -> tuple[
     list[dict[str, str]],
     PromptToolPublication,
     ApplicationViewPublication,
 ]:
-    """Build the visible clarification history without a receipt prompt bridge."""
+    """Project the validated request and actual new reply through the assembler."""
     if (
         case.trajectory_kind == "direct" and source.case_id != case.source_case_id
     ) or source.category != "missing_parameter":
@@ -1553,6 +1634,8 @@ def build_clarification_messages(
             {"role": "user", "content": case.reply},
         ],
         format_recovery=bool(recovery_messages),
+        pending_request=receipt,
+        user_turn_id=user_turn_id,
     )
     return messages, assembler.latest_tool_publication, publication
 
@@ -1576,8 +1659,8 @@ def build_product_rag_case_messages(
 ) -> tuple[dict[str, Any], list[dict[str, str]], ProductRAGContextEvidence]:
     """Build one first-turn evaluator/export prompt through product RAG.
 
-    Receipt continuations intentionally have no entry here: a completed receipt
-    executes at the Host boundary without another retrieval or model generation.
+    Continuations require their actual admitted request and trajectory; this
+    standalone export accepts only first-turn cases.
     """
     registry = target_tool_registry()
     for case in (
@@ -1591,7 +1674,7 @@ def build_product_rag_case_messages(
         return asdict(case), builder.messages(case), builder.evidence_for(case)
     raise ValueError(
         "Product-RAG prompt export supports first-turn evaluator cases only; "
-        "receipt continuations do not generate or retrieve again."
+        "continuations must be captured from their actual controller trajectory."
     )
 
 
@@ -1626,7 +1709,7 @@ def score_model_response(
             envelope.error,
         )
 
-    tool_name, parameters = envelope.commands[0]
+    tool_name, parameters = _proposed_command(envelope)
     tool = registry.get_tool(tool_name)
     if tool is None:
         schema_valid = False
@@ -1685,7 +1768,7 @@ def score_challenge_response(
             envelope.error,
         )
     if envelope.status is ToolEnvelopeStatus.VALID:
-        tool_name, parameters = envelope.commands[0]
+        tool_name, parameters = _proposed_command(envelope)
         return TargetEvalScore(
             False,
             "unexpected_tool",
@@ -1869,7 +1952,7 @@ def score_precision_response(
             ),
         )
 
-    tool_name, parameters = envelope.commands[0]
+    tool_name, parameters = _proposed_command(envelope)
     _messages, prompt_publication, backend_publication = _case_projection(
         case,
         registry,
@@ -1981,7 +2064,7 @@ def score_raw_precision_response(
             envelope.error,
         )
     if envelope.status is ToolEnvelopeStatus.VALID:
-        tool_name, parameters = envelope.commands[0]
+        tool_name, parameters = _proposed_command(envelope)
         return TargetEvalScore(
             False,
             "unexpected_tool",
@@ -2074,7 +2157,7 @@ def _score_precision_controller_terminal(
             or (
                 case.category == "out_of_stage"
                 and envelope.status is ToolEnvelopeStatus.VALID
-                and envelope.commands[0][0] == case.requested_tool
+                and _proposed_command(envelope)[0] == case.requested_tool
                 and kind == "blocked"
             )
             or (
@@ -2313,9 +2396,6 @@ def admit_clarification_receipt(
     harness.begin_turn(source.user_input, prompt_publication)
     receipt = harness.admit_typed_response(response)
     receipt_origin = "model_typed"
-    if receipt is None:
-        receipt = harness.admit_origin_guard_response(response)
-        receipt_origin = "host_parameter_origin"
     if receipt is None or receipt.command_name != expected_tool:
         return None
     return ClarificationAdmission(
@@ -2338,72 +2418,12 @@ def evaluate_clarification_trajectory(
     trace_case_id: str | None = None,
     product_rag_messages: _ProductRAGCaseMessages | None = None,
 ) -> CaseTrajectoryResult:
-    """Generate an admitted receipt-backed second turn through recovery policy."""
+    """Generate an admitted request's next turn through ordinary model recovery."""
     trajectory_case_id = trace_case_id or case.case_id
     harness = admission.harness
     receipt = harness.begin_turn(case.reply, admission.prompt_publication)
     if receipt is None:
         raise RuntimeError("Controller did not activate the admitted clarification.")
-    # A completed value-shaped reply must reach the product execution boundary
-    # without another model generation.
-    if harness.collect_active_tool_input_reply(case.reply):
-        decision = harness._observed_decision
-        parameters = decision.params if decision is not None else None
-        passed = bool(
-            decision is not None
-            and decision.action is ToolAttemptAction.EXECUTE
-            and decision.command_name == case.expected_tool
-            and parameters == case.expected_parameters
-        )
-        terminal_score = TargetEvalScore(
-            passed,
-            "none" if passed else "clarification_collection",
-            "",
-            decision.command_name if decision is not None else None,
-            parameters,
-            (
-                "Controller reached the exact verified execution boundary without "
-                "a second model turn."
-                if passed
-                else "Controller did not admit the verified receipt for execution."
-            ),
-            PrecisionProductOutcome(
-                "execute_boundary"
-                if decision is not None and decision.action is ToolAttemptAction.EXECUTE
-                else (
-                    decision.action.value if decision is not None else "format_error"
-                ),
-                decision.message if decision is not None else None,
-                gui_handoff_permitted=bool(
-                    decision is not None
-                    and decision.action is ToolAttemptAction.EXECUTE
-                ),
-                application_service_permitted=bool(
-                    decision is not None
-                    and decision.action is ToolAttemptAction.EXECUTE
-                ),
-                tool_executor_permitted=bool(
-                    decision is not None
-                    and decision.action is ToolAttemptAction.EXECUTE
-                ),
-                state_mutation_permitted=bool(
-                    decision is not None
-                    and decision.action is ToolAttemptAction.EXECUTE
-                ),
-            ),
-        )
-        return CaseTrajectoryResult(
-            raw_score=terminal_score,
-            post_recovery_score=terminal_score,
-            final_score=terminal_score,
-            final_response="",
-            attempts=(),
-            receipt_origin=admission.receipt_origin,
-            product_terminal=harness._observed_terminal,
-        )
-    # A non-value reply clears the receipt and resumes an ordinary model turn.
-    # The visible transcript remains the only context; no receipt is projected.
-    receipt = harness.pending_interactions.active_tool_input or admission.receipt
     observed: dict[str, TargetEvalScore] = {}
 
     def score(response: str) -> TargetEvalScore:
@@ -2415,7 +2435,7 @@ def evaluate_clarification_trajectory(
         parameters = decision.params if decision is not None else None
         passed = bool(
             envelope.status is ToolEnvelopeStatus.VALID
-            and envelope.commands[0][0] == case.expected_tool
+            and _proposed_command(envelope)[0] == case.expected_tool
             and parameters == case.expected_parameters
             and decision is not None
             and decision.action is ToolAttemptAction.EXECUTE
@@ -2424,7 +2444,7 @@ def evaluate_clarification_trajectory(
             passed,
             "none" if passed else "clarification_continuation",
             response[:1000],
-            envelope.commands[0][0]
+            _proposed_command(envelope)[0]
             if envelope.status is ToolEnvelopeStatus.VALID
             else None,
             parameters,
@@ -2471,7 +2491,7 @@ def evaluate_clarification_trajectory(
                 None,
                 envelope.error,
             )
-        tool_name, parameters = envelope.commands[0]
+        tool_name, parameters = _proposed_command(envelope, receipt)
         passed = bool(
             tool_name == case.expected_tool and parameters == case.expected_parameters
         )
@@ -2495,6 +2515,7 @@ def evaluate_clarification_trajectory(
                 case,
                 source,
                 receipt=receipt,
+                user_turn_id=f"U{harness._user_turn_sequence}",
                 recovery_messages=recovery,
                 trace_case_id=trajectory_case_id,
             )
@@ -2507,22 +2528,25 @@ def evaluate_clarification_trajectory(
                 source,
                 receipt=receipt,
                 registry=registry,
+                user_turn_id=f"U{harness._user_turn_sequence}",
                 recovery_messages=recovery,
             )[0]
 
+    trajectory = _evaluate_trajectory(
+        build_messages=build_messages,
+        score_response=score,
+        score_raw_model_response=raw_score,
+        generate_response=generate_response,
+        generation_recorder=generation_recorder,
+        trace_case_id=trajectory_case_id,
+        initial_turn_purpose="clarification_proposal",
+        replay_controller_response=harness.replay_controller_generation,
+    )
     return replace(
-        _evaluate_trajectory(
-            build_messages=build_messages,
-            score_response=score,
-            score_raw_model_response=raw_score,
-            generate_response=generate_response,
-            generation_recorder=generation_recorder,
-            trace_case_id=trajectory_case_id,
-            initial_turn_purpose="clarification_proposal",
-            replay_controller_response=harness.replay_controller_generation,
-        ),
+        trajectory,
         receipt_origin=admission.receipt_origin,
         product_terminal=harness._observed_terminal,
+        turn_observations=(harness.observed_turn(trajectory),),
     )
 
 
@@ -2535,8 +2559,9 @@ def evaluate_discriminated_clarification_trajectory(
     trace_case_id: str | None = None,
     product_rag_messages: _ProductRAGCaseMessages | None = None,
 ) -> CaseTrajectoryResult:
-    """Run the two approved multi-turn clarification trajectories."""
-    if (
+    """Run every user turn through the same controller and saved request."""
+    engineering = bool(case.engineering_expectations)
+    if not engineering and (
         case.trajectory_kind
         not in {
             "generic_filter_selection",
@@ -2545,143 +2570,198 @@ def evaluate_discriminated_clarification_trajectory(
         or len(case.turns) != 3
     ):
         raise ValueError("Unsupported discriminated clarification trajectory.")
-    trace_case_id = trace_case_id or case.case_id
-    first = PrecisionCase(
-        case_id=f"{case.case_id}_first",
+    source = PrecisionCase(
+        case_id=case.case_id,
         user_input=case.turns[0],
         workflow_stage="data_loaded",
-        category="general"
-        if case.trajectory_kind == "generic_filter_selection"
-        else "missing_parameter",
-        requested_tool=(
-            None
-            if case.trajectory_kind == "generic_filter_selection"
-            else case.expected_tool
-        ),
+        category="missing_parameter",
+        requested_tool=case.expected_tool,
     )
-    first_trajectory = evaluate_case_trajectory(
-        first,
-        registry,
-        generate_response,
-        generation_recorder=generation_recorder,
-        trace_case_id=trace_case_id,
-        product_rag_messages=product_rag_messages,
-    )
-    first_envelope = CommandParser.parse_product(first_trajectory.final_response)
-    if case.trajectory_kind == "generic_filter_selection":
-        first_ok = (
-            first_trajectory.final_score.passed
-            and first_envelope.status is ToolEnvelopeStatus.NO_TOOL
-            and not first_envelope.pending_action
-        )
-        action_request = case.turns[1]
-    else:
-        first_ok = first_trajectory.final_score.passed
-        action_request = first.user_input
-    if case.trajectory_kind == "partial_bandpass_accumulation":
-        source = first
-        action_trajectory = first_trajectory
-        admission = admit_clarification_receipt(
-            source,
-            first_trajectory.final_response,
-            expected_tool=case.expected_tool,
-            registry=registry,
-        )
-    else:
-        source = PrecisionCase(
-            case_id=f"{case.case_id}_action",
-            user_input=action_request,
-            workflow_stage="data_loaded",
-            category="missing_parameter",
-            requested_tool=case.expected_tool,
-        )
-        action_trajectory = evaluate_case_trajectory(
-            source,
-            registry,
-            generate_response,
+    _, publication, backend = _case_projection(source, registry)
+    harness = _EvaluatorControllerHarness(registry=registry, publication=backend)
+    trajectory_id = trace_case_id or case.case_id
+    trajectories = []
+    observations = []
+    for index, user_text in enumerate(case.turns):
+        pending_before = harness.begin_turn(user_text, publication)
+        turn_case = replace(source, user_input=user_text)
+
+        def messages(
+            recovery: tuple[str, ...],
+            turn_case: PrecisionCase = turn_case,
+            pending_before: AssistantPendingRequest | None = pending_before,
+        ) -> list[dict[str, str]]:
+            harness.assembler.clear_context()
+            evidence = None
+            if product_rag_messages is not None:
+                context, evidence = product_rag_messages._context_for(
+                    turn_case,
+                    trace_case_id=trajectory_id,
+                    pending_request=pending_before,
+                )
+                if context:
+                    harness.assembler.add_context(context)
+            result = harness.assembler.get_messages(
+                harness.history,
+                pending_request=pending_before,
+                user_turn_id=f"U{harness._user_turn_sequence}",
+                format_recovery=bool(recovery),
+            )
+            if evidence is not None:
+                product_rag_messages._record_assembled_context(
+                    turn_case, evidence, result
+                )
+            return result
+
+        def raw_score(
+            response: str,
+            index: int = index,
+            pending_before: AssistantPendingRequest | None = pending_before,
+        ) -> TargetEvalScore:
+            envelope = CommandParser.parse_product(response)
+            if engineering:
+                expected = case.engineering_expectations[index]
+                update = envelope.request
+                mode = update.mode if update is not None else None
+                if update is None:
+                    action = (
+                        pending_before.command_name
+                        if pending_before is not None
+                        else None
+                    )
+                    values = (
+                        pending_before.parameter_values()
+                        if pending_before is not None
+                        else {}
+                    )
+                elif update.action is None:
+                    action, values = None, {}
+                else:
+                    action, values = _proposed_command(envelope, pending_before)
+                passed = bool(
+                    envelope.status
+                    in {ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL}
+                    and envelope.decision == expected["decision"]
+                    and mode == expected["mode"]
+                    and action == expected["action"]
+                    and values == expected["parameters"]
+                    and (
+                        envelope.decision == "execute"
+                        or _valid_precision_message(envelope.message)
+                    )
+                )
+                return TargetEvalScore(
+                    passed,
+                    "none" if passed else "engineering_decision",
+                    response[:1000],
+                    action,
+                    values,
+                    "Raw decision and request delta checked against fixed engineering contract.",
+                )
+            final = index == len(case.turns) - 1
+            command, parameters = (
+                _proposed_command(envelope, pending_before)
+                if envelope.status is ToolEnvelopeStatus.VALID
+                else (None, None)
+            )
+            passed = (
+                command == case.expected_tool and parameters == case.expected_parameters
+                if final
+                else envelope.status is ToolEnvelopeStatus.NO_TOOL
+                and envelope.decision == "clarify"
+            )
+            return TargetEvalScore(
+                passed,
+                "none" if passed else "clarification_continuation",
+                response[:1000],
+                command,
+                parameters,
+                "Model trajectory decision and accumulated values checked.",
+            )
+
+        def product_score(response: str, index: int = index) -> TargetEvalScore:
+            score = raw_score(response)
+            if engineering:
+                expected = case.engineering_expectations[index]
+                pending = harness.pending_interactions.request
+                action = pending.command_name if pending is not None else None
+                values = pending.parameter_values() if pending is not None else {}
+                terminal = harness._observed_terminal or {}
+                update = harness._observed_request_update
+                if expected["decision"] == "execute":
+                    admitted = harness._observed_decision
+                    action = admitted.command_name if admitted is not None else None
+                    values = admitted.params if admitted is not None else {}
+                passed = bool(
+                    score.passed
+                    and action == expected["action"]
+                    and values == expected["parameters"]
+                    and (
+                        expected["mode"] is None
+                        or (update is not None and update.get("accepted") is True)
+                    )
+                    and (expected["decision"] != "execute" or pending is None)
+                    and terminal.get("execution_boundary_reached")
+                    is (expected["decision"] == "execute")
+                    and terminal.get("confirmation_observed") is False
+                )
+                return replace(
+                    score,
+                    passed=passed,
+                    failure_type="none" if passed else "engineering_admission",
+                )
+            if index == len(case.turns) - 1:
+                decision = harness._observed_decision
+                passed = bool(
+                    score.passed
+                    and decision is not None
+                    and decision.action is ToolAttemptAction.EXECUTE
+                    and decision.command_name == case.expected_tool
+                    and decision.params == case.expected_parameters
+                )
+            else:
+                terminal = harness._observed_terminal or {}
+                pending = harness.pending_interactions.request
+                passed = bool(
+                    score.passed
+                    and terminal.get("kind") == "respond"
+                    and pending is not None
+                    and pending.command_name in {None, case.expected_tool}
+                )
+            return replace(
+                score,
+                passed=passed,
+                failure_type="none" if passed else "clarification_continuation",
+            )
+
+        trajectory = _evaluate_trajectory(
+            build_messages=messages,
+            score_response=product_score,
+            score_raw_model_response=raw_score,
+            generate_response=generate_response,
             generation_recorder=generation_recorder,
-            trace_case_id=trace_case_id,
-            product_rag_messages=product_rag_messages,
+            trace_case_id=trajectory_id,
+            initial_turn_purpose=f"clarification_turn_{index + 1}",
+            replay_controller_response=harness.replay_controller_generation,
         )
-        admission = admit_clarification_receipt(
-            source,
-            action_trajectory.final_response,
-            expected_tool=case.expected_tool,
-            registry=registry,
-        )
-    if not first_ok or admission is None:
-        failed = replace(
-            action_trajectory.final_score,
-            passed=False,
-            failure_type="clarification_admission",
-            detail="The prior model turn did not admit the required receipt.",
-        )
-        return CaseTrajectoryResult(
-            raw_score=first_trajectory.raw_score,
-            post_recovery_score=action_trajectory.post_recovery_score,
-            final_score=failed,
-            final_response=action_trajectory.final_response,
-            attempts=(
-                first_trajectory.attempts
-                if action_trajectory is first_trajectory
-                else first_trajectory.attempts + action_trajectory.attempts
-            ),
-            receipt_origin=None,
-        )
-    if case.trajectory_kind == "partial_bandpass_accumulation":
-        harness = admission.harness
-        receipt = harness.begin_turn(case.turns[1], admission.prompt_publication)
-        if receipt is None:
-            raise RuntimeError("Controller did not activate partial clarification.")
-        requeued_for_reply = harness.collect_active_tool_input_reply(case.turns[1])
-        requeued = harness.pending_interactions.tool_input
-        if (
-            not requeued_for_reply
-            or requeued is None
-            or dict(requeued.verified_parameters)
-            or requeued.unassigned_bandpass_cutoff is None
-            or requeued.remaining_reply_budget != 1
-        ):
-            failed = replace(
-                action_trajectory.final_score,
-                passed=False,
-                failure_type="partial_accumulation",
-                detail="Controller did not verify and requeue the partial reply.",
-            )
-            return CaseTrajectoryResult(
-                raw_score=first_trajectory.raw_score,
-                post_recovery_score=action_trajectory.post_recovery_score,
-                final_score=failed,
-                final_response=(
-                    harness.history[-1]["content"] if harness.history else case.turns[1]
-                ),
-                attempts=first_trajectory.attempts,
-                receipt_origin=admission.receipt_origin,
-            )
-    final_case = replace(case, reply=case.turns[2])
-    final_trajectory = evaluate_clarification_trajectory(
-        final_case,
-        source,
-        admission=admission,
-        registry=registry,
-        generate_response=generate_response,
-        generation_recorder=generation_recorder,
-        trace_case_id=trace_case_id,
-        product_rag_messages=product_rag_messages,
-    )
+        trajectories.append(trajectory)
+        observations.append(harness.observed_turn(trajectory))
+        if not trajectory.final_score.passed:
+            break
+    first, last = trajectories[0], trajectories[-1]
     return CaseTrajectoryResult(
-        raw_score=first_trajectory.raw_score,
-        post_recovery_score=final_trajectory.post_recovery_score,
-        final_score=final_trajectory.final_score,
-        final_response=final_trajectory.final_response,
-        attempts=(
-            first_trajectory.attempts + final_trajectory.attempts
-            if action_trajectory is first_trajectory
-            else first_trajectory.attempts
-            + action_trajectory.attempts
-            + final_trajectory.attempts
+        raw_score=first.raw_score,
+        post_recovery_score=last.post_recovery_score,
+        final_score=last.final_score,
+        final_response=last.final_response,
+        attempts=tuple(
+            attempt for trajectory in trajectories for attempt in trajectory.attempts
         ),
-        receipt_origin=admission.receipt_origin,
+        receipt_origin="model_typed"
+        if harness.pending_interactions.request is not None
+        else None,
+        product_terminal=harness._observed_terminal,
+        turn_observations=tuple(observations),
     )
 
 
@@ -2720,7 +2800,7 @@ def score_missing_parameter_host_guard(
             "detail": "The model output was not a legal product envelope.",
         }
 
-    tool_name, parameters = envelope.commands[0]
+    tool_name, parameters = _proposed_command(envelope)
     tool = registry.get_tool(tool_name)
     schema_valid = bool(
         tool is not None
@@ -2994,6 +3074,7 @@ def _build_report(
     rag_protocol: dict[str, Any] | None = None,
     rag_retrievals: list[ProductRAGContextEvidence] | None = None,
     engineering_results: list[dict[str, Any]] | None = None,
+    engineering_case_ids: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     core_rows = [
         row for row in results if row.get("suite") in {"positive", "challenge"}
@@ -3063,13 +3144,14 @@ def _build_report(
             and row["product_terminal"].get("execution_boundary_reached") is False
             and (
                 (
-                    row["host_admission"].get("attempt_action") == "respond"
-                    and row["host_admission"].get("receipt_origin")
-                    == "host_parameter_origin"
+                    isinstance(row["host_admission"].get("request_update"), dict)
+                    and row["host_admission"]["request_update"].get("accepted") is False
+                    and row["product_terminal"].get("kind") == "respond"
                 )
                 or (
                     row["host_admission"].get("attempt_action") is None
-                    and row["host_admission"].get("path") == "no_tool"
+                    and row["host_admission"].get("path")
+                    in {"no_tool", "typed_receipt"}
                     and row["product_terminal"].get("kind") == "respond"
                     and row.get("score", {}).get("passed") is True
                 )
@@ -3127,7 +3209,7 @@ def _build_report(
             "not_counted_in_model_report": [
                 "cancel",
                 "topic_switch",
-                "stale_receipt",
+                "stale_request",
                 "different_tool",
                 "partial_reply",
                 "multi_action",
@@ -3163,8 +3245,7 @@ def _build_report(
             row.get("source_has_host_receipt") is True
             and isinstance(row.get("receipt_admission"), dict)
             and row["receipt_admission"].get("admitted") is True
-            and row["receipt_admission"].get("origin")
-            in {"model_typed", "host_parameter_origin"}
+            and row["receipt_admission"].get("origin") == "model_typed"
         )
         for row in direct_host_rows
     )
@@ -3204,7 +3285,8 @@ def _build_report(
         "verified",
     }
     candidate_passed = bool(
-        raw_model_gate["passed"]
+        not engineering_case_ids
+        and raw_model_gate["passed"]
         and host_safety_gate["passed"]
         and direct_host_admission_passed
         and product_outcome_gate["passed"]
@@ -3220,6 +3302,19 @@ def _build_report(
     total_complete = bool(complete and total_case_count == total_expected_case_count)
     report = {
         "schema_version": REPORT_SCHEMA,
+        "evaluation_scope": "engineering_selection"
+        if engineering_case_ids
+        else "full_candidate",
+        "selected_case_ids": list(engineering_case_ids),
+        "engineering_selection": {
+            "complete": complete,
+            "included_case_ids": [
+                row["case"]["case_id"] for row in results + (engineering_results or [])
+            ],
+            "claim": "Selected engineering cases only; not the full 81-case candidate gate.",
+        }
+        if engineering_case_ids
+        else None,
         "model": {
             "id": model_id,
             "revision": spec.revision if spec is not None else None,
@@ -3335,6 +3430,8 @@ def report_candidate_passed(report: object) -> bool:
     """Read only the current candidate gate; legacy report shapes fail closed."""
     if not isinstance(report, dict) or report.get("schema_version") != REPORT_SCHEMA:
         return False
+    if report.get("evaluation_scope") == "engineering_selection":
+        return False
     candidate_gate = report.get("candidate_gate")
     if not isinstance(candidate_gate, dict) or candidate_gate.get("passed") is not True:
         return False
@@ -3438,6 +3535,8 @@ def _bounded_baseline_gate(report: object) -> dict[str, Any]:
         and len(seen_case_ids) == 81
     )
     summaries = report.get("case_summaries") if isinstance(report, dict) else None
+    if report.get("evaluation_scope") == "engineering_selection":
+        return False
     candidate_gate = report.get("candidate_gate") if isinstance(report, dict) else None
     model = report.get("model") if isinstance(report, dict) else None
     host_safety = (
@@ -3606,6 +3705,7 @@ def _experiment_identity(
     }
     identity["precision_cases_sha256"] = digest(precision_cases_path)
     identity["clarification_cases_sha256"] = digest(clarification_cases_path)
+    identity["engineering_cases_sha256"] = digest(DEFAULT_ENGINEERING_CASES)
     return identity
 
 
@@ -3647,10 +3747,8 @@ def _evaluation_generation_policy(config: LLMConfig) -> dict[str, Any]:
     }
 
 
-def _product_rag_protocol(*, hybrid_alpha: float | None = None) -> dict[str, Any]:
+def _product_rag_protocol(*, dense_only: bool = False) -> dict[str, Any]:
     """Identify the current product retrieval path without claiming empty is healthy."""
-    from XBrainLab.llm.rag import RAGRetriever
-
     return {
         "name": "product_process_rag.v1",
         "lifecycle": "ProcessRAGRetrieverLifecycle",
@@ -3659,9 +3757,15 @@ def _product_rag_protocol(*, hybrid_alpha: float | None = None) -> dict[str, Any
         "embedding_revision": RAGConfig.EMBEDDING_REVISION,
         "corpus_sha256": RAGConfig.GOLD_SET_SHA256,
         "index_schema_version": RAGConfig.INDEX_SCHEMA_VERSION,
-        "hybrid_alpha": (
-            RAGRetriever.DEFAULT_HYBRID_ALPHA if hybrid_alpha is None else hybrid_alpha
-        ),
+        "dense_only": dense_only,
+        "ranking": "dense_cosine" if dense_only else "reciprocal_rank_fusion",
+        "dense_similarity_threshold": RAGConfig.SIMILARITY_THRESHOLD,
+        "sparse_minimum_matched_terms": RAGConfig.MIN_SPARSE_MATCHED_TERMS,
+        "sparse_minimum_coverage": RAGConfig.MIN_SPARSE_COVERAGE,
+        "sparse_coverage_metric": "matched_idf_over_min_query_document_idf",
+        "candidates_per_branch": RAGConfig.CANDIDATES_PER_BRANCH,
+        "rrf_rank_constant": RAGConfig.RRF_RANK_CONSTANT,
+        "top_k": RAGConfig.TOP_K,
         "empty_result_note": (
             "Empty means the ready product retriever found no eligible context; "
             "initialization and retrieval errors are reported as degraded."
@@ -3688,11 +3792,7 @@ def _clarification_rag_context(
         }
     return {
         "protocol": "product_process_rag.v1",
-        "status": (
-            "not_generated_receipt_completion"
-            if not attempts
-            else "no_retrieval_evidence"
-        ),
+        "status": ("not_generated" if not attempts else "no_retrieval_evidence"),
     }
 
 
@@ -3719,6 +3819,23 @@ def _trajectory_payload(
     }
 
 
+def _followup_generation_summary(
+    case: ClarificationCase,
+    recorder: GenerationTraceRecorder,
+) -> dict[str, Any]:
+    """Count actual follow-up calls, excluding initial-turn format retries."""
+    following_up = case.trajectory_kind == "direct"
+    count = 0
+    for entry in recorder.entries:
+        if entry.case_id != case.case_id:
+            continue
+        if entry.turn_purpose.startswith("clarification_turn_"):
+            following_up = entry.turn_purpose != "clarification_turn_1"
+        if following_up:
+            count += 1
+    return {"occurred": count > 0, "attempt_count": count}
+
+
 def run_eval(
     config: LLMConfig,
     cases: tuple[TargetEvalCase, ...],
@@ -3730,6 +3847,7 @@ def run_eval(
     product_rag: bool = False,
     rag_mode: str | None = None,
     include_rag_paired_probes: bool = False,
+    engineering_case_ids: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Load one exact local engine and score every frozen target case."""
     selection = config.assistant_runtime_selection()
@@ -3768,11 +3886,46 @@ def run_eval(
         )
         for case in engineering_probes
     )
+    request_cases = load_engineering_cases() if engineering_case_ids else ()
+    if engineering_case_ids:
+        suites = (
+            cases,
+            challenge_cases,
+            precision_cases,
+            clarification_cases,
+            engineering_cases,
+            request_cases,
+        )
+        known_ids = {case.case_id for suite in suites for case in suite}
+        known_ids.update(case.family_id for case in request_cases)
+        selected = set(engineering_case_ids)
+        unknown = selected - known_ids
+        if unknown:
+            raise ValueError(f"Unknown engineering case IDs: {sorted(unknown)}")
+        selected.update(
+            case.source_case_id
+            for case in clarification_cases
+            if case.case_id in selected and case.source_case_id
+        )
+        selected.update(
+            case.case_id for case in request_cases if case.family_id in selected
+        )
+        (
+            cases,
+            challenge_cases,
+            precision_cases,
+            clarification_cases,
+            engineering_cases,
+            request_cases,
+        ) = (
+            tuple(case for case in suite if case.case_id in selected)
+            for suite in suites
+        )
     generation_policy = _evaluation_generation_policy(config)
     registry = target_tool_registry()
     engine = LLMEngine(config)
     rag_lifecycle = (
-        ProcessRAGRetrieverLifecycle(hybrid_alpha=1.0)
+        ProcessRAGRetrieverLifecycle(dense_only=True)
         if product_rag and rag_mode == "dense"
         else ProcessRAGRetrieverLifecycle()
         if product_rag
@@ -3784,7 +3937,7 @@ def run_eval(
         else None
     )
     rag_protocol = (
-        _product_rag_protocol(hybrid_alpha=1.0 if rag_mode == "dense" else None)
+        _product_rag_protocol(dense_only=rag_mode == "dense")
         if product_rag_messages is not None
         else {"name": "product_rag_disabled.v1", "status": "disabled"}
         if rag_mode == "off"
@@ -3834,7 +3987,9 @@ def run_eval(
             *precision_cases,
             *engineering_cases,
         )
-        total_case_count = len(all_cases) + len(clarification_cases)
+        total_case_count = (
+            len(all_cases) + len(clarification_cases) + len(request_cases)
+        )
         for index, case in enumerate(all_cases, start=1):
             print(
                 f"Stable Assistant model eval {index}/{total_case_count}: {case.case_id}",
@@ -3914,6 +4069,7 @@ def run_eval(
                         capture_integrity=checkpoint_capture_integrity,
                         rag_protocol=rag_protocol,
                         engineering_results=engineering_results,
+                        engineering_case_ids=engineering_case_ids,
                         rag_retrievals=(
                             product_rag_messages.all_evidence()
                             if product_rag_messages is not None
@@ -3947,14 +4103,24 @@ def run_eval(
                 receipt_origin = trajectory.receipt_origin
                 source_has_receipt = receipt_origin is not None
                 source_first_generation_score = None
-                followup_model_generation = {
-                    "occurred": bool(trajectory_attempts),
-                    "attempt_count": len(trajectory_attempts),
-                }
+                turn_observations = list(trajectory.turn_observations)
             else:
                 source = precision_by_id[case.source_case_id]
                 source_row = result_by_id[case.source_case_id]
                 source_first_generation_score = source_row["first_generation_score"]
+                # Reuse the source row's real controller evidence, even when its
+                # request was rejected. Never infer a receipt from the oracle.
+                turn_observations = [
+                    {
+                        "user_turn_id": "U1",
+                        "source_case_id": case.source_case_id,
+                        "raw_score": source_row["first_generation_score"],
+                        "post_recovery_score": source_row["post_recovery_score"],
+                        "product_score": source_row["score"],
+                        "host_admission": source_row["host_admission"],
+                        "product_terminal": source_row["product_terminal"],
+                    }
+                ]
                 admission = admit_clarification_receipt(
                     source,
                     final_responses_by_case[case.source_case_id],
@@ -3984,27 +4150,23 @@ def run_eval(
                     )
                     post_recovery_score_payload = asdict(trajectory.post_recovery_score)
                     trajectory_attempts = trajectory.attempts
-                    followup_model_generation = {
-                        "occurred": bool(trajectory_attempts),
-                        "attempt_count": len(trajectory_attempts),
-                    }
+                    turn_observations.extend(trajectory.turn_observations)
                 else:
                     unavailable = TargetEvalScore(
                         False,
-                        "source_without_host_receipt",
+                        "source_without_pending_request",
                         "",
                         None,
                         None,
-                        "First turn did not produce the exact Host clarification receipt.",
+                        "First turn did not produce the required validated pending request.",
                     )
                     score_payload = asdict(unavailable)
                     first_generation_score_payload = dict(score_payload)
                     post_recovery_score_payload = dict(score_payload)
                     trajectory_attempts = ()
-                    followup_model_generation = {
-                        "occurred": False,
-                        "attempt_count": 0,
-                    }
+            followup_model_generation = _followup_generation_summary(
+                case, generation_recorder
+            )
             if score_payload.get("product_outcome") is None:
                 score_payload.pop("product_outcome", None)
             if first_generation_score_payload.get("product_outcome") is None:
@@ -4022,10 +4184,16 @@ def run_eval(
                         "origin": receipt_origin,
                     },
                     "source_raw_model_score": source_first_generation_score,
+                    "turn_observations": turn_observations,
                     "first_generation_score": first_generation_score_payload,
                     "post_recovery_score": post_recovery_score_payload,
                     "score": score_payload,
                     "followup_model_generation": followup_model_generation,
+                    "oracle_condition": (
+                        "Historical unlabelled 12/128 replies are only unambiguous when the actual questions identify each cutoff; requires semantic review under the unified contract. Original inputs and final parameter oracle are unchanged."
+                        if case.trajectory_kind == "partial_bandpass_accumulation"
+                        else None
+                    ),
                     "trajectory": _trajectory_payload(
                         trajectory_attempts,
                         generation_recorder,
@@ -4052,6 +4220,7 @@ def run_eval(
                         capture_integrity=checkpoint_capture_integrity,
                         rag_protocol=rag_protocol,
                         engineering_results=engineering_results,
+                        engineering_case_ids=engineering_case_ids,
                         rag_retrievals=(
                             product_rag_messages.all_evidence()
                             if product_rag_messages is not None
@@ -4059,6 +4228,45 @@ def run_eval(
                         ),
                     ),
                 )
+        for case in request_cases:
+            print(
+                f"Assistant engineering trajectory: {case.case_id}",
+                file=sys.stderr,
+                flush=True,
+            )
+            trajectory = evaluate_discriminated_clarification_trajectory(
+                case,
+                registry,
+                generate_from_engine,
+                generation_recorder=generation_recorder,
+                product_rag_messages=product_rag_messages,
+            )
+            results.append(
+                {
+                    "suite": "engineering",
+                    "case": asdict(case),
+                    "first_generation_score": asdict(trajectory.raw_score),
+                    "post_recovery_score": asdict(trajectory.post_recovery_score),
+                    "score": asdict(trajectory.final_score),
+                    "turn_observations": list(trajectory.turn_observations),
+                    "trajectory": _trajectory_payload(
+                        trajectory.attempts, generation_recorder, case_id=case.case_id
+                    ),
+                    "followup_model_generation": _followup_generation_summary(
+                        case, generation_recorder
+                    ),
+                    "semantic_review_required": any(
+                        turn["decision"] == "reply" and turn["mode"] is None
+                        for turn in case.engineering_expectations
+                    ),
+                    "rag_context": _clarification_rag_context(
+                        case=case,
+                        attempts=trajectory.attempts,
+                        product_rag_messages=product_rag_messages,
+                        no_rag_protocol=rag_protocol["name"],
+                    ),
+                }
+            )
     finally:
         with suppress(Exception):
             engine.close()
@@ -4081,6 +4289,7 @@ def run_eval(
         ),
         rag_protocol=rag_protocol,
         engineering_results=engineering_results,
+        engineering_case_ids=engineering_case_ids,
         rag_retrievals=(
             product_rag_messages.all_evidence()
             if product_rag_messages is not None
@@ -4135,11 +4344,19 @@ def main(argv: list[str] | None = None) -> int:
         "--rag-mode", choices=("hybrid", "dense", "off"), default="hybrid"
     )
     parser.add_argument("--include-rag-paired-probes", action="store_true")
+    parser.add_argument(
+        "--engineering-case-id",
+        action="append",
+        default=[],
+        help="Run only these case IDs plus required source turns; not a full81 gate.",
+    )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--strict", action="store_true")
     mode.add_argument("--require-bounded-baseline", action="store_true")
     args = parser.parse_args(effective_argv)
-    if args.rag_mode != "hybrid" and (args.strict or args.require_bounded_baseline):
+    if (args.rag_mode != "hybrid" or args.engineering_case_id) and (
+        args.strict or args.require_bounded_baseline
+    ):
         parser.error(
             "RAG ablations are engineering comparisons, not product promotion gates."
         )
@@ -4163,6 +4380,7 @@ def main(argv: list[str] | None = None) -> int:
             product_rag=True,
             rag_mode=args.rag_mode,
             include_rag_paired_probes=args.include_rag_paired_probes,
+            engineering_case_ids=tuple(args.engineering_case_id),
         )
         report["experiment_identity"] = _experiment_identity(
             cases_path=args.cases,
@@ -4209,9 +4427,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.strict
         else report_bounded_baseline_passed(report)
         if args.require_bounded_baseline
+        else bool(report.get("engineering_selection", {}).get("complete"))
+        if args.engineering_case_id
         else report.get("case_summaries", {}).get("total", {}).get("complete") is True
     )
-    if args.include_rag_paired_probes:
+    if args.include_rag_paired_probes and not args.engineering_case_id:
         paired = report.get("rag_paired_engineering", {})
         passed = passed and paired.get("complete") is True
         if args.strict or args.require_bounded_baseline:

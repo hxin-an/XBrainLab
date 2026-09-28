@@ -19,31 +19,31 @@ from XBrainLab.llm.agent.rag_process_lifecycle import (
 _CALLBACK_WAIT_SECONDS = 30.0
 
 
-@pytest.mark.parametrize("alpha", [-0.1, 1.1, float("nan"), float("inf")])
-def test_invalid_ranking_weight_cannot_start_a_process(alpha):
-    with pytest.raises(ValueError, match="hybrid_alpha"):
-        ProcessRAGRetrieverLifecycle(hybrid_alpha=alpha)
+@pytest.mark.parametrize("dense_only", [None, 0, 1, "dense"])
+def test_invalid_retrieval_mode_cannot_start_a_process(dense_only):
+    with pytest.raises(ValueError, match="dense_only"):
+        ProcessRAGRetrieverLifecycle(dense_only=dense_only)
 
 
-def test_ranking_weight_is_bound_into_spawn_target():
+def test_dense_only_mode_is_bound_into_spawn_target():
     from functools import partial
 
-    lifecycle = ProcessRAGRetrieverLifecycle(hybrid_alpha=1.0)
+    lifecycle = ProcessRAGRetrieverLifecycle(dense_only=True)
     try:
         target = lifecycle._process_target
         assert isinstance(target, partial)
         assert target.func is rag_process_lifecycle._run_rag_process
-        assert target.keywords == {"hybrid_alpha": 1.0}
+        assert target.keywords == {"dense_only": True}
     finally:
         lifecycle.close()
 
 
-def test_ranking_weight_cannot_be_silently_bound_to_a_custom_two_argument_worker():
+def test_dense_only_mode_cannot_be_silently_bound_to_a_custom_two_argument_worker():
     def worker(command_queue, result_queue):
         raise AssertionError("Rejected configuration must not start a worker")
 
     with pytest.raises(ValueError, match="product RAG process target"):
-        ProcessRAGRetrieverLifecycle(process_target=worker, hybrid_alpha=1.0)
+        ProcessRAGRetrieverLifecycle(process_target=worker, dense_only=True)
 
 
 @pytest.mark.parametrize("phase", ["initialize", "retrieve", "close"])
@@ -66,8 +66,8 @@ def test_child_failure_logs_are_safe_and_preserve_queue_contract(
     class FaultingRetriever:
         is_initialized = True
 
-        def __init__(self, *, hybrid_alpha=None):
-            assert hybrid_alpha is None
+        def __init__(self, *, dense_only=False):
+            assert dense_only is False
 
         def initialize(self):
             if phase == "initialize":

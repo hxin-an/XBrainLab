@@ -48,7 +48,7 @@ ApplicationService / Command API
 Study / managers / domain state
 ```
 
-這是一個可工作的中間狀態，但還不是最終理想架構。
+以下描述目前 source 的責任邊界，不表示整合中的模型契約已完成可用性或交付驗收。
 
 ## 主要位置
 
@@ -60,6 +60,8 @@ Study / managers / domain state
 | `XBrainLab/ui/components/assistant_runtime_lifecycle.py` | local runtime activation、terminal close、recoverable error 與 immutable runtime state。 |
 | `XBrainLab/ui/components/assistant_application_publication_coordinator.py` | 將 revisioned application publication 與 training terminal notice 投影到 Assistant。 |
 | `XBrainLab/llm/agent/controller.py` | 組合 agent turn：context、parser、verification、confirmation 與 bounded tool execution；不再保存 writable lifecycle aliases。 |
+| `XBrainLab/llm/agent/pending_interaction.py` | 唯一 pending owner：保存已核對的單一要求，另管理 blocking confirmation／GUI handoff 的 correlation 與解決結果。 |
+| `XBrainLab/llm/agent/turn.py` | `AssistantPendingRequest` 等 immutable 跨 turn DTO；不另擁有參數更新或執行 policy。 |
 | `XBrainLab/llm/agent/turn_orchestrator.py` | `AssistantTurnOrchestrator` 擁有 host/RAG/generation/cancellation correlation；`AssistantToolAttemptSession` 擁有 request-scoped counters 與 visible feedback。 |
 | `XBrainLab/llm/agent/rag_process_lifecycle.py` | RAG retriever subprocess 的啟動、timeout、終止與結果 ownership。 |
 | `XBrainLab/llm/agent/tool_execution_coordinator.py` | 執行單一已驗證 tool、套用 capability gate、正規化 command result、記錄 metrics 與發出 command lifecycle signal。 |
@@ -135,16 +137,16 @@ Qt processing／closing admission。這些內部責任移交不新增工具或�
 它負責：
 
 - 建立 `ToolRegistry` 並註冊 real tools。
-- 組prompt：strict policy、stage-published target schemas、minimal state card、bounded RAG、最新user與
-  最多上一則Assistant-visible訊息。
+- 組prompt：strict policy、stage-published action schemas、必要 application state／單一草稿／
+  最新 user 原文，另附放得下的 RAG 與最多上一則 Assistant-visible 訊息。
 - 讓 `AgentWorker` 在 background thread 生成回覆。
-- 用`CommandParser`接受exact兩欄JSON envelope（`tool_name`、`parameters`），可有整份回答單一 `json`／無語言 code fence；
+- 用`CommandParser`接受 exact 五欄 JSON proposal（`decision`、`mode`、`action`、`changes`、`message`），可有整份回答單一 `json`／無語言 code fence；
   只解除外框，原始輸出照存，不做散文抽取、寬鬆 schema 或 legacy fallback。
 - 初次生成最多加一次既有格式修復；同一修復仍失敗即停止，不重送第二次相同策略。
   多個完整物件維持 choose-one terminal，已交付操作、確認取消與執行失敗不由格式重試重送。
-- 用 `VerificationLayer` 檢查 registered tool schema、required parameter、JSON-like type、
-  enum 和部分資料範圍；五個direct preprocess另由同一verification boundary驗證required
-  value確實來自latest user request，無法驗證時回一般Assistant追問且不進executor。
+- 先由 `ToolAttemptCoordinator.prepare_request_update()` 核對本輪變更的 schema、來源及草稿
+  身分，整包通過才交 pending owner 發布。只有 `execute` 提案才將累積參數送入
+  `VerificationLayer` 的完整 required/type/enum/range 檢查及後續執行 admission。
 - 套用 ApplicationService capability gate，避免 assistant 在錯誤 backend state 呼叫不該開放的工具。
 - 將已驗證的單一 tool 交給 `ToolExecutionCoordinator`；mapped workflow tool 透過
   `execute_application_tool_command(...)` 執行 ApplicationService command，直接取得
@@ -154,7 +156,7 @@ Qt processing／closing admission。這些內部責任移交不新增工具或�
   `changed_state` 另做一次 repaint；command 完成後 agent 會重讀同一份 ApplicationService
   state / capability publication。
 - 處理 destructive / long-running tool 的 human confirmation。
-- 每個user turn只允許一個tool或一個`respond_to_user`；terminal後不continuation。
+- 每個 user turn 最多一個工具操作；`reply`／`clarify` 只呈現訊息，terminal 後不自動接續。
 
 Controller 不再透過 `_active_generation_id`、`_retry_count` 等 writable compatibility alias 保存
 第二份狀態。Host/RAG/generation/cancellation correlation 只在 `AssistantTurnOrchestrator`；format
@@ -177,10 +179,11 @@ Controller 保留 missing-generation 拒絕與 Qt delivery。有效 proposal 只
 - 停止／關閉失敗：既有 lifecycle 保留 runtime ownership 並重試資源清理，不代表重跑工具。
 
 `AssistantGenerationRequest` 一律使用 structured-decision decoding；普通說明也由 strict
-`respond_to_user` envelope 呈現，沒有 bypass parser 的 natural-language selector。Core 的
+`reply` proposal 呈現，沒有 bypass parser 的 natural-language selector。Core 的
 `INFORMATIONAL_TEXT` 仍供獨立 runtime inspection 使用，不是 Assistant turn 的第二條路徑。
-Parser 保留 status、commands、error 與 clarification 的 message／pending_action／
-missing_inputs，不另保存未使用的 intent／decision metadata。Recovery artifact 仍使用七個
+Parser 保留 status、error、decision、message 與 typed `RequestUpdate`；`proposal_dict()` 只投影
+合法提案，不製造可執行參數。舊 `commands`／`pending_action`／`missing_inputs` 輸出已移除。
+Recovery artifact 仍使用七個
 現行 taxonomy 字串；其中 `first_attempt_plain_text`／`recovered_plain_text` 指合法 structured
 回覆，不表示接受任意裸文字。已無 producer 的 blocked／missing-input／answer 六種舊分類已移除。
 
@@ -203,37 +206,102 @@ initialized 與 cleanup_pending 的 snapshot；後者是已不 ready 但仍持�
 這一層目前同時包含 agent orchestration 和一部分 workflow policy。所有 mapped workflow
 command 仍由同一個 Study-scoped ApplicationService lock 序列化，避免 UI 與 assistant 同時 mutation。
 
+### 單一要求與參數來源
+
+`decision` 是 `reply`、`clarify` 或 `execute`；`mode`、`action`、`changes` 與 `message`
+同在root，沒有request外層。每個 change 含 `value`、`source_turn`、`quote`。
+`mode=null` 不修改已核對參數，必須搭配action=null、changes={}；`update_pending` 保留
+省略的舊欄位，`new_request` 捨棄舊要求及來源，`cancel_pending` 清除草稿。
+Parser將三個public mode一對一轉成內部RequestUpdate的`continue / replace / cancel`；
+`proposal_dict()`反向投影新格式，不接受舊alias或巢狀格式。操作未明的clarification仍可
+保存action=null、空changes及使用者原文。
+這些是模型提案，不是執行授權，也不由 message 文字反推狀態。
+
+`PendingInteractionCoordinator.request` 持有唯一 `AssistantPendingRequest`：操作、有效參數、
+來源原文、原始 turn ID、publication generation、追問及 invalidated 事實。所有一般文字，
+包括補值、更正、取消與中途詢問，都進同一模型生成路徑；沒有 Host bare-value 收集、
+bandpass 排序或免第二次生成的 completion shortcut。GUI confirmation 仍由既有 typed 回覆處理。
+
+Controller 從實際 turn correlation 配給 U1 等來源 ID。更新驗證先檢查已發布 action 與 partial
+schema，再逐值核對 quote 是當前／保留 user source 的原文片段；五個 direct preprocess
+另同時驗證 quote 與完整 source 的參數來源，防止從 17 截出 7。舊來源不能恢復已被新來源
+更正的值。變更全數通過後才 `set_request()`；未解的 user evidence 可跨多次追問保留，
+不因尚未能命名參數就刪除。引文／數值核對不證明模型正確理解否定或指涉。
+
+`update_pending`（內部`continue`）要求現有且未失效草稿、相符操作與 publication generation；unknown action 可在
+後續確定，不能偷偷改做另一個已知操作。資訊回覆可保留草稿而不執行；執行提案交付
+confirmation／execution 邊界後清除可重用草稿，不因取消確認或工具失敗恢復它。
+空回覆、生成錯誤、輸入超限、提案更新驗證失敗或多提案拒絕保留值但標記 invalidated，
+撤銷 update_pending；格式修復耗盡、
+已完成 Stop、New Chat 或 Close 清除草稿。這不是新增工作佇列或另一份 workflow owner。
+
 ### Prompt state projection
 
 目前prompt不使用Host intent narrowing、recommended-next-step或deterministic continuation。
 Assistant 已移除曾經重複保存這些資訊的 `decision_context`／turn-authorization shadow；
-`ContextAssembler`從同一份immutable `ApplicationViewPublication`投影backend-owned stage與最小state
-card，再依`STAGE_CONFIG`發布該stage的approved target schemas。模型只在這個集合中選一個tool，
-或使用`respond_to_user`；Host不替模型選前置步驟或自動接續下一個mutation。
+`ContextAssembler` 從同一份 immutable `ApplicationViewPublication` 投影 backend-owned stage
+與必要 state，再依 `STAGE_CONFIG` 發布該 stage 的 approved action schemas。
+模型提出 `reply`／`clarify` 或一個操作；Host 不替模型選前置步驟或自動接續下一個 mutation。
 
-Prompt history只保留最新user訊息與最多一則Assistant-visible訊息。Host feedback、raw action
+最後一則必要 user-role JSON 含 `application_state`、`pending_request`（無草稿時明列null）及最後的
+`current_user`（實際 ID／原文）。草稿投影含有效值與來源、必要 user_sources、追問和
+invalidated；不把它們放入可整包移除的 optional context。State card 仍是 assembler 內部
+投影項目，送出時轉為 required `application_state`，不再作為 optional state_card 傳送。
+工具catalog的required約束完整執行參數，不要求每輪changes重抄已知值或填入未知值；
+這是輸入用途的明示，不改模型提案或Host驗證規則。
+
+額外 prompt history 最多保留上一則 Assistant-visible 訊息，與草稿已帶的相同追問去重。
+Host feedback、raw action
 proposal與diagnostic trace由producer標記為history的`internal` role，不進模型訊息；來源不由
 `System:`／`Tool Output:`前綴或JSON形狀推論，真人與可見Assistant內容仍保留為資料。
 該內部role不輸出給chat template；既有untrusted-context隔離與redaction保持。
-Bundled gold set目前有145個英文示範：117個操作示範涵蓋18個approved tools，另28個
-`respond_to_user`示範涵蓋概念詢問、只要說明、明確禁止操作、無法辨識的外部指涉，
-以及解釋＋操作先選一件。後者四筆保留原問題與ID，只修正不符合單次決策契約的答案；
-prompt policy同步要求先選擇，不提供第二次模型生成或部分執行。
-原72個操作示範保持內容，新增案例補參數與相鄰操作差異，不以長句改寫取代既有詞彙覆蓋。
+
+完整輸入有兩層界線：assembler 先檢查必要 messages 的序列化 UTF-8 byte bound，再以完整
+RAG 範例優先於 optional history／runtime notes 打包剩餘空間；local backend 以選定模型的
+實際 tokenizer＋chat template 計數，輸入預算為 runtime context 減去預留輸出 tokens。
+超 token 預算時先移除 optional history／notes，再按原檢索順序逐個放入仍容納的完整 RAG
+範例，不裁切範例欄位。System 與最後的必要 request 不能截斷；它們本身仍超限便回
+recoverable precondition error，不呼叫模型。使用者可用 New Chat 清除草稿後重述；
+超限不會只留下裸補值、也不等於模型答錯或成功處理。
+
+啟用 runtime capture 時，在上述 role/template 處理與 token packing 之後保存實際 prompt、原始輸出、
+模型 revision、生成設定及內容 hash；超限拒絕不產生一次成功推論。完整 context 清晰度與
+小模型理解仍須依 [target 驗收要求](../target/agent.md#agent-m0-contract)及實際輸出分開檢查。
+
+### RAG 施工中的檢索與證據邊界
+
+當前施工與阻擋由[active plan](../planning/now.md)擁有，准入契約由
+[Agent target](../target/agent.md)擁有。下列既有接點不代表M3或模型收益已驗收；
+新批准的v3對稱IDF覆蓋與最終送例相關性gate仍在整合，不把批准當作通過。
+
+Bundled gold set目前有154個英文示範：118個`execute`、18個`clarify`、18個`reply`。
+原145筆保留，另有7筆known-action缺值／部分值追問，以及一筆補值、一筆更正的多輪示範。
+操作涵蓋18個approved tools；非操作示範包括概念詢問、明確禁止、外部指涉與混合要求先選一件。
+範例使用五欄提案及新public mode，`RAGConfig`固定corpus hash與index schema 5，不能重用舊索引。
 它們是retrieval corpus，不是驗收題庫，也不代表已證明模型準確率改善。
 
-RAG不再以手寫intent grammar決定是否檢索。Qdrant在搜尋前，以已發布callable tools及
-`respond_to_user`篩選候選，再取dense top-10並以raw cosine threshold `0.7`准入。
-保留候選通過schema／membership驗證後，BM25沿用全corpus的IDF與平均長度，只在此准入集合
-內取分、正規化並參與排序；
-不以keyword命中把低於semantic門檻的範例補入。預設cosine／BM25權重為`0.7／0.3`，
-最多取`TOP_K = 3`，也允許零命中。`hybrid_alpha = 1`的dense-only對照不建立或查詢BM25，
-不是建立後再把sparse權重乘零。Hybrid模式若BM25無法建立，初始化失敗，不silent fallback
-成dense-only。上述常數是目前設定，不是已證實最佳值。
+多輪示範只有一個optional `prior_turn={input, expected_proposal}`，前輪限`clarify`＋
+`new_request`。`example_policy`共用runtime的純參數合併／來源驗證，先由U1推導
+`AssistantPendingRequest`，再驗本輪`update_pending`的action、U2引用及合併值；
+`execute`額外要求完整參數schema。這不是接受手造pending或重播任意對話，也不偽造publication。
+Indexer與BM25的搜尋文字沿用`ContextAssembler.retrieval_query`；metadata保留本輪原文，
+retriever傳送`input`、`expected_proposal`與raw `prior_turn`，不把拼接搜尋文字當成U2。
+Assembler重驗後移除raw前輪，輸出原`input`／提案及`context.current_user`（U2）與推導的
+`context.pending_request`。範例內的值／來源仍是untrusted data，不成為目前使用者的要求。
+
+RAG不以手寫intent grammar決定是否檢索；查詢由assembler投影原要求、最新保留user原文
+及當前user文字，不加入Assistant問句或schema。Dense與BM25依同一eligible corpus獨立
+取最多10筆准入候選；dense維持cosine 0.7，BM25沿用全corpus IDF，不受dense門檻否決。
+聯集按stable ID去重、等權RRF（rank constant 60）排序，最多送3個完整範例，也允許零例。
+`dense_only=True`不建立或查詢BM25；hybrid缺少BM25不silent fallback。
+舊dense候選池內加權重排，以及v1原始分數／v2單側query覆蓋的失敗報告保留歷史身分。
+V3要求至少兩個不同詞命中，且max(query-IDF覆蓋, document-IDF覆蓋)>=0.5；兩側各用
+不同token的同一corpus IDF總和，query的OOV維持df=0。最終送例相關性與分路候選診斷分開記錄，
+不能將未送出的近鄰稱為模型收到的範例，也不能將未過gate的規則稱為完成。
 
 回應示範使用既有strict response parser驗證，不加入action registry或backend capability。
 檢索等待期間publication可能改變；最終組prompt時，assembler以當次同一份publication
-產生schemas／state card，並重新檢查RAG範例資格，排除已不可用的action。範例仍是有來源標籤、
+產生schemas／required application_state，並重新檢查RAG範例資格，排除已不可用的action。範例仍是有來源標籤、
 有大小上限的untrusted data，不能授予capability、confirmation或continuation權限，
 也不能替使用者提供缺少的參數。
 
@@ -242,6 +310,10 @@ assembler 的七個 stage tool publications，不以預期工具單獨過濾候�
 每工具至少一題；另檢查 context bounds、未授權工具、索引身分與重用。原48題的輸入保持不變；
 說明性問題的retrieval oracle檢查範例資格與邊界，不再強迫空結果。模型是否正確不操作須另驗。
 另有24個獨立成對工程探針，記錄action／response命中與相同安全檢查，不加入原36題的分母。
+同一verifier另執行固定v3的12＋12准入案例：所有實際送例須在預定相關集合，無關題不得
+送例，指定詞法正例須出現在sparse候選；未指定必回例的題目允許零命中。分路錯候選只作診斷，
+dense候選未觀測須明示，不能以最後三例倒推整個候選池。固定fixture／corpus hash與index
+schema一併識別目前配置；v1／v2原fixture及失敗報告不改寫。
 `--ranking hybrid|dense`使用同一產品retriever比較排序；`--baseline-report`
 可比對同一探針／設定的舊報告，並核對逐題資料與摘要一致。這些探針已用於開發修訂，
 不是 holdout／正式 Validation 或 Test；檢索命中也不等於模型判斷或工具執行成功。
@@ -251,6 +323,8 @@ Baseline比較逐題拒絕pass→fail，不能用新增命中抵銷退步。結�
 Retriever 擁有 Qdrant client 與 embedding；`RAGIndexer` 只借用這兩個資源建索引，
 不自行配置或關閉。索引 manifest、point identity 與 payload digest 仍驗證持久化內容，
 不是可省略的記憶體快取標記。
+
+### Data Import boundary
 
 Data Import對模型是單一零參數`import_eeg_data` GUI completion tool。內部scan、preview、validate、
 apply與recipe lifecycle仍由既有Data Interpretation/ApplicationService owner負責，不作為模型工具，
@@ -354,7 +428,8 @@ Runtime policy：
 
 Assistant 的已接受 bounded baseline 與 promotion 限制由[目前狀態](../current.md)及
 [有效決策](../decisions/README.md)擁有；本頁不複製歷史分數或推論目前 cache 狀態。
-Host receipt／format recovery 不等於模型自主正確，也不取代真人 workflow 或 thesis evidence。
+Host 來源驗證／format recovery 不等於模型自主正確，也不取代真人 workflow 或 thesis evidence。
+舊兩欄 envelope／Host receipt 成績保留原 source 與 report schema 身分，不改標為新提案基線。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
 Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端
@@ -467,7 +542,7 @@ confirmation。
 - `compute_saliency`不讓模型填run/method/settings；它等待相同operation的completed/cancelled/failed
   terminal，不把command schedule receipt當成功。
 - Data Interpretation、analysis與query services仍供產品GUI/backend使用，但沒有Assistant wrapper。
-- 缺少direct tool必要參數時，strict model branch使用`respond_to_user`；adapter不套default、不走
+- 缺少 direct tool 必要參數時，模型以 `clarify` 提案保存明確值並追問；adapter 不套 default、不走
   legacy fallback。
 - `CommandResult` 轉成 typed result 後，history 的 `Tool Output` 只保留 redacted compact feedback：
   `ok`、`tool_name`、`command_name`、`message`、`error_type`、`recoverable`、`blocked_reason`，
@@ -487,15 +562,17 @@ blocked reason 仍由 backend capability policy 產生。
 
 `ContextAssembler`以backend `pipeline_stage`選擇`STAGE_CONFIG`中的approved target schemas；這是prompt
 publication。ApplicationService capability不是另一個prompt router，而是在proposal後再次做authoritative
-admission。若state publication不可靠，prompt stage固定為`unavailable`且只保留`switch_panel`與
-`respond_to_user`。
+admission。若 state publication 不可靠，prompt stage 固定為 `unavailable`，
+只發布 `switch_panel` 操作；非執行的 `reply`／`clarify` 不屬於工具 registry。
 
-模型輸出只包含`tool_name`與`parameters`，不回填`workflow_stage`。Stage仍在backend-owned
-state card／publication中，system亦保留同一publication的簡短stage事實；host以保存的generation驗證proposal、confirmation及execution，
-而不是從模型JSON取得state。舊三欄輸出屬extra-field format error；沒有雙格式兼容路徑。
+模型輸出採前述五欄 proposal，不回填 `workflow_stage`。Stage 在 required
+`application_state`／backend publication 中，system 亦保留同一 publication 的簡短 stage
+事實；Host 以保存的 generation 驗證 proposal、confirmation 及 execution，不從模型 JSON
+取得 state。舊 `tool_name`／`parameters` envelope 不再被產品 parser 接受，沒有雙格式相容路徑。
 
-RAG action examples受同一條18-tool與stage publication邊界約束，response examples則重用
-既有非執行決策契約。`example_policy.py`由實際action schemas或response parser判斷可索引內容，
+RAG所有帶非null action的示範（包括`clarify`）都受同一條18-tool與stage publication邊界約束；
+只有action=null的示範使用`respond_to_user`檢索分類，分類不代表執行決策。
+`example_policy.py`由實際action schemas、strict parser及來源驗證判斷可索引內容，
 排除舊dataset-info、direct load／attach、granular preprocess及malformed例子。
 Index payload的`decision_name`由驗證後示範推導，作為搜尋篩選欄位而不是第二權限來源；
 manifest與payload完整性要求舊索引重新符合目前schema，retriever及最終assembler仍重新驗證。

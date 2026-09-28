@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-09-27`
+最後更新：`2026-09-28`
 
 ## 一句話
 
@@ -46,7 +46,7 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 | Model catalog | Pinned Braindecode 1.6.1提供61個可搜尋contracts，其中54個符合目前classification workflow而可選；provider失效時改列distinct `legacy.braindecode.*` recovery IDs。Model Selection使用catalog reviewed defaults。 | 不可選contracts會顯示license、task或resource reason；桌面UI不提供model constructor調參；upstream與legacy禁止silent fallback，catalog execution不代表科學品質。 |
 | Evaluation | Individual fold/run支援Train、Validation、Test；Evaluation／Visualization選單只列完成的run（含正常Early Stop），不列中途停止的run，保留原始編號與歷史；cross-fold Summary只pool同一training round的disjoint Test masks。已完成結果的讀取綁定所選結果與trainer／split來源，不因其他fold的訓練進度失效，也不計算saliency producer SHA。 | 真正的來源或所選結果替換仍拒絕過期讀取；完成訓練但未計算saliency的run仍可選取Compute；`All Folds`的Split只有Test是刻意的統計邊界。 |
 | Saliency | 桌面Compute／Recompute只執行Settings選定的方法，一次涵蓋目前訓練結果中所有subject的已完成fold／run，排除未完成者；Fold／Run／Method選單只控制顯示。未選的相容既有方法直接保留，不加入重算；所選方法僅保留最新成功結果，整批成功才發布。沿用exact Fold／Evaluation-admitted Fold Set publication；尚未計算者顯示Compute要求，舊結果可刻意回看；單一class selector可切all-class比較與single-class細看，3D控制使用epoch-relative time並在重複render維持單一orientation widget。 | 不代表attribution具科學有效性或腦內source localisation，不把epoch time冒充已審查event marker，也不保證所有模型梯度相容。 |
-| Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；per-user settings保留上次確認的supported model，已退役selection會靜默正規化為recommended model。Strict envelope、18-action stage surface、parameter provenance、typed pending receipt infrastructure、capability、confirmation、GUI handoff與model-free walkthrough存在。 | PR #71 的exact 3B bounded baseline為36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product no-action與6/7 clarification execution boundary；`desktop-source` release profile可重跑其frozen 81-case no-regression evidence，但artifact明示它不是24/24、7/7 Stable promotion或安全零容忍。 |
+| Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；per-user settings保留上次確認的supported model，已退役selection會靜默正規化為recommended model。18-action stage surface、parameter provenance、capability、confirmation及GUI handoff存在；施工中的五欄提案／單一pending要求見下節，不再以舊typed receipt描述當前施工source。 | PR #71 的exact 3B bounded baseline為36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product no-action與6/7 clarification execution boundary；`desktop-source` release profile保留frozen 81-case回歸身分。舊結果不是新提案契約已通過，也不是24/24、7/7 Stable promotion或安全零容忍。 |
 | MCP | Executable package、transport、CLI、capture、schema projection與tests已退役；provenance只留在Git history。 | 不是release能力；未來若要恢復，必須另開public contract、security與validation decision。 |
 | Packaging | Windows source bootstrap 經確認後準備生成模型與固定版本 RAG embedding，離線檢索驗證通過才完成／啟動；重跑重用完整 cache。入口與路徑見[本機環境](developer/local-setup.md)。 | 沒有 signed installer；流程回歸與既有 cache 離線驗證不代表全新 Windows 整機安裝已實測。 |
 
@@ -66,17 +66,43 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 
 ## Assistant research baseline
 
+### 已核准契約的施工source（2026-09-28）
+
+以下描述本輪已落地的source，不表示已合併、模型基本流程已通過或handoff-ready；
+產品基線仍以`main`為準，進度與未解阻擋由[Now](planning/now.md)擁有。
+模型只輸出`decision / mode / action / changes / message`五個root欄位；`reply`、`clarify`
+及`execute`共用同一parser，沒有舊envelope或mode alias。`mode=null`表示不改草稿，
+此時action=null、changes={}；`update_pending / new_request / cancel_pending`由parser
+一對一映射至既有內部`continue / replace / cancel`。Host仍只持有單一未執行要求；
+每個變更值附user turn與原文quote，通過來源驗證才保存。
+一般文字的補值、更正、指涉及取消均交模型理解，不再由Host解析短答、排序bandpass值
+或走零LLM補值捷徑。既有確認及GUI handoff仍有各自的明確回呼，不是文字捷徑。
+來源匹配不證明模型理解正確；執行仍須通過完整schema、freshness、capability與確認邊界。
+完整契約見[Agent target](target/agent.md#agent-m0-contract)，目前責任分工見
+[Agent架構](architecture/agent.md)。歷史基線的source、分母與成績不回套此契約。
+有限互通已觀察到合法五欄輸出及補值／更正／取消成功，但全缺值要求仍曾擅填範例值並
+被來源驗證擋下。格式可解析不等於理解正確；M0、M3及完整context的M5尚未完成。
+
 ### RAG 部件邊界（2026-09-28）
 
 RAG改為在已發布action及合法response示範內檢索，不再先以手寫語句分流。
-原72筆有效示範保留，共145筆（117操作／28回應）；四筆解釋＋操作的問題保留，
-答案改為請使用者選擇先做哪一件，不示範部分執行。
-仍使用固定MiniLM、cosine准入及BM25排序、最多三例。最終prompt按同一份當前publication
-重新確認範例資格；不擴大tool、權限、confirmation或參數來源。
+目前共154筆：原145筆保留，另補7筆缺值／部分值追問及2筆補值／更正示範。
+解釋＋操作的四筆問題仍請使用者選擇先做哪一件，不示範部分執行。
+當前施工source使用固定MiniLM、獨立dense／BM25召回及RRF融合，最多三例；
+語料使用五欄提案與新mode名稱，索引schema為5，語料hash由`RAGConfig`固定，舊索引不可混用。
+兩筆多輪示範只保存一個`prior_turn`，經共用來源／schema驗證推導草稿，不信任手造pending。
+最終prompt按同一份當前publication
+重新確認範例資格，僅加入完整範例；不擴大tool、權限、confirmation或參數來源。
 細節由[目前架構](architecture/agent.md)擁有。此為source行為，不表示語料數量已證明
 模型收益、Stable promotion或正式論文效果；本輪比較與交付進度見[Now](planning/now.md)。
-已知cosine門檻會排除部分正確範例，BM25不能補回。獨立召回聯集候選已因真模型退步
-撤回；RAG品質尚未結案，不能把索引／生命週期驗證通過當作檢索與決策品質通過。
+舊dense候選池內重排無法補回cosine漏例；早先獨立召回聯集候選曾因真模型退步撤回，
+該歷史失敗保留，不等於本輪RRF已驗收。新准入的原分數門檻漏掉短句必要例；
+後續v2至少兩詞／IDF query覆蓋0.5規則仍漏掉長句必要例，另有dense分路候選超出
+預定相關集合；分路候選不等於最後送出的範例。新批准的v3對稱覆蓋與最終送例相關性
+gate已接入既有verifier；原24題文字／既有ID標註及v1／v2失敗證據保留，新範例主題標註
+另在觀測前固定。實際驗證尚不在此宣稱通過；契約由[Agent target](target/agent.md)
+擁有。檢索准入與模型收益分開判定，最新證據見[Now](planning/now.md)；模型收益與交付
+尚未成立，不能把檢索／索引／生命週期驗證當作整體品質通過。
 
 ### 共同工程基線：PR #147 已合併（2026-09-27） { #assistant-integration-baseline }
 
