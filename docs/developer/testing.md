@@ -240,7 +240,7 @@ timeout 30m prlimit --core=0 -- \
 故障；只用於bounded baseline比較。只有要判定Stable promotion時才加入`--strict`，canonical handoff
 registry也維持strict模式。
 
-目前v13 runner固定執行81個英文案例：36個positive、14個challenge、24個no-action precision與
+目前v14 runner固定執行81個英文案例：36個positive、14個challenge、24個no-action precision與
 7個controller-backed clarification trajectories。`case_summaries.core`、`precision`與`clarification`
 各自保留其分母，`case_summaries.total`只表示81-case inventory完整性；raw model、post-recovery diagnostic、
 Host safety、direct admission、product outcome與overall pass都位於獨立`candidate_gate`。Host block或format

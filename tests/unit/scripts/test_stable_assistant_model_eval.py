@@ -161,7 +161,7 @@ def test_product_rag_error_discards_context_but_healthy_empty_is_distinct() -> N
     assert healthy_empty.evidence_for(case).status == "empty"
 
 
-def _complete_v13_case_summaries() -> dict[str, dict[str, object]]:
+def _complete_v14_case_summaries() -> dict[str, dict[str, object]]:
     return {
         "core": {
             "expected_case_count": 50,
@@ -220,7 +220,7 @@ def _bounded_baseline_report() -> dict[str, object]:
         for row in json.loads(path.read_text(encoding="utf-8"))
     ]
     return {
-        "schema_version": "xbrainlab.stable_assistant_model_eval.v13",
+        "schema_version": "xbrainlab.stable_assistant_model_eval.v14",
         "model": {
             "id": BOUNDED_BASELINE_MODEL_ID,
             "revision": BOUNDED_BASELINE_MODEL_REVISION,
@@ -2134,7 +2134,7 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         complete=True,
     )
 
-    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v13"
+    assert report["schema_version"] == "xbrainlab.stable_assistant_model_eval.v14"
     assert report["generation_attempt_count"] == 0
     assert report["generation_trace"] == []
     assert report["suite_summary"]["positive"]["case_count"] == 36
@@ -2196,7 +2196,7 @@ def test_report_separates_raw_model_host_safety_and_product_outcomes() -> None:
         "complete",
     }
     assert report["candidate_gate"]["raw_model"]["passed"] is True
-    # Legacy rows without controller observations cannot satisfy the v13 gate.
+    # Legacy rows without controller observations cannot satisfy the v14 gate.
     assert report["candidate_gate"]["host_safety"]["passed"] is False
     assert report["candidate_gate"]["direct_host_admission"] == {
         "required": 5,
@@ -2470,31 +2470,31 @@ def test_partial_report_never_claims_the_suite_passed() -> None:
     }
 
 
-def test_candidate_consumer_rejects_old_scorers_and_accepts_only_v13_gate() -> None:
-    for old_version in (11, 12):
+def test_candidate_consumer_rejects_old_scorers_and_accepts_only_v14_gate() -> None:
+    for old_version in (11, 12, 13):
         assert not report_candidate_passed(
             {
                 "schema_version": f"xbrainlab.stable_assistant_model_eval.v{old_version}",
-                "case_summaries": _complete_v13_case_summaries(),
+                "case_summaries": _complete_v14_case_summaries(),
                 "candidate_gate": {"passed": True},
             }
         )
     assert (
         report_candidate_passed(
             {
-                "schema_version": "xbrainlab.stable_assistant_model_eval.v13",
-                "case_summaries": _complete_v13_case_summaries(),
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v14",
+                "case_summaries": _complete_v14_case_summaries(),
                 "candidate_gate": {"passed": True},
             }
         )
         is True
     )
-    summaries_with_leaked_aggregate = _complete_v13_case_summaries()
+    summaries_with_leaked_aggregate = _complete_v14_case_summaries()
     summaries_with_leaked_aggregate["total"]["passed"] = True
     assert (
         report_candidate_passed(
             {
-                "schema_version": "xbrainlab.stable_assistant_model_eval.v13",
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v14",
                 "case_summaries": summaries_with_leaked_aggregate,
                 "candidate_gate": {"passed": True},
             }
@@ -2810,8 +2810,8 @@ def test_main_records_actual_invocation_without_local_working_directory(
         evaluator,
         run_eval=MagicMock(
             return_value={
-                "schema_version": "xbrainlab.stable_assistant_model_eval.v13",
-                "case_summaries": _complete_v13_case_summaries(),
+                "schema_version": "xbrainlab.stable_assistant_model_eval.v14",
+                "case_summaries": _complete_v14_case_summaries(),
                 "candidate_gate": {"passed": True},
             }
         ),
@@ -2827,6 +2827,66 @@ def test_main_records_actual_invocation_without_local_working_directory(
     assert "bounded_baseline_gate" not in write_report.call_args.args[1]
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "I will leave the current workflow unchanged.",
+        "Would you like me to explain bandpass filtering or apply the filter first?",
+        "Bandpass filtering retains the selected frequency range.",
+    ],
+)
+def test_mixed_request_safety_does_not_claim_choose_first_semantics(message) -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    case = evaluator.PrecisionCase(
+        "rag_pair_bandpass_action",
+        "Explain bandpass filtering briefly, then filter this recording between 3 and 32 Hz.",
+        "data_loaded",
+        "mixed_request",
+        None,
+    )
+    response = json.dumps(
+        {"tool_name": "respond_to_user", "parameters": {"message": message}}
+    )
+    trajectory = evaluate_case_trajectory(
+        case, target_tool_registry(), lambda _: response
+    )
+    for score in (
+        trajectory.raw_score,
+        trajectory.post_recovery_score,
+        trajectory.final_score,
+    ):
+        assert not score.passed
+        assert score.failure_type == "semantic_review_required"
+        assert score.no_action_passed is True
+    assert trajectory.product_terminal["execution_boundary_reached"] is False
+    assert trajectory.product_terminal["confirmation_observed"] is False
+
+
+def test_mixed_request_rejects_partial_action() -> None:
+    from scripts.dev import run_stable_assistant_model_eval as evaluator
+
+    case = evaluator.PrecisionCase(
+        "rag_pair_bandpass_action",
+        "Explain bandpass filtering briefly, then filter this recording between 3 and 32 Hz.",
+        "data_loaded",
+        "mixed_request",
+        None,
+    )
+    response = json.dumps(
+        {
+            "tool_name": "apply_bandpass_filter",
+            "parameters": {"low_freq": 3, "high_freq": 32},
+        }
+    )
+    trajectory = evaluate_case_trajectory(
+        case, target_tool_registry(), lambda _: response
+    )
+    assert not trajectory.raw_score.passed
+    assert not trajectory.final_score.passed
+    assert trajectory.raw_score.failure_type == "unexpected_tool"
+
+
 def test_paired_no_action_oracles_reject_the_corresponding_action() -> None:
     from scripts.dev import run_stable_assistant_model_eval as evaluator
     from scripts.dev.verify_rag import load_paired_probes
@@ -2838,6 +2898,18 @@ def test_paired_no_action_oracles_reject_the_corresponding_action() -> None:
         for probe in probes
         if probe["expected_tool"] != "respond_to_user"
     }
+    actions.update(
+        {
+            "bandpass": {
+                "expected_tool": "apply_bandpass_filter",
+                "expected_parameters": {"low_freq": 3, "high_freq": 32},
+            },
+            "normalize": {
+                "expected_tool": "normalize_data",
+                "expected_parameters": {"method": "z-score"},
+            },
+        }
+    )
     for probe in probes:
         if probe["expected_tool"] != "respond_to_user":
             continue
@@ -2855,8 +2927,13 @@ def test_paired_no_action_oracles_reject_the_corresponding_action() -> None:
         safe = evaluate_case_trajectory(
             case, registry, lambda _messages, response=safe_response: response
         )
-        assert safe.raw_score.passed, probe["id"]
-        assert safe.final_score.passed, probe["id"]
+        if probe["category"] == "mixed_request":
+            assert not safe.raw_score.passed, probe["id"]
+            assert not safe.final_score.passed, probe["id"]
+            assert safe.final_score.no_action_passed is True
+        else:
+            assert safe.raw_score.passed, probe["id"]
+            assert safe.final_score.passed, probe["id"]
         action = actions[probe["pair_id"]]
         wrong_response = json.dumps(
             {
@@ -2941,7 +3018,7 @@ def test_comparison_cli_rejects_incomplete_or_missing_inventory(
     model_free_eval_cli, monkeypatch, mode, missing_inventory
 ) -> None:
     report = {
-        "case_summaries": _complete_v13_case_summaries(),
+        "case_summaries": _complete_v14_case_summaries(),
         "rag_paired_engineering": {"complete": True, "passed": False},
     }
     if missing_inventory == "incomplete_total":
@@ -2970,7 +3047,7 @@ def test_comparison_cli_keeps_completed_model_wrong_answers_successful(
     model_free_eval_cli, monkeypatch, capsys, mode, include_paired
 ) -> None:
     report = {
-        "case_summaries": _complete_v13_case_summaries(),
+        "case_summaries": _complete_v14_case_summaries(),
         "candidate_gate": {"passed": False},
     }
     argv = ["--rag-mode", mode]
@@ -2993,7 +3070,7 @@ def test_comparison_cli_preserves_unicode_report_on_cp950_console(
     model_free_eval_cli, monkeypatch, tmp_path
 ) -> None:
     report = {
-        "case_summaries": _complete_v13_case_summaries(),
+        "case_summaries": _complete_v14_case_summaries(),
         "candidate_gate": {"passed": False},
         "response": "Resample to 128\u202fHz. \u03b1 \U0001f9e0",
     }
@@ -3024,7 +3101,7 @@ def test_comparison_cli_saves_completed_report_before_broken_stdout(
     model_free_eval_cli, monkeypatch, tmp_path
 ) -> None:
     report = {
-        "case_summaries": _complete_v13_case_summaries(),
+        "case_summaries": _complete_v14_case_summaries(),
         "candidate_gate": {"passed": False},
     }
     monkeypatch.setattr(
@@ -3088,6 +3165,15 @@ def test_engineering_run_keeps_81_gate_separate_from_paired_24(
     assert paired["complete"] is True
     assert len({row["pair_id"] for row in paired["results"]}) == 12
     assert paired["passed"] is False  # Inventory completion never erases wrong answers.
+    assert paired["mixed_request_no_action_passed"] == 2
+    assert paired["semantic_review_pending"] == 2
+    mixed = [
+        row
+        for row in paired["results"]
+        if row["case"].get("category") == "mixed_request"
+    ]
+    assert all(row["score"]["passed"] is False for row in mixed)
+    assert all(row["response_requirement"] == "ask_which_to_do_first" for row in mixed)
     if mode == "off":
         assert report["rag_protocol"]["name"] == "product_rag_disabled.v1"
         assert report["rag_retrievals"] == []

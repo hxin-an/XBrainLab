@@ -1,6 +1,6 @@
 # XBrainLab Agent 目標
 
-最後更新：`2026-09-27`
+最後更新：`2026-09-28`
 
 這份文件是 XBrainLab Assistant 產品目標的唯一權威。Runtime inventory、目前測試集合與歷史
 artifact 只能描述 current implementation，不能反推本文件的產品契約。
@@ -21,6 +21,21 @@ autonomous planner。
 - 每個 user turn 最多一個 tool 或一個 `respond_to_user`；成功、blocked、取消或失敗都結束 turn。
 - GUI decision 由既有 dialog／panel 的使用者操作完成；模型不代填高影響選項。
 - tool result 直接使用 trusted backend／UI public result，不再交給 Granite 改寫。
+
+### 單次決策的需求邊界（2026-09-28 確認）
+
+- 明確、可用且參數完整的單一操作：提出該 exact action，沿用後端驗證與 confirmation。
+- 純概念／使用方式詢問或明確禁止操作：使用 `respond_to_user`，不產生操作。
+- 操作目前不可用：說明同一 publication 的真正 blocker，不代做前置或替代操作。
+- 「處理資料」「做 filter」等尚未確定操作種類的要求：先詢問，不自行選工具。
+- 種類已確定但必要參數不足：詢問缺少值；direct-preprocess 沿用既有 bounded collection，
+  不從範例複製數值，也不擴張其他 GUI tools 的參數契約。
+- 同一要求包含概念解釋＋操作，或多個操作：請使用者選擇先做哪一件，本回合不部分執行。
+  操作後的 trusted terminal 訊息不是第二次模型解釋，也不啟動 autonomous continuation。
+
+這是批准目標，不代表目前 prompt／corpus／scorer 已全部對齊。遷移須同時處理範例與
+驗收預期，保留原題與歷史 raw／分數身分；不能把「只操作」評為已完成解釋＋操作，
+也不能把更正評分規則宣稱模型能力提升。
 
 ## Local model selection contract
 
@@ -208,6 +223,12 @@ publication產生。若 publication generation 在生成、repair、confirmation
 
 ## Strict model output contract
 
+2026-09-28 後續決策允許必要時受控回退下述兩欄遷移，以實測決定整合基線；此授權不是
+已採用三欄的宣告。未完成比較前，下述兩欄仍是 current implementation；採用回退時須
+同步更新本契約、parser／prompt／corpus consumer／scorer，只保留一種正式輸出契約。
+Backend publication／generation 始終是 authority，不因模型是否回填 stage 而轉移；
+不得以回退為由建立雙格式 fallback 或重寫歷史 evidence。
+
 2026-09-28 使用者批准：每個受支援模型每次只能提出一個 JSON object，且 top level
 恰有兩個欄位。模型不再回填 `workflow_stage`：
 
@@ -366,13 +387,19 @@ command policy或fake backend。
 
 ## Candidate validation與claims
 
+RAG 工程完成與整合 candidate 通過分開判定。前者要求範例契約、檢索資格、生命週期與
+可追溯性可靠，不要求找到特定模型／提示組合的最佳準確率；不豁免下列整合 gates。
+現有 corpus 規模、top-k、threshold 與 hybrid 權重是可重現候選設定，不是永久最佳值。
+後續 Development 先固定其餘組件，再於重要模型／prompt／工具呈現變更時按假設比較
+RAG 開關或原／候選組合；不以正式 Test 選設定，不新增第二套實驗 runner。
+
 Engineering candidate的active suite固定為81個英文cases：36個positive cases（18個target tool各2個）、
 14個challenge、24個no-action precision與7個controller-backed clarification trajectories。Challenge必須包含
 五個missing-parameter、跨stage lifecycle、out-of-stage、general、ambiguous與multi-mutation；raw score保留
 用來暴露選定模型限制，不把Host拒絕冒充raw-model accuracy。中文intent／verifier可作未承諾相容基礎，
 不屬於active evidence。Candidate gates把raw model、Host safety與product outcome分開報告：
 
-Evaluator v13 保留第一次未受 Host collection／recovery 影響的 raw score，另將 post-recovery score 只作
+Evaluator v14 保留第一次未受 Host collection／recovery 影響的 raw score，另將 post-recovery score 只作
 diagnostic；candidate raw-model gate 只讀第一次 generation。candidate 判定仍必須走與產品相同的
 structured-decision token resolver、strict parser 及最多一次一般 format recovery（2026-09-21
 共同預算；舊兩次上限的 evidence 保留原身分）；proven
@@ -381,8 +408,12 @@ adjacent-complete-object multiple proposal 是直接 Host choose-one terminal，
 outcome 才是 product score。format
 recovery 只修 envelope，不得把 semantic tool-selection failure 重分類為通過。
 
-v13 report 固定保留 81 個英文 case（36 positive、14 challenge、24 precision、7 clarification）的
+v14 report 固定保留 81 個英文 case（36 positive、14 challenge、24 precision、7 clarification）的
 denominator、case identity 與既有 raw gate；不得用新增 Host rescue、替換 case 或降低 required count 改善分數。
+另列的 24 個 paired engineering probes 保留原問題與 ID；兩個解釋＋操作案例依已批准契約
+改為先選一件。v14 將可觀測的 `no_action_passed` 與 `semantic_review_required` 分開：
+未驗證回覆是否真的詢問先做哪件時，不計成功，也不把 pending 當已確認的模型語意錯誤。
+實際回覆另做語意覆核，不覆寫機器報告／歷史分數，不與旧契約下的 paired 總分直接比進步。
 每個 row 必須以同一 controller/pending boundary 依序記錄：
 
 1. first raw model response、strict-envelope taxonomy 與 raw score；

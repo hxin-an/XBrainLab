@@ -125,6 +125,22 @@ def test_paired_probes_are_separate_independent_and_stage_legal() -> None:
         )
 
 
+def test_mixed_paired_probes_require_choose_first_without_partial_execution() -> None:
+    mixed = [
+        case
+        for case in verify_rag.load_paired_probes()
+        if case["category"] == "mixed_request"
+    ]
+    assert {case["id"] for case in mixed} == {
+        "rag_pair_bandpass_action",
+        "rag_pair_normalize_action",
+    }
+    for case in mixed:
+        assert case["expected_tool"] == "respond_to_user"
+        assert case["expected_parameters"] == {}
+        assert case["response_requirement"] == "ask_which_to_do_first"
+
+
 def test_empty_tool_name_cannot_hide_beside_a_valid_hit() -> None:
     result = verify_rag.evaluate_probe_context(
         _combine_contexts("start_training", ""),

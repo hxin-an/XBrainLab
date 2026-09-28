@@ -1,6 +1,6 @@
 # Agent 目前架構
 
-最後更新：`2026-09-27`
+最後更新：`2026-09-28`
 
 ## 範圍
 
@@ -215,8 +215,10 @@ Prompt history只保留最新user訊息與最多一則Assistant-visible訊息。
 proposal與diagnostic trace由producer標記為history的`internal` role，不進模型訊息；來源不由
 `System:`／`Tool Output:`前綴或JSON形狀推論，真人與可見Assistant內容仍保留為資料。
 該內部role不輸出給chat template；既有untrusted-context隔離與redaction保持。
-Bundled gold set目前有145個英文示範：121個操作示範涵蓋18個approved tools，另24個
-`respond_to_user`示範涵蓋概念詢問、只要說明、明確禁止操作與無法辨識的外部指涉。
+Bundled gold set目前有145個英文示範：117個操作示範涵蓋18個approved tools，另28個
+`respond_to_user`示範涵蓋概念詢問、只要說明、明確禁止操作、無法辨識的外部指涉，
+以及解釋＋操作先選一件。後者四筆保留原問題與ID，只修正不符合單次決策契約的答案；
+prompt policy同步要求先選擇，不提供第二次模型生成或部分執行。
 原72個操作示範保持內容，新增案例補參數與相鄰操作差異，不以長句改寫取代既有詞彙覆蓋。
 它們是retrieval corpus，不是驗收題庫，也不代表已證明模型準確率改善。
 

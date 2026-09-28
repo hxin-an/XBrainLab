@@ -95,7 +95,7 @@ DEFAULT_PRECISION_CASES = (
 DEFAULT_CLARIFICATION_CASES = (
     ROOT / "scripts" / "dev" / "stable_assistant_clarification_cases.json"
 )
-REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v13"
+REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v14"
 PRECISION_CASE_COUNT = 24
 CLARIFICATION_CASE_COUNT = 7
 BOUNDED_BASELINE_FAILURE_CASE_IDS = frozenset(
@@ -209,6 +209,28 @@ class TargetEvalScore:
     parsed_parameters: dict[str, Any] | None
     detail: str
     product_outcome: PrecisionProductOutcome | None = None
+    no_action_passed: bool | None = None
+
+
+def _mixed_request_semantic_review(
+    case: PrecisionCase, score: TargetEvalScore
+) -> TargetEvalScore:
+    """Separate observable no-action behavior from unscored choose-first meaning."""
+    if case.category != "mixed_request":
+        return score
+    if not score.passed:
+        return replace(score, no_action_passed=False)
+    return replace(
+        score,
+        passed=False,
+        failure_type="semantic_review_required",
+        no_action_passed=True,
+        detail=(
+            "No-action check passed; whether the response asks which requested task "
+            "to do first requires semantic review. passed=False means unverified, "
+            "not a confirmed semantic error."
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1830,18 +1852,21 @@ def score_precision_response(
     if envelope.status is ToolEnvelopeStatus.NO_TOOL:
         message = envelope.message
         passed = _valid_precision_message(message)
-        return TargetEvalScore(
-            passed,
-            "none" if passed else "response_content",
-            response[:1000],
-            "respond_to_user",
-            {"message": message},
-            (
-                "Exact no-execution response selected."
-                if passed
-                else "No-action response had an empty message or false completion claim."
+        return _mixed_request_semantic_review(
+            case,
+            TargetEvalScore(
+                passed,
+                "none" if passed else "response_content",
+                response[:1000],
+                "respond_to_user",
+                {"message": message},
+                (
+                    "Exact no-execution response selected."
+                    if passed
+                    else "No-action response had an empty message or false completion claim."
+                ),
+                PrecisionProductOutcome("respond", message),
             ),
-            PrecisionProductOutcome("respond", message),
         )
 
     tool_name, parameters = envelope.commands[0]
@@ -1977,16 +2002,19 @@ def score_raw_precision_response(
                 for group in concepts
             )
         )
-    return TargetEvalScore(
-        passed,
-        "none" if passed else "response_content",
-        response[:1000],
-        "respond_to_user",
-        {"message": message},
-        (
-            "Model selected a valid no-action response."
-            if passed
-            else "Model did not provide the case-required no-action response."
+    return _mixed_request_semantic_review(
+        case,
+        TargetEvalScore(
+            passed,
+            "none" if passed else "response_content",
+            response[:1000],
+            "respond_to_user",
+            {"message": message},
+            (
+                "Model selected a valid no-action response."
+                if passed
+                else "Model did not provide the case-required no-action response."
+            ),
         ),
     )
 
@@ -2057,31 +2085,36 @@ def _score_precision_controller_terminal(
         )
     )
     failure_type = baseline.failure_type
-    if not passed and failure_type == "none":
+    if not passed and failure_type in {"none", "semantic_review_required"}:
         failure_type = (
             "format_recovery_exhausted"
             if kind == "format_recovery_exhausted"
             else "controller_terminal"
         )
-    return TargetEvalScore(
-        passed,
-        "none" if passed else failure_type,
-        baseline.response,
-        baseline.parsed_tool,
-        baseline.parsed_parameters,
-        (
-            "Controller replay reached the required no-action terminal."
-            if passed
-            else "Controller replay did not reach the required safe terminal."
-        ),
-        PrecisionProductOutcome(
-            disposition=kind,
-            message=terminal["message"],
-            confirmation_requested=bool(terminal["confirmation_observed"]),
-            gui_handoff_permitted=bool(terminal["gui_handoff_reached"]),
-            application_service_permitted=bool(terminal["application_service_called"]),
-            tool_executor_permitted=bool(terminal["tool_executor_called"]),
-            state_mutation_permitted=bool(terminal["state_mutation_observed"]),
+    return _mixed_request_semantic_review(
+        case,
+        TargetEvalScore(
+            passed,
+            "none" if passed else failure_type,
+            baseline.response,
+            baseline.parsed_tool,
+            baseline.parsed_parameters,
+            (
+                "Controller replay reached the required no-action terminal."
+                if passed
+                else "Controller replay did not reach the required safe terminal."
+            ),
+            PrecisionProductOutcome(
+                disposition=kind,
+                message=terminal["message"],
+                confirmation_requested=bool(terminal["confirmation_observed"]),
+                gui_handoff_permitted=bool(terminal["gui_handoff_reached"]),
+                application_service_permitted=bool(
+                    terminal["application_service_called"]
+                ),
+                tool_executor_permitted=bool(terminal["tool_executor_called"]),
+                state_mutation_permitted=bool(terminal["state_mutation_observed"]),
+            ),
         ),
     )
 
@@ -3273,20 +3306,33 @@ def _build_report(
             "final_passed": sum(
                 bool(row["score"]["passed"]) for row in engineering_results
             ),
+            "mixed_request_no_action_passed": sum(
+                row["score"].get("no_action_passed") is True
+                for row in engineering_results
+                if row["case"].get("category") == "mixed_request"
+            ),
+            "semantic_review_pending": sum(
+                row["score"]["failure_type"] == "semantic_review_required"
+                for row in engineering_results
+            ),
             "passed": complete
             and len(engineering_results) == 24
             and all(row["score"]["passed"] for row in engineering_results),
             "results": engineering_results,
             "claim_boundary": (
                 "Separate public engineering pairs, not part of the frozen 81-case gate "
-                "or a held-out thesis score. Controller admission is not actual GUI execution."
+                "or a held-out thesis score. Controller admission is not actual GUI execution. "
+                "Mixed requests require a choose-first question without partial execution. "
+                "A safe no-action response remains semantic_review_required and is excluded "
+                "from successes, retained in the denominator, and is not a confirmed error. "
+                "Review actual responses separately; do not rewrite raw reports or old scores."
             ),
         }
     return report
 
 
 def report_candidate_passed(report: object) -> bool:
-    """Read only the v13 candidate gate; legacy report shapes fail closed."""
+    """Read only the current candidate gate; legacy report shapes fail closed."""
     if not isinstance(report, dict) or report.get("schema_version") != REPORT_SCHEMA:
         return False
     candidate_gate = report.get("candidate_gate")
@@ -3848,6 +3894,10 @@ def run_eval(
             }
             if engineering_results is not None and case.case_id in engineering_by_id:
                 row["pair_id"] = engineering_by_id[case.case_id]["pair_id"]
+                if "response_requirement" in engineering_by_id[case.case_id]:
+                    row["response_requirement"] = engineering_by_id[case.case_id][
+                        "response_requirement"
+                    ]
                 engineering_results.append(row)
             else:
                 results.append(row)

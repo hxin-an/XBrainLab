@@ -976,27 +976,27 @@
   },
   {
     "id": "apply_bandpass_filter_09",
-    "category": "preprocess",
+    "category": "response_compound_request",
     "input": "Briefly explain bandpass filtering, then apply a bandpass from 2 to 35 Hz.",
-    "expected_tool_calls": [{"tool_name": "apply_bandpass_filter", "parameters": {"low_freq": 2, "high_freq": 35}}]
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "I can explain bandpass filtering or apply the 2 to 35 Hz filter, one at a time. Which would you like first?"}}]
   },
   {
     "id": "apply_notch_filter_09",
-    "category": "preprocess",
+    "category": "response_compound_request",
     "input": "Why is a notch filter used for mains interference? Please also apply a 60 Hz notch filter.",
-    "expected_tool_calls": [{"tool_name": "apply_notch_filter", "parameters": {"freq": 60}}]
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Would you like the explanation of notch filtering or the 60 Hz filter applied first? I can handle one request at a time."}}]
   },
   {
     "id": "resample_data_08",
-    "category": "preprocess",
+    "category": "response_compound_request",
     "input": "I would like to understand resampling. Resample the EEG to 200 Hz as well.",
-    "expected_tool_calls": [{"tool_name": "resample_data", "parameters": {"rate": 200}}]
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "Should I explain resampling or resample the EEG to 200 Hz first? I can do one of these per request."}}]
   },
   {
     "id": "normalize_data_08",
-    "category": "preprocess",
+    "category": "response_compound_request",
     "input": "Tell me what min-max normalization does, and normalize the EEG with min-max.",
-    "expected_tool_calls": [{"tool_name": "normalize_data", "parameters": {"method": "min-max"}}]
+    "expected_tool_calls": [{"tool_name": "respond_to_user", "parameters": {"message": "I can explain min-max normalization or apply it to the EEG. Which would you like me to do first?"}}]
   },
   {
     "id": "respond_concept_01",

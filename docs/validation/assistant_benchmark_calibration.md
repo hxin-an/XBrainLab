@@ -19,7 +19,9 @@ GUI-opening Action 各有一正一反例。另有 focused tests 變更觀察欄�
 案例的 `source` 必須是 `agent_authored_calibration`，不能標成人寫的 seed。
 這些案例不是完整工具覆蓋、真實 EEG 操作或真模型軌跡。
 
-`run_stable_assistant_model_eval.py` 現為v13，frozen 81 cases的題意與原gate用途不變。
+`run_stable_assistant_model_eval.py` 現為v14，frozen 81 cases的題意與原gate用途不變。
+另列 paired probes 的解釋＋操作改按單次決策契約要求先選一件；安全不操作與待語意覆核
+分開報告，不能靠合法 response 就判整題成功，也不回算歷史 paired 分數。
 2026-09-28核准移除model stage echo；新版raw決策只評兩欄envelope，stage保留為backend情境。
 本校準資料升為v2以表達相同契約遷移，舊v1／v12 raw evidence不重寫、不用新版scorer冒充舊成績。
 `main@73acb83a` 盤點時，81 題中的 23 個第一輪輸入與 RAG gold 的輸入在空白／大小寫正規化後

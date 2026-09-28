@@ -2,23 +2,84 @@
 
 最後更新：`2026-09-28`
 
-## Active — RAG 部件完整打磨，完成獨立覆核後一次集中手測
+## Active — 收尾 RAG 工程品質，建立可重現的 Assistant 整合基線
 
 2026-09-27 使用者批准實作：先把 RAG 作為完整部件整理，再往下一部件推進。
 起點 main `a5f57a15`；單一 task branch `fix/rag-component-baseline`，不更動使用者
 `settings.json`、共用環境／模型、正式研究題庫或既有結果。這一輪包含 product、tests、scripts、
 corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測試通過當成完成。
 
-**目前狀態（優先於下方歷史Next）**：使用者最新授權離席後持續施工，直到RAG可集中手測，
-並準備後續Agent架構討論；下述需決策checkpoint已恢復施工，不因CI／compaction停止。
-**目前阻擋**：f329f3c9全部適用CI與Windows四步真模型journey已通過，但兩欄契約新增
-語意退步仍未閉合。兩個有界呈現方案均被真模型／獨立覆核否決，沒有採用、沒有降低gate。
-已用非同步問題請使用者決定是否允許必要時回退已批准、但實測退步的輸出／提示契約；
-尚未收到答覆，不把離席或預選選項當成批准。需要新契約取捨才繼續，不能把此版本交作完成手測。
-沿用兩欄已批准契約及不改UI功能的邊界，先處理15e新增語意退步／mixed-request缺口，
-以及直接阻擋產品驗證的import busy還原競態。後者僅恢復既定按鈕可用性與取消保護，
-不改layout／文案／工具membership。先以既有失敗作baseline，按責任做一個有依據的
-prompt／RAG呈現修理，不增router／模型／語料同義句、不使用sealed題庫或修改oracle。
+### 最新決策與唯一續作入口（2026-09-28）
+
+使用者確認：這輪先建立可靠共同基線，不追求讓 RAG 適配當前所有組件的最高分；
+基線通過後再逐個打磨工具說明／決策提示、追問／上下文，於 Development 驗證組合效果。
+產品行為以 [Agent target](../target/agent.md) 的單次決策規則為準。解釋＋操作不再以
+「只執行操作」當完整成功；模糊要求先確認種類、缺參數不猜、不可用操作不代做前置步驟。
+使用者同意必要時受控回退已實測退步的兩欄輸出／提示遷移；不是自動認定三欄有效，
+也不授權雙格式相容、改模型、放寬後端保護或合併 PR。這次先固化文件，尚未修改產品。
+
+**問題與證據**：f329f3c9 的適用 CI／Windows 四步 journey 通過，但不等於整合基線過關。
+15e 模型報告的新增不可用 split／training-settings 誤選尚未解決；既有產品 gate 仍是
+no-action 23/24、clarification 6/7。前者的 `ambiguous_en` 將「process this EEG data」
+自行解讀為 select_channels，已抵達被 harness 抑制的執行邊界；後者
+`generic_filter_selection` 曾提出無來源的 1–40 Hz，Host 擋住卻未完成必要追問軌跡。
+這兩項與 paired probes 的模糊 import／解釋＋操作案例不同，不混成同一失敗。
+
+**Outcome／scope**：保留有效 RAG 結構整理與 import busy 修理，收尾語料契約、檢索資格、
+生命週期及可追溯性；依責任修理上述整合阻擋，再一次交 Windows 手測。
+假設是整體準確率受多組件交互影響；不宣稱輸出 stage 是必要推理機制，或回退能修好全部問題。
+不增加 router、planner、模型、permission owner、第二套 evaluator 或通用實驗平台。
+暫停擴充同義句、調權重／門檻／top-k；145 筆現有語料可作契約一致性修正，不是固定最佳值。
+UI 確認：沿用已確認的 layout／工具／confirmation；此次批准混合要求先選一件的回應語意，
+不新增視窗或多步執行。使用者 settings、共享環境、sealed 題庫與歷史 raw/report 不動。
+
+**施工順序與 focused validation**：
+
+1. 先對齊已批准的單次決策：target → 語料／prompt → oracle／tests；獨立覆核預期是否符合
+   產品承諾，包含四筆解釋＋操作示範及 paired cases。保留題目及歷史結果，新版契約／scorer
+   另記身分；不能刪難題、重標舊分數或把規則更正宣稱準確率提高。
+2. 固定其他變因，受控比較輸出／提示遷移的回退。先驗真 parser、publication／stale、
+   confirmation、參數來源及一次執行；再以同契約、同題意的完整模型比較逐筆確認。
+   歷史 785c 只作參考，不冒充新規則下的 contemporaneous control；採用與否依新證據。
+3. 在選定契約上處理模糊要求與 generic-filter 追問缺口，先重現再修理其真正 owner；
+   不把後端安全拒絕當模型答對，也不以新增 RAG 範例替代決策／追問責任。
+4. 凍結整合 source，跑適用 focused／完整模型 gate、RAG 開關與必要 ranking 對照、
+   同版本 CI、Windows 真操作與獨立覆核；通過後開程式及一個 PowerShell log，集中手測。
+   不每個切片要求手測，不自動 merge。對照重用現有 runner，不做全因子暴力搜尋。
+
+**完成層級／stop condition**：RAG 部件完成指契約、檢索、生命週期及直接證據可靠；
+整合 handoff 仍須必要產品 gate 通過且沒有未處理的新增退步，不以「部件完成」豁免。
+最佳組合留給後續 Development／Validation；重要組件變更時才做原／新組件 × 原／候選
+RAG 的有界交叉比較，正式 Test 不參與選擇。若有界修理仍無法達標，保留失敗並提出具體
+取捨，不無限加例／改 prompt 或默認放寬 gate。
+
+**本次施工界線（使用者追加確認）**：先做到 RAG 部件收尾，再討論下一個組件。此次實作
+步驟 1 的契約／語料／評分對齊及 RAG 檢索／索引／生命週期直接驗證、獨立覆核；
+不自動開始步驟 2–3 的輸出回退或追問修理，不把部件結案冒稱整合 handoff-ready。
+寫入分工：主 agent 負責 corpus、prompt 的既有單次決策規則、直接產品測試及 canonical docs；
+評分 slice 負責 paired probes／runner 身分及正反例測試；独立 reviewer 檢查未改 RAG owner、
+取消／publication／cache 與 evidence 充分性。維持 owner 數，不新增 parser／compatibility／控制層。
+刪除候選是四筆 mixed-request 示範中錯誤的操作答案及 paired 舊期望，不刪題目或歷史 evidence。
+Rollback 以本 slice source／corpus／scorer 一起回退；既有 settings 與失敗產物不動。
+先建立新規則的 RED，再修 corpus／prompt／scorer；跑同測試及必要鄰接、真 offline retrieval、
+版本／來源核對。若改動 prompt，真模型工程診斷仍需記錄，不用其結果追分或宣称整合過關。
+RAG 部件完成後回報實際驗證、未解整合缺口及下一個建議議題，依最新要求先討論再施工。
+
+**進度／Next**：四筆 corpus 錯誤操作答案及缺少 prompt 規則先 RED（5 failures），修正後
+RAG／context／process lifecycle 190、controller RAG 7 通過；scorer 另先 RED，相關 131 通過。
+維持145問題／ID，現為117操作＋28回答；paired 24題只改兩個 mixed-request 期望，問題不動。
+Evaluator v14 將安全不操作與待語意覆核分開，舊 raw／report 不改。獨立 source／語料／測試
+覆核無 blocker。真 offline hybrid 新隔離索引145 points、12 checks 通過、Top-3 34/36；
+source 當時為 dirty，report如實記錄，不冒充 clean commit。使用既有 D 槽 pinned embedding，
+沒有下載或修改共享模型，重用既有 cache helper 隔離 vectors。下一步凍結 source，跑一次
+完整105題真模型工程診斷並覆核實際回覆；這不是整合 promotion，也不按結果無限追分。
+回退授權已解除，但是否啟動回退比較留待下一組件。產品仍為兩欄，尚無本次新模型成績。
+
+### 歷史施工與失敗證據（保留溯源，不作續作指令）
+
+以下為最新決策前的實作／診斷紀錄；其中舊 Next、等待批准及 mixed-request 評分假設
+均由上節取代，不重寫原實驗成績。
+
 曾選定並已否決的候選：以既有publication-filtered contracts生成單一兩欄JSON Schema，
 互斥alternatives重用各工具參數與response schema；blocked reason另置於schema外。
 取代混合catalog與重複輸出形狀，不新增permission owner／constrained decoder。
@@ -57,7 +118,8 @@ f329產品版最終證據：回退後context／真command111及evaluator109通�
 `rag-f329-native/journey.json`四步通過，source／隔離設定／EDF不變，0 owned workers/subprocesses，
 未修改root settings或使用者per-user設定。這不覆蓋模型誤選、不等於Stable或手測候選。
 後續Agent討論已核對三個真正產品決策：解釋＋單一操作的完成語意、clarification支援邊界、
-對話指涉／歷史範圍；不先加planner或第二套控制層。當前先等待上述契約回退授權，未merge。
+對話指涉／歷史範圍；不先加planner或第二套控制層。當時等待契約回退授權，未merge；
+現行授權與續作順序見本節開頭。
 
 **前一checkpoint**：兩欄契約已實作，但15e06744真模型驗證仍有新增
 語意退步，獨立覆核不批准non-regression／交付。需要決定暫緩此遷移，或明確接受新增限制；

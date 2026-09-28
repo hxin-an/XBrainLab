@@ -31,7 +31,7 @@ DEFAULT_ARTIFACT = ROOT / "build" / "dev-artifacts" / "rag-offline.json"
 PROBE_PATH = Path(__file__).with_name("rag_verification_probes.json")
 PROBE_SHA256 = "d4222a3e1595db23d45622ec0b29348e65482c0cb7eb3c3cb4bf880ad2d96822"  # pragma: allowlist secret
 PAIRED_PROBE_PATH = Path(__file__).with_name("rag_paired_probes.json")
-PAIRED_PROBE_SHA256 = "1efaa1d9c8c354f61e91bd619ef512b8277634aa7ae1f60fbf3b9f6f95dc6b40"  # pragma: allowlist secret
+PAIRED_PROBE_SHA256 = "bd9608f783c9ef9d534153bf0e6135c249ae9c989546a6db3124f0a6e88c3f5e"  # pragma: allowlist secret
 _ALLOWED_GIT_ARGUMENTS = frozenset(
     {
         ("rev-parse", "--show-toplevel"),
@@ -118,12 +118,19 @@ def load_paired_probes() -> list[dict[str, Any]]:
                 for case in cases
                 if case["pair_id"] == pair
             )
-            != 1
+            != (2 if pair in {"bandpass", "normalize"} else 1)
             for pair in pairs
+        )
+        or any(
+            case["expected_tool"] != "respond_to_user"
+            or case["expected_parameters"] != {}
+            or case.get("response_requirement") != "ask_which_to_do_first"
+            for case in cases
+            if case["category"] == "mixed_request"
         )
     ):
         raise ValueError(
-            "RAG engineering probes must retain twelve action/response pairs."
+            "RAG engineering probes must retain twelve pairs, including two mixed requests requiring a choose-first response."
         )
     return cases
 

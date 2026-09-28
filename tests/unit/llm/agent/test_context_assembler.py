@@ -112,6 +112,26 @@ def test_format_recovery_is_fixed_system_policy_not_untrusted_context() -> None:
     )
 
 
+def test_compound_request_rule_is_published_even_without_rag() -> None:
+    """Check contract delivery, not whether the model follows the instruction."""
+    assembler = ContextAssembler(ToolRegistry(), Study())
+    request = "Explain normalization, then normalize my data."
+
+    messages = assembler.get_generation_request(
+        [{"role": "user", "content": request}]
+    ).to_model_messages()
+
+    assert (
+        "If asked for an explanation and an action, or multiple actions"
+        in (messages[0]["content"])
+    )
+    assert "ask which to do first; do not partially execute" in messages[0]["content"]
+    assert messages[-1] == {"role": "user", "content": request}
+    assert not any(
+        item["type"] == "rag_example" for item in _untrusted_context(messages)["items"]
+    )
+
+
 def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> None:
     assembler = ContextAssembler(ToolRegistry(), Study())
     assembler.add_context(

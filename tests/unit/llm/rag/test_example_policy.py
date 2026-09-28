@@ -8,6 +8,7 @@ import pytest
 
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
 from XBrainLab.llm.agent.decision_contract import MODEL_RESPONSE_TOOL_NAME
+from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 from XBrainLab.llm.rag.bm25 import BM25Index
 from XBrainLab.llm.rag.example_policy import (
     is_primary_workflow_example,
@@ -163,6 +164,32 @@ def test_bundled_corpus_preserves_action_coverage_and_response_examples() -> Non
     assert counts[MODEL_RESPONSE_TOOL_NAME] >= 12
     assert len({item["id"] for item in items}) == len(items)
     assert len({item["input"].strip().casefold() for item in items}) == len(items)
+
+
+@pytest.mark.parametrize(
+    "example_id",
+    [
+        "apply_bandpass_filter_09",
+        "apply_notch_filter_09",
+        "resample_data_08",
+        "normalize_data_08",
+    ],
+)
+def test_compound_requests_teach_a_choice_not_partial_execution(example_id) -> None:
+    """Protect the four reviewed answers, not model comprehension of the rule."""
+    items = json.loads(_GOLD_SET_PATH.read_text(encoding="utf-8"))
+    example = next(item for item in items if item["id"] == example_id)
+    decision = prompt_tool_call_from_metadata(
+        {"tool_calls": example["expected_tool_calls"]}
+    )
+
+    assert decision is not None
+    result = CommandParser.parse_product(json.dumps(decision))
+    assert result.status is ToolEnvelopeStatus.NO_TOOL
+    assert not result.commands
+    assert set(decision["parameters"]) == {"message"}
+    assert "first" in result.message and "?" in result.message
+    assert example["category"] == "response_compound_request"
 
 
 def test_bm25_indexes_only_target_examples() -> None:
