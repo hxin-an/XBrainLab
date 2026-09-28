@@ -22,28 +22,7 @@ def case(decision="Action", tool="resample_data", parameters=None):
 
 def response(tool="resample_data", parameters=None, stage=None):
     parameters = {"rate": 128} if parameters is None else parameters
-    if tool == "respond_to_user":
-        action = parameters.get("action")
-        payload = {
-            "decision": "clarify" if action else "reply",
-            "mode": ("new_request" if action else None),
-            "action": (action if action else None),
-            "changes": {},
-            "message": parameters.get("message"),
-        }
-        if set(parameters) - {"message", "action"}:
-            payload["extra"] = 1
-    else:
-        payload = {
-            "decision": "execute",
-            "mode": "new_request",
-            "action": tool,
-            "changes": {
-                key: {"value": value, "source_turn": "U1", "quote": str(value)}
-                for key, value in parameters.items()
-            },
-            "message": None,
-        }
+    payload = {"tool_name": tool, "parameters": parameters}
     return json.dumps(
         {
             **({"workflow_stage": stage} if stage is not None else {}),
@@ -69,21 +48,16 @@ def test_proposal_scores_without_fabricating_model_stage_or_source_admission():
 
 
 def test_retired_nested_wire_is_not_silently_rescored_as_flat():
-    payload = json.loads(response())
     nested = {
-        "decision": payload["decision"],
-        "request": {
-            "mode": "replace",
-            "action": payload["action"],
-            "changes": payload["changes"],
-        },
-        "message": payload["message"],
+        "decision": "execute",
+        "request": {"mode": "replace", "action": "resample_data", "changes": {}},
+        "message": None,
     }
     assert score_decision(case(), json.dumps(nested))["reason"] == "invalid_envelope"
 
 
 def test_legacy_envelope_is_not_silently_rescored_as_current_contract():
-    raw = '{"tool_name":"resample_data","parameters":{"rate":128}}'
+    raw = '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{"rate":128}}'
     assert score_decision(case(), raw)["reason"] == "invalid_envelope"
 
 
@@ -92,7 +66,7 @@ def test_standalone_scorer_does_not_treat_continuation_changes_as_complete_param
     payload["mode"] = "update_pending"
     result = score_decision(case(), json.dumps(payload), explain=True)
     assert result["correct"] is False
-    assert result["reason"] == "unsupported_request_context"
+    assert result["reason"] == "invalid_envelope"
 
 
 def test_numeric_values_match_without_coercing_strings_or_booleans():
@@ -190,7 +164,7 @@ def test_optional_structured_pending_is_not_a_new_semantic_oracle(decision):
             "action": "resample_data",
         },
     )
-    assert score_decision(non_action(decision), raw)["correct"] is True
+    assert score_decision(non_action(decision), raw)["correct"] is False
 
 
 def test_retired_stage_echo_is_invalid_not_a_measurement_exception():
@@ -260,7 +234,7 @@ def test_clarification_validates_partial_changes_without_requiring_missing_value
     payload = json.loads(response(pending, changes))
     payload.update(decision="clarify", message="Please provide the value.")
     raw = json.dumps(payload)
-    assert score_decision(oracle, raw)["correct"] is True
+    assert score_decision(oracle, raw)["correct"] is False
 
 
 @pytest.mark.parametrize("changes", [{"low_freq": "7"}, {"invented": 7}])
@@ -352,7 +326,7 @@ def complete_trace(raws, *, last_phase="finished", outcome="completed"):
         phase = last_phase if number == len(raws) else "finished"
         request = {
             "generation_id": number,
-            "response_contract": "assistant_proposal.v2",
+            "response_contract": "assistant_tool_response.v1",
             "messages": [[["role", "user"], ["content", "User request"]]],
         }
         generations.append(
@@ -420,9 +394,9 @@ def test_continuation_needs_a_trajectory_scorer_and_is_not_a_measured_failure():
     payload = json.loads(response())
     payload["mode"] = "update_pending"
     score = score_case_decisions(case(), complete_trace([json.dumps(payload)]))
-    assert score["measurement_valid"] is False
-    assert score["final_decision_correct"] is None
-    assert "unsupported_request_context:1" in score["measurement_issues"]
+    assert score["measurement_valid"] is True
+    assert score["final_decision_correct"] is False
+    assert score["attempt_decisions"][0]["reason"] == "invalid_envelope"
     assert score["source_validation"] == "not_evaluated"
 
 
@@ -504,7 +478,7 @@ def test_frozen_repair_policy_controls_measured_generation_budget(limit):
     result = score_case_decisions(case(), trace, max_format_recovery_attempts=limit)
     assert result["measurement_valid"] is True
     assert result["final_decision_correct"] is True
-    assert result["scorer_schema"] == "xbrainlab.assistant_decision_scores.v5"
+    assert result["scorer_schema"] == "xbrainlab.assistant_decision_scores.v6"
     assert result["max_format_recovery_attempts"] == limit
     excess = score_case_decisions(
         case(),
@@ -528,7 +502,7 @@ def test_new_score_explains_parameter_mismatch_without_changing_legacy_decision(
     trace = complete_trace([response(parameters={"rate": 64})])
     legacy = score_case_decisions(case(), trace)
     current = score_case_decisions(case(), trace, max_format_recovery_attempts=1)
-    assert legacy["scorer_schema"] == "xbrainlab.assistant_decision_scores.v5"
+    assert legacy["scorer_schema"] == "xbrainlab.assistant_decision_scores.v6"
     assert (
         current["first_decision_correct"] == legacy["first_decision_correct"] is False
     )

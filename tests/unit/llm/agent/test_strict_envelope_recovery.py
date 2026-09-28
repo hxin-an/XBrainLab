@@ -13,8 +13,7 @@ from XBrainLab.llm.agent.strict_envelope_recovery import (
 def test_valid_tool_envelope_stops_recovery_and_preserves_tool_action():
     policy = StrictEnvelopeRecoveryPolicy(max_recovery_attempts=2)
     envelope = CommandParser.parse_product(
-        '{"decision":"execute","mode":"new_request",'
-        '"action":"import_eeg_data","changes":{},"message":null}'
+        '{"tool_name":"import_eeg_data","parameters":{}}'
     )
 
     decision = policy.decide(
@@ -47,16 +46,16 @@ def test_format_error_builds_one_canonical_bounded_recovery_message():
     assert decision.message is not None
     assert envelope.error not in decision.message.content
     assert (
-        "one JSON object with exactly decision, mode, action, changes and message"
+        "one JSON object with exactly tool_name and parameters"
         in decision.message.content
     )
-    assert "no prose, wrappers or code fences" in decision.message.content
+    assert "No prose, wrappers or code fences" in decision.message.content
     assert "command, tool, name, arguments, or reasons" not in (
         decision.message.content
     )
-    assert "re-evaluate the original user request" in (decision.message.content.lower())
+    assert "re-evaluate the current user request" in (decision.message.content.lower())
     assert (
-        "do not invent source references or substitute an action for a blocker"
+        "do not invent values or substitute an action for a blocker"
         in decision.message.content.lower()
     )
 
@@ -170,16 +169,16 @@ def test_recovery_taxonomy_accepts_each_structured_response_message() -> None:
     policy = StrictEnvelopeRecoveryPolicy(max_recovery_attempts=2)
     examples = {
         "blocked": (
-            '{"decision":"reply","mode":null,"action":null,"changes":{},'
-            '"message":"Load data before training."}'
+            '{"tool_name":"respond_to_user",'
+            '"parameters":{"message":"Load data before training."}}'
         ),
         "missing_input": (
-            '{"decision":"clarify","mode":"new_request",'
-            '"action":null,"changes":{},"message":"Which action do you mean?"}'
+            '{"tool_name":"respond_to_user",'
+            '"parameters":{"message":"Which action do you mean?"}}'
         ),
         "answer": (
-            '{"decision":"reply","mode":null,"action":null,"changes":{},'
-            '"message":"An epoch is a time window."}'
+            '{"tool_name":"respond_to_user",'
+            '"parameters":{"message":"An epoch is a time window."}}'
         ),
     }
     expected = {
@@ -204,8 +203,8 @@ def test_recovery_taxonomy_accepts_each_structured_response_message() -> None:
 def test_second_attempt_response_maps_to_recovered_plain_text_taxonomy() -> None:
     policy = StrictEnvelopeRecoveryPolicy(max_recovery_attempts=2)
     envelope = CommandParser.parse_product(
-        '{"decision":"reply","mode":null,"action":null,"changes":{},'
-        '"message":"An epoch is a time window."}'
+        '{"tool_name":"respond_to_user",'
+        '"parameters":{"message":"An epoch is a time window."}}'
     )
 
     decision = policy.decide(

@@ -238,7 +238,8 @@ def test_stable_assistant_frontend_and_model_gates_are_exact() -> None:
         "--json-out",
         f"{EVIDENCE_ROOT_TOKEN}/bounded-assistant-model-eval.json",
     )
-    assert "--require-bounded-baseline" in bounded.argv
+    assert "--strict" in bounded.argv
+    assert "--require-bounded-baseline" not in bounded.argv
 
 
 def test_resource_calibration_is_generated_then_preserved_for_dashboard() -> None:

@@ -24,10 +24,10 @@ class RAGConfig:
     )
 
     GOLD_SET_SHA256 = (
-        "9dd41af8d3f43f9d302f566d6cacf25d"  # pragma: allowlist secret
-        "7b21b20047b7c426c7ed34713e968ebf"  # pragma: allowlist secret
+        "5b3360ebf0888c5e2703abf92d74791a2"  # pragma: allowlist secret
+        "060fc7acb320e6435e5245c17a0f7cf"  # pragma: allowlist secret
     )
-    INDEX_SCHEMA_VERSION = 5
+    INDEX_SCHEMA_VERSION = 6
     VECTOR_SIZE = 384
 
     # Changing either the pinned embedding or bundled corpus invalidates old

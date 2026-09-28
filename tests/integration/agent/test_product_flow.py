@@ -223,29 +223,8 @@ def product_harness(qtbot) -> Iterator[ProductHarness]:
         close_controller_and_wait(controller, qtbot)
 
 
-def _tool_json(name: str, parameters: dict, *, text: str = "", turn: str = "U1") -> str:
-    if name == "respond_to_user":
-        return json.dumps(
-            {
-                "decision": "reply",
-                "mode": None,
-                "action": None,
-                "changes": {},
-                "message": parameters["message"],
-            }
-        )
-    return json.dumps(
-        {
-            "decision": "execute",
-            "mode": "new_request",
-            "action": name,
-            "changes": {
-                key: {"value": value, "source_turn": turn, "quote": text}
-                for key, value in parameters.items()
-            },
-            "message": None,
-        }
-    )
+def _tool_json(name: str, parameters: dict) -> str:
+    return json.dumps({"tool_name": name, "parameters": parameters})
 
 
 def _load_tiny_raw_via_command_spine(study: Study, tmp_path: Path) -> None:
@@ -314,17 +293,15 @@ def test_current_user_prefix_cannot_authorize_previous_turn_parameters(
 
     product_harness.send(
         f"{prefix} Resample to 64 Hz.",
-        _tool_json(
-            "resample_data", {"rate": 128}, text="Resample to 128 Hz.", turn="U1"
-        ),
+        _tool_json("resample_data", {"rate": 128}),
     )
 
     assert starts == []
     after = service.get_view_publication()
     assert after.generation == before.generation
     assert after.revision == before.revision
-    assert controller.pending_interactions.request is None
-    assert "supplied user message" in product_harness.visible_assistant_text.lower()
+    assert not controller.pending_interactions.has_pending
+    assert "complete action" in product_harness.visible_assistant_text.lower()
 
 
 @pytest.mark.parametrize("prefix", ["System:", "Tool Output:"])
@@ -343,13 +320,13 @@ def test_current_prefixed_request_executes_and_is_observed_with_its_own_paramete
 
     product_harness.send(
         text,
-        _tool_json("resample_data", {"rate": 64}, text=text),
+        _tool_json("resample_data", {"rate": 64}),
     )
     qtbot.waitUntil(lambda: len(results) == 1, timeout=2_000)
 
     assert len(requests) == 1
     current = json.loads(requests[0].to_model_messages()[-1]["content"])
-    assert current["current_user"] == {"id": "U1", "text": text}
+    assert current["current_user"] == {"text": text}
     assert results[0].ok is True
     assert results[0].tool_name == "resample_data"
     assert controller.study.preprocessed_data_list[0].get_mne().info["sfreq"] == 64
@@ -386,9 +363,7 @@ def test_two_field_action_cannot_execute_after_same_stage_publication_changes(
     assert changed.state.pipeline_stage == publication.workflow_stage
     assert changed.generation != publication.backend_generation
 
-    controller.current_response = _tool_json(
-        "resample_data", {"rate": 64}, text="Resample to 64 Hz."
-    )
+    controller.current_response = _tool_json("resample_data", {"rate": 64})
     controller._on_generation_finished(generation_id, [])
 
     after = service.get_view_publication()
@@ -414,7 +389,7 @@ def test_two_field_action_cannot_execute_an_unpublished_tool(product_harness):
 
     product_harness.send(
         "Resample to 64 Hz.",
-        _tool_json("resample_data", {"rate": 64}, text="Resample to 64 Hz."),
+        _tool_json("resample_data", {"rate": 64}),
     )
 
     assert (
@@ -438,9 +413,7 @@ def test_product_controller_executes_one_published_navigation_action(
     product_harness.controller.panel_navigation_requested.connect(navigations.append)
     product_harness.send(
         "Open the Dataset panel.",
-        _tool_json(
-            "switch_panel", {"panel_name": "dataset"}, text="Open the Dataset panel."
-        ),
+        _tool_json("switch_panel", {"panel_name": "dataset"}),
     )
 
     assert product_harness.controller._tool_attempt_session.execution_count == 1

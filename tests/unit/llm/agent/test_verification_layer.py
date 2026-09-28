@@ -50,26 +50,12 @@ def _verify_product_envelope(tool_name: str, params: dict) -> VerificationResult
 
     schemas = {tool.name: tool.parameters for tool in get_all_tools()}
     assert set(schemas) == set(_CURRENT_TOOL_PARAMETERS)
-    response = json.dumps(
-        {
-            "decision": "execute",
-            "mode": "new_request",
-            "action": tool_name,
-            "changes": {
-                name: {"value": value, "source_turn": "U1", "quote": "test source"}
-                for name, value in params.items()
-            },
-            "message": None,
-        }
-    )
+    response = json.dumps({"tool_name": tool_name, "parameters": params})
     envelope = CommandParser.parse_product(response)
     assert envelope.status is ToolEnvelopeStatus.VALID
-    assert envelope.request is not None
+    assert envelope.command is not None
     return VerificationLayer(tool_schemas=schemas).verify_tool_call(
-        (
-            envelope.request.action,
-            {name: change.value for name, change in envelope.request.changes},
-        ),
+        envelope.command,
     )
 
 
@@ -118,21 +104,13 @@ def test_current_tools_reject_undeclared_parameters(tool_name: str) -> None:
 def test_schema_valid_tool_inside_non_product_envelope_is_rejected(
     wrapper: str,
 ) -> None:
-    response = json.dumps(
-        {
-            "decision": "execute",
-            "mode": "new_request",
-            "action": "configure_training",
-            "changes": {},
-            "message": None,
-        }
-    )
+    response = json.dumps({"tool_name": "configure_training", "parameters": {}})
     envelope = CommandParser.parse_product(wrapper.format(response))
     assert envelope.status in {
         ToolEnvelopeStatus.FORMAT_ERROR,
         ToolEnvelopeStatus.MULTIPLE_OBJECTS,
     }
-    assert envelope.request is None
+    assert envelope.command is None
 
 
 def test_missing_direct_preprocess_parameters_are_typed_schema_failures() -> None:

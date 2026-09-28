@@ -241,25 +241,9 @@ def test_structured_smoke_closes_engine_when_generation_fails():
     engine_type.return_value.close.assert_called_once_with()
 
 
-def _proposal(action="switch_panel", parameters=None, *, mode="replace", **extra):
+def _proposal(action="switch_panel", parameters=None, **extra):
     values = {"panel_name": "dataset"} if parameters is None else parameters
-    return json.dumps(
-        {
-            "decision": "execute",
-            "mode": {
-                "replace": "new_request",
-                "continue": "update_pending",
-                "cancel": "cancel_pending",
-            }[mode],
-            "action": action,
-            "changes": {
-                key: {"value": value, "source_turn": "U1", "quote": "Dataset"}
-                for key, value in values.items()
-            },
-            "message": None,
-            **extra,
-        }
-    )
+    return json.dumps({"tool_name": action, "parameters": values, **extra})
 
 
 def test_structured_smoke_accepts_only_the_product_proposal():
@@ -312,7 +296,9 @@ def test_structured_smoke_rejects_non_target_tool_call(response: str):
 
     assert result["status"] == "failed"
     assert result["failure_type"] == (
-        "output_format" if "workflow_stage" in response else "target_contract"
+        "output_format"
+        if "workflow_stage" in response or '"mode"' in response
+        else "target_contract"
     )
     engine_type.return_value.close.assert_called_once_with()
 

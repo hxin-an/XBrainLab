@@ -186,7 +186,7 @@ def test_controller_prompt_generation(controller: LLMController) -> None:
     context = json.loads(msgs[-1]["content"])
     assert context["application_state"]["workflow_stage"] == "empty"
     assert context["application_state"]["state_reliable"] is True
-    assert context["current_user"] == {"id": "U1", "text": "Hello"}
+    assert context["current_user"] == {"text": "Hello"}
 
 
 def test_format_retry_dispatch_uses_system_policy_and_resets_for_next_turn(

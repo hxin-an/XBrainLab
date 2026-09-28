@@ -108,7 +108,7 @@ class BM25Index:
                 "source_text": content,
             }
             if "prior_turn" in item:
-                metadata["prior_turn"] = item["prior_turn"]
+                continue
             search_text = example_search_text(metadata)
             if not search_text:
                 continue

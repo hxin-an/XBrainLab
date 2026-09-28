@@ -14,12 +14,13 @@ from XBrainLab.llm.core.backends.local import LocalBackend
 def test_continuation_export_requires_real_capture_before_retrieval_or_tokenizer(
     tmp_path, product_rag
 ):
-    from scripts.dev.run_stable_assistant_model_eval import (
-        load_clarification_cases,
-        load_precision_cases,
-    )
+    import json
 
-    cases = load_clarification_cases(precision_cases=load_precision_cases())
+    from scripts.dev.run_stable_assistant_model_eval import ROOT
+
+    cases = json.loads(
+        (ROOT / "scripts/dev/stable_assistant_clarification_cases.json").read_text()
+    )
     output = tmp_path / "continuation.md"
     with (
         patch(
@@ -30,8 +31,8 @@ def test_continuation_export_requires_real_capture_before_retrieval_or_tokenizer
         ) as tokenizer,
     ):
         for case in cases:
-            with pytest.raises(ValueError, match="actual runtime capture"):
-                export_prompt_dossier(case.case_id, output, product_rag=product_rag)
+            with pytest.raises(ValueError, match="is retired"):
+                export_prompt_dossier(case["id"], output, product_rag=product_rag)
     rag.assert_not_called()
     tokenizer.assert_not_called()
     assert not output.exists()

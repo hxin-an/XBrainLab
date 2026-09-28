@@ -8,7 +8,7 @@ history, and product presentation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import Enum
 
 from .confirmation import (
@@ -17,7 +17,6 @@ from .confirmation import (
 )
 from .interaction import AgentInteractionOutcome, AgentInteractionStatus
 from .tool_attempt_coordinator import ToolAttemptDecision
-from .turn import AssistantPendingRequest
 from .ui_handoff import (
     WorkflowUiHandoffRequest,
     WorkflowUiHandoffResolution,
@@ -82,41 +81,9 @@ class PendingInteractionCoordinator:
 
     def __init__(self) -> None:
         self._confirmation: PendingConfirmation | None = None
-        self._request: AssistantPendingRequest | None = None
         self._workflow_handoff: WorkflowUiHandoffSession | None = None
         self._last_confirmation_request_id: str | None = None
         self._last_workflow_handoff_request_id: str | None = None
-
-    @property
-    def request(self) -> AssistantPendingRequest | None:
-        """Return the one nonblocking draft, separate from UI confirmation."""
-        return self._request
-
-    def set_request(self, request: AssistantPendingRequest | None) -> None:
-        """Publish only a fully validated draft, without taking execution authority."""
-        if request is not None and not isinstance(request, AssistantPendingRequest):
-            raise TypeError("Pending requests require validated request data.")
-        if self.has_pending:
-            raise RuntimeError(
-                "Cannot change a request during confirmation or GUI handoff."
-            )
-        self._request = request
-
-    def record_clarification(self, turn_id: str, text: str, question: str) -> None:
-        """Retain unresolved user evidence without accepting any parameter change."""
-        pending = self._request
-        if pending is None:
-            return
-        sources = dict(pending.sources)
-        sources[turn_id] = text
-        self.set_request(
-            replace(pending, sources=tuple(sources.items()), question=question)
-        )
-
-    def invalidate_request(self) -> None:
-        """Retain saved values for visibility, but revoke continuation after failure."""
-        if self._request is not None:
-            self._request = replace(self._request, invalidated=True)
 
     @property
     def confirmation(self) -> PendingConfirmation | None:
@@ -278,7 +245,6 @@ class PendingInteractionCoordinator:
         """Remove all pending interactions while retaining duplicate memory."""
         self._confirmation = None
         self._workflow_handoff = None
-        self._request = None
 
     def reset(self) -> None:
         """Clear pending state and correlation history for a new conversation."""

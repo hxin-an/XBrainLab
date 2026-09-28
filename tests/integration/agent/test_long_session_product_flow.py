@@ -196,11 +196,8 @@ class _DeterministicModelWorker(AgentWorker):
         action = self.proposed_action
         response_text = json.dumps(
             {
-                "decision": "reply" if action is None else "execute",
-                "mode": None if action is None else "new_request",
-                "action": action,
-                "changes": {},
-                "message": response_text if action is None else None,
+                "tool_name": action or "respond_to_user",
+                "parameters": {"message": response_text} if action is None else {},
             },
             separators=(",", ":"),
         )
@@ -378,7 +375,7 @@ def _request_latest_user_text(request: AssistantGenerationRequest) -> str:
             content = message.get("content")
             if isinstance(content, str) and decode_untrusted_context(content) is None:
                 current_user = json.loads(content)["current_user"]
-                assert isinstance(current_user["id"], str)
+                assert set(current_user) == {"text"}
                 return current_user["text"]
     raise AssertionError("Model request omitted the latest user turn.")
 

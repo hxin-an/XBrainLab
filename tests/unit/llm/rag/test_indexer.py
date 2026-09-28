@@ -15,11 +15,8 @@ from XBrainLab.llm.rag.indexer import RAGIndexer
 
 def _proposal(action):
     return {
-        "decision": "execute",
-        "mode": "new_request",
-        "action": action,
-        "changes": {},
-        "message": None,
+        "tool_name": action,
+        "parameters": {},
     }
 
 
@@ -132,31 +129,11 @@ def test_load_gold_set_missing_file_raises_without_mutating_index(
     assert mock_indexer.client.mock_calls == []
 
 
-def test_contextual_index_text_is_not_used_as_user_source(mock_indexer):
-    docs = mock_indexer.load_gold_set(str(RAGConfig.get_gold_set_path()))
-    example = next(
-        doc
-        for doc in docs
-        if doc.metadata["id"] == "apply_bandpass_filter_supplement_01"
-    )
-    prior = example.metadata["prior_turn"]
-    assert (
-        example.page_content == prior["input"] + "\n" + example.metadata["source_text"]
-    )
-    assert example.metadata["source_text"] == "Set its upper cutoff to 47 Hz."
-    assert (
-        json.loads(example.metadata["proposal"])["changes"]["high_freq"]["source_turn"]
-        == "U2"
-    )
-
-
 def test_load_gold_set_rejects_legacy_or_fabricated_source_examples(
     mock_indexer, tmp_path
 ):
     fabricated = _proposal("resample_data")
-    fabricated["changes"] = {
-        "rate": {"value": 128, "source_turn": "U1", "quote": "128 Hz"},
-    }
+    fabricated["parameters"] = {"rate": 128}
     rows = [
         {
             "id": "legacy",

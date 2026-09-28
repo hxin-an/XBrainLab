@@ -288,4 +288,7 @@ class TestPromptContent:
             prompt = assembler.build_system_prompt()
 
         assert "backend-stage-published action contracts" in prompt
-        assert "Use only an action contract listed for this exact stage" in prompt
+        assert (
+            "Use only a callable action contract published for this exact stage"
+            in prompt
+        )

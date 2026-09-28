@@ -91,7 +91,7 @@ class RAGIndexer:
                 "source_text": content,
             }
             if "prior_turn" in item:
-                metadata["prior_turn"] = item["prior_turn"]
+                continue
             search_text = example_search_text(metadata)
             if search_text:
                 # Derived from the validated fragment, never a second authority.

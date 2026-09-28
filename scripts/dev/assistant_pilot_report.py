@@ -26,6 +26,11 @@ from scripts.dev.run_assistant_pilot import (
 CATEGORIES = ("Action", "Clarification", "No-call")
 _MAX_ARTIFACT_BYTES = 32 * 1024**2
 _PROPOSAL_SCORERS = {
+    "xbrainlab.assistant_decision_scores.v6": (
+        "assistant_tool_response.v1",
+        "single_turn_complete_parameters",
+        4,
+    ),
     "xbrainlab.assistant_decision_scores.v4": (
         "assistant_proposal.v1",
         "single_turn_replace_changes",

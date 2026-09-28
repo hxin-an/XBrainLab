@@ -43,13 +43,8 @@ from XBrainLab.llm.tools.definitions.ui_control_def import BaseSwitchPanelTool
 _STRUCTURED_SMOKE_TOOL = "switch_panel"
 _STRUCTURED_SMOKE_PARAMETERS = {"panel_name": "dataset"}
 _STRUCTURED_SMOKE_PROPOSAL = {
-    "decision": "execute",
-    "mode": "new_request",
-    "action": _STRUCTURED_SMOKE_TOOL,
-    "changes": {
-        "panel_name": {"value": "dataset", "source_turn": "U1", "quote": "Dataset"},
-    },
-    "message": None,
+    "tool_name": _STRUCTURED_SMOKE_TOOL,
+    "parameters": _STRUCTURED_SMOKE_PARAMETERS,
 }
 
 
@@ -356,11 +351,9 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
 
     model_tools = AGENT_ACTION_CONTRACTS.model_tool_names()
     switch_tool = BaseSwitchPanelTool()
-    request = envelope.request
-    if request is None or request.action is None:
+    if envelope.command is None:
         raise RuntimeError("Valid execute proposal lacks its required action")
-    command_name = request.action
-    parameters = {name: change.value for name, change in request.changes}
+    command_name, parameters = envelope.command
     schema_result = ToolSchemaValidator(
         {switch_tool.name: switch_tool.parameters}
     ).validate(command_name, parameters)

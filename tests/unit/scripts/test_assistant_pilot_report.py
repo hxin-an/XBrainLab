@@ -881,6 +881,44 @@ def test_new_dev_report_preserves_capture_checks_and_presentation(tmp_path):
     assert (output / "index.html").is_file()
 
 
+def _single_turn_scores(result):
+    result["scores"].update(
+        scorer_schema="xbrainlab.assistant_decision_scores.v6",
+        response_contract="assistant_tool_response.v1",
+        parameter_scope="single_turn_complete_parameters",
+        source_validation="not_evaluated",
+    )
+    for generation in result.get("trace", {}).get("generations", []):
+        generation["request"] = {"response_contract": "assistant_tool_response.v1"}
+
+
+def test_single_turn_dev_report_keeps_dev_identity_and_generation_evidence(tmp_path):
+    root = _run(tmp_path, [("Action", True, True, "completed")], dev=True)
+    _change_result(root, _single_turn_scores)
+    before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    output = tmp_path / "single-turn-report"
+
+    actual = report.write_report(root, output)
+
+    assert actual["schema"] == "xbrainlab.assistant_dev_report.v4"
+    assert actual["cases"][0]["capture_integrity"]["verified"] is True
+    for name in ("README.md", "index.html"):
+        content = (output / name).read_text(encoding="utf-8")
+        assert "DEV initial baseline" in content
+        assert "DEV Pilot" not in content
+    assert before == {
+        path: path.read_bytes() for path in root.rglob("*") if path.is_file()
+    }
+
+
+def test_single_turn_report_does_not_pool_old_proposal_scores(tmp_path):
+    root = _run(tmp_path, [("Action", True, True, "completed")] * 2)
+    _change_result(root, _single_turn_scores)
+    _change_result(root, _proposal_scores, index=1)
+    with pytest.raises(ValueError, match="historical and proposal"):
+        report.build_report(root)
+
+
 @pytest.mark.parametrize(
     "audit,missing",
     [
@@ -1143,10 +1181,13 @@ def test_dev_completed_decision_requires_generation_but_predispatch_timeout_does
     assert report.build_report(root)["complete_selected_schedule"] is False
 
 
+@pytest.mark.parametrize("single_turn", [False, True])
 def test_dev_capture_drift_during_render_never_publishes_success_json(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, single_turn
 ):
     root = _run(tmp_path, [("Action", True, True, "completed")], dev=True)
+    if single_turn:
+        _change_result(root, _single_turn_scores)
     render = report.write_presentation
 
     def change_then_render(value, output):

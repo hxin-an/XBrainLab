@@ -597,6 +597,7 @@ def _render_detailed_markdown(
             "xbrainlab.assistant_dev_report.v1",
             "xbrainlab.assistant_dev_report.v2",
             "xbrainlab.assistant_dev_report.v3",
+            "xbrainlab.assistant_dev_report.v4",
         }
         or current
     )
@@ -1009,6 +1010,7 @@ def write_presentation(report: dict, output: Path) -> None:
         "xbrainlab.assistant_dev_report.v1",
         "xbrainlab.assistant_dev_report.v2",
         "xbrainlab.assistant_dev_report.v3",
+        "xbrainlab.assistant_dev_report.v4",
     } or is_experiment_protocol(report.get("experiment"))
     details = {
         row["id"]: _details(root, row, require_generation=dev)

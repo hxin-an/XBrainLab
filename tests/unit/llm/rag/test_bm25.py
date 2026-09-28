@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from XBrainLab.llm.rag.bm25 import BM25Index
-from XBrainLab.llm.rag.config import RAGConfig
 
 
 def test_eligible_keyword_match_is_not_lost_behind_global_top_ten():
@@ -133,11 +132,8 @@ def test_build_from_json_indexes_only_primary_workflow_examples(tmp_path: Path) 
                     "input": "import an EEG dataset",
                     "category": "dataset",
                     "expected_proposal": {
-                        "decision": "execute",
-                        "mode": "new_request",
-                        "action": "import_eeg_data",
-                        "changes": {},
-                        "message": None,
+                        "tool_name": "import_eeg_data",
+                        "parameters": {},
                     },
                 },
                 {
@@ -161,23 +157,7 @@ def test_build_from_json_indexes_only_primary_workflow_examples(tmp_path: Path) 
     assert index.doc_count == 1
     assert len(results) == 1
     assert results[0][1] == "import-eeg"
-    assert json.loads(results[0][3]["proposal"])["action"] == "import_eeg_data"
-
-
-def test_contextual_sparse_index_keeps_original_user_sources_separate():
-    index = BM25Index()
-    index.build_from_json(RAGConfig.get_gold_set_path())
-    rows = index.query(
-        "bandpass upper cutoff",
-        eligible=lambda metadata: metadata["id"]
-        == "apply_bandpass_filter_supplement_01",
-    )
-    assert len(rows) == 1
-    _, _, search_text, metadata = rows[0]
-    assert (
-        search_text == metadata["prior_turn"]["input"] + "\n" + metadata["source_text"]
-    )
-    assert metadata["source_text"] == "Set its upper cutoff to 47 Hz."
+    assert json.loads(results[0][3]["proposal"])["tool_name"] == "import_eeg_data"
 
 
 def test_build_from_missing_json_keeps_index_empty(tmp_path: Path) -> None:

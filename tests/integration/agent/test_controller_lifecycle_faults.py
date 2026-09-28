@@ -129,8 +129,8 @@ class _InMemoryEngine:
     def generate_stream(self, _messages: list[dict[str, Any]], *, profile: Any):
         del profile
         yield (
-            '{"decision":"reply","mode":null,"action":null,"changes":{},'
-            '"message":"Recovered assistant response."}'
+            '{"tool_name":"respond_to_user","parameters":'
+            '{"message":"Recovered assistant response."}}'
         )
 
     def cancel_generation(self, wait_timeout: float = 0.25) -> bool:
@@ -302,22 +302,11 @@ def test_preprocess_generation_keeps_gui_responsive_until_real_terminal(
     monkeypatch.setattr(manager, "_open_assistant_panel_target", lambda _target: True)
 
     def generate_bandpass(self, messages, *, profile):
-        del self, profile
-        current_user = json.loads(messages[-1]["content"])["current_user"]
+        del self, profile, messages
         yield json.dumps(
             {
-                "decision": "execute",
-                "mode": "new_request",
-                "action": "apply_bandpass_filter",
-                "changes": {
-                    field: {
-                        "value": value,
-                        "source_turn": current_user["id"],
-                        "quote": current_user["text"],
-                    }
-                    for field, value in (("low_freq", 4), ("high_freq", 40))
-                },
-                "message": None,
+                "tool_name": "apply_bandpass_filter",
+                "parameters": {"low_freq": 4, "high_freq": 40},
             }
         )
 
@@ -405,8 +394,8 @@ def test_moved_controller_stop_and_late_generation_cannot_finish_next_turn(
         entered[index].set()
         release[index].wait(timeout=3.0)
         yield (
-            '{"decision":"reply","mode":null,"action":null,"changes":{},'
-            '"message":"Current response."}'
+            '{"tool_name":"respond_to_user","parameters":'
+            '{"message":"Current response."}}'
         )
 
     def cancel_generation(self, wait_timeout=0.25):
@@ -693,8 +682,8 @@ def test_manager_delivery_watchdog_fences_retry_until_terminal_exactly_once(
     ):
         del profile
         yield (
-            '{"decision":"reply","mode":null,"action":null,"changes":{},'
-            '"message":"Transport recovered."}'
+            '{"tool_name":"respond_to_user","parameters":'
+            '{"message":"Transport recovered."}}'
         )
 
     monkeypatch.setattr(engine, "generate_stream", _valid_recovery_response)

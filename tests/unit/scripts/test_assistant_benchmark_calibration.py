@@ -31,26 +31,7 @@ def example(corpus, case_id):
 
 def response(tool="resample_data", parameters=None, stage=None):
     parameters = {"rate": 128} if parameters is None else parameters
-    if tool == "respond_to_user":
-        action = parameters.get("action")
-        payload = {
-            "decision": "clarify" if action else "reply",
-            "mode": ("new_request" if action else None),
-            "action": (action if action else None),
-            "changes": {},
-            "message": parameters.get("message"),
-        }
-    else:
-        payload = {
-            "decision": "execute",
-            "mode": "new_request",
-            "action": tool,
-            "changes": {
-                key: {"value": value, "source_turn": "U1", "quote": str(value)}
-                for key, value in parameters.items()
-            },
-            "message": None,
-        }
+    payload = {"tool_name": tool, "parameters": parameters}
     return json.dumps(
         {
             **({"workflow_stage": stage} if stage is not None else {}),
@@ -62,14 +43,13 @@ def response(tool="resample_data", parameters=None, stage=None):
 def test_checked_in_calibration_has_three_decisions_and_no_product_claim(corpus):
     report = calibrate(corpus)
     assert report["calibration"]["passed"] is True
-    assert report["calibration"]["observation_count"] == 8
+    assert report["calibration"]["observation_count"] == 6
     assert report["evidence_kind"] == "synthetic_development_calibration"
     assert report["model_executed"] is False
     assert report["product_benchmark_score"] is None
     assert report["human_agreement"] is None
     assert {case["decision"] for case in corpus["cases"]} == {
         "no_call",
-        "clarification",
         "action",
     }
     assert all(case["split"] == "development" for case in corpus["cases"])
@@ -118,7 +98,7 @@ def test_no_call_rejects_every_unexpected_action_effect(corpus, effect):
     assert score_observation(case, observation)["outcome"]["passed"] is False
 
 
-@pytest.mark.parametrize("case_id", ["explain", "clarify", "resample", "open_import"])
+@pytest.mark.parametrize("case_id", ["explain", "resample", "open_import"])
 @pytest.mark.parametrize(
     "field,value",
     [
@@ -167,23 +147,6 @@ def test_no_call_rejects_unnecessary_pending_action(corpus):
     assert score_observation(case, observation)["outcome"]["passed"] is False
 
 
-@pytest.mark.parametrize(
-    "changes",
-    [
-        {"low_freq": 4},
-        {"high_freq": 38},
-        {"rate": 128},
-        {"low_freq": 4, "high_freq": 38},
-    ],
-)
-def test_clarification_missing_fields_derive_from_schema_and_changes(corpus, changes):
-    case, observation = example(corpus, "clarify")
-    payload = json.loads(response("apply_bandpass_filter", changes))
-    payload.update(decision="clarify", message="Which cutoffs?")
-    observation["raw_response"] = json.dumps(payload)
-    assert score_observation(case, observation)["raw"]["passed"] is False
-
-
 def test_calibration_does_not_invent_pending_context_for_continue(corpus):
     case, observation = example(corpus, "resample")
     payload = json.loads(response())
@@ -191,37 +154,9 @@ def test_calibration_does_not_invent_pending_context_for_continue(corpus):
     observation["raw_response"] = json.dumps(payload)
     assert score_observation(case, observation)["raw"] == {
         "passed": False,
-        "decision": "action",
-        "reason": "unsupported_request_context",
+        "decision": "invalid",
+        "reason": "invalid_envelope",
     }
-
-
-def test_clarification_is_not_a_keyword_matching_task(corpus):
-    case, observation = example(corpus, "clarify")
-    observation["raw_response"] = response(
-        "respond_to_user",
-        {
-            "message": "Please provide both cutoffs.",
-            "action": "apply_bandpass_filter",
-        },
-    )
-    assert score_observation(case, observation)["raw"]["passed"] is True
-    observation["raw_response"] = response(
-        "respond_to_user",
-        {"message": "What low and high bandpass cutoffs should I use?"},
-    )
-    assert score_observation(case, observation)["raw"]["passed"] is False
-
-
-def test_clarification_needs_observed_receipt_and_cannot_execute(corpus):
-    case, observation = example(corpus, "clarify")
-    observation["pending"] = None
-    assert score_observation(case, observation)["outcome"]["passed"] is False
-    case, observation = example(corpus, "clarify")
-    observation["effects"].append(
-        {"kind": "execution", "tool": "apply_bandpass_filter"}
-    )
-    assert score_observation(case, observation)["outcome"]["passed"] is False
 
 
 def test_action_needs_verification_and_completion_not_just_proposal(corpus):
@@ -355,7 +290,8 @@ def test_calibration_never_reads_validation_or_sealed_cases(corpus, split):
 
 
 def test_invalid_oracle_cannot_make_missing_backend_evidence_pass(corpus):
-    corpus["cases"][2]["effects"] = [{"kind": "proposal", "tool": "resample_data"}]
+    case = next(case for case in corpus["cases"] if case["id"] == "resample")
+    case["effects"] = [{"kind": "proposal", "tool": "resample_data"}]
     with pytest.raises(ValueError, match="execution"):
         calibrate(corpus)
 
@@ -388,3 +324,18 @@ def test_cli_rejects_malformed_manifest(text, tmp_path, capsys):
     path.write_text(text, encoding="utf-8")
     assert main(["--cases", str(path)]) == 2
     assert json.loads(capsys.readouterr().out)["calibration"]["passed"] is False
+
+
+def test_v4_draft_evidence_is_preserved_but_not_reinterpreted_as_current(corpus):
+    historical = load_calibration(
+        DEFAULT_CASES.with_name("assistant_benchmark_calibration_cases_v4.json")
+    )
+    assert historical["schema"].endswith(".v4")
+    assert len(historical["observations"]) == 8
+    with pytest.raises(ValueError, match="schema"):
+        calibrate(historical)
+    report = calibrate(corpus)
+    assert report["clarification_semantics"] == "not_evaluated"
+    assert report["retired_observation_ids"] == ["clarify.pass", "clarify.fail"]
+    old_cases = {case["id"]: case for case in historical["cases"]}
+    assert all(case == old_cases[case["id"]] for case in corpus["cases"])

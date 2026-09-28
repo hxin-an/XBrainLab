@@ -1,4 +1,4 @@
-"""Strict product boundary for model-proposed request updates."""
+"""Strict product boundary for a single model-proposed command."""
 
 from __future__ import annotations
 
@@ -9,16 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, TypeAlias
 
-from .decision_contract import (
-    MAX_NAME_LENGTH,
-    MAX_QUOTE_LENGTH,
-    MAX_SOURCE_TURN_LENGTH,
-    REQUEST_MODE_TO_INTERNAL,
-)
-
-_REQUEST_MODE_TO_WIRE = {
-    internal: wire for wire, internal in REQUEST_MODE_TO_INTERNAL.items()
-}
+from .decision_contract import MAX_NAME_LENGTH, MODEL_RESPONSE_TOOL_NAME
 
 ToolCommand: TypeAlias = tuple[str, dict[str, Any]]
 
@@ -33,56 +24,34 @@ class ToolEnvelopeStatus(str, Enum):
 
 
 @dataclass(frozen=True)
-class ParameterChange:
-    """A proposed value and its unverified user-source reference."""
-
-    value: Any
-    source_turn: str
-    quote: str
-
-
-@dataclass(frozen=True)
-class RequestUpdate:
-    """One request update; omitted parameters are not deletions."""
-
-    mode: str
-    action: str | None
-    changes: tuple[tuple[str, ParameterChange], ...] = ()
-
-
-@dataclass(frozen=True)
 class ToolEnvelopeParseResult:
-    """Only well-formed proposals expose a request; validity is not admission."""
+    """A parsed command or non-executable reply; validity is not admission."""
 
     status: ToolEnvelopeStatus
     error: str = ""
     message: str = ""
-    decision: str = ""
-    request: RequestUpdate | None = None
+    command: ToolCommand | None = None
+
+    @property
+    def decision(self) -> str:
+        """Semantic label for diagnostics, not a second model wire contract."""
+        if self.status is ToolEnvelopeStatus.VALID:
+            return "execute"
+        if self.status is ToolEnvelopeStatus.NO_TOOL:
+            return "reply"
+        return ""
 
     def proposal_dict(self) -> dict[str, Any] | None:
-        """Serialize a valid proposal without inventing executable parameters."""
-        if self.status not in (ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL):
-            return None
-        request = self.request
-        return {
-            "decision": self.decision,
-            "mode": _REQUEST_MODE_TO_WIRE[request.mode]
-            if request is not None
-            else None,
-            "action": request.action if request is not None else None,
-            "changes": {
-                name: {
-                    "value": change.value,
-                    "source_turn": change.source_turn,
-                    "quote": change.quote,
-                }
-                for name, change in request.changes
+        """Serialize only a successfully parsed two-field response."""
+        if self.status is ToolEnvelopeStatus.NO_TOOL:
+            return {
+                "tool_name": MODEL_RESPONSE_TOOL_NAME,
+                "parameters": {"message": self.message},
             }
-            if request is not None
-            else {},
-            "message": self.message if self.decision != "execute" else None,
-        }
+        if self.status is ToolEnvelopeStatus.VALID and self.command is not None:
+            tool_name, parameters = self.command
+            return {"tool_name": tool_name, "parameters": parameters}
+        return None
 
     @classmethod
     def multiple_objects(cls) -> ToolEnvelopeParseResult:
@@ -176,83 +145,25 @@ class CommandParser:
 
     @staticmethod
     def _parse_proposal(value: Any) -> ToolEnvelopeParseResult:
-        if not isinstance(value, dict) or set(value) != {
-            "decision",
-            "mode",
-            "action",
-            "changes",
-            "message",
-        }:
+        if not isinstance(value, dict) or set(value) != {"tool_name", "parameters"}:
             raise ValueError(
-                "A proposal must contain exactly decision, mode, action, "
-                "changes and message."
+                "A response must contain exactly tool_name and parameters."
             )
-        decision = value["decision"]
-        if decision not in ("reply", "clarify", "execute"):
-            raise ValueError("decision must be reply, clarify or execute.")
-        message = value["message"]
-        if decision == "execute":
-            if message is not None or value["mode"] is None:
-                raise ValueError("execute requires a non-null mode and a null message.")
-        elif not isinstance(message, str) or not message.strip():
-            raise ValueError("reply and clarify require a non-empty message.")
-        request = CommandParser._parse_request(
-            value["mode"], value["action"], value["changes"], decision
-        )
+        tool_name = value["tool_name"]
+        parameters = value["parameters"]
+        if not _name(tool_name):
+            raise ValueError("tool_name must be a bounded non-empty name.")
+        if not isinstance(parameters, dict):
+            raise ValueError("parameters must be an object.")
+        if tool_name == MODEL_RESPONSE_TOOL_NAME:
+            if set(parameters) != {"message"}:
+                raise ValueError(
+                    "respond_to_user requires exactly a message parameter."
+                )
+            message = parameters["message"]
+            if not isinstance(message, str) or not message.strip():
+                raise ValueError("respond_to_user requires a non-empty message.")
+            return ToolEnvelopeParseResult(ToolEnvelopeStatus.NO_TOOL, message=message)
         return ToolEnvelopeParseResult(
-            ToolEnvelopeStatus.VALID
-            if decision == "execute"
-            else ToolEnvelopeStatus.NO_TOOL,
-            message=message.strip() if message is not None else "",
-            decision=decision,
-            request=request,
+            ToolEnvelopeStatus.VALID, command=(tool_name, parameters)
         )
-
-    @staticmethod
-    def _parse_request(
-        mode: Any, action: Any, changes: Any, decision: str
-    ) -> RequestUpdate | None:
-        if not isinstance(changes, dict):
-            raise ValueError("changes must be an object.")
-        if mode is None:
-            if action is not None or changes:
-                raise ValueError(
-                    "A null mode requires a null action and empty changes."
-                )
-            return None
-        if not isinstance(mode, str) or mode not in REQUEST_MODE_TO_INTERNAL:
-            raise ValueError(
-                "mode must be null, update_pending, new_request or cancel_pending."
-            )
-        mode = REQUEST_MODE_TO_INTERNAL[mode]
-        if mode == "cancel":
-            if decision == "execute" or action is not None or changes:
-                raise ValueError(
-                    "cancel_pending requires no execution, "
-                    "a null action and empty changes."
-                )
-        elif action is None:
-            if decision != "clarify" or changes:
-                raise ValueError(
-                    "An unresolved action requires clarify and empty changes."
-                )
-        elif not _name(action):
-            raise ValueError("action must be a bounded non-empty action name.")
-        parsed = []
-        for name, change in changes.items():
-            if not _name(name):
-                raise ValueError("Parameter names must be bounded non-empty names.")
-            if not isinstance(change, dict) or set(change) != {
-                "value",
-                "source_turn",
-                "quote",
-            }:
-                raise ValueError(
-                    "Each change requires exactly value, source_turn and quote."
-                )
-            if not _bounded_text(change["source_turn"], MAX_SOURCE_TURN_LENGTH):
-                raise ValueError("source_turn must be a bounded non-empty string.")
-            if not _bounded_text(change["quote"], MAX_QUOTE_LENGTH):
-                raise ValueError("quote must be a bounded non-empty string.")
-            parsed.append((name, ParameterChange(**change)))
-        return RequestUpdate(mode, action, tuple(parsed))

@@ -118,7 +118,7 @@ publication renderer 擁有。
 | Training | `train`、`stop_training` | enabled capability 直接 dispatch confirmed owned command；Stop 是 lock-independent control acknowledgement，terminal state仍由 matching training publication 決定。沒有 capability 時 fail closed。 |
 | Evaluation / visualization / saliency | `evaluate`、`visualize`、`saliency` | Model Summary、metrics、Saliency publication 與 render preparation 在 background work 執行，以 request / generation / producer identity 擋 stale result。Detached Evaluation render不呈現user-owned Cancel；Training terminal不自動算 Saliency，visible `Compute Saliency` 是唯一 product admission。Evaluation-admitted但未計算的Fold仍列出並fail closed到Compute提示。 |
 | Electrode Layout | `QueryStateCommand(state)`、`apply_montage` | Dataset sidebar 在 `Channels` 正下方提供唯一可見入口；它先顯示目前 layout summary，再於同一 dialog 展開 standard-layout mapping。使用者先以 Channels 排除不需要的 channel；Apply／Replace Layout 僅在所有保留 channel 映射有效、唯一電極且可畫頭皮圖時開放，問題列與簡短摘要同步更新。confirmed replace／restore 才走 `ApplyMontageCommand`；restore 也由 backend 在 mutation 前驗證完整 coverage。BIDS ready geometry 可在同一 import 內由 retained reviewed snapshot 回復；新 import／reset 會清除此能力。匯入 partial metadata 不阻擋資料匯入、不改變資料軸，但不構成空間圖 readiness；3D 另依幾何條件開放。 |
-| Chat diagnostics | `ApplicationViewPublication` | assistant status、decision context、tool policy 讀同一 generation 的 state/capability，不把 missing capability 顯示成 debug error。 |
+| Chat diagnostics | `ApplicationViewPublication` | assistant status、state projection、tool policy讀同一generation的state/capability，不把missing capability顯示成debug error。 |
 
 Model Selection dialog只render `ModelCatalog`的detached projection：search可匹配name、stable ID、alias、
 family與task；disabled row顯示catalog-owned reason且不能Confirm。Provider readiness在Python-owned background

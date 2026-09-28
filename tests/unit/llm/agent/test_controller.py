@@ -60,7 +60,6 @@ from XBrainLab.llm.agent.turn import (
     AssistantGenerationEventPhase,
     AssistantGenerationStopAcknowledgement,
     AssistantGenerationStopRequest,
-    AssistantPendingRequest,
     AssistantTurnCorrelation,
     AssistantTurnDeliveryPhase,
     AssistantTurnRequest,
@@ -102,29 +101,8 @@ def _runtime_launch_spec(model_id: str | None = None) -> AssistantRuntimeLaunchS
     return resolution.launch_spec
 
 
-def _draft(command_name="resample_data", *, generation=17, parameters=()):
-    return AssistantPendingRequest(
-        command_name=command_name,
-        original_turn_id="U1",
-        publication_generation=generation,
-        parameters=parameters,
-        sources=(("U1", "Apply the requested preprocessing."),),
-        question="Which value should I use?",
-    )
-
-
-def _proposal(decision, *, action=None, mode="new_request", changes=None, message=None):
-    if action is None and mode != "cancel_pending":
-        mode = None
-    return json.dumps(
-        {
-            "decision": decision,
-            "mode": mode,
-            "action": action,
-            "changes": changes or {},
-            "message": message,
-        }
-    )
+def _response(tool_name, parameters):
+    return json.dumps({"tool_name": tool_name, "parameters": parameters})
 
 
 def _submit_user_turn(ctrl: Any, text: str) -> AssistantTurnCorrelation:
@@ -1130,8 +1108,8 @@ class TestOnChunkReceived:
 class TestOnGenerationFinished:
     def test_no_command_finalizes(self, ctrl):
         ctrl._turn_orchestrator.active_publication = PromptToolPublication.empty()
-        ctrl.current_response = _proposal(
-            "reply", message="Just a regular reply, nothing special"
+        ctrl.current_response = _response(
+            "respond_to_user", {"message": "Just a regular reply, nothing special"}
         )
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 10
@@ -1151,7 +1129,7 @@ class TestOnGenerationFinished:
     def test_no_tool_text_is_published_as_opaque_typed_copy(self, ctrl):
         response_text = "Request: review the current EEG workflow."
         ctrl._turn_orchestrator.active_publication = PromptToolPublication.empty()
-        ctrl.current_response = _proposal("reply", message=response_text)
+        ctrl.current_response = _response("respond_to_user", {"message": response_text})
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 11
 
@@ -1164,8 +1142,8 @@ class TestOnGenerationFinished:
         from XBrainLab.llm.agent.assembler import PromptToolPublication
 
         ctrl._turn_orchestrator.active_publication = PromptToolPublication.empty()
-        ctrl.current_response = _proposal(
-            "reply", message="Load EEG data before training."
+        ctrl.current_response = _response(
+            "respond_to_user", {"message": "Load EEG data before training."}
         )
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 12
@@ -1174,89 +1152,50 @@ class TestOnGenerationFinished:
 
         presentation = ctrl.response_presentation_ready.emit.call_args.args[0]
         assert presentation.text == "Load EEG data before training."
-        assert "decision" not in presentation.text
+        assert "tool_name" not in presentation.text
         assert not ctrl.is_processing
 
-    def test_clarification_saves_initial_parameter_source_without_execution(self, ctrl):
-        from XBrainLab.llm.tools import get_all_tools
-
+    def test_clarification_finishes_without_execution(self, ctrl):
         ctrl._append_history("user", "Bandpass with lower cutoff 7 Hz.")
-        ctrl._turn_orchestrator.active_publication = PromptToolPublication(
-            tool_names=frozenset({"apply_bandpass_filter"}),
-            workflow_stage="data_loaded",
-            backend_generation=17,
-        )
-        ctrl.registry.get_tool.return_value = next(
-            tool for tool in get_all_tools() if tool.name == "apply_bandpass_filter"
-        )
-        ctrl.current_response = _proposal(
-            "clarify",
-            action="apply_bandpass_filter",
-            changes={
-                "low_freq": {
-                    "value": 7,
-                    "source_turn": "U1",
-                    "quote": "lower cutoff 7 Hz",
-                }
+        ctrl._turn_orchestrator.active_publication = PromptToolPublication.empty()
+        ctrl.current_response = _response(
+            "respond_to_user",
+            {
+                "message": "Please provide a complete bandpass request with both cutoffs."
             },
-            message="What upper cutoff should I use?",
         )
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 121
         ctrl._execute_tool_attempt = MagicMock()
+
         ctrl._on_generation_finished(121, [])
-        draft = ctrl.pending_interactions.request
-        assert isinstance(draft, AssistantPendingRequest)
-        assert draft.command_name == "apply_bandpass_filter"
-        assert draft.parameter_values() == {"low_freq": 7}
-        assert dict(draft.sources)["U1"] == "Bandpass with lower cutoff 7 Hz."
+
+        assert not ctrl.is_processing
+        assert ctrl.response_presentation_ready.emit.call_args.args[0].text == (
+            "Please provide a complete bandpass request with both cutoffs."
+        )
         ctrl._execute_tool_attempt.assert_not_called()
         ctrl.confirmation_requested.emit.assert_not_called()
 
     @pytest.mark.parametrize(
         "reply", ["12", "40 Hz", "cancel", "low 20 Hz", "fifty hertz"]
     )
-    def test_pending_text_reply_enters_model_path_without_host_collection(
-        self, ctrl, reply
-    ):
-        draft = _draft()
-        ctrl.pending_interactions.set_request(draft)
+    def test_followup_text_enters_model_path_without_host_collection(self, ctrl, reply):
+        ctrl._append_history("user", "Resample the EEG data.")
+        ctrl._append_history(
+            "assistant", "Please provide a complete resampling request."
+        )
         lifecycle = _use_rag_probe(ctrl)
         ctrl._generate_response = MagicMock()
         ctrl._execute_tool_attempt = MagicMock()
+
         _submit_user_turn(ctrl, reply)
-        assert reply in lifecycle.requests[-1][1]
-        assert ctrl.pending_interactions.request is draft
+
+        assert lifecycle.requests[-1][1] == reply
         ctrl._execute_tool_attempt.assert_not_called()
         assert ctrl.pending_interactions.confirmation is None
 
-    def test_reply_keeps_pending_request_without_execution(self, ctrl):
-        draft = _draft()
-        ctrl.pending_interactions.set_request(draft)
-        ctrl.current_response = _proposal(
-            "reply", message="Resampling changes sample spacing."
-        )
-        ctrl.is_processing = True
-        ctrl._turn_orchestrator.active_generation_id = 122
-        ctrl._execute_tool_attempt = MagicMock()
-        ctrl._on_generation_finished(122, [])
-        assert ctrl.pending_interactions.request is draft
-        ctrl._execute_tool_attempt.assert_not_called()
-
-    def test_model_cancel_clears_pending_request_without_execution(self, ctrl):
-        ctrl.pending_interactions.set_request(_draft())
-        ctrl.current_response = _proposal(
-            "reply", mode="cancel_pending", message="Cancelled."
-        )
-        ctrl.is_processing = True
-        ctrl._turn_orchestrator.active_generation_id = 123
-        ctrl._execute_tool_attempt = MagicMock()
-        ctrl._on_generation_finished(123, [])
-        assert ctrl.pending_interactions.request is None
-        ctrl._execute_tool_attempt.assert_not_called()
-
-    def test_recovery_exhaustion_clears_pending_request_without_execution(self, ctrl):
-        ctrl.pending_interactions.set_request(_draft())
+    def test_recovery_exhaustion_finishes_without_execution(self, ctrl):
         ctrl.current_response = 'Sure, I will check.\n{"decision":'
         ctrl._tool_attempt_session.retry_count = (
             ctrl._strict_envelope_recovery_policy.max_recovery_attempts
@@ -1264,8 +1203,10 @@ class TestOnGenerationFinished:
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 124
         ctrl._execute_tool_attempt = MagicMock()
+
         ctrl._on_generation_finished(124, [])
-        assert ctrl.pending_interactions.request is None
+
+        assert not ctrl.is_processing
         ctrl._execute_tool_attempt.assert_not_called()
 
     def test_retired_workflow_stage_field_retries_without_presenting(self, ctrl):
@@ -1416,6 +1357,9 @@ class TestOnGenerationFinished:
             '{"tool_name":"query_state","parameters":',
             '{"command":"query_state","parameters":{}}',
             '[{"tool_name":"query_state","parameters":{}}]',
+            '{"decision":"reply","mode":null,"action":null,"changes":{},'
+            '"message":"Legacy proposal."}',
+            '{"decision":"reply","request":null,"message":"Legacy proposal."}',
         ],
     )
     def test_non_contract_tool_output_never_reaches_execution(self, ctrl, response):
@@ -2472,35 +2416,23 @@ class TestResetConversation:
                 tool_names=frozenset({"import_eeg_data"}), backend_generation=7
             )
         )
-        ctrl.pending_interactions.set_request(_draft(generation=7))
         ctrl.reset_conversation()
         assert ctrl.history == []
         assert ctrl._tool_attempt_session.retry_count == 0
         assert (
             ctrl._turn_orchestrator.active_publication == PromptToolPublication.empty()
         )
-        assert ctrl.pending_interactions.request is None
         ctrl.assembler.clear_context.assert_called()
 
 
-def test_conversation_turn_terminal_preserves_pending_request(ctrl):
-    active = _draft(generation=7)
-    ctrl.pending_interactions.set_request(active)
-
-    ctrl._emit_processing_finished()
-
-    assert ctrl.pending_interactions.request is active
-
-
-def test_stop_terminal_clears_pending_request_without_execution(ctrl):
-    ctrl.pending_interactions.set_request(_draft(generation=7))
+def test_stop_terminal_finishes_without_execution(ctrl):
     ctrl._execute_tool_attempt = MagicMock()
     ctrl._turn_orchestrator.active_generation_id = 126
     assert ctrl._turn_orchestrator.request_cancellation() is True
 
     ctrl._complete_cancelled_turn()
 
-    assert ctrl.pending_interactions.request is None
+    assert not ctrl.is_processing
     ctrl._execute_tool_attempt.assert_not_called()
 
 
@@ -2636,7 +2568,7 @@ class TestExecuteDebugTool:
 
         ctrl.panel_navigation_requested.emit.assert_not_called()
 
-    def test_parameter_origin_response_does_not_invent_pending_request(self, ctrl):
+    def test_parameter_origin_response_has_no_execution_side_effect(self, ctrl):
         ctrl._append_history("user", "Resample the EEG data.")
         ctrl._finalize_turn = MagicMock()
         ctrl._handle_tool_attempt_blocked = MagicMock()
@@ -2655,14 +2587,8 @@ class TestExecuteDebugTool:
         )
         ctrl._handle_tool_attempt_blocked.assert_not_called()
         ctrl.panel_navigation_requested.emit.assert_not_called()
-        assert ctrl.pending_interactions.request is None
 
-        ctrl._append_history("user", "128 Hz")
-        ctrl._reset_user_turn_state()
-
-        assert ctrl.pending_interactions.request is None
-
-    def test_model_invented_source_never_creates_request_or_executes(self, ctrl):
+    def test_model_invented_value_never_executes(self, ctrl):
         from XBrainLab.llm.tools import get_all_tools
 
         ctrl._append_history("user", "Resample the EEG data.")
@@ -2674,19 +2600,17 @@ class TestExecuteDebugTool:
         ctrl.registry.get_tool.return_value = next(
             tool for tool in get_all_tools() if tool.name == "resample_data"
         )
-        ctrl.current_response = _proposal(
-            "execute",
-            action="resample_data",
-            changes={"rate": {"value": 128, "source_turn": "U1", "quote": "128 Hz"}},
+        _set_context_reader(
+            ctrl, return_value=_enabled_tool_context("resample_data", generation=17)
         )
+        ctrl.current_response = _response("resample_data", {"rate": 128})
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 127
         ctrl._execute_tool_attempt = MagicMock()
         ctrl._on_generation_finished(127, [])
         ctrl._execute_tool_attempt.assert_not_called()
-        assert ctrl.pending_interactions.request is None
         assert (
-            "quote a supplied user message"
+            "resampling rate"
             in ctrl.response_presentation_ready.emit.call_args.args[0].text
         )
 
@@ -2748,7 +2672,6 @@ class TestExecuteDebugTool:
         ctrl.confirmation_requested.emit.assert_not_called()
         ctrl.workflow_ui_handoff_requested.emit.assert_not_called()
         ctrl.panel_navigation_requested.emit.assert_not_called()
-        assert ctrl.pending_interactions.request is None
 
     def test_ready_debug_training_requests_confirmation_before_execution(self, ctrl):
         ctrl._turn_orchestrator.host_turn_generation = None

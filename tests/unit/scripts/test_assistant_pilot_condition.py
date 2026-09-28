@@ -426,11 +426,8 @@ def test_first_case_boundary_records_product_string_pipeline_stage(tmp_path):
     assert (output / "ui").is_dir()
 
 
-def test_condition_boundary_refuses_existing_pending_request(monkeypatch):
-    from XBrainLab.llm.agent.pending_interaction import PendingInteractionCoordinator
-    from XBrainLab.llm.agent.turn import AssistantPendingRequest
-
-    pending = PendingInteractionCoordinator()
+def test_condition_boundary_refuses_existing_confirmation(monkeypatch):
+    pending = SimpleNamespace(confirmation=None, workflow_handoff=None)
     session = PilotConditionSession.__new__(PilotConditionSession)
     session.runtime = SimpleNamespace(accepts_commands=True, turn_in_flight=False)
     session.manager = SimpleNamespace(
@@ -453,16 +450,7 @@ def test_condition_boundary_refuses_existing_pending_request(monkeypatch):
         lambda _panel: [],
     )
     assert session._boundary_clean()
-    pending.set_request(
-        AssistantPendingRequest(
-            command_name=None,
-            original_turn_id="U1",
-            publication_generation=1,
-            parameters=(),
-            sources=(("U1", "Apply a filter"),),
-            question="Which filter?",
-        )
-    )
+    pending.confirmation = object()
     assert not session._boundary_clean()
-    pending.set_request(None)
+    pending.confirmation = None
     assert session._boundary_clean()

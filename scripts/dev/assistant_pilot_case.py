@@ -179,10 +179,7 @@ def audit_initial_input(
             contexts.extend(value.get("items", []))
         elif isinstance(value, dict) and isinstance(value.get("current_user"), dict):
             current_user = value["current_user"]
-            if (
-                current_user.get("id") != "U1"
-                or value.get("pending_request") is not None
-            ):
+            if set(current_user) != {"text"}:
                 issues.append("initial_conversation_not_fresh")
             requests.append(current_user.get("text"))
             state = value.get("application_state")

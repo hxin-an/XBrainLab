@@ -36,10 +36,7 @@ from XBrainLab.llm.agent.ui_handoff import (
 )
 from XBrainLab.llm.core.generation import GenerationProfile
 
-_IMPORT_PROPOSAL = (
-    '{"decision":"execute","mode":"new_request",'
-    '"action":"import_eeg_data","changes":{},"message":null}'
-)
+_IMPORT_PROPOSAL = '{"tool_name":"import_eeg_data","parameters":{}}'
 
 
 class _ScriptedWorker(QObject):
@@ -236,7 +233,8 @@ def _submit_user_turn(
     "malformed",
     [
         '```json\n{"tool_name":"import_eeg_data"}\n```',
-        '{"tool_name":"import_eeg_data","parameters":{}}',
+        '{"decision":"execute","mode":"new_request",'
+        '"action":"import_eeg_data","changes":{},"message":null}',
     ],
 )
 def test_malformed_tool_envelopes_stop_after_one_repair_without_execution(
@@ -270,9 +268,8 @@ def test_malformed_tool_envelopes_stop_after_one_repair_without_execution(
             "or describe one workflow step more specifically."
         ]
         assert all(
-            "exactly decision, mode, action, changes and message"
-            in messages[0]["content"]
-            and "Return no prose, wrappers or code fences" in messages[0]["content"]
+            "exactly tool_name and parameters" in messages[0]["content"]
+            and "No prose, wrappers or code fences" in messages[0]["content"]
             for messages in worker.messages[1:]
         )
         assert "FORMAT CORRECTION REQUIRED" not in worker.messages[0][0]["content"]
@@ -298,7 +295,7 @@ def test_multiple_objects_never_reach_execution_or_create_pending_request(qtbot)
         assert controller._tool_attempt_session.retry_count == 0
         assert controller._tool_attempt_session.execution_count == 0
         assert coordinator.commands == []
-        assert controller.pending_interactions.request is None
+        assert not controller.pending_interactions.has_pending
         assert controller.pending_interactions.workflow_handoff is None
     finally:
         close_controller_and_wait(controller, qtbot)

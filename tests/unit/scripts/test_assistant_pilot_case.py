@@ -343,7 +343,7 @@ def test_initial_input_audit_rejects_history_and_authoritative_missing_value():
             "role": "user",
             "content": json.dumps(
                 {
-                    "current_user": {"id": "U1", "text": case["input"]},
+                    "current_user": {"text": case["input"]},
                     "application_state": {"high_freq": 30},
                 }
             ),
@@ -374,7 +374,7 @@ def test_initial_input_audit_keeps_untrusted_rag_examples_separate_from_state():
             "role": "user",
             "content": json.dumps(
                 {
-                    "current_user": {"id": "U1", "text": case["input"]},
+                    "current_user": {"text": case["input"]},
                     "application_state": {"raw_count": 1},
                 }
             ),

@@ -149,11 +149,8 @@ def test_retrieved_text_is_bounded_and_labeled_as_untrusted(
                 "category": "dataset",
                 "source_text": malicious_text,
                 "proposal": {
-                    "decision": "execute",
-                    "mode": "new_request",
-                    "action": "import_eeg_data",
-                    "changes": {},
-                    "message": None,
+                    "tool_name": "import_eeg_data",
+                    "parameters": {},
                 },
             },
         },

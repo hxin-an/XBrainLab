@@ -1,0 +1,34 @@
+{
+  "schema_version": "xbrainlab.assistant_single_turn_cases.v1",
+  "response_contract": "assistant_tool_response.v1",
+  "acceptance": {
+    "expected_case_count": 20,
+    "post_format_repair_required": 20,
+    "max_format_recovery_attempts": 1,
+    "semantic_retry_allowed": false,
+    "host_rejection_rescues_wrong_model_decision": false,
+    "response_review": "Missing-value replies must identify the missing values and request a complete restatement; informational replies must answer the question without proposing execution. Human semantic assessment is separate from structural no-action scoring."
+  },
+  "cases": [
+    {"id":"apply_bandpass_filter_01","source":"stable_assistant_positive_cases.json","input":"Apply a 4 to 38 Hz bandpass filter.","workflow_stage":"data_loaded","category":"complete","tool_name":"apply_bandpass_filter","parameters":{"low_freq":4,"high_freq":38}},
+    {"id":"missing_bandpass_en","source":"stable_assistant_no_action_precision_cases.json","input":"Apply a bandpass filter.","workflow_stage":"data_loaded","category":"missing_parameter","tool_name":"respond_to_user","parameters":null,"missing_fields":["low_freq","high_freq"]},
+    {"id":"E10b","source":"stable_assistant_engineering_cases.json","input":"Do not apply a bandpass filter; explain it.","workflow_stage":"data_loaded","category":"prohibition","tool_name":"respond_to_user","parameters":null},
+    {"id":"apply_notch_filter_01","source":"stable_assistant_positive_cases.json","input":"Apply a 60 Hz notch filter.","workflow_stage":"data_loaded","category":"complete","tool_name":"apply_notch_filter","parameters":{"freq":60}},
+    {"id":"missing_notch_en","source":"stable_assistant_no_action_precision_cases.json","input":"Apply a notch filter.","workflow_stage":"data_loaded","category":"missing_parameter","tool_name":"respond_to_user","parameters":null,"missing_fields":["freq"]},
+    {"id":"rag_pair_notch_response","source":"rag_paired_probes.json","input":"Please do not remove the 50 Hz line noise with a notch filter yet.","workflow_stage":"preprocessed","category":"prohibition","tool_name":"respond_to_user","parameters":null},
+    {"id":"resample_data_01","source":"stable_assistant_positive_cases.json","input":"Resample the EEG data to 128 Hz.","workflow_stage":"data_loaded","category":"complete","tool_name":"resample_data","parameters":{"rate":128}},
+    {"id":"missing_resample_en","source":"stable_assistant_no_action_precision_cases.json","input":"Resample the EEG data.","workflow_stage":"data_loaded","category":"missing_parameter","tool_name":"respond_to_user","parameters":null,"missing_fields":["rate"]},
+    {"id":"single_turn_negated_resample_en","source":"new_single_turn_v1","input":"Do not resample the EEG data to 128 Hz.","workflow_stage":"data_loaded","category":"prohibition","tool_name":"respond_to_user","parameters":null},
+    {"id":"set_reference_01","source":"stable_assistant_positive_cases.json","input":"Use average reference for the EEG data.","workflow_stage":"data_loaded","category":"complete","tool_name":"set_reference","parameters":{"method":"average"}},
+    {"id":"missing_reference_en","source":"stable_assistant_no_action_precision_cases.json","input":"Set the EEG reference.","workflow_stage":"data_loaded","category":"missing_parameter","tool_name":"respond_to_user","parameters":null,"missing_fields":["method"]},
+    {"id":"rag_pair_reference_response","source":"rag_paired_probes.json","input":"Do not change the reference of the loaded EEG to the average reference now.","workflow_stage":"preprocessed","category":"prohibition","tool_name":"respond_to_user","parameters":null},
+    {"id":"normalize_data_01","source":"stable_assistant_positive_cases.json","input":"Normalize the EEG data with z-score.","workflow_stage":"data_loaded","category":"complete","tool_name":"normalize_data","parameters":{"method":"z-score"}},
+    {"id":"missing_normalize_en","source":"stable_assistant_no_action_precision_cases.json","input":"Normalize this EEG data.","workflow_stage":"data_loaded","category":"missing_parameter","tool_name":"respond_to_user","parameters":null,"missing_fields":["method"]},
+    {"id":"single_turn_negated_normalize_en","source":"new_single_turn_v1","input":"Do not normalize the EEG data with z-score.","workflow_stage":"data_loaded","category":"prohibition","tool_name":"respond_to_user","parameters":null},
+    {"id":"import_eeg_data_01","source":"stable_assistant_positive_cases.json","input":"Import an EEG dataset.","workflow_stage":"empty","category":"gui","tool_name":"import_eeg_data","parameters":{}},
+    {"id":"select_channels_01","source":"stable_assistant_positive_cases.json","input":"Let me choose which EEG channels to keep.","workflow_stage":"data_loaded","category":"gui","tool_name":"select_channels","parameters":{}},
+    {"id":"E10a","source":"stable_assistant_engineering_cases.json","input":"Explain what bandpass filtering does.","workflow_stage":"data_loaded","category":"information","tool_name":"respond_to_user","parameters":null},
+    {"id":"general_en","source":"stable_assistant_no_action_precision_cases.json","input":"What can you help me do in XBrainLab?","workflow_stage":"empty","category":"information","tool_name":"respond_to_user","parameters":null},
+    {"id":"E01","source":"stable_assistant_engineering_cases.json","input":"Apply a bandpass filter from 7 to 30 Hz.","workflow_stage":"data_loaded","category":"complete","tool_name":"apply_bandpass_filter","parameters":{"low_freq":7,"high_freq":30}}
+  ]
+}

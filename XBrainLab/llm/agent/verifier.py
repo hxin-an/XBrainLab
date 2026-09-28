@@ -54,29 +54,16 @@ def verify_direct_parameter_origins(
     tool_name: str,
     params: dict[str, Any],
     latest_user_text: str,
-    *,
-    partial: bool = False,
 ) -> VerificationResult:
-    """Verify direct preprocessing values against supplied user-source text.
+    """Check values against this turn's text, not history or retrieved examples.
 
-    Request admission supplies an exact quoted source for partial changes;
-    standalone execution supplies the latest user request. This verifies only
-    value provenance, never semantic intent or action selection.
+    Value provenance is not semantic intent or authorization to execute.
     """
     if tool_name not in DIRECT_PARAMETER_TOOLS:
         return VerificationResult(True)
 
     text = unicodedata.normalize("NFKC", latest_user_text).strip()
     if tool_name == "apply_bandpass_filter":
-        if partial:
-            low, high = _bandpass_origin_matches(params, text)
-            if ("low_freq" not in params or low) and (
-                "high_freq" not in params or high
-            ):
-                return VerificationResult(True)
-            return VerificationResult(
-                False, "The cutoff value is not present in its quoted user source."
-            )
         return _verify_bandpass_origins(params, text)
     if tool_name == "apply_notch_filter":
         return _verify_single_numeric_origin(

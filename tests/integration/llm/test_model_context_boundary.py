@@ -19,9 +19,6 @@ from XBrainLab.llm.agent.context_encoding import (
     decode_untrusted_context,
     encode_untrusted_context,
 )
-from XBrainLab.llm.agent.parser import ParameterChange
-from XBrainLab.llm.agent.pending_interaction import PendingInteractionCoordinator
-from XBrainLab.llm.agent.turn import AssistantPendingRequest
 from XBrainLab.llm.core.backends.local import LocalBackend
 from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import ResolvedGenerationOptions
@@ -170,7 +167,6 @@ def test_host_template_messages_keep_policy_then_one_user_generation_turn() -> N
     assert processed[1] == messages[1]
     assert processed[-1]["role"] == "user"
     assert json.loads(processed[-1]["content"])["current_user"] == {
-        "id": "U1",
         "text": latest_request,
     }
     assert "<|system|>" not in processed[1]["content"]
@@ -220,30 +216,13 @@ def test_host_template_boundary_keeps_untrusted_context_non_authoritative() -> N
     assert processed[-1] == {"role": "user", "content": "128 Hz"}
 
 
-def _pending_request_with_correction() -> AssistantPendingRequest:
-    return AssistantPendingRequest(
-        command_name="apply_bandpass_filter",
-        original_turn_id="U1",
-        publication_generation=7,
-        parameters=(("low_freq", ParameterChange(8, "U2", "lower cutoff to 8 Hz")),),
-        sources=(
-            ("U1", "Bandpass, lower cutoff 7 Hz."),
-            ("U2", "Change lower cutoff to 8 Hz."),
-        ),
-        question="What upper cutoff should I use?",
-    )
-
-
-def test_optional_context_trim_keeps_entire_cumulative_request(
+def test_optional_context_trim_keeps_entire_current_request_and_state(
     context_boundary_tokenizer,
 ):
     assembler = ContextAssembler(ToolRegistry(), Study())
     assembler.add_context("OPTIONAL_REFERENCE " + "z" * 1500)
-    pending = _pending_request_with_correction()
     messages = assembler.get_messages(
-        [{"role": "user", "content": "30 Hz."}],
-        pending_request=pending,
-        user_turn_id="U3",
+        [{"role": "user", "content": "Apply a bandpass from 8 to 30 Hz."}],
     )
     backend, model = _loaded_backend(context_boundary_tokenizer)
     required = [messages[0], messages[-1]]
@@ -269,36 +248,23 @@ def test_optional_context_trim_keeps_entire_cumulative_request(
         request["application_state"]
         == json.loads(required[-1]["content"])["application_state"]
     )
-    assert request["current_user"] == {"id": "U3", "text": "30 Hz."}
-    assert request["pending_request"]["parameters"]["low_freq"] == {
-        "value": 8,
-        "source_turn": "U2",
-        "quote": "lower cutoff to 8 Hz",
-    }
-    assert request["pending_request"]["user_sources"] == dict(pending.sources)
-    assert request["pending_request"]["question"] == pending.question
+    assert request["current_user"] == {"text": "Apply a bandpass from 8 to 30 Hz."}
+    assert "pending_request" not in request
     model.generate.assert_not_called()  # This test exercises admission/rendering only.
 
 
-def test_required_request_overflow_keeps_draft_and_never_infers(
+def test_required_request_overflow_never_infers(
     context_boundary_tokenizer,
 ):
-    owner = PendingInteractionCoordinator()
-    pending = _pending_request_with_correction()
-    owner.set_request(pending)
     assembler = ContextAssembler(ToolRegistry(), Study())
     messages = assembler.get_messages(
         [{"role": "user", "content": "Explain " + "龘" * 10_000}],
-        pending_request=owner.request,
-        user_turn_id="U3",
     )
     backend, model = _loaded_backend(context_boundary_tokenizer)
     with pytest.raises(PreconditionError, match="too long"):
         list(backend.generate_stream(messages, options=_GENERATION_OPTIONS))
     model.generate.assert_not_called()
     assert backend._active_generation is None
-    assert owner.request is pending
-    assert owner.request.parameter_values() == {"low_freq": 8}
 
 
 @pytest.mark.parametrize("retained_count", [1, 2])
@@ -313,11 +279,8 @@ def test_exact_token_budget_keeps_whole_ranked_examples_before_optional_history(
             data={
                 "input": f"Explain filter {rank} without applying it.",
                 "expected_proposal": {
-                    "decision": "reply",
-                    "mode": None,
-                    "action": None,
-                    "changes": {},
-                    "message": f"Explanation {rank}: " + "detail " * 12,
+                    "tool_name": "respond_to_user",
+                    "parameters": {"message": f"Explanation {rank}: " + "detail " * 12},
                 },
             },
         )
@@ -334,11 +297,8 @@ def test_exact_token_budget_keeps_whole_ranked_examples_before_optional_history(
         "role": "user",
         "content": json.dumps(
             {
-                "current_user": {"id": "U3", "text": "30 Hz."},
-                "pending_request": {
-                    "low_freq": 8,
-                    "source": "Change lower cutoff to 8 Hz.",
-                },
+                "current_user": {"text": "Apply a bandpass from 8 to 30 Hz."},
+                "application_state": {"workflow_stage": "data_loaded"},
             }
         ),
     }
@@ -389,11 +349,10 @@ def test_assembler_byte_budget_keeps_only_unchanged_whole_examples(monkeypatch):
             data={
                 "input": f"Explain example {rank}.",
                 "expected_proposal": {
-                    "decision": "reply",
-                    "mode": None,
-                    "action": None,
-                    "changes": {},
-                    "message": f"Explanation {rank}: " + "details " * 40,
+                    "tool_name": "respond_to_user",
+                    "parameters": {
+                        "message": f"Explanation {rank}: " + "details " * 40
+                    },
                 },
             },
         )

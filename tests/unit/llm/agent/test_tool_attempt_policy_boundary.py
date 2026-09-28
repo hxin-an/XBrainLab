@@ -11,13 +11,11 @@ from XBrainLab.backend.application.resource_preflight import (
     ResourceConfirmationChallenge,
 )
 from XBrainLab.llm.agent.assembler import PromptToolPublication
-from XBrainLab.llm.agent.parser import ParameterChange
 from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptAction,
     ToolAttemptCoordinator,
     ToolAttemptRequest,
 )
-from XBrainLab.llm.agent.turn import AssistantPendingRequest
 from XBrainLab.llm.agent.verifier import VerificationResult
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
@@ -93,7 +91,6 @@ def _request(
     params: dict[str, Any] | None = None,
     text: str,
     publication: PromptToolPublication | None = None,
-    pending_request: AssistantPendingRequest | None = None,
 ) -> ToolAttemptRequest:
     return ToolAttemptRequest(
         command_name=tool_name,
@@ -104,7 +101,6 @@ def _request(
             backend_generation=21,
         ),
         latest_user_text=text,
-        pending_request=pending_request,
     )
 
 
@@ -354,7 +350,10 @@ def test_affirmative_request_does_not_authorize_invented_values(text: str) -> No
     )
 
     assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.message == "What notch frequency should I use?"
+    assert decision.message == (
+        "What notch frequency should I use? "
+        "Please restate the complete action with all required values."
+    )
 
 
 def test_partially_sourced_bandpass_cannot_execute() -> None:
@@ -376,7 +375,8 @@ def test_partially_sourced_bandpass_cannot_execute() -> None:
     assert decision.action is ToolAttemptAction.RESPOND
     assert (
         decision.message
-        == "What high cutoff frequency should I use for the bandpass filter?"
+        == "What high cutoff frequency should I use for the bandpass filter? "
+        "Please restate the complete action with all required values."
     )
     assert decision.params == {"low_freq": 1, "high_freq": 40}
 
@@ -468,7 +468,10 @@ def test_word_number_frequency_is_not_treated_as_a_verified_decimal() -> None:
     )
 
     assert first.action is ToolAttemptAction.RESPOND
-    assert first.message == "What notch frequency should I use?"
+    assert first.message == (
+        "What notch frequency should I use? "
+        "Please restate the complete action with all required values."
+    )
 
 
 @pytest.mark.parametrize(
@@ -558,7 +561,10 @@ def test_unavailable_unsourced_direct_proposal_cannot_execute() -> None:
     )
 
     assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.message == "What resampling rate should I use?"
+    assert decision.message == (
+        "What resampling rate should I use? "
+        "Please restate the complete action with all required values."
+    )
 
 
 def test_import_eeg_data_proposal_is_not_blocked_by_host_english_intent_gate() -> None:
@@ -601,50 +607,19 @@ def test_complete_direct_preprocess_proposal_does_not_require_host_action_gramma
     assert decision.action is ToolAttemptAction.EXECUTE
 
 
-def _pending_request(
-    tool_name: str,
-    params: dict[str, Any],
-    *,
-    source: str,
-    generation: int = 21,
-) -> AssistantPendingRequest:
-    return AssistantPendingRequest(
-        command_name=tool_name,
-        original_turn_id="U1",
-        publication_generation=generation,
-        parameters=tuple(
-            (name, ParameterChange(value, "U1", source))
-            for name, value in params.items()
-        ),
-        sources=(("U1", source),),
-    )
-
-
-def test_verified_draft_values_reach_full_verification() -> None:
+def test_prior_value_cannot_authorize_current_request_without_value() -> None:
     coordinator, source, verifier = _coordinator(
         _context("resample_data", command_name="preprocess")
     )
-    draft = _pending_request(
-        "resample_data",
-        {"rate": 128},
-        source="Resample to 128 Hz.",
+
+    decision = coordinator.evaluate(
+        _request("resample_data", params={"rate": 128}, text="Use the saved value.")
     )
 
-    rebuilt = coordinator.evaluate(
-        _request(
-            "resample_data",
-            params={"rate": 128},
-            text="Use the saved value.",
-            pending_request=draft,
-        )
-    )
-
-    assert rebuilt.action is ToolAttemptAction.EXECUTE
-    assert rebuilt.params == {"rate": 128}
+    assert decision.action is ToolAttemptAction.RESPOND
+    assert decision.params == {"rate": 128}
     assert source.reads == ["resample_data"]
-    assert verifier.calls == [
-        ("resample_data", {"rate": 128}),
-    ]
+    assert verifier.calls == [("resample_data", {"rate": 128})]
 
 
 @pytest.mark.parametrize(
@@ -661,7 +636,7 @@ def test_verified_draft_values_reach_full_verification() -> None:
         ("normalize_data", {"method": "z-score"}, "z-score"),
     ),
 )
-def test_verified_direct_draft_reaches_execution_boundary(
+def test_current_turn_direct_values_reach_execution_boundary(
     tool_name: str,
     params: dict[str, Any],
     reply: str,
@@ -669,14 +644,12 @@ def test_verified_direct_draft_reaches_execution_boundary(
     coordinator, source, verifier = _coordinator(
         _context(tool_name, command_name="preprocess")
     )
-    draft = _pending_request(tool_name, params, source=reply)
 
     decision = coordinator.evaluate(
         _request(
             tool_name,
             params=params,
             text=reply,
-            pending_request=draft,
         )
     )
 
@@ -685,57 +658,14 @@ def test_verified_direct_draft_reaches_execution_boundary(
     assert verifier.calls == [(tool_name, params)]
 
 
-@pytest.mark.parametrize(
-    ("params", "draft_tool", "draft_generation"),
-    (
-        ({"rate": 256}, "resample_data", 21),
-        ({}, "resample_data", 21),
-        ({"rate": 128}, "apply_notch_filter", 21),
-        ({"rate": 128}, "resample_data", 20),
-    ),
-)
-def test_pending_draft_cannot_authorize_different_values_action_or_generation(
-    params: dict[str, Any],
-    draft_tool: str,
-    draft_generation: int,
-) -> None:
-    coordinator, _source, verifier = _coordinator(
-        _context("resample_data", command_name="preprocess")
-    )
-    draft = _pending_request(
-        draft_tool,
-        {"rate": 128},
-        source="128 Hz",
-        generation=draft_generation,
-    )
-
-    decision = coordinator.evaluate(
-        _request(
-            "resample_data",
-            params=params,
-            text="128 Hz",
-            pending_request=draft,
-        )
-    )
-
-    assert decision.action is ToolAttemptAction.RESPOND
-    assert verifier.calls == []
-
-
-def test_verified_draft_still_requires_full_schema_verification() -> None:
+def test_current_turn_values_still_require_full_schema_verification() -> None:
     coordinator, _source, verifier = _coordinator(
         _context("resample_data", command_name="preprocess"),
         verifier=_Verifier(valid=False),
     )
-    draft = _pending_request("resample_data", {"rate": 128}, source="128 Hz")
 
     decision = coordinator.evaluate(
-        _request(
-            "resample_data",
-            params={"rate": 128},
-            text="128 Hz",
-            pending_request=draft,
-        )
+        _request("resample_data", params={"rate": 128}, text="Resample to 128 Hz.")
     )
 
     assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED

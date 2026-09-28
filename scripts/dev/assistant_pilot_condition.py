@@ -339,7 +339,6 @@ class PilotConditionSession:
             and controller.history == []
             and pending.confirmation is None
             and pending.workflow_handoff is None
-            and pending.request is None
             and collect_visible_messages(self.manager.chat_panel) == []
             and all(
                 self.service.get_active_owned_operation(kind) is None

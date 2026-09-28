@@ -1,71 +1,74 @@
-"""Public model schema and prompt agreement checks."""
+"""Public single-turn model schema and prompt agreement checks."""
+
+import json
+
+import pytest
 
 from XBrainLab.llm.agent.decision_contract import model_proposal_schema
 from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 from XBrainLab.llm.agent.prompt_policy import StrictToolResponsePromptPolicy
 
 
-def test_prompt_examples_are_complete_parseable_proposals():
-    text = StrictToolResponsePromptPolicy().decision_instructions()
-    examples = [
-        line.split(": ", 1)[1]
-        for line in text.splitlines()
-        if line.startswith("Example ")
-    ]
-    results = [CommandParser.parse_product(example) for example in examples]
-    assert {result.decision for result in results} == {"reply", "clarify", "execute"}
-    assert [result.status for result in results] == [
-        ToolEnvelopeStatus.NO_TOOL,
-        ToolEnvelopeStatus.NO_TOOL,
-        ToolEnvelopeStatus.VALID,
-        ToolEnvelopeStatus.VALID,
-        ToolEnvelopeStatus.NO_TOOL,
-        ToolEnvelopeStatus.NO_TOOL,
-        ToolEnvelopeStatus.NO_TOOL,
-    ]
-    assert set(dict(results[2].request.changes)) == {"low_freq", "high_freq"}
-    assert all(change.source_turn == "U1" for _, change in results[2].request.changes)
-    assert dict(results[3].request.changes)["high_freq"].source_turn == "U2"
-    assert results[4].request.mode == "continue"
-    assert dict(results[4].request.changes)["low_freq"].value == 5
-    assert results[5].request.mode == "cancel"
-    assert results[5].decision == "reply"
-    assert results[6].request.mode == "replace"
-    assert results[6].request.changes == ()
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"tool_name": "resample_data", "parameters": {"rate": 128}},
+        {
+            "tool_name": "respond_to_user",
+            "parameters": {"message": "Please restate the complete request."},
+        },
+    ],
+)
+def test_schema_and_parser_accept_single_turn_output(payload):
     schema = model_proposal_schema()
-    for result in results:
-        payload = result.proposal_dict()
-        assert set(payload) == set(schema["required"])
-        assert payload["decision"] in schema["properties"]["decision"]["enum"]
-        assert "request" not in payload
-        assert payload["mode"] in schema["properties"]["mode"]["enum"]
+    assert set(payload) == set(schema["required"]) == {"tool_name", "parameters"}
+    assert schema["additionalProperties"] is False
+    result = CommandParser.parse_product(json.dumps(payload))
+    assert result.status in (ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL)
+    assert result.proposal_dict() == payload
 
 
-def test_repair_and_normal_prompt_use_only_the_current_response_contract():
+@pytest.mark.parametrize(
+    "parameters",
+    [{}, {"message": ""}, {"message": "   "}, {"message": "Hi", "rate": 128}],
+)
+def test_schema_rejects_invalid_response_marker(parameters):
+    result = CommandParser.parse_product(
+        json.dumps({"tool_name": "respond_to_user", "parameters": parameters})
+    )
+    assert result.status is ToolEnvelopeStatus.FORMAT_ERROR
+    response_schema = model_proposal_schema()["allOf"][0]["then"]["properties"][
+        "parameters"
+    ]
+    assert response_schema["required"] == ["message"]
+    assert response_schema["additionalProperties"] is False
+
+
+def test_normal_and_recovery_policy_use_only_single_turn_contract():
     policy = StrictToolResponsePromptPolicy()
     for text in (policy.decision_instructions(), policy.recovery_instructions()):
-        for field in (
-            "decision",
-            "mode",
-            "action",
-            "changes",
-            "message",
+        assert "tool_name" in text
+        assert "parameters" in text
+        assert "respond_to_user" in text
+        for retired in (
             "source_turn",
-            "quote",
+            "pending_request",
+            "update_pending",
+            "new_request",
+            "cancel_pending",
         ):
-            assert field in text
-        for retired in ("respond_to_user", "pending_action", "missing_inputs"):
             assert retired not in text
+    assert "Example " not in policy.decision_instructions()
     assert policy.max_format_recovery_attempts == 1
 
 
-def test_prompt_keeps_sources_request_lifecycle_and_backend_execution_separate():
+def test_policy_keeps_current_turn_sources_and_backend_execution_separate():
     text = StrictToolResponsePromptPolicy().decision_instructions()
     for invariant in (
-        "all omitted saved parameters",
-        "mode=null, action=null, changes={}",
-        "cancel",
-        "never Assistant, backend or example text",
+        "current_user.text",
+        "complete request",
+        "never fill missing parameters",
+        "For multiple actions or an explanation plus an action",
         "Zero-parameter GUI",
         "Host confirmation is separate",
         "trusted tool result",

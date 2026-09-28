@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from XBrainLab.llm.agent.assembler import ContextAssembler
 from XBrainLab.llm.rag.bm25 import BM25Index
 from XBrainLab.llm.rag.config import RAGConfig
 from XBrainLab.llm.rag.retriever import RAGRetriever
@@ -38,11 +37,8 @@ def _metadata(example_id, action="start_training", text="Start training now."):
         "id": example_id,
         "source_text": text,
         "proposal": {
-            "decision": "execute",
-            "mode": "new_request",
-            "action": action,
-            "changes": {},
-            "message": None,
+            "tool_name": action,
+            "parameters": {},
         },
     }
 
@@ -80,82 +76,7 @@ def test_get_similar_examples_success(mock_retriever):
     assert "```" not in result
 
     parsed_payload = example["data"]["expected_proposal"]
-    assert set(parsed_payload) == {"decision", "mode", "action", "changes", "message"}
-
-
-def test_contextual_transport_is_revalidated_before_pending_context_is_rendered(
-    mock_retriever,
-):
-    rows = json.loads(RAGConfig.get_gold_set_path().read_text())
-    row = next(
-        row for row in rows if row["id"] == "apply_bandpass_filter_supplement_01"
-    )
-    metadata = {
-        "id": row["id"],
-        "source_text": row["input"],
-        "proposal": row["expected_proposal"],
-        "prior_turn": row["prior_turn"],
-    }
-    mock_retriever.client.query_points.return_value.points = [
-        SimpleNamespace(
-            score=0.95,
-            payload={"page_content": "Search-only combined text", "metadata": metadata},
-        )
-    ]
-    encoded = mock_retriever.get_similar_examples(
-        "bandpass upper", allowed_tool_names=frozenset({"apply_bandpass_filter"})
-    )
-    payload = json.loads(encoded)
-    data = payload["items"][0]["data"]
-    assert data == {
-        "input": row["input"],
-        "expected_proposal": row["expected_proposal"],
-        "prior_turn": row["prior_turn"],
-    }
-    # Even a transported claim of pending values must not become model context.
-    data["context"] = {"pending_request": {"parameters": {"low_freq": 999}}}
-    assembler = ContextAssembler(MagicMock(), MagicMock())
-    assembler.context_notes = [json.dumps(payload)]
-    rendered = assembler._context_note_items(frozenset({"apply_bandpass_filter"}))[
-        0
-    ].data
-    assert "prior_turn" not in rendered
-    assert rendered["context"]["current_user"] == {"id": "U2", "text": row["input"]}
-    pending = rendered["context"]["pending_request"]
-    assert pending["parameters"]["low_freq"]["value"] == 11
-    assert pending["user_sources"] == {"U1": row["prior_turn"]["input"]}
-    assert assembler._context_note_items(frozenset()) == ()
-    data["prior_turn"]["expected_proposal"]["changes"]["low_freq"]["quote"] = (
-        "fabricated 11"
-    )
-    assembler.context_notes = [json.dumps(payload)]
-    assert assembler._context_note_items(frozenset({"apply_bandpass_filter"})) == ()
-
-
-@pytest.mark.parametrize("extra", [" details" * 200, " /home/alice/private/eeg.edf"])
-def test_contextual_example_is_dropped_whole_if_prior_source_would_change(
-    mock_retriever, extra
-):
-    rows = json.loads(RAGConfig.get_gold_set_path().read_text())
-    row = next(
-        row for row in rows if row["id"] == "apply_bandpass_filter_supplement_01"
-    )
-    row["prior_turn"]["input"] += extra
-    metadata = {
-        "id": row["id"],
-        "source_text": row["input"],
-        "proposal": row["expected_proposal"],
-        "prior_turn": row["prior_turn"],
-    }
-    mock_retriever.client.query_points.return_value.points = [
-        SimpleNamespace(score=0.95, payload={"metadata": metadata})
-    ]
-    assert (
-        mock_retriever.get_similar_examples(
-            "bandpass upper", allowed_tool_names=frozenset({"apply_bandpass_filter"})
-        )
-        == ""
-    )
+    assert set(parsed_payload) == {"tool_name", "parameters"}
 
 
 def test_get_similar_examples_empty(mock_retriever):
@@ -312,7 +233,7 @@ def test_rrf_promotes_shared_identity_and_uses_only_admitted_branch_ranks():
         "lexical match",
     ]
     assert all(
-        item["data"]["expected_proposal"]["action"] == "start_training"
+        item["data"]["expected_proposal"]["tool_name"] == "start_training"
         for item in payload["items"]
     )
 

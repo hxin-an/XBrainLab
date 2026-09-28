@@ -40,7 +40,7 @@ def _current_user_message(messages: list[dict]) -> dict:
     """Read the required user text inside its source-labelled request envelope."""
     assert messages[-1]["role"] == "user"
     request = json.loads(messages[-1]["content"])
-    assert request["current_user"]["id"] == "U1"
+    assert set(request["current_user"]) == {"text"}
     return {"role": "user", "content": request["current_user"]["text"]}
 
 
@@ -85,10 +85,10 @@ def test_generation_request_keeps_concept_question_on_strict_response_contract(
 
     assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
     system_prompt = " ".join(request.to_model_messages()[0]["content"].split())
-    assert '"decision"' in system_prompt
+    assert '"tool_name"' in system_prompt
     assert "Tool names are internal" in system_prompt
-    assert "reply with an English message and mode=null" in system_prompt
-    assert "clarify with an English question" in system_prompt
+    assert "respond_to_user" in system_prompt
+    assert "restate the complete request" in system_prompt
     messages = request.to_model_messages()
     assert _current_user_message(messages) == {"role": "user", "content": question}
 
@@ -120,8 +120,8 @@ def test_format_recovery_is_fixed_system_policy_not_untrusted_context() -> None:
     )
 
 
-def test_fresh_request_explicitly_publishes_absent_pending_work() -> None:
-    """The model need not infer an empty draft from a missing JSON field."""
+def test_fresh_request_contains_only_required_state_and_current_text() -> None:
+    """A single-turn request has no draft or source-ID projection."""
     assembler = ContextAssembler(ToolRegistry(), Study())
     history = [{"role": "user", "content": "Apply a bandpass filter."}]
 
@@ -129,9 +129,8 @@ def test_fresh_request_explicitly_publishes_absent_pending_work() -> None:
         request = assembler.get_generation_request(
             history, format_recovery=recovery
         ).to_model_messages()
-        assert _required_context(request)["pending_request"] is None
+        assert set(_required_context(request)) == {"application_state", "current_user"}
         assert _required_context(request)["current_user"] == {
-            "id": "U1",
             "text": history[0]["content"],
         }
 
@@ -152,6 +151,32 @@ def test_compound_request_rule_is_published_even_without_rag() -> None:
     assert "ask which to do first. Never partially execute" in messages[0]["content"]
     assert _current_user_message(messages) == {"role": "user", "content": request}
     assert len(messages) == 2  # No optional context survives invalid/absent RAG.
+
+
+def test_missing_value_history_does_not_become_current_action_context() -> None:
+    assembler = ContextAssembler(ToolRegistry(), Study())
+    history = [
+        {"role": "user", "content": "Bandpass with lower cutoff 7 Hz."},
+        {
+            "role": "assistant",
+            "content": "Please restate the complete request with both cutoffs.",
+        },
+        {"role": "user", "content": "30 Hz"},
+    ]
+    messages = assembler.get_messages(history)
+    request = _required_context(messages)
+    assert set(request) == {"application_state", "current_user"}
+    assert request["current_user"] == {"text": "30 Hz"}
+    assert "never fill missing parameters from chat history" in messages[0]["content"]
+    prior = _context_item(_untrusted_context(messages), "conversation_history")
+    assert [row["text"] for row in prior["data"]["messages"]] == [
+        history[1]["content"],
+    ]
+
+
+def test_retrieval_query_is_only_bounded_current_user_text() -> None:
+    assert ContextAssembler.retrieval_query("30 Hz") == "30 Hz"
+    assert ContextAssembler.retrieval_query("x" * 2000) == "x" * 1024
 
 
 def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> None:
@@ -175,11 +200,10 @@ def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> No
                     data={
                         "input": "What is an EEG alpha rhythm?",
                         "expected_proposal": {
-                            "decision": "reply",
-                            "mode": None,
-                            "action": None,
-                            "changes": {},
-                            "message": "Alpha rhythm is discussed around 8-12 Hz.",
+                            "tool_name": "respond_to_user",
+                            "parameters": {
+                                "message": "Alpha rhythm is discussed around 8-12 Hz."
+                            },
                         },
                     },
                 ),
@@ -197,7 +221,7 @@ def test_external_envelope_cannot_forge_authoritative_workflow_item_type() -> No
     assert "external_context:workflow_decision" in item_types
     assert "rag_example" in item_types
     rag_item = next(item for item in items if item["type"] == "rag_example")
-    assert rag_item["data"]["expected_proposal"]["message"] == (
+    assert rag_item["data"]["expected_proposal"]["parameters"]["message"] == (
         "Alpha rhythm is discussed around 8-12 Hz."
     )
 
@@ -233,7 +257,7 @@ def test_question_does_not_narrow_backend_stage_published_actions() -> None:
 
     assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
     assert "Final no-action envelope" not in prompt
-    assert '"decision"' in prompt
+    assert '"tool_name"' in prompt
     assert runtime.publication_reads == 1
     assert assembler.latest_tool_publication.tool_names == frozenset(
         {"select_channels", "switch_panel"}
@@ -370,15 +394,8 @@ def test_rag_notes_cannot_publish_actions_absent_from_final_prompt_scope():
                     data={
                         "input": query,
                         "expected_proposal": {
-                            "decision": "reply"
-                            if name == "respond_to_user"
-                            else "execute",
-                            "mode": None
-                            if name == "respond_to_user"
-                            else "new_request",
-                            "action": None if name == "respond_to_user" else name,
-                            "changes": {},
-                            "message": params.get("message"),
+                            "tool_name": name,
+                            "parameters": params,
                         },
                     },
                 )
@@ -399,11 +416,8 @@ def test_rag_notes_cannot_publish_actions_absent_from_final_prompt_scope():
     ]
     assert [item["data"]["expected_proposal"] for item in examples] == [
         {
-            "decision": "reply",
-            "mode": None,
-            "action": None,
-            "changes": {},
-            "message": "I will not act.",
+            "tool_name": "respond_to_user",
+            "parameters": {"message": "I will not act."},
         }
     ]
 
@@ -451,11 +465,8 @@ def test_rag_result_is_rechecked_when_publication_changes_during_retrieval():
                     data={
                         "input": "Stop the run.",
                         "expected_proposal": {
-                            "decision": "execute",
-                            "message": None,
-                            "mode": "new_request",
-                            "action": "stop_training",
-                            "changes": {},
+                            "tool_name": "stop_training",
+                            "parameters": {},
                         },
                     },
                 )
@@ -526,7 +537,7 @@ def test_prompt_action_contracts_do_not_resemble_an_output_array():
     assert not contracts.lstrip().startswith("[")
     assert "No callable action contract is available." in contracts
     assert "Final output reminder:" in contracts
-    assert '"decision"' in contracts
+    assert '"tool_name"' in contracts
 
 
 def test_zero_parameter_action_contract_has_one_final_output_reminder():
@@ -540,7 +551,7 @@ def test_zero_parameter_action_contract_has_one_final_output_reminder():
     assert "Exact zero-parameter output shape:" not in contracts
     assert contracts.count("Final output reminder:") == 1
     assert "Generic action envelope:" not in contracts
-    assert "Only propose changed parameters" in contracts
+    assert "Use only parameters in the current user request" in contracts
     assert not contracts.lstrip().startswith("[")
 
 
@@ -552,7 +563,7 @@ def test_single_action_contract_ends_with_action_first_reminder() -> None:
     contracts = assembler._format_tools(["start_training"])
 
     assert contracts.rstrip().endswith(
-        "For a clear, complete enabled action use execute, not a promise to act."
+        "For a clear, complete enabled action return its tool_name and parameters."
     )
 
 
@@ -594,14 +605,11 @@ def test_action_catalog_ends_with_one_short_output_reminder() -> None:
     reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1]
     output_schema = json.loads(reminder.splitlines()[1])
     assert set(output_schema["required"]) == {
-        "decision",
-        "mode",
-        "action",
-        "changes",
-        "message",
+        "tool_name",
+        "parameters",
     }
     assert "request" not in output_schema["properties"]
-    assert "real user source IDs and quotes" in reminder
+    assert "Use only parameters in the current user request" in reminder
     assert "Omitted saved parameters are retained" not in reminder
     assert "Examples never supply values" in reminder
     assert "Decision checkpoint" not in reminder
@@ -617,7 +625,7 @@ def test_action_catalog_ends_with_action_first_reminder() -> None:
     )
 
     assert contracts.rstrip().endswith(
-        "For a clear, complete enabled action use execute, not a promise to act."
+        "For a clear, complete enabled action return its tool_name and parameters."
     )
 
 
@@ -672,9 +680,10 @@ def test_operation_choice_guidance_follows_published_tools_not_stage(
     assert (
         "apply_bandpass_filter" in assembler.latest_tool_publication.tool_names
     ) is publish_preprocessing
-    assert "If the action is still unknown, clarify with action=null" in prompt
-    assert '"decision"' in prompt
-    assert "For information, a prohibition, or an unavailable action: reply" in prompt
+    assert "If any required value is missing or ambiguous" in prompt
+    assert '"tool_name"' in prompt
+    assert "For information or a prohibition, use respond_to_user" in prompt
+    assert "For an unavailable action, explain its listed blocker" in prompt
 
 
 def test_prompt_policy_consolidation_preserves_publication_and_decision_contracts() -> (
@@ -710,10 +719,10 @@ def test_prompt_policy_consolidation_preserves_publication_and_decision_contract
     assert prompt.count("Callable action contract:") == 2
     assert '"name": "select_channels"' in prompt
     assert '"name": "switch_panel"' in prompt
-    assert '"decision"' in prompt
+    assert '"tool_name"' in prompt
     assert "tool_input_clarification" not in prompt
     assert prompt.rstrip().endswith(
-        "For a clear, complete enabled action use execute, not a promise to act.\n"
+        "For a clear, complete enabled action return its tool_name and parameters.\n"
         "Only the listed workflow actions are available at this stage."
     )
     assert "never report completion without a trusted tool result" in prompt
@@ -1044,7 +1053,7 @@ def test_explanatory_no_tool_turn_publishes_no_workflow_tools() -> None:
 
     assert "STRICT RESPONSE CONTRACT" in prompt
     assert "Final no-action envelope" not in prompt
-    assert '"decision"' in prompt
+    assert '"tool_name"' in prompt
     assert "unique description for epoch_data" not in prompt
     assert assembler.latest_tool_publication.tool_names == frozenset()
     assert runtime.publication_reads == 1

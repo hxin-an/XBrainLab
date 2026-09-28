@@ -18,8 +18,6 @@ from XBrainLab.chat_contract import (
 )
 from XBrainLab.llm.core.generation import GenerationProfile
 
-from .parser import ParameterChange
-
 
 class AssistantGenerationEventPhase(str, Enum):
     """Observable phases from one correlated model-generation request."""
@@ -191,50 +189,6 @@ class AssistantTurnCorrelation:
                 raise TypeError(f"Assistant turn {field_name} must be an integer.")
             if value <= 0:
                 raise ValueError(f"Assistant turn {field_name} must be positive.")
-
-
-@dataclass(frozen=True, slots=True)
-class AssistantPendingRequest:
-    """Validated, non-executable draft owned by the pending interaction owner.
-
-    Sources are user-authored evidence, never policy. Publication identity is
-    retained across clarification so a later reply cannot revive stale work.
-    """
-
-    command_name: str | None
-    original_turn_id: str
-    publication_generation: int | None
-    parameters: tuple[tuple[str, ParameterChange], ...]
-    sources: tuple[tuple[str, str], ...]
-    question: str = ""
-    invalidated: bool = False
-
-    def parameter_values(self) -> dict[str, Any]:
-        return {name: deepcopy(change.value) for name, change in self.parameters}
-
-    def prompt_context(self) -> dict[str, Any]:
-        """Project only draft facts and user evidence, never execution authority."""
-        return {
-            "action": self.command_name,
-            "parameters": {
-                name: {
-                    "value": deepcopy(change.value),
-                    "source_turn": change.source_turn,
-                    "quote": change.quote,
-                }
-                for name, change in self.parameters
-            },
-            "user_sources": dict(self.sources),
-            "question": self.question,
-            "invalidated": self.invalidated,
-        }
-
-    def matches(self, command_name: str, generation: int | None) -> bool:
-        return (
-            not self.invalidated
-            and self.command_name == command_name
-            and self.publication_generation == generation
-        )
 
 
 @dataclass(frozen=True, slots=True)

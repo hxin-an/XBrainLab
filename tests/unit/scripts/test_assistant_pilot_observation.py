@@ -37,15 +37,7 @@ class Signals(QObject):
 
 
 def _resample_proposal():
-    return {
-        "decision": "execute",
-        "mode": "new_request",
-        "action": "resample_data",
-        "changes": {
-            "rate": {"value": 128, "source_turn": "U1", "quote": "128 Hz"},
-        },
-        "message": None,
-    }
+    return {"tool_name": "resample_data", "parameters": {"rate": 128}}
 
 
 @pytest.fixture
@@ -95,7 +87,7 @@ def test_generations_retries_and_host_outcomes_remain_separate(host):
     ]
     assert report["measurement_issues"] == []
     assert all(
-        generation["request"]["response_contract"] == "assistant_proposal.v2"
+        generation["request"]["response_contract"] == "assistant_tool_response.v1"
         for generation in report["generations"]
     )
     assert report["turn_terminal"]["outcome"] == "failed"
@@ -265,7 +257,9 @@ def test_real_controller_rag_off_keeps_normal_assembly_and_observes_admission(qt
         )
         rag = next(item for item in decisions if item["kind"] == "rag")
         assert rag["enabled"] is False and rag["error"] == ""
-        controller.current_response = '{"decision":"reply","message":"EEG explanation","mode":null,"action":null,"changes":{}}'
+        controller.current_response = (
+            '{"tool_name":"respond_to_user","parameters":{"message":"EEG explanation"}}'
+        )
         controller._on_generation_finished(requests[0].generation_id, [])
         envelope = next(item for item in decisions if item["kind"] == "envelope")
         assert envelope["status"] == "no_tool"
@@ -304,18 +298,12 @@ def test_real_host_rejection_is_recorded_not_recomputed_from_oracle(
             assert rejection["status"] == "format_error"
             assert rejection["error"]
         else:
-            # Draft admission rejects the unavailable action before execution
-            # admission; the observed result is independent of the case oracle.
             envelope = next(item for item in decisions if item["kind"] == "envelope")
             assert envelope["status"] == "valid"
             assert envelope["proposal"] == payload
-            rejection = next(
-                item for item in decisions if item["kind"] == "request_update"
-            )
-            assert rejection["accepted"] is False
-            assert "Load raw data before preprocessing." in rejection["error"]
-            assert presentations[-1].text == rejection["error"]
-            assert controller.pending_interactions.request is None
+            rejection = next(item for item in decisions if item["kind"] == "admission")
+            assert rejection["action"] in {"publication_blocked", "capability_blocked"}
+            assert rejection["command_name"] == "resample_data"
             assert not commands
         assert rejection["generation_id"] == requests[0].generation_id
     finally:
@@ -331,14 +319,14 @@ def test_observer_exception_and_mutation_do_not_change_owner_decision(qtbot):
     controller = LLMController(Study(), rag_enabled=False)
 
     def broken_observer(payload):
-        payload["proposal"]["changes"]["rate"]["value"] = 64
+        payload["proposal"]["parameters"]["rate"] = 64
         raise RuntimeError("diagnostic sink failed")
 
     controller.decision_observed.connect(broken_observer)
     envelope = CommandParser.parse_product(json.dumps(_resample_proposal()))
     try:
         assert controller._handle_tool_envelope_failure(envelope) is False
-        assert dict(envelope.request.changes)["rate"].value == 128
+        assert envelope.command == ("resample_data", {"rate": 128})
     finally:
         close_controller_and_wait(controller, qtbot)
 
@@ -399,7 +387,7 @@ def test_observed_request_preserves_scoring_contract_without_defaulting_missing_
         assert score["final_decision_correct"] is (True if expected_valid else None)
         if expected_valid:
             saved_request = report["generations"][0]["request"]
-            assert saved_request["response_contract"] == "assistant_proposal.v2"
+            assert saved_request["response_contract"] == "assistant_tool_response.v1"
             assert saved_request["generation_id"] == request.generation_id
             assert [dict(message) for message in saved_request["messages"]] == (
                 request.to_model_messages()

@@ -33,9 +33,9 @@ PROBE_PATH = Path(__file__).with_name("rag_verification_probes.json")
 PROBE_SHA256 = "d4222a3e1595db23d45622ec0b29348e65482c0cb7eb3c3cb4bf880ad2d96822"  # pragma: allowlist secret
 PAIRED_PROBE_PATH = Path(__file__).with_name("rag_paired_probes.json")
 PAIRED_PROBE_SHA256 = "bd9608f783c9ef9d534153bf0e6135c249ae9c989546a6db3124f0a6e88c3f5e"  # pragma: allowlist secret
-ADMISSION_PATH = ROOT / "tests/unit/llm/rag/retrieval_admission_cases_v3.json"
-ADMISSION_SHA256 = "c5308ccb0d062b845b0e1728b2d10c4c3016094d69eb12d3852719a46ad5edd0"  # pragma: allowlist secret
-ADMISSION_CORPUS_SHA256 = "9dd41af8d3f43f9d302f566d6cacf25d7b21b20047b7c426c7ed34713e968ebf"  # pragma: allowlist secret
+ADMISSION_PATH = ROOT / "tests/unit/llm/rag/retrieval_admission_cases_v4.json"
+ADMISSION_SHA256 = "779bf21df8185f5709c0f6c45e0cd1ce73f766abdb45de2403d69f864714a79a"  # pragma: allowlist secret
+ADMISSION_CORPUS_SHA256 = "5b3360ebf0888c5e2703abf92d74791a2060fc7acb320e6435e5245c17a0f7cf"  # pragma: allowlist secret
 _ALLOWED_GIT_ARGUMENTS = frozenset(
     {
         ("rev-parse", "--show-toplevel"),
@@ -163,7 +163,7 @@ def evaluate_probe_context(
         proposal = prompt_proposal_from_metadata(metadata)
         # Keep a malformed proposal's claimed action visible to the safety report.
         raw = metadata.get("proposal")
-        action = raw.get("action") if isinstance(raw, dict) else None
+        action = raw.get("tool_name") if isinstance(raw, dict) else None
         tool = example_decision_name(metadata) if proposal is not None else action
         tools.append(tool if isinstance(tool, str) else None)
         valid = (
@@ -207,15 +207,15 @@ def evaluate_probe_context(
 
 
 def load_admission_cases() -> dict[str, Any]:
-    """Preserve the fixed v3 labels and the corpus against which they were set."""
+    """Preserve the fixed v4 labels and the corpus against which they were set."""
     content = ADMISSION_PATH.read_bytes()
     if hashlib.sha256(content).hexdigest() != ADMISSION_SHA256:
-        raise ValueError("Frozen v3 RAG admission fixture changed.")
+        raise ValueError("Frozen v4 RAG admission fixture changed.")
     if (
         hashlib.sha256(RAGConfig.get_gold_set_path().read_bytes()).hexdigest()
         != ADMISSION_CORPUS_SHA256
     ):
-        raise ValueError("Frozen v3 RAG admission corpus changed.")
+        raise ValueError("Frozen v4 RAG admission corpus changed.")
     return json.loads(content)
 
 
@@ -228,27 +228,15 @@ def evaluate_admission_cases(
     admission or RRF here, or call the final three examples the entire branch.
     """
     from XBrainLab.llm.agent.assembler import ContextAssembler
-    from XBrainLab.llm.agent.turn import AssistantPendingRequest
 
     allowed = frozenset(fixture["eligible_tool_names"])
     rows = []
     for split in ("calibration", "review"):
         for case in fixture[split]:
             turns = case["user_turns"]
-            pending = (
-                AssistantPendingRequest(
-                    command_name=case.get("pending_action"),
-                    original_turn_id="U1",
-                    publication_generation=1,
-                    parameters=(),
-                    sources=tuple(
-                        (f"U{i}", text) for i, text in enumerate(turns[:-1], 1)
-                    ),
-                )
-                if len(turns) > 1
-                else None
-            )
-            query = ContextAssembler.retrieval_query(turns[-1], pending_request=pending)
+            if len(turns) != 1:
+                raise ValueError("Current admission cases must be single-turn")
+            query = ContextAssembler.retrieval_query(turns[-1])
             context = retriever.get_similar_examples(
                 query, k=RAGConfig.TOP_K, allowed_tool_names=allowed
             )
@@ -316,7 +304,7 @@ def evaluate_admission_cases(
         "acceptance_scope": "selected_relevance_and_required_sparse_ids",
         "rule_matches": rule_matches,
         "measured_checks_ok": rule_matches
-        and len(rows) == 24
+        and len(rows) == 20
         and all(
             row["selected_examples"]["ok"] and row["sparse_candidates"]["ok"]
             for row in rows
@@ -462,7 +450,7 @@ def run_verification(*, dense_only: bool = False) -> dict[str, Any]:
 
     expected_document_count = _count_indexable_examples() if corpus_ok else 0
     report: dict[str, Any] = {
-        "schema": "xbrainlab.rag-verification.v3",
+        "schema": "xbrainlab.rag-verification.v4",
         "generated_at": datetime.now(UTC).isoformat(),
         "ok": False,
         "provenance": provenance,
@@ -494,7 +482,7 @@ def run_verification(*, dense_only: bool = False) -> dict[str, Any]:
         "paired_cases": [],
         "claim_boundary": (
             "This verifies local embedding/index/retrieval behavior. It does not "
-            "measure end-to-end local-LLM tool-call accuracy. Fixed v3 checks separate "
+            "measure end-to-end local-LLM tool-call accuracy. Fixed v4 checks separate "
             "sparse candidates from final packed examples; dense candidate admission "
             "is not observed. Acceptance checks returned-example relevance and required "
             "sparse IDs, not candidate-pool purity or end-to-end model benefit."
@@ -562,12 +550,12 @@ def run_verification(*, dense_only: bool = False) -> dict[str, Any]:
             for stage, publication in publications.items()
         }
         admission = evaluate_admission_cases(retriever, admission_fixture)
-        report["fixed_v3_admission"] = admission
+        report["fixed_v4_admission"] = admission
         _add_check(
             checks,
-            "fixed_v3_retrieval_admission",
+            "fixed_v4_retrieval_admission",
             admission["measured_checks_ok"],
-            "Fixed 12+12 cases: actual packed example relevance and product sparse candidates/required IDs.",
+            "Fixed 10+10 single-turn cases: actual packed example relevance and product sparse candidates/required IDs; four retired multi-turn cases remain historical v3 evidence.",
         )
         retrieval_cases = []
         boundary_cases = []
@@ -731,7 +719,7 @@ def main(argv: list[str] | None = None) -> int:
                 report["ok"] = bool(report["ok"]) and comparison["ok"]
         except Exception as error:
             report = {
-                "schema": "xbrainlab.rag-verification.v3",
+                "schema": "xbrainlab.rag-verification.v4",
                 "generated_at": datetime.now(UTC).isoformat(),
                 "ok": False,
                 "checks": [

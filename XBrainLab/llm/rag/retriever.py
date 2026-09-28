@@ -448,8 +448,6 @@ class RAGRetriever:
                 if proposal is None:
                     continue
                 data = {"input": meta.get("source_text"), "expected_proposal": proposal}
-                if "prior_turn" in meta:
-                    data["prior_turn"] = meta["prior_turn"]
                 candidate_items = [
                     *context_items,
                     UntrustedContextItem(

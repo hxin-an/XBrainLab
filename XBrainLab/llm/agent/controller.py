@@ -660,10 +660,7 @@ class LLMController(QObject):
             else:
                 requested = self._rag_lifecycle.retrieve(
                     turn_id,
-                    self.assembler.retrieval_query(
-                        text,
-                        pending_request=self.pending_interactions.request,
-                    ),
+                    self.assembler.retrieval_query(text),
                     self._publish_rag_context_ready,
                     allowed_tool_names=self.assembler.rag_allowed_tool_names(),
                 )
@@ -766,8 +763,6 @@ class LLMController(QObject):
             request = self.assembler.get_generation_request(
                 self.history,
                 format_recovery=self._tool_attempt_session.retry_count > 0,
-                pending_request=self.pending_interactions.request,
-                user_turn_id=f"U{self._require_active_turn_correlation().turn_id}",
             )
             request = request.correlated(self._turn_orchestrator.begin_generation())
             messages = request.to_model_messages()
@@ -940,53 +935,15 @@ class LLMController(QObject):
             return
 
         self._tool_attempt_session.clear_format_retries()
-        user_id = f"U{self._require_active_turn_correlation().turn_id}"
-        user_text = self._conversation.latest_user_request_text()
-        try:
-            if envelope.request is not None:
-                draft = self._tool_attempt_coordinator.prepare_request_update(
-                    envelope.request,
-                    pending=self.pending_interactions.request,
-                    user_turn_id=user_id,
-                    user_text=user_text,
-                    question=envelope.message,
-                    publication=self._turn_orchestrator.active_publication,
-                )
-                self.pending_interactions.set_request(draft)
-                self._observe_decision(
-                    "request_update",
-                    accepted=True,
-                    mode=envelope.request.mode,
-                    action=draft.command_name if draft is not None else None,
-                    parameters=draft.parameter_values() if draft is not None else {},
-                )
-            elif envelope.decision == "clarify":
-                self.pending_interactions.record_clarification(
-                    user_id, user_text, envelope.message
-                )
-        except ValueError as error:
-            # A rejected correction must not leave old values executable on the
-            # next reply. Retain them for inspection, as for generation failure.
-            self.pending_interactions.invalidate_request()
-            self._observe_decision(
-                "request_update", accepted=False, error=redact_public_text(error)
-            )
-            self._finalize_turn(redact_public_text(error))
-            return
         if envelope.status is ToolEnvelopeStatus.VALID:
-            draft = self.pending_interactions.request
-            if draft is None or draft.command_name is None:
-                self._finalize_turn("Please specify the action you want to perform.")
-                return
-            self._process_tool_call(
-                (draft.command_name, draft.parameter_values()), response_text
-            )
+            if envelope.command is None:
+                raise RuntimeError("A valid tool envelope must carry a command.")
+            self._process_tool_call(envelope.command, response_text)
         else:
             self._finalize_turn(envelope.message)
 
     def _handle_empty_response(self):
         """Finish a turn with a visible fallback when the model returns nothing."""
-        self.pending_interactions.invalidate_request()
         message = (
             "Assistant returned an empty response. The local model may still be "
             "loading, may have failed to generate text, or may have been stopped "
@@ -1043,7 +1000,6 @@ class LLMController(QObject):
         if decision.action is StrictEnvelopeRecoveryAction.CHOOSE_ONE:
             if decision.message is None:
                 raise RuntimeError("Choose-one decision is missing its trusted message")
-            self.pending_interactions.invalidate_request()
             self._tool_attempt_session.clear_format_retries()
             self._finalize_turn(decision.message.content)
             return True
@@ -1066,7 +1022,6 @@ class LLMController(QObject):
             return True
 
         logger.error("Max retries reached for JSON error.")
-        self.pending_interactions.set_request(None)
         message = STRICT_ENVELOPE_EXHAUSTED_MESSAGE
         self._publish_response(message, kind=AssistantResponseKind.ERROR)
         self.metrics.finish_turn()
@@ -1092,9 +1047,6 @@ class LLMController(QObject):
             return
 
         decision = self._evaluate_tool_proposal(admitted_command, response_text)
-        # Once offered to the execution/confirmation boundary, this is no longer
-        # a reusable conversational draft. That boundary owns its terminal result.
-        self.pending_interactions.set_request(None)
         if self._present_tool_attempt_boundary(decision):
             return
         self._execute_tool_attempt(decision)
@@ -1116,7 +1068,6 @@ class LLMController(QObject):
                 params=params,
                 publication=publication,
                 latest_user_text=latest_user_text,
-                pending_request=self.pending_interactions.request,
             )
         )
         self._observe_decision(
@@ -1830,7 +1781,6 @@ class LLMController(QObject):
         Finishes the current metrics turn and resets processing state.
         """
         was_processing = self.is_processing
-        self.pending_interactions.invalidate_request()
         self.metrics.finish_turn()
         self.error_occurred.emit(message)
         if was_processing:
@@ -2159,7 +2109,6 @@ class LLMController(QObject):
         generation_id = self._turn_orchestrator.active_generation_id
         if not self._turn_orchestrator.accept_cancellation_terminal():
             return
-        self.pending_interactions.set_request(None)
         if generation_id is not None:
             self.generation_event.emit(
                 AssistantGenerationEvent(
@@ -2340,13 +2289,8 @@ class LLMController(QObject):
         self._turn_orchestrator.set_active_publication(publication)
         response_text = json.dumps(
             {
-                "decision": "reply",
-                "mode": None,
-                "action": None,
-                "changes": {},
-                "message": params.get("message")
-                if set(params) == {"message"}
-                else None,
+                "tool_name": "respond_to_user",
+                "parameters": dict(params),
             },
             ensure_ascii=False,
             separators=(",", ":"),

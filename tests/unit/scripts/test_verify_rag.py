@@ -30,22 +30,7 @@ def _encoded_tool_context(tool_name: str) -> str:
         "normalize_data": {"method": "z-score"},
     }.get(tool_name, {})
     user_input = "test prompt " + json.dumps(parameters)
-    proposal = {
-        "decision": "reply" if tool_name == "respond_to_user" else "execute",
-        "mode": (None if tool_name == "respond_to_user" else "new_request"),
-        "action": (None if tool_name == "respond_to_user" else tool_name),
-        "changes": (
-            {}
-            if tool_name == "respond_to_user"
-            else {
-                field: {"value": value, "source_turn": "U1", "quote": user_input}
-                for field, value in parameters.items()
-            }
-        ),
-        "message": "No operation will be performed."
-        if tool_name == "respond_to_user"
-        else None,
-    }
+    proposal = {"tool_name": tool_name, "parameters": parameters}
     return encode_untrusted_context(
         [
             UntrustedContextItem(
@@ -111,56 +96,26 @@ def test_response_example_is_legal_without_becoming_a_callable_tool() -> None:
     assert result["top1_hit"] is True
 
 
-@pytest.mark.parametrize("suffix", ["supplement", "correction"])
-def test_contextual_probe_retains_prior_metadata_for_product_validation(suffix):
-    corpus = json.loads(verify_rag.RAGConfig.get_gold_set_path().read_text())
-    row = next(
-        row for row in corpus if row["id"] == f"apply_bandpass_filter_{suffix}_01"
-    )
-    encoded = encode_untrusted_context(
-        [
-            UntrustedContextItem(
-                item_type="rag_example",
-                source=UntrustedContextSource(
-                    kind="xbrainlab_bundled_gold_set",
-                    id=row["id"],
-                    category=row["category"],
-                ),
-                data={
-                    key: row[key]
-                    for key in ("input", "expected_proposal", "prior_turn")
-                },
-            )
-        ],
-        max_chars=4096,
-        max_items=1,
-        max_string_chars=768,
-    )
+def test_prior_metadata_is_rejected_not_merged_by_verifier():
+    payload = json.loads(_encoded_tool_context("apply_bandpass_filter"))
+    payload["items"][0]["data"]["prior_turn"] = {"input": "2 Hz"}
     result = verify_rag.evaluate_probe_context(
-        encoded,
-        expected_tool="apply_bandpass_filter",
-        allowed_tools=frozenset({"apply_bandpass_filter"}),
-    )
-    assert result["membership_ok"]
-    assert result["top1_hit"]
-    payload = json.loads(encoded)
-    del payload["items"][0]["data"]["prior_turn"]
-    assert not verify_rag.evaluate_probe_context(
         json.dumps(payload),
         expected_tool="apply_bandpass_filter",
         allowed_tools=frozenset({"apply_bandpass_filter"}),
-    )["membership_ok"]
+    )
+    assert not result["membership_ok"]
 
 
-def test_index_count_includes_valid_contextual_rows_without_forging_drafts():
+def test_index_count_contains_only_standalone_rows():
     corpus = json.loads(verify_rag.RAGConfig.get_gold_set_path().read_text())
-    assert sum("prior_turn" in row for row in corpus) == 2
-    assert verify_rag._count_indexable_examples() == len(corpus)
+    assert not any("prior_turn" in row for row in corpus)
+    assert verify_rag._count_indexable_examples() == len(corpus) == 157
 
 
 def test_response_name_does_not_hide_an_invalid_response_contract() -> None:
     payload = json.loads(_encoded_tool_context("respond_to_user"))
-    payload["items"][0]["data"]["expected_proposal"]["message"] = None
+    payload["items"][0]["data"]["expected_proposal"]["parameters"]["message"] = None
     result = verify_rag.evaluate_probe_context(
         json.dumps(payload),
         expected_tool="respond_to_user",
@@ -388,18 +343,18 @@ def test_verification_passes_the_entire_production_publication_to_retrieval() ->
     assert "sparse_threshold" not in report["identity"]
     assert len(observed) == 72
     assert set(observed_admission) == admission_queries
-    assert len(observed_admission) == 24
+    assert len(observed_admission) == 20
     assert len(report["paired_cases"]) == 24
     assert report["retrieval_summary"]["top3_hits"] == 36
     # Existing positive probes cannot certify the newly frozen admission cases.
     assert report["ok"] is False
     assert any(
-        check["name"] == "fixed_v3_retrieval_admission" and not check["ok"]
+        check["name"] == "fixed_v4_retrieval_admission" and not check["ok"]
         for check in report["checks"]
     )
-    assert report["fixed_v3_admission"]["dense_candidates"]["status"] == "not_assessed"
+    assert report["fixed_v4_admission"]["dense_candidates"]["status"] == "not_assessed"
     assert (
-        report["fixed_v3_admission"]["acceptance_scope"]
+        report["fixed_v4_admission"]["acceptance_scope"]
         == "selected_relevance_and_required_sparse_ids"
     )
 
@@ -412,7 +367,7 @@ def test_admission_rejects_changed_frozen_inputs(tmp_path, monkeypatch, changed)
         monkeypatch.setattr(verify_rag, "ADMISSION_PATH", path)
     else:
         monkeypatch.setattr(verify_rag.RAGConfig, "get_gold_set_path", lambda: path)
-    with pytest.raises(ValueError, match="Frozen v3 RAG admission"):
+    with pytest.raises(ValueError, match="Frozen v4 RAG admission"):
         verify_rag.load_admission_cases()
 
 
@@ -436,7 +391,8 @@ def test_admission_keeps_real_sparse_candidates_distinct_from_wrong_final_exampl
     assert not by_id["R01"]["selected_examples"]["ok"]
     assert by_id["R02"]["sparse_candidates"]["missing_required_ids"] == []
     assert by_id["R02"]["sparse_candidates"]["ok"]
-    assert by_id["R10"]["query"] == "Apply a notch filter.\n60 Hz, please."
+    assert "R10" not in by_id  # Retired multi-turn evidence stays only in v3.
+    assert by_id["R12"]["query"] == "How long does a butterfly live?"
     assert result["measured_checks_ok"] is False
     assert result["fixture_sha256"] == verify_rag.ADMISSION_SHA256
     assert result["corpus_sha256"] == verify_rag.ADMISSION_CORPUS_SHA256

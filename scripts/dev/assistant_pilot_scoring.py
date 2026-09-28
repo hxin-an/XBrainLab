@@ -15,12 +15,11 @@ from XBrainLab.llm.agent.decision_contract import MODEL_RESPONSE_TOOL_NAME
 from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 from XBrainLab.llm.agent.prompt_policy import STRICT_TOOL_RESPONSE_PROMPT_POLICY
 from XBrainLab.llm.agent.verifier import ToolSchemaValidator
-from XBrainLab.llm.pipeline_state import STAGE_CONFIG
 from XBrainLab.llm.tools import get_all_tools
 
 _CATEGORIES = {"Action", "Clarification", "No-call"}
-SCORER_SCHEMA = "xbrainlab.assistant_decision_scores.v5"
-RESPONSE_CONTRACT = "assistant_proposal.v2"
+SCORER_SCHEMA = "xbrainlab.assistant_decision_scores.v6"
+RESPONSE_CONTRACT = "assistant_tool_response.v1"
 
 
 def _finite_json(value: Any) -> bool:
@@ -62,8 +61,7 @@ def score_decision(
     an incorrect decision. Caller must separately establish trace completeness,
     case identity, decision timeout and whether this was first or final output.
     Neither a correct response nor a parser result proves Host admission or
-    source validity. Only new_request (internal replace) supplies standalone
-    parameters; update_pending/cancel_pending require unavailable request history.
+    source validity. Only the current complete command parameters are scored.
     """
     category = case.get("decision")
     stage = case.get("expected_workflow_stage")
@@ -105,7 +103,6 @@ def score_decision(
             if reason in {
                 "missing_response",
                 "invalid_envelope",
-                "unsupported_request_context",
             }:
                 mismatches.append(reason)
             else:
@@ -142,33 +139,13 @@ def score_decision(
     parsed = CommandParser.parse_product(response)
     if parsed.status not in {ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL}:
         return finish("invalid_envelope")
-    request = parsed.request
-    if request is not None and request.mode != "replace":
-        return finish("unsupported_request_context")
     if parsed.status is ToolEnvelopeStatus.NO_TOOL:
         result["observed_tool"] = MODEL_RESPONSE_TOOL_NAME
-        if request is not None and request.action is not None:
-            # Partial changes have no missing-value defaults. This structural
-            # check does not claim that their quotes actually support the values.
-            schema = schemas.get(request.action)
-            if (
-                schema is None
-                or request.action not in STAGE_CONFIG[PipelineStage(stage)]["tools"]
-                or not ToolSchemaValidator({request.action: {**schema, "required": []}})
-                .validate(
-                    request.action,
-                    {name: change.value for name, change in request.changes},
-                )
-                .is_valid
-            ):
-                return finish("invalid_envelope")
         correct = category != "Action" and bool(parsed.message.strip())
     else:
-        if request is None or request.action is None:
-            # The strict product parser rejects this combination.
+        if parsed.command is None:
             return finish("invalid_envelope")
-        actual_tool = request.action
-        actual_parameters = {name: change.value for name, change in request.changes}
+        actual_tool, actual_parameters = parsed.command
         result["observed_tool"] = actual_tool
         correct = (
             category == "Action"
@@ -288,8 +265,6 @@ def score_case_decisions(
                 }
             )
             attempts.append({"generation_id": identity, **result})
-            if result["reason"] == "unsupported_request_context":
-                issues.append(f"unsupported_request_context:{identity}")
         if (
             decision_timed_out
             and generations
@@ -323,7 +298,7 @@ def score_case_decisions(
         "max_format_recovery_attempts": recovery_limit,
         "scorer_schema": SCORER_SCHEMA,
         "response_contract": RESPONSE_CONTRACT,
-        "parameter_scope": "single_turn_new_request_changes",
+        "parameter_scope": "single_turn_complete_parameters",
         "source_validation": "not_evaluated",
         "measurement_valid": valid,
         "measurement_issues": list(dict.fromkeys(issues)),

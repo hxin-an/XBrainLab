@@ -23,11 +23,8 @@ def _point(example_id: str, text: str, score: float = 0.9):
                 "category": "dataset",
                 "source_text": text,
                 "proposal": {
-                    "decision": "execute",
-                    "mode": "new_request",
-                    "action": "import_eeg_data",
-                    "changes": {},
-                    "message": None,
+                    "tool_name": "import_eeg_data",
+                    "parameters": {},
                 },
             },
         },

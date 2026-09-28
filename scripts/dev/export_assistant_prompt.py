@@ -15,12 +15,10 @@ from typing import Any
 from scripts.dev.run_stable_assistant_model_eval import (
     DEFAULT_CASES,
     DEFAULT_CHALLENGES,
-    DEFAULT_CLARIFICATION_CASES,
     DEFAULT_PRECISION_CASES,
     build_case_messages,
     build_product_rag_case_messages,
     load_challenge_cases,
-    load_clarification_cases,
     load_precision_cases,
     load_target_cases,
     target_tool_registry,
@@ -71,15 +69,15 @@ def _source_identity() -> dict[str, Any]:
 
 
 def _require_first_turn_case(case_id: str) -> None:
-    """Never invent a model answer or pending values to export a continuation."""
-    continuations = load_clarification_cases(
-        DEFAULT_CLARIFICATION_CASES,
-        precision_cases=load_precision_cases(DEFAULT_PRECISION_CASES),
+    """Retired continuation IDs are historical evidence, not current prompts."""
+    historical = json.loads(
+        (ROOT / "scripts/dev/stable_assistant_clarification_cases.json").read_text(
+            encoding="utf-8"
+        )
     )
-    if any(case.case_id == case_id for case in continuations):
+    if any(case["id"] == case_id for case in historical):
         raise ValueError(
-            f"Continuation {case_id!r} requires an actual runtime capture of the "
-            "admitted conversation and pending request; synthetic export is unsupported."
+            f"Continuation {case_id!r} is retired; use its historical captured evidence."
         )
 
 
