@@ -39,7 +39,72 @@ UI確認：只改已授權Assistant英文理解／回答契約的內部呈現，
 retrieval；固定52首答；獨立完整context與語意review；通過適用同版本gate才handoff-ready。
 本輪結束另列已接受main、單輪簡化前、13/20中間版與最終候選的差異，分清code/tests/
 scripts/docs/corpus、實測與未驗證影響；不將不同題目分母直接加總。
-Next：凍結6題並建立focused baseline，開始唯一上下文／語料候選。settings.json不動。
+Next／狀態：唯一候選已實作、凍結、完成52首答及獨立內容覆核；仍未通過基本模型
+gate，屬需要後續決策的checkpoint，不是handoff-ready。不得重跑抽成功或追加候選；
+也不啟動手測／merge。settings.json不動。結果與整輪差異如下，下方舊Next皆為歷史。
+
+#### 英文候選實測與整輪比較（2026-09-28）
+
+產品候選checkpoint `2bc64c44b442421927c57316488e1c0b79ae9a97`。推論時Git HEAD仍為
+`00a8c829`、本輪source尚未commit；不是clean-head gate。462份runtime檔案的凍結hash
+與後續checkpoint內容逐一相同，runtime fingerprint為
+`99fa8c7ffae169012b813a324d1419ad918d594e91631392ddc7786f4f950ce5`。
+完整證據在ignored `build/dev-artifacts/agent-english-candidate-v1/`；原失敗與舊結果未覆寫。
+52份完整輸入在生成前獨立覆核，bundle SHA為
+`1d1595b39b07202af7b09f5f4ee12451d255526e46756155e0c31eca96fb0c2b`。
+模型／revision／greedy設定不變；52首答＋1次既有格式修復，無semantic retry。
+四份report全部capture verified、engine closed，首答prompt逐份符合凍結內容。
+
+| 同一英文候選 | 原20題自動判分 | 原20題獨立完整語意 | 新6題自動判分 | 新6題獨立完整語意 |
+| --- | --- | --- | --- | --- |
+| RAG off | 14/20 | 9/20 | 4/6 | 2/6 |
+| RAG hybrid | 20/20 | 16/20 | 6/6 | 5/6 |
+
+首答與一次格式修復後分數相同。自動分數只代表工具／參數／格式及既有content screening，
+不能冒稱完整語意通過；兩组分母不合併，也不是論文準確率。新6題凍結在候選前且
+未複製語料／原20題；仍只是小型工程檢查，不是統計泛化保證。
+
+hybrid剩餘4個原題：E10b「不要執行，請解釋」只確認不執行，漏掉解釋；bandpass全缺值
+已正確問上下限，但未明確要求完整操作重述；reference與normalize禁止題只複誦原句，
+未確認會遵守。新6題只剩normalize禁止題同樣複誦。後三類是回答品質／契約完整性，
+不是此次誤執行；即使較寬鬆接受複誦或重述措辭，E10b仍足以阻擋原有gate。
+E10b前一版off/on有解釋，因此這是確定退步，不用其他題改善抵銷。
+
+前一版相同20題off/on自動皆13/20；本次hybrid五種缺值都能指出正確缺項、不再猜參數，
+其中bandpass仍有上述重述缺口。當前候選off→hybrid，原20題完整語意改善7題、新6題
+改善3題，各自無語意退步；這支持這個固定組合下RAG確有幫助，不隔離prompt／corpus
+各自因果，也不證明換組件仍有同樣效果。off仍猜缺值，且Channel Selection格式修復
+後仍失敗；不是修復機制能修好所有理解錯誤。
+此次所有no-action題未到錯誤執行邊界；正向操作由evaluator刻意抑制，不能當真GUI執行。
+
+離線v5准入20題通過；36個positive retrieval probes top1由34降至32、top3維持35。
+bandpass全缺值未取到對應示範、normalize／reference否定仍取到操作示範等限制保留，不能說檢索
+全面修好。實際輸入1400–2284tokens、預算7680，無截斷；原20題off中位數1875→1947、
+on2122.5→2212，清楚呈現不等於更短或已證明更快。
+
+直接回歸在checkpoint通過1251項（66.93秒）；涵蓋Agent／parser／真Command integration／
+context template／RAG／verifier與新案例fixture，非全專案coverage宣稱。獨立覆核包含全部
+52份新輸入／輸出；原20題另核對40份舊capture。Ruff、changed-source型別檢查、hooks、
+guidance audit與strict MkDocs通過。三筆新增secret baseline只標註公開source／fixture hash，
+未排除整份檔案或減少gate。模型未合格，因此未推送新手測head、未以舊CI補位，未跑
+真模型GUI交付流程；不能宣稱整輪基線已完成。
+
+整輪相對已接受main `a5f57a15`，而非只相對上一小步：
+
+| 部分 | 之前 → 本輪候選 | 具體影響／代價 |
+| --- | --- | --- |
+| 模型契約 | stage＋tool＋parameters、typed補值 → 恰好tool＋parameters、完整獨立要求 | 刪跨輪累積／猜意圖分支；缺值後須重述整個操作，不能只回數字。中途五欄草稿方案已刪除。 |
+| RAG | 手寫分流、dense池內BM25重排 → 已發布工具／回答集合，獨立dense＋BM25及RRF | BM25可補召回；不取得授權、不能填當輪缺值，仍可能選到不合適示範。 |
+| 語料 | main72筆 → 現161筆；本小步157→161 | 包含完整、缺值、部分值、禁止、純說明；數量不是效果保證。 |
+| Context | state與參考共用可裁減區塊 → state與當輪原文是必要輸入，參考獨立 | 沿用同publication；整例packing、回答與執行並列，不是更短prompt宣稱。 |
+| 驗證 | 歷史81題契約 → 保留歷史，固定新20題＋6題，raw／修復／Host／語意分開 | 不將舊成績、Host擋錯或合法JSON當作本輪模型答對。 |
+
+以2bc64c44為統計截止：production Python +730/-1891（淨減1161行）、scripts Python
++892/-2114（淨減1222）、tests Python +3568/-4256（淨減688）。含JSON fixture後scripts
+共淨減677、tests共淨增35；語料JSON淨增943，文件當時淨增829，另有30行公開hash
+allowlist。後續只補本節及current事實，不把文件／fixture膨脹包裝成產品程式縮減。
+18工具、backend owner、confirmation／取消／publication及一次格式修復保留；沒有新增
+第二模型／控制層。這是已完成候選工程與實測的結論，非可靠基線已驗收。
 
 ### 已完成診斷：英文小模型上下文與人工選例
 
