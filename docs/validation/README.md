@@ -1,6 +1,6 @@
 # XBrainLab Validation Contract
 
-最後更新：`2026-09-28`
+最後更新：`2026-09-29`
 
 驗證回答「哪個exact source，在什麼環境，觀察到什麼」，不能把單一PASS放大成產品、科學或真人
 驗收結論。日常與PR交付按下表選證據；CI routing由既有workflow擁有。明確要求完整dossier時，
@@ -272,6 +272,25 @@ PR #71 的 bounded baseline 與 v16 以前 81-case 報告保留原 source、sche
 其他與 Assistant 無關的 PR 可沿用已接受版本的已知限制，但不能宣稱舊報告在新 SHA 重跑。
 
 ### Single-turn Assistant candidate
+
+#### 本輪Development候選交付例外（2026-09-29）
+
+使用者在已知74題工具決策65/74首答、66/74最終，以及錯誤提案可能通過Host准入的
+說明後，明確接受保留限制的Development候選版手測，並重申開發目標不包含複合需求。
+本輪交付以完整、單一英文要求為範圍；不要求新增複合操作支援，不追加模型／prompt／
+RAG調整。下列可靠基線gate的歷史失敗保留，不能改成通過、縮小舊分母或宣稱Stable。
+除複合要求部分執行外，Reset漏執行、空資料epoch誤切panel、不可用工具提案也保留為
+已接受的Development限制；不操作指引及既有backend保護不變，Host擋錯仍不救模型分數。
+
+允許在既有source獨立覆核、基本20＋6題tool-decision證據、真模型Windows journey及
+confirmation／cancel證據可追溯，且最終head全部適用non-skipped CI成功後，交限定範圍
+Windows手測。模型與native原始證據仍綁定原source；僅文件變動可沿用，parser診斷修理
+須連同既有132份capture前後等價覆核說明，不冒稱新head重新推論。
+手測用可丟棄的working data，核對單一操作、參數、確認／取消、可見結果及GUI狀態；
+不是重新測量準確率或要求使用者替已知失敗背書。手測接受及merge仍需各自明示批准。
+此為本輪已知限制的交付例外，不是未來版本略過新缺陷或必要工程gate的通用授權。
+
+#### 原可靠基線gate與歷史證據
 
 2026-09-28 使用者批准完整單輪操作基線：缺值需說明缺項並請完整重述，不保存／合併
 跨輪草稿。此節取代舊五欄提案、draft admission 與七條 continuation 的 active gate；

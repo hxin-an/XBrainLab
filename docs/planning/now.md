@@ -2,9 +2,30 @@
 
 最後更新：`2026-09-29`
 
-## Active — Agent可靠基線整合施工（已授權至集中手測）
+## Active — Agent Development候選版集中手測交付
 
-### 最新授權：依tool-call範圍整合驗證與凍結
+### 本輪整理範圍收斂（2026-09-29）
+
+使用者在核對RAG組成及模型輸出後同意「就整理到這段」：維持161個英文單輪示範
+（117個操作、44個回答／不操作）、BM25＋dense＋RRF及最多3個參考；輸入使用當輪
+要求、後端狀態／工具與參考，不帶過去對話；模型只輸出`tool_name`與`parameters`。
+不再擴充語料、增加多輪補值或追加prompt／檢索調參。這是本輪整理範圍的終點，
+不表示下列模型決策失敗已修復，也不改寫歷史判分或授權merge。
+
+使用者隨後明確接受「保留已知限制的Development候選版」交付，並澄清本輪開發目標
+本來就不包含複合需求。Outcome是完整、單一英文要求的Windows集中手測候選，不是
+Stable或任意工具要求皆正確的可靠性宣稱。複合要求不納入本輪支援／手測成功門檻；
+既有拒絕複合要求的產品指引不改，失敗不重標成功。Reset漏執行、空資料epoch誤切panel、
+不可用工具提案等非複合失敗仍明列為此Development版本的已知限制，不說成全部是scope外。
+Scope／non-goals：僅同步current／target／validation及交付文件；不改產品、模型、語料、
+prompt、工具或UI，不新增推論。沿用既有工程證據及已說明的parser等價性，不冒稱重新實測。
+步驟／next：文件focused audit與strict build→提交既有PR #149→同head適用CI閉合→
+Windows原生啟動及確認有回應→交付短清單與重開指令。測試使用可丟棄的working data，
+保留原始資料與settings.json；PowerShell即時log，不另開Live Log視窗。
+Stop：候選已開啟並交集中手測，或必要資源／CI新缺陷確實阻擋；手測通過與merge另待批准。
+UI確認：不變更layout、文案或互動。此決策取代下方歷史「待接受限制」的阻擋。
+
+### 前次授權與已完成檢查：依tool-call範圍整合驗證與凍結
 
 2026-09-28使用者澄清「只有tool call準確率，沒有要審回答品質」，並批准架構／程式碼
 足夠清楚後進行整合驗證與凍結。這是明示縮限驗收維度，不把舊完整回答失敗改標成功。
@@ -27,7 +48,7 @@ Stop：凍結版本及所有必要gate閉合並開Windows給手測；或重現to
 覆核：hybrid原20題20/20、另6題6/6；off14/20與4/6，首答／格式修復後分數各自相同。
 舊完整回答語意失敗未改寫。下列整合結果取代先前待跑狀態。
 
-#### 整合檢查結果與凍結阻擋（2026-09-29）
+#### 整合檢查結果與當時的可靠基線凍結阻擋（2026-09-29）
 
 產品仍是`77edf12e`；文件checkpoint `d586a173`的Windows真模型ChatPanel四步全部通過：
 Dataset→EDF匯入→選C3/Cz/C4→真Command重取樣64Hz，capture完整、資料變更正確，
@@ -46,15 +67,16 @@ split／training settings仍提案操作。4個no-action case（3種不同原句
 准入、抵達evaluator抑制的執行邊界；另3個被Host擋下，但仍算模型錯誤。沒有真Command
 或資料mutation發生，不把「未執行」包裝成正確不操作。這是工具決策缺陷，不是回答品質。
 
-因此source架構覆核GO，但**整合candidate不通過，尚不能凍結為已驗收可靠基線或交手測**。
+因此當時source架構覆核GO，但整合candidate未通過可靠基線gate；後續Development候選
+交付依上方明示接受限制的決策，不將此失敗改成通過。
 不增加Host意圖判斷、重試、prompt候選，也不因74題是breadth而忽略錯誤准入。既有52首答、
 本次失敗及舊判分全部保留於ignored `build/dev-artifacts/agent-toolcall-freeze/`與
 `agent-answer-completeness-v1/`；新input bundle SHA為
 `52293dd515647c27b40cdaccc974d95052cedf2cf88ea84fb2a7f1639eb78871`。
 
 同head CI仍作獨立工程驗證，最新狀態由GitHub PR #149擁有；即使全綠也不能補掉上面的
-模型gate失敗。Next／待決策：是否將目前明列限制的版本固定為Development起點，或批准
-一個有界工具決策修正；不得自行接受限制、改契約或再啟動模型調整。settings.json未改。
+模型gate失敗。當時待決策已由上方使用者接受Development候選限制閉合；不得再自行
+啟動模型調整，亦不提升為Stable。settings.json未改。
 
 已完成直接修理：CI run36449067516的`linux-unit-rest`揭露parser兩處`str(exception)`
 違反既有診斷邊界。Duplicate key由模型文字提供，確可將私人路徑／email／token帶入error。
@@ -62,7 +84,7 @@ split／training settings仍提案操作。4個no-action case（3種不同原句
 source guard、不改accepted JSON／格式修復、模型輸入／tool admission或UI流程。
 Focused：parser與result contract、strict recovery；獨立覆核，以及保存capture重播證明
 所有既有proposal判定不變（不是新模型分數）。完成後提交精確head CI；舊CI失敗保留。
-Stop仍為上方模型gate缺陷待決策；此修理只閉合必要工程驗證，不授權追加prompt實驗。
+此修理只閉合必要工程驗證，不授權追加prompt實驗；後續交付依最新Development決策。
 同輪CI另有3項過時測試：Dev context仍要求舊untrusted items包裝與空history user訊息；
 runtime trace及pilot outcome fixture仍用退役`structured_action`。依既定
 `application_state/current_user`與`assistant_tool_response.v1`同步測試，保留真resample、
