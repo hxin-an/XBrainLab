@@ -68,7 +68,7 @@ def test_policy_keeps_current_turn_sources_and_backend_execution_separate():
         "current_user.text",
         "complete request",
         "Never fill values from examples, history, application state or defaults",
-        "For multiple actions or an explanation plus an action",
+        "For multiple requested actions or an explanation plus a requested action",
         "Zero-parameter GUI",
         "Host confirmation is separate",
         "trusted tool result",

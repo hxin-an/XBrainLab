@@ -94,6 +94,27 @@ def test_generation_request_keeps_concept_question_on_strict_response_contract(
     assert _current_user_message(messages) == {"role": "user", "content": question}
 
 
+@pytest.mark.parametrize("format_recovery", [False, True])
+def test_reply_completeness_instructions_reach_normal_and_recovery_requests(
+    format_recovery,
+):
+    """Protect policy delivery, not a claim that a model follows the policy."""
+    assembler = ContextAssembler(ToolRegistry(), Study())
+    user_text = "Do not change the sampling rate. Explain what resampling means."
+
+    messages = assembler.get_generation_request(
+        [{"role": "user", "content": user_text}],
+        format_recovery=format_recovery,
+    ).to_model_messages()
+
+    policy = messages[0]["content"]
+    assert "Write your own reply, not a copy of the user's request" in policy
+    assert "If the user also asks a question, answer it" in policy
+    assert "A prohibited action is not a requested action" in policy
+    assert "including values already supplied" in policy
+    assert _current_user_message(messages) == {"role": "user", "content": user_text}
+
+
 def test_format_recovery_is_fixed_system_policy_not_untrusted_context() -> None:
     from XBrainLab.llm.agent.prompt_policy import STRICT_TOOL_RESPONSE_PROMPT_POLICY
 
@@ -146,10 +167,11 @@ def test_compound_request_rule_is_published_even_without_rag() -> None:
     ).to_model_messages()
 
     assert (
-        "For multiple actions or an explanation plus an action"
+        "For multiple requested actions or an explanation plus a requested action"
         in (messages[0]["content"])
     )
-    assert "ask which to do first. Never partially execute" in messages[0]["content"]
+    assert "ask which to do first" in messages[0]["content"]
+    assert "Never partially execute" in messages[0]["content"]
     assert _current_user_message(messages) == {"role": "user", "content": request}
     assert len(messages) == 2  # No optional context survives invalid/absent RAG.
 

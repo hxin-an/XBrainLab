@@ -4,6 +4,43 @@
 
 ## Active — Agent可靠基線整合施工（已授權至集中手測）
 
+### 最新阻擋：回答完整性修正仍未通過模型gate
+
+2026-09-28使用者批准「那就修吧」的一次有界候選已實作並測完；規則歧義確實移除，
+但未達「三類回答問題收尾且既有操作不退步」outcome，不能宣稱修好或交手測。
+僅prompt policy +13/-4（淨增9行），測試+25/-3（淨增22行）；沒有新增owner、欄位、
+Host意圖判斷、語意重試或補答案。模型／revision、RAG語料／排名／top-k、題目／oracle、
+confirmation／取消及UI layout皆未改。target只釐清已批准的回答要求。
+
+RED是前版真模型失敗capture；另2個policy投影保護先失敗再通過，不能當模型理解證據。
+工程baseline90 passed；最終直接回歸126 passed（含真Command、normal/recovery及budget），
+Ruff、型別、guidance audit與strict docs通過。途中舊文案斷言失敗已同步，沒有放寬語意判準。
+獨立覆核全部52份輸入後凍結；bundle SHA前綴`e302ea1c`。463份runtime檔案hash與
+當前候選相符；推論時HEAD為`90b6a528`加本slice，不冒稱該HEAD本身包含修正。
+新證據位於ignored `build/dev-artifacts/agent-answer-completeness-v1/`；舊候選不覆寫。
+初次export缺embedding快取連結而中止，補用既有pinned models後完成；無下載、無失敗推論重跑。
+
+| 固定案例 | 前版完整語意 | 本次完整語意 | 本次自動判分 |
+| --- | --- | --- | --- |
+| 原20題／RAG off | 9/20 | 8/20 | 14/20 |
+| 原20題／RAG hybrid | 16/20 | 17/20 | 20/20 |
+| 既有另6題／RAG off | 2/6 | 2/6 | 4/6 |
+| 既有另6題／RAG hybrid | 5/6 | 5/6 | 6/6 |
+
+獨立覆核全部52組raw／final及新舊106份capture，結論為candidate gate failed；詳見
+該證據目錄的`independent-semantic-review.md`。52首答＋off Channel Selection既有格式修復1次；四份capture／首答輸入身分verified，
+engine皆closed。兩组題目分母不合併，不是論文成績。hybrid的reference禁止回覆改善；
+E10b仍只確認不執行而不解釋、bandpass仍漏完整重述、normalize仍複誦（另6題亦同）。
+off E10b已解釋但未確認不執行，依完整契約仍不計通過；off E10a新增把8–30 Hz稱為
+alpha的錯誤，屬回答準確性退步而非誤執行；[MNE頻帶範例](https://mne.tools/stable/auto_tutorials/time-freq/20_sensors_time_frequency.html)
+明分Alpha與Beta。此嚴格計分與具體改善並列，不把漏確認說成漏解釋或危險操作。
+
+Next／待決策：prompt釐清不足以解決剩餘問題。E10b在off已能解釋、hybrid卻仍跟隨
+僅確認不執行的參考，支持進一步檢查RAG示範適配，但不證明其他失敗也有相同根因。
+保留這一版失敗checkpoint；不再追加候選／模型推論，不改gate、merge或開手測。
+須先決定下一個有界修正範圍或明確接受哪些產品限制；通過原模型gate後，仍需74題廣度、
+真模型ChatPanel／確認取消及同head CI才能交Windows集中手測。下方各候選結果保留歷史身分。
+
 ### 已完成：模型輸入不帶對話歷史
 
 依2026-09-28使用者授權，刪除舊Assistant回覆投影、專屬限長及無用helpers／測試；
