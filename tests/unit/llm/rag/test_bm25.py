@@ -13,47 +13,16 @@ from XBrainLab.llm.rag.bm25 import BM25Index
 def test_eligible_keyword_match_is_not_lost_behind_global_top_ten():
     index = BM25Index()
     for number in range(12):
-        index.add_document(
-            str(number),
-            "apply 60 hz notch filter",
-            {"tool_calls": [{"tool_name": "start_training", "parameters": {}}]},
-        )
-    index.add_document(
-        "eligible",
-        "apply 60 hz notch filter please",
-        {
-            "tool_calls": [
-                {"tool_name": "apply_notch_filter", "parameters": {"freq": 60}}
-            ]
-        },
-    )
+        index.add_document(str(number), "apply 60 hz notch filter")
+    index.add_document("eligible", "apply 60 hz notch filter please")
 
     matches = index.query(
-        "apply 60 hz notch filter",
-        k=3,
-        allowed_tool_names=frozenset({"apply_notch_filter"}),
+        "apply 60 hz notch filter", k=3, candidate_ids=frozenset({"eligible"})
     )
 
     assert len(matches) == 1
     assert matches[0][1] == "eligible"
     assert matches[0][0] > 0
-
-
-@pytest.mark.parametrize(
-    "query", ["Who composed the Moonlight Sonata?", "the and to for with"]
-)
-def test_stopword_overlap_does_not_recall_unrelated_examples(query):
-    index = BM25Index()
-    index.add_document("filter", "Apply the filter to the EEG.")
-    assert index.query(query) == []
-
-
-@pytest.mark.parametrize("negation", ["no", "not", "never", "without", "cannot"])
-def test_stopwords_do_not_erase_negation(negation):
-    index = BM25Index()
-    index.add_document("positive", "reset preprocessing")
-    index.add_document("negative", f"{negation} reset preprocessing")
-    assert index.query(f"{negation} reset preprocessing", k=1)[0][1] == "negative"
 
 
 def test_query_ranks_matching_document_and_preserves_public_metadata() -> None:

@@ -2,7 +2,38 @@
 
 最後更新：`2026-09-28`
 
-## Active — 重開 RAG 檢索品質，完成失敗歸因後才收尾
+## Active — RAG 聯集候選否決；待決定示範／決策耦合修理範圍
+
+2026-09-28：不得依下方原施工步驟自動繼續調參。`b4c7df84`候選已實作、獨立覆核並跑完
+真模型；檢索結構正確但產品退步，故撤回該候選source／專屬tests及策略文件。保留逐題
+pass→fail檢查與失敗歸因準則。**RAG品質未完成，不是scope-complete或handoff-ready。**
+恢復先前產品不是證明舊0.7門檻合理；不得把新增退步歸給下一組件而仍接受本候選。
+
+證據：固定145語料／MiniLM／Granite／prompt／題目，72題比較確認current emulator與產品
+逐題一致；weighted聯集36/36正例Top3優於舊34/36，固定RRF沒有優勢。新增12題確認暴露
+stopword-only召回；補標準停用詞後84/84與獨立真cosine／BM25重建一致，三題無關輸入empty，
+但額外題已用於開發；ind_epoch仍有.529／trial-trials候選缺口，其他缺參數／否定語意限制
+已逐筆歸因，不能用respond_to_user類別命中冒稱範例適切。
+
+`b4c7`完整105題真模型、103個prompt/raw捕捉逐byte/hash獨立驗證：positive36→35，
+configure_dataset_split_02收到三筆正確split例仍選configure_training到達錯誤execution boundary；
+clarification6→4，missing-bandpass抄mixed例的「解釋或套用2–35Hz先選一件」導致無receipt。
+no-action23→24不能抵銷這些退步。獨立reviewer拒絕採用，沒有找到可解釋它們的檢索實作bug。
+原model、prompt、corpus、settings不改；不以重抽失敗題或下修gate求綠。
+
+候選工程證據：RAG/verifier/lifecycle144與context/publication124通過，hooks／guidance／
+MkDocs strict通過；CI static另發現候選Filter list型別錯誤，隨候選source撤回，不保留失敗source。
+證據位置：`build/dev-artifacts/rag-candidate-compare-20260928/`內comparison、confirmation、
+final-product及final-product-review；`rag-b4c7-hybrid-model.json`、`rag-b4c7-prompts/`。
+歷史產物與b4c7 commit保留，不覆寫或刪失敗。PR #149未merge。
+
+撤回後：production與RAG專屬tests逐byte等同本輪前基線，134 focused tests、explicit-file
+hooks、guidance audit及MkDocs strict通過。只保留verifier／其回歸測試及canonical結案準則。
+Next：追蹤撤回head的CI／獨立diff覆核，回報需要的範圍決策：是否把RAG示範呈現與模型
+決策／追問一起納入下一個有界修理（先做單變量輸入重播，非任意權重搜尋）。
+在確認前不改prompt／corpus／模型，不開始其他Agent組件，也不交手測或宣稱RAG收尾。
+
+### 本輪原施工界線與已執行步驟（以下不再作active dispatch）
 
 2026-09-28 使用者批准重新處理檢索候選策略直到獨立覆核／部件收尾，不開始下一個
 Agent 組件、不 merge、不把本輪結果稱為整體 Assistant handoff-ready。先前「工程已收尾」

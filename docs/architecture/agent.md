@@ -223,15 +223,12 @@ prompt policy同步要求先選擇，不提供第二次模型生成或部分執�
 它們是retrieval corpus，不是驗收題庫，也不代表已證明模型準確率改善。
 
 RAG不再以手寫intent grammar決定是否檢索。Qdrant在搜尋前，以已發布callable tools及
-`respond_to_user`篩選候選，再取dense top-10中raw cosine≥`0.7`的候選；BM25在同一合法集合
-獨立取positive top-10，兩路取聯集。Cosine門檻只控制dense分支，不否決BM25補召回。
-BM25沿用全corpus IDF與平均長度；索引與query共同去除sklearn英文停用詞，但保留
-no／not／never／without／cannot，不新增intent判斷。Lexical-only候選透過同一Qdrant
-按ID與publication補查真cosine（最多十筆），不把缺失dense score當零。所有候選共用
-schema／membership predicate；BM25以合法聯集最高分正規化，預設cosine／BM25權重`0.7／0.3`，
+`respond_to_user`篩選候選，再取dense top-10並以raw cosine threshold `0.7`准入。
+保留候選通過schema／membership驗證後，BM25沿用全corpus的IDF與平均長度，只在此准入集合
+內取分、正規化並參與排序；
+不以keyword命中把低於semantic門檻的範例補入。預設cosine／BM25權重為`0.7／0.3`，
 最多取`TOP_K = 3`，也允許零命中。`hybrid_alpha = 1`的dense-only對照不建立或查詢BM25，
-不是建立後再把sparse權重乘零。兩路皆無候選才正常empty；常用詞處理不保證所有不相關
-自然語句都無結果。Hybrid模式若BM25無法建立，初始化失敗，不silent fallback
+不是建立後再把sparse權重乘零。Hybrid模式若BM25無法建立，初始化失敗，不silent fallback
 成dense-only。上述常數是目前設定，不是已證實最佳值。
 
 回應示範使用既有strict response parser驗證，不加入action registry或backend capability。

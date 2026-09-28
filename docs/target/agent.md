@@ -329,13 +329,10 @@ RAG／examples規則（2026-09-27批准的部件打磨目標）：
   不以文字關鍵字先判定是否檢索，也不按callable數量切換固定範例與semantic retrieval兩套policy。
 - 搜尋前限制為當次callable action examples及既有`respond_to_user` examples；後者不是新增可執行
   action。示範須以actual action schema或strict response parser驗證，不允許額外欄位或多action。
-- 2026-09-28批准修正：dense與BM25在相同合法範例集合獨立召回；dense前十且cosine≥0.7，
-  與positive BM25前十取聯集。0.7只控制dense分支，不否決lexical補召回；以候選真cosine及
-  全corpus IDF／合法候選最高BM25正規化，沿用0.7／0.3加權，最多三例與既有context上限。
-  門檻／權重是待驗證策略，不是權限或信心機率；兩路無候選仍正常零命中。Dense-only消融須
+- 暫保留dense admission＋BM25 reranking與cosine門檻`0.7`、最多三例及既有context上限，
+  允許正常零命中。2026-09-28獨立召回聯集候選雖改善retrieval，卻造成真模型positive／
+  clarification退步而否決；恢復此基線不表示dense否決的已知問題已解決。Dense-only消融須
   真正省去BM25建置／查詢，不另維護一套production retriever；hybrid缺BM25時不得silent fallback。
-- BM25建索引及查詢使用同一英文tokenizer，重用既有sklearn停用詞並保留no／not／never／
-  without／cannot，避免只靠the等功能詞補召回；不依文字判定是否允許action或另建intent router。
 - 範例內容涵蓋參數與相鄰操作差異、概念詢問、只要說明、明確禁止操作與無法辨識的指涉；
   不機械湊數、不複製驗收題，不把缺參數範例教成略過既有clarification流程。
 - RAG延遲後，最終prompt以同一份publication組schemas／state card並重查範例資格；

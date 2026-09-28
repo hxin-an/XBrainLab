@@ -71,11 +71,12 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 RAG改為在已發布action及合法response示範內檢索，不再先以手寫語句分流。
 原72筆有效示範保留，共145筆（117操作／28回應）；四筆解釋＋操作的問題保留，
 答案改為請使用者選擇先做哪一件，不示範部分執行。
-仍使用固定MiniLM；dense與BM25在合法範例內獨立召回，再按真cosine／BM25加權取最多三例。
-BM25可補回被dense門檻排除的範例，英文停用詞處理避免只靠the等詞匹配。最終prompt按同一份當前publication
+仍使用固定MiniLM、cosine准入及BM25排序、最多三例。最終prompt按同一份當前publication
 重新確認範例資格；不擴大tool、權限、confirmation或參數來源。
 細節由[目前架構](architecture/agent.md)擁有。此為source行為，不表示語料數量已證明
 模型收益、Stable promotion或正式論文效果；本輪比較與交付進度見[Now](planning/now.md)。
+已知cosine門檻會排除部分正確範例，BM25不能補回。獨立召回聯集候選已因真模型退步
+撤回；RAG品質尚未結案，不能把索引／生命週期驗證通過當作檢索與決策品質通過。
 
 ### 共同工程基線：PR #147 已合併（2026-09-27） { #assistant-integration-baseline }
 

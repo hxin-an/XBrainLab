@@ -149,12 +149,6 @@ def test_retriever_neutralizes_structured_role_assignment() -> None:
             "metadata": {
                 "id": "gold-role-regression",
                 "category": "dataset",
-                "tool_calls": [
-                    {
-                        "tool_name": "switch_panel",
-                        "parameters": {"panel_name": "dataset"},
-                    }
-                ],
             },
         },
     )
