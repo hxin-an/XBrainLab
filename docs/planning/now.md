@@ -2,167 +2,77 @@
 
 最後更新：`2026-09-28`
 
-## Active — 已授權 RAG 示範呈現／決策與追問的有界修理
+## Active — RAG／決策與追問聯合修理未結案
 
-2026-09-28 最新授權：使用者同意將 RAG 示範呈現與模型決策／追問的交互影響一起修理。
-下方「等待範圍決策」已被本段取代；不因 context compaction 或候選失敗停止續作。
-起點為安全撤回版 `2e3b395b`，保留 b4c7 失敗輸入／輸出及原成功基線。
-Outcome：改善候選召回且不讓示範帶入未要求的操作、參數或錯誤追問；不能用新增成功
-抵銷既有逐題 pass→fail。Scope 包含既有 RAG 表示、決策提示及必要追問交界／直接測試。
-不換模型、不動正式研究題庫、不新增意圖分流／owner、不放寬 Host 保護；UI layout、
-工具名稱與副作用、兩欄輸出契約維持不變，使用者 settings 不動。
-假設：目前範例和當前要求的界線不足，須先以真實 capture 驗證，不能直接視為根因。
-步驟：先檢查 capture／assembler → 凍結單變量重播與判準 → 重播確認控制組一致 →
-以證據選擇最小修理、補回歸測試 → 完整既有模型診斷、逐題語意與安全覆核 → 獨立審查。
-Focused validation 包含 prompt/context 契約、參數來源、clarification receipt、RAG 真檢索與
-完整工程題組；適用 CI 與 Windows 實機證據依最終改動選擇。Stop condition 是有證據的
-部件收尾，或確實需要新決策／不可取得資源；不是一個候選跑完。Next：讀取已保存的
-錯誤 split／bandpass 輸入，建立單變量重播；不另做權重或 prompt 組合搜尋。
+本節是唯一續作入口；下方歷史的 Next／完成宣稱不能用來dispatch。使用者已授權一起修理
+RAG示範呈現與模型決策／追問交互，不因compaction停止；但public contract仍须先核准。
 
-單變量已凍結：只將 rag_example.data 的序列化改為 input 在 expected_action 前。
-獨立 reviewer 確認目前 latest user 已在最後，故不是請求位置錯誤；現行 sort_keys 使
-範例答案先於問題，可能影響條件連結，但改善尚未成立。98個第一輪輸入已逐byte重建
-b4c7 capture；所有 JSON 值／角色／來源／工具／字節長度不變，有例者重跑control與
-treatment，無例者明示重用原輸出。這是development診斷，沒有Host執行／追問續輪或
-正式holdout宣稱；driver與逐筆產物位於build/dev-artifacts/rag-example-order-replay*。
-撤回版2e3b CI run36373141917全部23個non-skipped jobs成功，尚非新修理的驗證。
+### Outcome、scope與現況
 
-獨立覆核另確認兩個既有契約呈現缺口：split/training工具描述僅重複視窗名稱，未交代
-data partitions與training hyperparameters的責任差異；最後output reminder缺少typed
-clarification形狀且沒有以required values齊全限定立即action。下一個固定診斷分別只改
-catalogue兩句描述、或最後reminder的既有分支說明（兩臂獨立，不排列prompt組合）。
-採用前仍比對全部固定案例與f89f成功軌跡；沒有新schema、receipt、工具或權限規則。
+Outcome：補檢索缺口且不增加既有逐題pass→fail，不把工具命中、安全擋錯與正確回答混為一談。
+Scope為RAG表示／召回／排序、既有決策提示與直接追問交界；不換模型、不動正式研究題庫、
+不新增intent router／owner、不放寬Host保護。UI layout、工具名稱／副作用與兩欄root維持。
+受保護的root settings.json不動。跨既有參數來源／追問output contract須另核准target。
 
-診斷結果：order-only全部98 control逐byte重現，196 fresh captures完整，6退步0改善，
-否決。clarity兩臂98題／122 fresh完成：catalogue修好split且raw無新增退步；reminder
-有3個raw退步，且missing-bandpass仍逐字抄mixed回答，部分分數改善實際語意不通過，
-不能採用。產品仍維持撤回版，沒有把診斷臂直接寫入source。
-下一個有界因果消融：固定相同input／IDs／rank／數量，將final prompt的完整答案
-改為decision_name參考；action與response同等處理，原語料／完整schema／資格驗證不改。
-這是檢查現成輸出干擾，不是prompt措辭搜尋。若採用須在final projection且驗證後才做，
-並完整覆核參數映射、各種response語意及追問軌跡；input仍含數字，不能宣稱防止所有抄參數。
+PR #149未merge；c753撤回fe533改動之後，獨立語意覆核又發現保留的catalogue修正仍有新增錯誤，
+因此連Split／Training描述也撤回。當前產品／測試／scripts與2e3b逐byte相同，本次聯合修理
+**沒有被採用的runtime改動**；不能以淨增行數、診斷數量或green測試聲稱能力提升。
+目前仍145筆、schema2、cosine准入後BM25重排；已知兩筆正確例被dense門檻排除，並未修好。
+**本輪不是scope-complete，也不是handoff-ready；不開手測、不merge、不開始下一部件。**
 
-Name-only亦完整98題完成且有新增錯誤操作／虛報完成，否決，不再做表示法排列搜尋。
-實際缺口轉為既有追問契約：145語料沒有任何typed pending_action/missing_inputs示範。
-本輪已授權的RAG／追問耦合修理以契約覆蓋處理，不按失敗題逐題追加：先重現並修正
-typed clarification可能遺失原始單側bandpass cutoff，再補五種既有direct操作的缺值示範
-（完整語料仍保留）；partial兩種只有真Host路徑通過才納入。正式研究題庫不動。
-必要直接依賴：typed response的pending_action須受既有publication限制，不能因outer
-respond_to_user就跨stage召回；完整schema與最後publication重查仍由既有owner掌管。
-先RED／focused controller與檢索資格，之後才真retrieval／完整105題軌跡；不把語料覆蓋
-數量當品質保證。拒絕所有新退步的門檻不變，沒有新router或模型。Independent reviewer
-負責controller回歸測試；main持有產品／語料／文件。Next：原始partial cutoff的RED定位。
+### 已完成的有界診斷與否決
 
-契約校準：partial原始cutoff遺失已RED重現；Host明示label擷取候選雖經測試／獨立覆核，
-但target明定low/high mapping由模型負責，不能依內部品質批准擴充該責任。已撤下這個
-未核准候選source/tests，diff保存在build/dev-artifacts/partial-cutoff-host-parser-unapproved.patch。
-已請使用者選擇：建議擴充typed追問攜帶model-proposed已知欄位並沿用Host來源驗證，
-或另授權Host label解析，或另輪處理。等候此public contract選擇期間，先完成五種
-missing-all RAG示範及檢索資格修理；不加入partial示範，不因局部待決而停止其他工作。
+固定MiniLM／Granite revision、工程題目與生成設定；以下是development，不是sealed thesis evidence。
+不得重跑抽到通過、改題降gate、把粗工具命中冒稱完整語意正確。
 
-目前候選只含已授權RAG邊界：150筆（原145逐筆不變＋五種缺值分支），hash
-`7ccb75b98ae91e4e30f1d1e6b202e73b47c64988d86ef02223cb808f7cb662c3`；typed pending
-action在dense、BM25、最終publication皆檢資格，index schema 3不使用舊metadata。
-複雜度覆核：8個production files含JSON，Python +146/-99/net+47，語料+30，無新owner、
-模型、router、相容分支或新的權限真相。原dense-only universal veto由聯集替換，原私有
-membership predicate收斂為兩檢索路徑／assembler共用；沒有另存第二套retriever。
-RED10（缺值語料、無效pending及stage資格）→現候選相關426通過；explicit-file hooks、
-guidance audit、MkDocs strict通過。獨立覆核允許進入真模型驗證，未批准候選採用。
-`fe533bcd`已完成真retrieval（150 points、positive Top3 36/36）與完整105題模型診斷。
-103 captures逐byte/hash獨立覆核；positive36/36，但clarification4/7低於f89f的6/7，
-故不能採用。bandpass仍抄mixed回答；generic filter首輪猜操作，非第二輪typed格式錯誤。
-五typed例全部進union，最終排名bandpass6/notch5/resample3/reference8/normalize12；
-Recall@3/5/10為1/5、2/5、4/5。resample已在prompt仍猜128，不能只歸因排序。
-17題完整context SHA重建一致；增k會一併加入更多ready-made actions，不能視為修理。
+| 候選／診斷 | 證據與判斷 |
+| --- | --- |
+| b4c7：dense／BM25獨立聯集 | positive檢索Top3 34→36/36，但模型positive36→35、追問6→4/7；已撤回。 |
+| 序列化input先於answer | 98 fresh control逐byte重現，196 captures；6 raw退步0改善，否決。 |
+| catalogue／最後reminder分開比較 | 98題、122 fresh；catalogue先通過機器非退步，但c753後續語意覆核失敗亦撤回；reminder3退步，否決。 |
+| 僅decision name，移除現成答案 | 98題，新增錯誤操作／虛報完成；input仍帶數字，否決。 |
+| fe533：聯集＋五種typed缺值例＋pending資格 | 150筆、426 focused通過；完整105題positive36/36但追問4/7，否決並撤回。 |
+| 固定同候選、每decision選代表 | 100 contexts重建一致；typed缺值命中仍1/5、22/36正向增加其他action；離線否決，未跑模型。 |
 
-Next：只做一個有界selection診斷，固定候選／分數／前三名預算，檢查同decision重複示範
-占位的影響。對既有validated decision signature選代表（action tool、typed pending action、
-ordinary response category），不足三筆再按原rank補；不解析user intent或決定可執行性。
-先離線比對正向與缺值／mixed／否定風險，再獨立設計覆核；未通過不寫product／跑模型。
-依據為coverage/diversity ICL文獻的冗餘問題，並非聲稱本heuristic已有效或等同論文方法。
-不進行權重／prompt組合搜尋；partial原值契約仍待使用者選擇。
+fe533的103 captures經獨立hash／trace覆核。五typed例都在union，但排名6/5/3/8/12，
+Recall@3/5/10為1/5、2/5、4/5；resample例進prompt後仍猜128。17題rank audit完整context
+重建一致。缺值與完整參數題可得到相同context，故增加k或宣稱corpus覆蓋齊全不是修復。
+Selection文獻支持檢查集合冗餘，不證明這個decision-label heuristic有效：
+[Coverage-based Example Selection](https://aclanthology.org/2023.findings-emnlp.930/)。
 
-Selection診斷100題完成，current context全部逐byte重建一致；typed missing仍1/5，
-沒有解決缺值示範遺漏，positive22/36額外曝光其他action。否決，不進模型／product。
-本輪有界診斷已無可採用的聯集／選例候選，停止新增heuristic而非降低非退步標準。
-Next：撤回fe533造成退步的retrieval／新增語料／其專屬tests及相依文件，回到2e3b產品，
-只保留獨立98題支持的Split／Training catalogue描述修正，做同版本完整模型驗證。
-失敗commit、captures、rank與diversity產物均保留。RAG品質不宣稱完成，待typed已知值
-public contract決策；該契約選擇也不能被宣稱必然修好排序或模型複製問題。
+失敗commits、完整inputs/raw/逐題結果保留在build/dev-artifacts：
+rag-b4c7-*、rag-example-order-replay-*、rag-contract-clarity-replay-*、
+rag-decision-reference-replay-*、rag-fe533-*；不覆寫、不刪失敗證據。
+fe533 CI failure來自multi-GDF外部labels UI walkthrough等待publication逾時，aggregate連帶失敗；
+不是已定位的RAG型別錯誤，不以偶發失敗名義忽略。c753的後續CI屬於已撤回候選的證據。
 
-撤回source／專屬tests／策略文件與2e3b逐byte相同，僅catalogue描述保留（production
-Python +10/-2/net+8，無owner改變）。217個RAG／context／工具契約相關測試與explicit-file
-hooks、guidance audit、MkDocs strict通過。fe533 CI為failure，job明細讀取遭GitHub TLS
-timeout；不拿其CI支撐本版本。Next：commit後跑完整105題及同head CI，獨立覆核恢復結果。
+### 撤回驗證與仍缺的證據
 
-### 前次候選的否決與撤回證據
+c753：217個RAG/context/tools focused通過；explicit-file hooks、guidance audit與MkDocs strict通過。
+完整105題真Windows模型／Host診斷已完成；source changes排除settings後為空，positive36/36、
+product no-action23/24、追問6/7，逐題pass/fail與f89f完全一致。raw precision仍15/24，
+raw clarification2/7；Host協助後6/7不能當成模型本身全會追問。paired為21 machine pass、
+1待語意覆核、2失敗，沒有把安全未操作算語意答對。
+產物rag-c753-hybrid-model.json與rag-c753-prompts；獨立覆核103 captures／provenance通過，
+99個raw與f89f逐byte相同；但capture90新增「產品提供Dense/CNN/RNN」錯誤選項宣稱，
+既有no-action機器分數未察覺，main依不新增語意錯誤準則否決保留catalogue。
+c753 CI run36377377474、docs36377377389是已撤回候選證據；未做新的native GUI handoff。
+完整撤回後不重跑與已驗證source逐byte一致的模型全套；核對差異、直接工具測試與新head CI。
+完整撤回已驗：git diff對2e3b的XBrainLab/tests/scripts為空；124個工具／context測試、
+兩個變更檔hooks、guidance audit、MkDocs strict通過。受保護settings保持原差異。
 
-2026-09-28：不得依下方原施工步驟自動繼續調參。`b4c7df84`候選已實作、獨立覆核並跑完
-真模型；檢索結構正確但產品退步，故撤回該候選source／專屬tests及策略文件。保留逐題
-pass→fail檢查與失敗歸因準則。**RAG品質未完成，不是scope-complete或handoff-ready。**
-恢復先前產品不是證明舊0.7門檻合理；不得把新增退步歸給下一組件而仍接受本候選。
+### 待核准的追問契約與下一步
 
-證據：固定145語料／MiniLM／Granite／prompt／題目，72題比較確認current emulator與產品
-逐題一致；weighted聯集36/36正例Top3優於舊34/36，固定RRF沒有優勢。新增12題確認暴露
-stopword-only召回；補標準停用詞後84/84與獨立真cosine／BM25重建一致，三題無關輸入empty，
-但額外題已用於開發；ind_epoch仍有.529／trial-trials候選缺口，其他缺參數／否定語意限制
-已逐筆歸因，不能用respond_to_user類別命中冒稱範例適切。
+另一個RED重現的defect：模型typed追問時，原要求已有的單側cutoff未保留。
+Host label parser候選雖測試通過，但違反target的「模型負責low/high mapping」；已撤回，
+未核准patch保留在build/dev-artifacts/partial-cutoff-host-parser-unapproved.patch。
+已詢問使用者選擇：建議typed追問攜帶model-proposed已知欄位，由Host沿用來源驗證；
+或明確授權Host label解析；或另輪處理。**這項契約修理不保證解決RAG排序／模型抄例。**
 
-`b4c7`完整105題真模型、103個prompt/raw捕捉逐byte/hash獨立驗證：positive36→35，
-configure_dataset_split_02收到三筆正確split例仍選configure_training到達錯誤execution boundary；
-clarification6→4，missing-bandpass抄mixed例的「解釋或套用2–35Hz先選一件」導致無receipt。
-no-action23→24不能抵銷這些退步。獨立reviewer拒絕採用，沒有找到可解釋它們的檢索實作bug。
-原model、prompt、corpus、settings不改；不以重抽失敗題或下修gate求綠。
-
-候選工程證據：RAG/verifier/lifecycle144與context/publication124通過，hooks／guidance／
-MkDocs strict通過；CI static另發現候選Filter list型別錯誤，隨候選source撤回，不保留失敗source。
-證據位置：`build/dev-artifacts/rag-candidate-compare-20260928/`內comparison、confirmation、
-final-product及final-product-review；`rag-b4c7-hybrid-model.json`、`rag-b4c7-prompts/`。
-歷史產物與b4c7 commit保留，不覆寫或刪失敗。PR #149未merge。
-
-撤回後：production與RAG專屬tests逐byte等同本輪前基線，134 focused tests、explicit-file
-hooks、guidance audit及MkDocs strict通過。只保留verifier／其回歸測試及canonical結案準則。
-Next：追蹤撤回head的CI／獨立diff覆核，回報需要的範圍決策：是否把RAG示範呈現與模型
-決策／追問一起納入下一個有界修理（先做單變量輸入重播，非任意權重搜尋）。
-在確認前不改prompt／corpus／模型，不開始其他Agent組件，也不交手測或宣稱RAG收尾。
-
-### 本輪原施工界線與已執行步驟（以下不再作active dispatch）
-
-2026-09-28 使用者批准重新處理檢索候選策略直到獨立覆核／部件收尾，不開始下一個
-Agent 組件、不 merge、不把本輪結果稱為整體 Assistant handoff-ready。先前「工程已收尾」
-不足以支撐檢索品質結案：真 MiniLM 的 epochs／reset 正確例原排第二／第三，卻被 cosine
-0.7 門檻排除，錯誤例反而留下；BM25 只重排 dense 准入集合，不能補召回。重新編碼145筆
-与儲存向量一致，CPU／wrapper query一致，兩題沒有截斷；不是已證明需要換模型。
-
-Outcome：在不增加模型／router／owner、保留 UI／工具／安全契約下，消除單路否決造成的
-候選遺漏，逐筆解釋剩餘失敗；不以34/36或reviewer通過代替設計合理性的證據。
-Scope為既有retriever、BM25、直接tests、既有verification runner與canonical文件。
-固定145語料、embedding/model revision、prompt、最多三例/context上限；正式研究題庫不碰。
-可用工具／schema／publication recheck為不變量；cosine、權重、候選數為待驗證策略。
-UI沒有layout／互動改動。原settings及舊報告保留。
-
-步驟：
-1. 固定現行、兩路獨立召回＋分數融合、同候選＋RRF的有界離線比較；保留完整逐題
-   ranks、候選被排除位置、BM25實際貢獻與不相關／否定案例。不按兩個失敗題反覆調參。
-2. 依證據選定一個簡單策略，先更新target、寫真漏召回RED測試再實作；沿用Retriever與
-   BM25 owner，刪除舊dense-only否決與被取代的專屬測試，不新增第二套production retriever。
-3. 驗直接RAG/context/lifecycle/tests、真offline與完整既有模型診斷；記錄檢索与模型錯誤
-   分層歸因、正常empty與degraded分離。不以後端擋錯誤算語意答對。
-4. 獨立覆核設計假設、實際diff與失敗產物；處理in-scope findings後更新canonical事實、
-   適用static／CI，回報部件結案與仍屬下一組件的限制，不自動開整體手測或merge。
-
-完成準則：每個已觀察失敗有定位；無未釐清的基本機制問題；改善不只修兩題、必要安全
-保護不退步。開發題非holdout，額外未參與選擇的工程案例另記。保留已通過且未受影響的
-工程證據；新source需要新相關證據。Rollback為此slice source/tests/docs一起回退。
-複雜度：owner前後不變；預期局部替換ranking／admission，不加權限或生命週期分支。
-Next：執行固定候選比較，同時建立失敗可觀察性與回歸保護。
-
-比較進度：72題現行重算與production一致；union weighted正例Top1/3 35/36、36/36，
-RRF為34/36、36/36，故選保留加權方式而不加RRF。原始comparison保留；選定後的12題
-確認發現無關問題只因the被BM25召回，是本輪直接缺陷。這12題已轉為development evidence，
-不冒稱holdout。補既有sklearn英文停用詞處理（保留否定詞），不加語句分流／LLM judge；
-先RED再修，全部既有72題與真模型重驗。範例語意不適切、缺資訊／否定語料覆蓋不足須
-逐項披露，不能把respond_to_user類別命中當回答正確。
+Next：完成安全撤回的diff／focused檢查與CI追蹤，取得上述public contract選擇後先更新target，
+再RED→修理→直接validation。RAG選例目前沒有可採用的非退步候選；不得自動再排列
+權重／prompt／模型。需以已觀察的錯誤定位界定下一個有根據的修理，而非補題求綠。
+Stop condition是有證據的部件收尾，或真正的新契約／必要資源決策；不因一個切片或CI pending結束。
 
 ## 歷史 — 前次 RAG 工程收尾（檢索品質判斷由上節取代）
 
