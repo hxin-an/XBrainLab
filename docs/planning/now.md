@@ -2,7 +2,16 @@
 
 最後更新：`2026-09-29`
 
-## Active — 修復 DEV 案例間訓練收尾邊界
+## Active — 合併收尾修復，重跑 DEV 第1輪五模型
+
+最新授權：使用者選擇修正版全部重跑並說「跑吧」，依已說明順序完成必要CI、合併、
+建立新封存source/run後在137啟動。五模型各264題、共1320題，仍是candidate1／DEV
+第1輪工程修復重跑；seed0／repeat0、RAG on、一次格式修復、14400秒active預算及
+18000秒外層wall guard不變。不調參、不改題庫／scorer、不開第2輪／VALID／TEST。
+原run `20260929-115803-8477ba6c`與894題及失敗證據保留，不拼接、不覆寫。
+重用137現有權重與Python環境，建立新source封存包，不重新複製38GB資源。
+Stop：精確修復head所有適用CI通過、合併後新run最初有效案例正常落盤，即交回run/log
+位置，不持續監控到全部結束。此次UI未改；不宣稱使用者新增手測證據。
 
 2026-09-29 使用者要求定位後繼續修復，不停在診斷。Round1 已記錄894題，下一題
 Llama DEV-A13-02-V2 在 fixture 訓練 admission 失敗，尚未提交模型；原失敗證據保留。
@@ -27,8 +36,8 @@ single/bulk cancel、shutdown、close、restart/publication 12 passed。三個re
 未使用真模型推論；原run與失敗證據未更動；不把工程測試當DEV完成或新版跨平台CI。
 最終獨立code/lifecycle覆核無blocking finding，審查包含實際7個Python檔diff；執行證據
 由主agent核對，reviewer未重跑。新增owner 0，產品service淨增4行，沒有新UI／契約。
-Next：版本固定完成後等待重跑決策。新source不能resume舊run，已詢問是否另跑Llama/Gemma
-完整528題；未開跑、未merge。需取得新source重跑範圍及產品PR交付/合併批准。
+Next：修復commit `a4aec703`加本次授權文件送PR，追蹤同head適用CI；核對137資源、
+固定五模型新run配置與新source封存，完成合併後啟動。以頁首全五模型授權取代528題提案。
 
 ## 已執行 — 合併工具PR，啟動DEV第1輪後交回
 
