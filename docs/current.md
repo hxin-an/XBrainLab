@@ -130,6 +130,20 @@ RAG改為在已發布action及合法response示範內檢索，不再先以手寫
 擁有。檢索准入與模型收益分開判定，最新證據見[Now](planning/now.md)；已有固定案例下
 的模型受益，整體基線與交付仍未成立，不能把檢索／索引／生命週期驗證當作整體品質通過。
 
+### DEV逐輪工具候選（2026-09-29） { #dev-round-tooling }
+
+本機候選`7a2fc9ed`新增封存包v2的`compare.sh`：唯讀比較兩份已存run，分開首次／最終、
+工具／參數一致與正誤變化，明列缺失、版本／scorer差異及各模型／repeat時間。
+不重新推論、改原分數或使用新版scorer重評；v1歷史包保持可讀。使用方式由
+[研究協定](validation/thesis_protocol.md)擁有。本候選尚未建立新PR，不宣稱已進main。
+
+該source的137固定五模型×四題工程驗證已完成：20筆有效、首次及最終15對5錯、
+無格式重試；真RAG與capture完整、無fallback、cleanup通過。報告重建、原版audit、
+自比及獨立artifact覆核通過，原始179項raw／inputs指紋不變。五個錯答保留，不調參
+或補跑；20題不是正式DEV成績。Windows比較17案、Linux封存／比較40案及相鄰runner／
+audit／report117案通過；初次合跑逾時與拆開驗證的限制記錄於Now。
+產品UI／Agent／RAG程式與已驗收基線相同；第1輪完整1320次只prepare、尚未執行。
+
 ### 共同工程基線：PR #147 已合併（2026-09-27） { #assistant-integration-baseline }
 
 研究 clean `293f1890` 與產品 checkpoint `8c50bee9` 已合成於 PR #147，於 2026-09-27

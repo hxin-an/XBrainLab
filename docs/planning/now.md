@@ -2,7 +2,7 @@
 
 最後更新：`2026-09-29`
 
-## Active — DEV封存與兩次結果比較（工具準備，正式第1輪未開跑）
+## Active — DEV工具工程驗證完成，待工具PR授權與第1輪討論
 
 2026-09-29使用者確認每模型五輪都完成、基準占第一輪，並要求每輪可一鍵執行，另有
 一個腳本比較兩份結果；不是只對單份結果做audit。輪次、封存與比較契約由
@@ -21,10 +21,9 @@
 完成後共同看結果／錯誤類型、決定下一輪調整，再封存執行。日常工具施工及focused
 tests不逐次要求使用者介入；本次授權不包含完整DEV或任何下一輪模型調參。
 
-問題／證據：現有`assistant_experiment_package.py`已有獨立source快照、`run.sh`、
-resume／report-only／audit；未提供兩份run的比較入口。研究文件仍有舊產品wire／RAG
-敘述，舊Windows d0與137工程smoke不能直接冒充本次新基線。現有入口不等於最新封存
-已在137重建驗收。假設：重用封存器與runner即可補齊，不需要第二個執行／評分owner。
+原問題：`assistant_experiment_package.py`已有獨立source快照、`run.sh`及resume／report／
+audit，但缺兩run比較；研究文件也仍混有舊wire／RAG敘述。本輪已補齊並以新source在137
+工程驗證，不拿舊Windows d0或先前smoke冒充本次結果；没有新增執行／評分owner。
 
 Outcome：已準備環境的137上，每輪固定程式、五模型各自設定、題庫、RAG／資源及scorer；
 一鍵跑完本輪並產生新run。另一個入口唯讀比較兩份run，輸出決策／參數一致率、正誤
@@ -50,9 +49,26 @@ Stop：兩個入口與可重現性證據完成且限制明列，準備第1輪開
 封存前config擁有，不另增執行時覆蓋。初始封存19 tests通過；缺compare入口的2案red後，
 封存23＋比較17通過，獨立diff／證據覆核GO。Windows相鄰runner／audit／report首輪150秒
 逾時，定位為1,320筆合成fixture耗時；該案單獨100.81秒通過，其餘116案37.79秒通過。
-Hook／guidance及strict docs通過。上述不代表真模型或正式DEV已跑。
-Next：固定本機source，於137新建工程包、固定20次、核對原始輸入輸出／cleanup及離線
-重建／audit／自比；再準備第1輪的完整配置給使用者確認。新外部PR仍另確認；無UI變更。
+Hook／guidance及strict docs通過；Windows比較17案亦通過。Script +701/-9/net692，
+tests +551/-0；`XBrainLab/`產品程式無差異，沒有為smoke錯答調參。
+
+137工程驗證source為`7a2fc9edcb3f2af743d6e268bc1df4a48be6d810`：66個初始狀態／264個
+DEV oracle預檢通過；固定20次有效量測全部完成，首次／最終15對5錯、無格式重試，
+active budget用88.34/3600秒。report-only、原版audit及自比通過，raw／inputs 179項
+hash不變，獨立實機artifact覆核GO。舊v5與新v6比較正確標示不可直接比較正誤。
+工程包：`/mnt/home/2025/hxin/XBrainLab-experiments/engineering/dev-round-tools-20260929-7a2fc9ed`；
+run：`20260929-063418-83bfd335`。本機報告與核對副本位於
+`build/dev-artifacts/dev-round-tools/`。這是工程證據，不是正式DEV準確率。
+
+第1輪包已prepare但未run：`/mnt/home/2025/hxin/XBrainLab-experiments/development/round-01`，
+同source、五模型candidate=1、各264題／共1320次、DEV repeat0、seed0、RAG on、一次
+格式修復；config預算14400秒只是待確認上限，不是開跑授權。`prepared-for-discussion.json`
+保存真環境／資源與完整排程。本機同名副本加round-01前綴；TEST未讀、VALID未評估。
+另經使用者明確授權完成Windows本機SSH key與`ssh xbrainlab-137`別名，金鑰不進repo。
+
+Next：使用者確認是否建立本次工具PR；適用CI與合併按repo規則，不把本機驗證叫作
+handoff-ready。接著共同確認第1輪版本、配置及完整執行額度，才可run；不開始第2輪。
+這是約定的討論交接點，不授權跳過PR／CI或自行開始完整實驗。
 
 ## Closed — Agent Development基線已手測通過並合併
 

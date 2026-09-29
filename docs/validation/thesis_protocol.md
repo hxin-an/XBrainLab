@@ -170,7 +170,8 @@ Scorer 正反例保護參數、格式、錯誤工具、正常不操作與有效�
 
 新v2封存包提供兩run比較入口`./compare.sh RESULT_A RESULT_B`；路徑相對目前shell目錄，
 不是包內run ID。預設寫入包內新的`comparisons/<id>/`，也可用`--output NEW_DIRECTORY`。
-入口與下述focused驗證不等於本輪137真模型工程驗證已完成；進度由Now擁有。
+同source的137固定20次工程驗證與限制見[Current](../current.md#dev-round-tooling)；
+這不是完整DEV或正式模型排名，逐輪批准與進度由Now擁有。
 它不是現有單run audit：按模型、case與repeat對齊，輸出工具／不操作決策一致率、
 工具及參數一致率、都對／都錯／錯變對／對變錯、P50／P95及逐題耗時差、輸入輸出明細。
 JSON排版／key順序不構成參數差異；不評非操作回覆的文字品質、不另用LLM評相似度。
@@ -325,6 +326,6 @@ TEST 四條件為完整系統、移除 RAG、移除狀態式工具篩選、移�
 移除重試只生成一次，其餘條件沿用選定系統配置，不為消融重調參。
 配置凍結、使用者確認並提供封存 TEST 後才執行；不因消融較好事後改選完整系統。
 
-已完成 DEV initial 的 scope-complete：1,320 有效案例、完整分母、原始輸入輸出／判分／時間可核對、
+歷史d0 DEV initial 的scope-complete：1,320有效案例、完整分母、原始輸入輸出／判分／時間可核對、
 報告可重建、直接驗證及獨立覆核通過。背景等待可結束当前回合以省 token，但只是
 已交接 checkpoint，不代表完成。調優／VALID／TEST 仍須下一階段授權。
