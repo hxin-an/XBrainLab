@@ -46,6 +46,29 @@ from XBrainLab.backend.training_state_contract import (
 _THREAD_WATCHDOG_SECONDS = 5.0
 
 
+def test_service_bulk_cancel_preserves_committed_and_terminal_operations() -> None:
+    service = ApplicationService(Study())
+    registry = service.owned_work
+    pending = registry.begin(OwnedWorkKind.IMPORT_REVIEW, cancellable=True)
+    committed = registry.begin(OwnedWorkKind.IMPORT_REVIEW, cancellable=True)
+    completed = registry.begin(OwnedWorkKind.IMPORT_REVIEW, cancellable=True)
+    registry.claim_start(committed.operation_id)
+    registry.enter_commit(committed.operation_id, "Publishing")
+    registry.complete(completed.operation_id)
+    try:
+        assert service.cancel_all_owned_operations() == (pending.operation_id,)
+        assert registry.snapshot(pending.operation_id).cancel_requested
+        assert not registry.snapshot(committed.operation_id).cancel_requested
+        assert registry.snapshot(committed.operation_id).phase is OwnedWorkPhase.RUNNING
+        assert (
+            registry.snapshot(completed.operation_id).phase is OwnedWorkPhase.COMPLETED
+        )
+    finally:
+        registry.finish_cancelled(pending.operation_id)
+        registry.complete(committed.operation_id)
+        service.close()
+
+
 def test_owned_work_registry_publishes_identity_progress_and_terminal_state() -> None:
     registry = OwnedWorkRegistry()
 

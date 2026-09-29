@@ -348,6 +348,7 @@ class PilotConditionSession:
             and not state.epoch.available
             and not state.dataset.available
             and not state.training.is_running
+            and self.service.training.wait_until_restart_safe(timeout=0)
         )
 
     def _begin_case(self, payload: dict, output: Path) -> dict:
@@ -362,6 +363,11 @@ class PilotConditionSession:
         self._assert_identity(payload)
         output.mkdir()
         if self.case_index:
+            # Reset drops the old trainer. Retire its terminal publication first,
+            # while wait_until continues to dispatch the UI acknowledgement.
+            self.wait_until(
+                lambda: self.service.training.wait_until_restart_safe(timeout=0), 15
+            )
             reset = self.service.execute(ResetSessionCommand(confirmed=True))
             if not reset.ok:
                 raise RuntimeError("Product session reset was rejected")
@@ -618,7 +624,8 @@ class PilotConditionSession:
                     )
                     and not self.runtime.turn_in_flight
                     and not self.manager.agent_controller.is_processing
-                    and self.driver.snapshot()["pending_count"] == 0,
+                    and self.driver.snapshot()["pending_count"] == 0
+                    and self.service.training.wait_until_restart_safe(timeout=0),
                     15,
                 )
                 result["cleanup_ok"] = True

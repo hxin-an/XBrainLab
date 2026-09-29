@@ -2,7 +2,51 @@
 
 最後更新：`2026-09-29`
 
-## Active — 合併工具PR，啟動DEV第1輪後交回
+## Active — 合併收尾修復，重跑 DEV 第1輪五模型
+
+最新授權：使用者選擇修正版全部重跑並說「跑吧」，依已說明順序完成必要CI、合併、
+建立新封存source/run後在137啟動。五模型各264題、共1320題，仍是candidate1／DEV
+第1輪工程修復重跑；seed0／repeat0、RAG on、一次格式修復、14400秒active預算及
+18000秒外層wall guard不變。不調參、不改題庫／scorer、不開第2輪／VALID／TEST。
+原run `20260929-115803-8477ba6c`與894題及失敗證據保留，不拼接、不覆寫。
+重用137現有權重與Python環境，建立新source封存包，不重新複製38GB資源。
+Stop：精確修復head所有適用CI通過、合併後新run最初有效案例正常落盤，即交回run/log
+位置，不持續監控到全部結束。此次UI未改；不宣稱使用者新增手測證據。
+
+2026-09-29 使用者要求定位後繼續修復，不停在診斷。Round1 已記錄894題，下一題
+Llama DEV-A13-02-V2 在 fixture 訓練 admission 失敗，尚未提交模型；原失敗證據保留。
+原因證據：fixture／case cleanup 只等待 owned operation terminal，沒有等待 training
+terminal publication 與 monitor 退出；空資料狀態不代表 restart-safe。
+Outcome：案例準備、清理與 reset 使用既有後端收尾事實，Qt 保持處理事件，未完成時
+bounded fail closed。Scope 為 runner/fixture 及直接測試；不改 UI、模型、prompt、RAG、
+題库、scorer，不覆寫封存 source／既有結果，不因工程修復占用下一輪改善機會。
+步驟：延遲 terminal delivery 的真 CPU 訓練回歸先 red → 最小等待修復 → focused
+fixture/condition checks → 獨立 lifecycle 覆核 → 核對 source identity 與可重跑方式。
+Stop：修正與直接驗證、獨立覆核閉合；續跑若需跨 source 沿用結果而既有協定不允許，
+明列決策，不暗改 manifest。UI 行為未改，不需新增 UI 確認。
+進度：真 CPU delayed publication 回歸先 red 後 green，首批54 focused tests通過。
+取消整合補測另重現直接依賴缺陷：ApplicationService.cancel_all_owned_operations只呼叫
+registry.cancel_all，未轉送training/saliency runtime取消；10000 epoch fixture不能停止。
+修理 scope 納入既有ApplicationService的bulk cancel，重用單筆取消，不新增owner或契約。
+實作：bulk cancel重用單筆取消轉送；fixture completion/error cleanup與condition cleanup/
+pre-reset檢查既有restart-safe，zero-timeout輪詢並持續處理Qt，不移除admission guard。
+Windows focused：fixture/condition/owned registry/training state 96 passed；相鄰saliency
+single/bulk cancel、shutdown、close、restart/publication 12 passed。三個red均確認：
+舊fixture在ack前回傳、舊condition缺ack仍cleanup_ok=true、舊bulk cancel無法停止真CPU。
+未使用真模型推論；原run與失敗證據未更動；不把工程測試當DEV完成或新版跨平台CI。
+最終獨立code/lifecycle覆核無blocking finding，審查包含實際7個Python檔diff；執行證據
+由主agent核對，reviewer未重跑。新增owner 0，產品service淨增4行，沒有新UI／契約。
+Next：修復commit `a4aec703`加本次授權文件送PR，追蹤同head適用CI；核對137資源、
+固定五模型新run配置與新source封存，完成合併後啟動。以頁首全五模型授權取代528題提案。
+CI首次head `6b27fe90`：21成功，Windows lifecycle有一項既有刷新計數失敗；原失敗保留
+於Actions run36585733302。獨立追查顯示測試只等eval/visualization到STOP_REQUESTED，
+未等待Training自己的queued render便開始計terminal刷新數；bulk cancel僅teardown路徑。
+直接修正驗證阻擋：先確定三面板preterminal都已render，再保留terminal exactly-once
+斷言；不改產品、不放寬數量或timeout。CI失敗作red證據，本機原測試單次pass不能
+排除此排程競態；修後重跑直接案例與同headCI。新source封存重建，未開始推論的舊
+準備包只作中間產物；不以舊head成功項冒充新head全部通過。
+
+## 已執行 — 合併工具PR，啟動DEV第1輪後交回
 
 最新授權（2026-09-29）：使用者同意合併PR #151並開跑第1輪，要求確認正常啟動後
 停止監控，不等待整輪結束。範圍為137上五模型各264個DEV、共1320案例；candidate1、

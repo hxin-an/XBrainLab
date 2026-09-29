@@ -426,7 +426,9 @@ def test_first_case_boundary_records_product_string_pipeline_stage(tmp_path):
     assert (output / "ui").is_dir()
 
 
-def test_condition_boundary_refuses_existing_confirmation(monkeypatch):
+def test_condition_boundary_refuses_existing_confirmation_or_finalizing_training(
+    monkeypatch,
+):
     pending = SimpleNamespace(confirmation=None, workflow_handoff=None)
     session = PilotConditionSession.__new__(PilotConditionSession)
     session.runtime = SimpleNamespace(accepts_commands=True, turn_in_flight=False)
@@ -436,7 +438,9 @@ def test_condition_boundary_refuses_existing_confirmation(monkeypatch):
         ),
         chat_panel=object(),
     )
+    training = SimpleNamespace(ready=True)
     session.service = SimpleNamespace(
+        training=SimpleNamespace(wait_until_restart_safe=lambda **_: training.ready),
         get_state=lambda: SimpleNamespace(
             raw=SimpleNamespace(loaded=False),
             epoch=SimpleNamespace(available=False),
@@ -454,3 +458,119 @@ def test_condition_boundary_refuses_existing_confirmation(monkeypatch):
     assert not session._boundary_clean()
     pending.confirmation = None
     assert session._boundary_clean()
+    training.ready = False
+    assert not session._boundary_clean()
+
+
+@pytest.mark.parametrize("boundary", ["reset", "cleanup", "cleanup_without_ack"])
+def test_condition_drains_cancelled_training_view_before_case_boundary(
+    qtbot, tmp_path, monkeypatch, controlled_condition_runtime, boundary
+):
+    from PyQt6.QtCore import QTimer
+
+    from scripts.dev import assistant_pilot_condition as condition
+    from scripts.dev.assistant_pilot_fixture import prepare_fixture
+    from tests.unit.scripts.test_assistant_pilot_fixture import _fixture
+    from XBrainLab.backend.application.owned_work import OwnedWorkKind
+
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    held = []
+    delivered = []
+    holding = False
+    real_wait = None
+    timer = QTimer()
+    with patch.dict(os.environ):
+        try:
+            session.__init__(request(), tmp_path)
+            real_wait = session.wait_until
+            acknowledge = session.service.acknowledge_view_publication_delivery
+
+            def hold_terminal(revision, **kwargs):
+                if holding:
+                    held.append((revision, kwargs))
+                    return False
+                return acknowledge(revision, **kwargs)
+
+            def release_terminal():
+                nonlocal holding
+                if held:
+                    holding = False
+                    delivered.extend(held)
+                    for revision, kwargs in held:
+                        acknowledge(revision, **kwargs)
+                    held.clear()
+                    timer.stop()
+
+            monkeypatch.setattr(
+                session.service, "acknowledge_view_publication_delivery", hold_terminal
+            )
+            timer.timeout.connect(release_terminal)
+
+            def stop_and_queue_ack():
+                nonlocal holding
+                holding = True
+                session.service.cancel_all_owned_operations()
+                session.wait_until(
+                    lambda: session.service.get_active_owned_operation(
+                        OwnedWorkKind.TRAINING
+                    )
+                    is None
+                    and bool(held),
+                    15,
+                )
+                assert not session.service.training.wait_until_restart_safe(timeout=0)
+                if boundary != "cleanup_without_ack":
+                    timer.start(0)
+
+            if boundary == "reset":
+                prepare_fixture(
+                    session.study,
+                    _fixture("training"),
+                    tmp_path / "training",
+                    running_training_epochs=10000,
+                )
+                stop_and_queue_ack()
+                session.case_index = 1
+                state = session._begin_case(request(), tmp_path / "next")
+                assert state["pipeline_stage"] == "empty"
+            else:
+                payload = request()
+                payload["fixture"] = _fixture("training")
+                payload["case"].update(
+                    expected_workflow_stage="training",
+                    fixture_id=payload["fixture"]["metadata"]["fixture_id"],
+                )
+
+                def fail_submission(*_args):
+                    stop_and_queue_ack()
+                    if boundary == "cleanup_without_ack":
+                        monkeypatch.setattr(
+                            session,
+                            "wait_until",
+                            lambda predicate, seconds: real_wait(
+                                predicate, min(seconds, 0.1)
+                            ),
+                        )
+                    raise RuntimeError("Injected input submission failure")
+
+                monkeypatch.setattr(condition, "submit_case_input", fail_submission)
+                result = session.run_case(payload, tmp_path / "case")
+                assert result["status"] == "measurement_failed"
+                assert result["detail"] == "Injected input submission failure"
+                if boundary == "cleanup_without_ack":
+                    assert result["cleanup_ok"] is False
+                    assert "deadline exceeded" in result["cleanup_error"]
+                    assert not delivered
+                else:
+                    assert result["cleanup_ok"] is True
+            if boundary != "cleanup_without_ack":
+                assert delivered
+                assert session.service.training.wait_until_restart_safe(timeout=0)
+        finally:
+            timer.stop()
+            holding = False
+            if real_wait is not None:
+                monkeypatch.setattr(session, "wait_until", real_wait)
+            for revision, kwargs in held:
+                acknowledge(revision, **kwargs)
+            assert session.close()

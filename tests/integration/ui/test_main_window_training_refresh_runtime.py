@@ -2426,9 +2426,17 @@ def test_delayed_cancellation_refreshes_every_preterminal_panel_once(
     )
     qtbot.mouseClick(training.sidebar.btn_stop, Qt.MouseButton.LeftButton)
     qtbot.waitUntil(
-        lambda: _analysis_panels_show_training_state(
-            window,
-            TrainingOutcomeState.STOP_REQUESTED,
+        lambda: (
+            _analysis_panels_show_training_state(
+                window,
+                TrainingOutcomeState.STOP_REQUESTED,
+            )
+            # Training has its own queued renderer. Do not count its pending
+            # STOP_REQUESTED render as a second terminal refresh.
+            and training._last_training_publication_signature is not None
+            and training._last_training_publication_signature.training_terminal_outcome.state
+            is TrainingOutcomeState.STOP_REQUESTED
+            and training._application_render_ledger.pending_publication is None
         ),
         timeout=10_000,
     )
