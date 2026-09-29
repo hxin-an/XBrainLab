@@ -1,6 +1,6 @@
 # XBrainLab Validation Contract
 
-最後更新：`2026-09-16`
+最後更新：`2026-09-29`
 
 驗證回答「哪個exact source，在什麼環境，觀察到什麼」，不能把單一PASS放大成產品、科學或真人
 驗收結論。日常與PR交付按下表選證據；CI routing由既有workflow擁有。明確要求完整dossier時，
@@ -87,7 +87,7 @@ Git／CI identity、exit code、counts、widget可見／enabled、geometry與pix
 
 Assistant 的三決策／三層離線判分入口見
 [Benchmark scorer calibration](assistant_benchmark_calibration.md)。它只校準 agent-authored
-Development 合成觀察，不執行模型／工具，也不取代 frozen 81-case gate 或產品驗收。
+Development 合成觀察，不執行模型／工具，也不取代本頁的單輪 candidate gate 或產品驗收。
 
 Harness changes that claim fresh-agent readiness need native new-session evidence, without inherited
 chat or a prompt containing the intended answer. Check instruction/config/skill discovery, task takeover
@@ -264,77 +264,92 @@ applicable evidence；同一clean/explained exact commit全部通過才可稱`ha
 產品PR仍須上述手測及批准，所有merge也都先通知；範圍不明、必要檢查未成功或新外部權限
 未取得時不可用通知代替確認。追蹤與停止條件見`.agents/workflows/handoff-candidate.md`。
 
-### Bounded Assistant baseline merge
+### Historical Assistant baseline evidence
 
-本節的真model報告要求適用於Assistant能力／模型契約變更或首次baseline接受。與Assistant無關的
-產品PR沿用既有已接受限制，不重跑model評測，也不宣稱該舊model報告是在新SHA上重新產生。
-這類無關產品slice可在自身證據完整時稱scoped `handoff-ready`，不代表Assistant promotion。
+PR #71 的 bounded baseline 與 v16 以前 81-case 報告保留原 source、schema、題目、
+分母及失敗；它們涵蓋現已移除的七條跨輪累積路徑，不能重標為新單輪契約通過。
+旧 `desktop-source` 的限定失敗 allowance 也不能用來放行新的候選。
+其他與 Assistant 無關的 PR 可沿用已接受版本的已知限制，但不能宣稱舊報告在新 SHA 重跑。
 
-使用者可明確批准一個尚未達Stable promotion gate、但相對既有main有可驗證進步的bounded Assistant
-baseline。這不是可重用的promotion gate：PR必須保存同一exact source的
-完整非strict model report、相較既有baseline不得退步的項目、全部known failures與claim boundary，並在
-所有applicable non-skipped CI成功後取得同一SHA的Windows真人手測與merge同意。這類source只能稱
-bounded baseline或checkpoint，不能稱Stable candidate、promotion或handoff-ready；後續24/24 no-action與
-7/7 clarification仍由下列strict gate判定。
+### Single-turn Assistant candidate
 
-`handoff_gate_spec.py`另提供兩個固定、不可任意刪減的manifest profile：預設`handoff`仍使用
-`stable-assistant-model-eval --strict`；`desktop-source`只以`bounded-assistant-model-eval
---require-bounded-baseline`替換它，並使用同profile的dashboard。bounded artifact必須綁定primary Granite
-exact revision與四份frozen English case files的SHA，完整81/81 inventory、36/36 positive、10/10 explicit
-parameter origin、5/5 missing guard，且失敗case只能是PR #71已知的`select_channels_before_data_en`、
-`ambiguous_en`、`generic_filter_selection`之一。artifact一律寫`assistant_stable_promotion=false`；profile
-不使bounded Assistant成為Stable promotion或完整`handoff-ready`證據。
+#### 本輪Development候選交付例外（2026-09-29）
 
-### Stable Assistant candidate
+使用者在已知74題工具決策65/74首答、66/74最終，以及錯誤提案可能通過Host准入的
+說明後，明確接受保留限制的Development候選版手測，並重申開發目標不包含複合需求。
+本輪交付以完整、單一英文要求為範圍；不要求新增複合操作支援，不追加模型／prompt／
+RAG調整。下列可靠基線gate的歷史失敗保留，不能改成通過、縮小舊分母或宣稱Stable。
+除複合要求部分執行外，Reset漏執行、空資料epoch誤切panel、不可用工具提案也保留為
+已接受的Development限制；不操作指引及既有backend保護不變，Host擋錯仍不救模型分數。
 
-Assistant candidate必須在同一clean/explained exact source依序閉合下列證據：
+允許在既有source獨立覆核、基本20＋6題tool-decision證據、真模型Windows journey及
+confirmation／cancel證據可追溯，且最終head全部適用non-skipped CI成功後，交限定範圍
+Windows手測。模型與native原始證據仍綁定原source；僅文件變動可沿用，parser診斷修理
+須連同既有132份capture前後等價覆核說明，不冒稱新head重新推論。
+手測用可丟棄的working data，核對單一操作、參數、確認／取消、可見結果及GUI狀態；
+不是重新測量準確率或要求使用者替已知失敗背書。手測接受及merge仍需各自明示批准。
+此為本輪已知限制的交付例外，不是未來版本略過新缺陷或必要工程gate的通用授權。
 
-1. Unit/integration證明18-tool registry、strict envelope、backend-owned stage、confirmation、GUI
-   correlation與no-model diagnostic terminal；mock或manifest-only測試不等於真人workflow。
-2. Active Granite English report固定81 cases：36 positive（18 tools各2）、14 challenge、24 no-action precision
-   與7 clarification trajectories。Raw model、Host safety、direct Host clarification admission與product outcome
-   必須分開報告：Host block、receipt、reconstruction或format recovery只能支持產品安全，不能增加
-   first-generation raw-model quality；post-recovery score只作diagnostic。raw-model gate只要求
-   first-generation `36/36` positive exact tool＋parameters。14 challenge、24 precision與7 clarification的 raw
-   result必須逐 case 如實保留（含critical／wording分類），但不以raw `24/24` precision或raw `7/7`
-   clarification作candidate requirement，也不得由Host rescue灌成通過。
-   Host safety gate要求10/10 direct preprocess value-origin checks；direct Host clarification admission另要求5/5
-   exact direct receipts。Host 不以英文 action／intent grammar 或 import positive-origin rescue 改寫 raw/product
-   outcome。product no-action gate要求24/24
-   product outcomes沒有confirmation、GUI handoff、ApplicationService／tool execution或state mutation；
-   product clarification gate要求7/7 final verified execute-boundary。任何no-action product outcome的上述
-   side effect都fail closed。
-   v12 evaluator必須分開記錄first raw generation、每次production strict-envelope recovery／follow-up raw
-   response、Host admission/form transition、receipt-reconstructed parameters與final product outcome；不得直接
-   建構receipt、手動塞入pending coordinator或合成parameters。Generation token budget使用production
-   structured-decision resolver，不得另設較小的evaluator cap。回覆文字的自然度與完整語意由同一SHA真人驗收，
-   不以固定required keyword group作promotion gate。這只支撐bounded selection與production admission outcome，
-   不支撐產品ready。
-   所有 first-turn family（positive、challenge、precision）的prompt與attempt scorer之callable set／blocked
-   reasons必須由同一個production `ApplicationViewPublication`及既有agent capability policy產生；直接使用
-   hand-authored stage list或把scorer context中的所有tool設為enabled，不構成state／unavailable-action
-   projection證據。36-case tool coverage維持，但`start_training`以最小可呼叫的`dataset_ready` publication
-   取代舊的手組`epoch_ready` catalog，故v9不可直接與該歷史路徑的數字比較。
-   同一v12 evaluator另固定7個production-controller clarification trajectories：五個direct cases的source
-   必須來自precision suite的missing-parameter turn，且第一輪真的由production parameter value-origin boundary
-   產生exact tool／question receipt；模型直接`respond_to_user`而沒有Host receipt時不得合成或代填。另外
-   generic filter selection、bounded bandpass collect-then-sort與correction fail-closed restart都必須經真controller
-   pending lifecycle。所有trajectory仍須經相同parser、schema、publication、capability與attempt policy得到
-   7/7 final verified execute-boundary；receipt 收齊後必須零額外 LLM/RAG generation。raw第一發與最多一次format recovery分開保存（舊兩次預算的artifact保留原身分）。這個gate不取代24/24
-   precision，也不等於tool execution已產生真side effect。
-   真model run使用product RAG時，evaluator必須經`ProcessRAGRetrieverLifecycle`與同一個
-   `ContextAssembler`取得allowed tools；每次retrieval記錄protocol、sequence、query、allowed tools、
-   returned／assembled item IDs、context hash與status。`empty`只表示ready product retriever沒有eligible
-   context；初始化或retrieval error必須標為`degraded`，不可把它當成empty或成功RAG。沒有product RAG的
-   歷史synthetic path一律標`synthetic_no_rag.v1`，只能作比較，不能支持product-RAG claim。developer prompt
-   dossier則以pinned tokenizer與production `LocalBackend` template／structured-decision budget輸出最終rendered
-   prompt、token count、input budget與optional-context drop；它不載入model weights，也不取代真model evidence。
-3. 真model safe E2E依normal ChatPanel路徑完成Switch Dataset → Import GUI → Select Channels →
-   direct Resample；不得用debug transport或fake generator替代。
-4. 使用者在同一candidate source完成Complete Workflow、Lifecycle／Navigation、Contract Failures三份
-   frontend walkthrough。Import、Channel、Montage、Epoch、Split、Model與Training Settings都必須
-   透過真GUI；confirmation/cancel/navigation terminal不可由script預先批准。
-5. PR所有applicable non-skipped checks completed/success後，才記錄manual acceptance與merge同意。
+#### 原可靠基線gate與歷史證據
+
+2026-09-28 使用者批准完整單輪操作基線：缺值需說明缺項並請完整重述，不保存／合併
+跨輪草稿。此節取代舊五欄提案、draft admission 與七條 continuation 的 active gate；
+不是把失敗標為成功。正式模型回覆契約由 [Agent target](../target/agent.md) 擁有。
+
+2026-09-28後續使用者明確將本輪驗收限於tool-call正確性，不審回答品質。以下第3項依
+此授權更新：歷史完整回答語意成績與raw證據保留原判定；不把它們改標為模型全對。
+版本v17報告仍保留原content screening／semantic-review欄位與claim，不能把其總分直接
+重標為純tool-call準確率；以同份capture的獨立tool-decision覆核說明當前範圍。
+
+候選須在同一 clean/explained exact source 閉合以下證據：
+
+1. 18-tool registry、嚴格兩欄 parser、current-turn 參數來源、backend publication／stage／
+   capability、confirmation、GUI correlation、取消及非同步 lifecycle 的直接測試。
+   缺值後只給裸數字不能沿用舊值；完整重述須能經真 Command 執行。Mock 生成不證明模型理解。
+2. `run_stable_assistant_model_eval.py` v17 預設固定 20 題，題目／oracle 由
+   `scripts/dev/stable_assistant_single_turn_cases_v1.json` 與程式內固定 SHA 擁有：
+   五種 direct 操作各完整／缺值／否定，共 15；兩種 GUI 開窗；兩個說明；E01 7–30 Hz。
+   每題允許產品既有的一次格式修復，修復後模型選擇與參數須 20/20；first raw 另報，
+   不回填分數。語意選錯不是格式錯誤，不追加 semantic retry；Host 擋錯也不能救模型分數。
+   CLI `--strict` 只驗可機械核對的模型／capture／cleanup條件；通過也不等於下項tool-decision
+   覆核或完整candidate通過。所有profile不得沿用舊bounded失敗allowance放行新版本。
+3. 對完整輸入／raw另做獨立tool-decision覆核：需要且可執行的完整操作須選對工具及參數；
+   缺值、禁止、資訊或當前不可用的操作須正確不操作。模型錯誤提案不能因Host拒絕而救分。
+   合法`respond_to_user`的message仍須非空，但不以解釋完整、禁止確認措辭、複誦或完整
+   重述提醒判tool-call成敗。既有`semantic_review_required`不是自動通過；review必須明記
+   本輪是tool-decision範圍，不能混同舊完整回答語意。Capture／raw／source／manifest須可核對；
+   不以關鍵字匹配替代判斷，也不因答覆而免除應執行工具的正向要求。
+4. 保留歷史 74 個單輪輸入（36 positive、14 challenge、24 no-action）作固定廣度報告，
+   另列新契約下逐題結果，不宣稱 74=81 或把已移除的七條跨輪計為成功。模型品質、
+   Host admission、抑制執行的測量 terminal 與真產品副作用分開。所有 no-action 的
+   confirmation、GUI 或執行副作用均為缺陷，不能用正向題分數抵銷。
+5. 所有題目由 stage-consistent ApplicationViewPublication 經產品 assembler 產生
+   state／callable schemas／blocked reasons，再走實際 LocalBackend template／budget。
+   不手寫全 enabled catalog；必要資訊不得被 token packing 截斷。保存每次真 input、
+   raw output、格式修復及 engine cleanup；report 檢查 capture bytes／hash／sequence。
+6. RAG 使用產品 ProcessRAGRetrieverLifecycle 與同一 assembler。保存 query、allowed
+   tools、returned／assembled IDs、context hash 和 ready-empty／degraded 區別。
+   v5 離線准入保留 v4 的全部20個單輪案例（10 calibration＋10 review），含原相關標註、
+   required IDs與unrelated安全反例；只為新語料補四個新示範的同主題ID。主題相關不是
+   決策等效，標註先於觀测凍結。舊v4、v3及失敗報告保留歷史身分。
+   語料為161筆、index schema 6；固定 corpus、fixture、embedding、設定與呈現後跑
+   相同題目的 RAG on/off。最後送例相關性、模型受益與額外等待分開，不以有召回取代
+   受益，不默默關閉 BM25 或換模型。不因基線高分要求任意漲幅，也不免除受益證據。
+7. 真模型 normal ChatPanel 路徑完成 Switch Dataset → Import GUI → Select Channels →
+   direct Resample，以及適用的 confirmation／cancel／GUI walkthrough。
+   No-generation diagnostic 與 evaluator suppressed boundary 不能取代此產品 evidence。
+   所有同 head applicable non-skipped CI 成功後，才交集中 Windows 真人手測並取得 merge 同意。
+
+本輪固定案例先於生成封存；初次互通比較後只有具體根因才容許一次有界呈現修理，再驗
+相同案例。仍不合格則不發布為可靠基線、不放寬分母、不無限調 prompt／語料／門檻，
+也不要求使用者替不合格版本做驗收。這是本輪收斂界線，不是零缺陷或論文準確率宣稱。
+研究的 frozen source、Development／Validation／Test 及 repeats 仍由 thesis protocol 擁有。
+
+2026-09-28 後續核准的英文呈現候選另固定6個新問法（完整／缺值／否定各2），由
+`stable_assistant_english_generalization_cases_v1.json` 擁有；與固定20題分開記錄，不用6題
+替代原gate，不宣稱統計或論文holdout。26題各off/on一次（52首答），只允許既有格式
+修復，不追加語意重試；模型錯答不能因Host擋錯救分。完整輸入覆核通過才生成，
+所有首答／修復另保留，新增題不得猜缺值或違反否定等契約。不以RAG換字算受益。
 
 ### Braindecode catalog candidate
 

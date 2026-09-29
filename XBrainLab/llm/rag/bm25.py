@@ -2,7 +2,7 @@
 
 Implements Okapi BM25 scoring without external dependencies beyond the
 Python standard library.  Designed to complement the Qdrant semantic
-retriever with keyword-based scoring for improved exact-match recall.
+retriever with independently eligible lexical candidates.
 
 Reference:
     Robertson, S. & Zaragoza, H. (2009). *The Probabilistic Relevance
@@ -16,9 +16,11 @@ import logging
 import math
 import re
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 
-from .example_policy import is_primary_workflow_example
+from .config import RAGConfig
+from .example_policy import example_search_text
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +83,7 @@ class BM25Index:
 
         Expected format: a JSON array of objects each containing an
         ``input`` field (content) and optional ``id``, ``category``,
-        ``expected_tool_calls`` fields (metadata).
+        ``expected_proposal`` fields (metadata).
 
         Args:
             json_path: Path to the JSON file.
@@ -102,57 +104,85 @@ class BM25Index:
             metadata = {
                 "id": item.get("id"),
                 "category": item.get("category"),
-                "tool_calls": json.dumps(item.get("expected_tool_calls", [])),
-                "input": content,
+                "proposal": json.dumps(item.get("expected_proposal")),
+                "source_text": content,
             }
-            if not is_primary_workflow_example(metadata):
+            if "prior_turn" in item:
                 continue
-            self.add_document(doc_id, content, metadata)
+            search_text = example_search_text(metadata)
+            if not search_text:
+                continue
+            self.add_document(doc_id, search_text, metadata)
 
         logger.info("BM25 index built: %d documents", self.doc_count)
 
     # ── Query ────────────────────────────────────────────────
 
-    def query(self, text: str, k: int = 3) -> list[tuple[float, str, str, dict]]:
-        """Scores all documents against the query and returns top-*k*.
+    def query(
+        self,
+        text: str,
+        k: int = 3,
+        *,
+        eligible: Callable[[dict], bool] | None = None,
+    ) -> list[tuple[float, str, str, dict]]:
+        """Rank eligible documents meeting fixed symmetric IDF coverage.
 
         Args:
             text: The query text.
             k: Maximum number of results.
+            eligible: Request-scoped eligibility applied before top-k; corpus
+                IDF stays unchanged and does not depend on dense admission.
 
         Returns:
             A list of ``(score, doc_id, doc_text, metadata)`` tuples
             sorted by descending BM25 score.
         """
-        if not self._docs:
+        if not self._docs or k <= 0:
             return []
 
-        q_tokens = _tokenize(text)
-        if not q_tokens:
+        q_tokens = sorted(set(_tokenize(text)))
+        if len(q_tokens) < RAGConfig.MIN_SPARSE_MATCHED_TERMS:
             return []
 
         scores: list[tuple[float, int]] = []
         n = self.doc_count
 
+        def idf(term: str) -> float:
+            return math.log(
+                1.0 + (n - self._df.get(term, 0) + 0.5) / (self._df.get(term, 0) + 0.5)
+            )
+
+        # OOV terms retain df=0 query weight. Document containment can still
+        # admit a longer query; this overlap rule is not relevance confidence.
+        query_weights = {term: idf(term) for term in q_tokens}
+        query_weight = math.fsum(query_weights.values())
+
         for idx in range(n):
+            if eligible is not None and not eligible(self._docs[idx][2]):
+                continue
             score = 0.0
             dl = self._dl[idx]
             tf_map = self._tf[idx]
-            for term in q_tokens:
-                if term not in tf_map:
-                    continue
+            matched = [term for term in q_tokens if term in tf_map]
+            if len(matched) < RAGConfig.MIN_SPARSE_MATCHED_TERMS:
+                continue
+            matched_weight = math.fsum(query_weights[term] for term in matched)
+            document_weight = math.fsum(idf(term) for term in sorted(tf_map))
+            if matched_weight < RAGConfig.MIN_SPARSE_COVERAGE * min(
+                query_weight, document_weight
+            ):
+                continue
+            for term in matched:
                 tf_val = tf_map[term]
-                df_val = self._df.get(term, 0)
-                # IDF (with floor to avoid negative for very common terms)
-                idf = max(math.log((n - df_val + 0.5) / (df_val + 0.5) + 1.0), 0.0)
+                term_idf = query_weights[term]
                 # BM25 TF component
                 numerator = tf_val * (_K1 + 1)
                 denominator = tf_val + _K1 * (1 - _B + _B * dl / self.avg_dl)
-                score += idf * numerator / denominator
+                score += term_idf * numerator / denominator
             if score > 0:
                 scores.append((score, idx))
 
-        scores.sort(key=lambda x: x[0], reverse=True)
+        scores.sort(key=lambda item: (-item[0], self._docs[item[1]][0]))
         results = []
         for s, idx in scores[:k]:
             doc_id, doc_text, meta = self._docs[idx]

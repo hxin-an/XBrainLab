@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from XBrainLab.llm.agent.intent import should_suppress_action_examples
+from XBrainLab.llm.rag.bm25 import BM25Index
 from XBrainLab.llm.rag.config import RAGConfig
 from XBrainLab.llm.rag.retriever import RAGRetriever
 
@@ -19,7 +19,7 @@ def mock_retriever():
         patch("qdrant_client.QdrantClient") as mock_client_cls,
         patch("langchain_qdrant.Qdrant"),
         patch.object(RAGRetriever, "_auto_initialize", return_value=MagicMock()),
-        patch.object(RAGRetriever, "_build_bm25_index", return_value=None),
+        patch.object(RAGRetriever, "_build_bm25_index", return_value=BM25Index()),
         patch.object(RAGConfig, "embedding_cache_ready", return_value=True),
     ):
         # Setup mock client to pass info check
@@ -32,6 +32,17 @@ def mock_retriever():
         return retriever
 
 
+def _metadata(example_id, action="start_training", text="Start training now."):
+    return {
+        "id": example_id,
+        "source_text": text,
+        "proposal": {
+            "tool_name": action,
+            "parameters": {},
+        },
+    }
+
+
 def test_get_similar_examples_success(mock_retriever):
     """Test successful retrieval and formatting."""
     # Mock query_points result
@@ -40,9 +51,7 @@ def test_get_similar_examples_success(mock_retriever):
     mock_point.score = 0.95
     mock_point.payload = {
         "page_content": "User input",
-        "metadata": {
-            "tool_calls": ('[{"tool_name": "import_eeg_data", "parameters": {}}]')
-        },
+        "metadata": _metadata("example", "import_eeg_data", "User input"),
     }
 
     mock_result = MagicMock()
@@ -59,15 +68,15 @@ def test_get_similar_examples_success(mock_retriever):
     assert example["type"] == "rag_example"
     assert example["source"]["kind"] == "xbrainlab_bundled_gold_set"
     assert example["data"]["input"] == "User input"
-    assert example["data"]["expected_action"] == {
-        "tool_name": "import_eeg_data",
-        "parameters": {},
-    }
+    assert (
+        example["data"]["expected_proposal"]
+        == _metadata("example", "import_eeg_data")["proposal"]
+    )
     assert "Assistant action:" not in result
     assert "```" not in result
 
-    parsed_payload = example["data"]["expected_action"]
-    assert list(parsed_payload) == ["parameters", "tool_name"]
+    parsed_payload = example["data"]["expected_proposal"]
+    assert set(parsed_payload) == {"tool_name", "parameters"}
 
 
 def test_get_similar_examples_empty(mock_retriever):
@@ -81,15 +90,38 @@ def test_get_similar_examples_empty(mock_retriever):
     assert result == ""
 
 
+@pytest.mark.parametrize("dense_only", [False, True])
+def test_sparse_failure_is_not_misreported_as_successful_hybrid(dense_only):
+    client = MagicMock()
+    with (
+        patch.object(RAGConfig, "embedding_cache_ready", return_value=True),
+        patch.object(RAGRetriever, "_create_embeddings", return_value=MagicMock()),
+        patch.object(RAGRetriever, "_create_client", return_value=client),
+        patch.object(RAGRetriever, "_auto_initialize", return_value=MagicMock()),
+        patch.object(RAGRetriever, "_build_bm25_index", return_value=None) as sparse,
+    ):
+        retriever = RAGRetriever(dense_only=dense_only)
+        retriever.initialize()
+        try:
+            if dense_only:
+                sparse.assert_not_called()
+                assert retriever.is_initialized
+                assert retriever.bm25_index is None
+            else:
+                sparse.assert_called_once_with()
+                assert not retriever.is_initialized
+                client.close.assert_called_once_with()
+        finally:
+            retriever.close()
+
+
 def test_raw_semantic_score_below_threshold_is_not_injected(mock_retriever):
     low_relevance = MagicMock(
         id="low",
         score=RAGConfig.SIMILARITY_THRESHOLD - 0.01,
         payload={
             "page_content": "start training",
-            "metadata": {
-                "tool_calls": ('[{"tool_name":"start_training","parameters":{}}]')
-            },
+            "metadata": _metadata("low"),
         },
     )
     mock_retriever.client.query_points.return_value.points = [low_relevance]
@@ -102,25 +134,26 @@ def test_raw_semantic_score_below_threshold_is_not_injected(mock_retriever):
     assert result == ""
 
 
-def test_bm25_cannot_admit_a_candidate_below_semantic_threshold(mock_retriever):
+@pytest.mark.parametrize("dense_present", [False, True])
+def test_sparse_can_recall_without_dense_admission(mock_retriever, dense_present):
     low_relevance = MagicMock(
         id="low",
         score=RAGConfig.SIMILARITY_THRESHOLD - 0.01,
         payload={
             "page_content": "start training with EEGNet",
-            "metadata": {
-                "tool_calls": ('[{"tool_name":"start_training","parameters":{}}]')
-            },
+            "metadata": _metadata("low"),
         },
     )
-    mock_retriever.client.query_points.return_value.points = [low_relevance]
+    mock_retriever.client.query_points.return_value.points = (
+        [low_relevance] if dense_present else []
+    )
     mock_retriever.bm25_index = MagicMock()
     mock_retriever.bm25_index.query.return_value = [
         (
             8.0,
             "bm25-match",
             "start training with EEGNet",
-            {"tool_calls": ('[{"tool_name":"start_training","parameters":{}}]')},
+            _metadata("bm25-match", text="start training with EEGNet"),
         )
     ]
 
@@ -129,29 +162,30 @@ def test_bm25_cannot_admit_a_candidate_below_semantic_threshold(mock_retriever):
         allowed_tool_names=frozenset({"start_training"}),
     )
 
-    assert result == ""
+    assert "start training with EEGNet" in result
 
 
-def test_bm25_reranks_only_semantically_admitted_candidates():
+def test_rrf_promotes_shared_identity_and_uses_only_admitted_branch_ranks():
     class _Embeddings:
         @staticmethod
         def embed_query(_query: str) -> list[float]:
             return [0.1, 0.2, 0.3]
 
-    metadata = {
-        "tool_calls": [
-            {"tool_name": "switch_panel", "parameters": {"panel_name": "dataset"}},
-        ],
-    }
     semantic_first = SimpleNamespace(
         id="semantic-first",
         score=0.9,
-        payload={"page_content": "inspect current state", "metadata": metadata},
+        payload={
+            "page_content": "semantic match",
+            "metadata": _metadata("semantic-first", text="semantic match"),
+        },
     )
     keyword_first = SimpleNamespace(
         id="keyword-first",
         score=0.8,
-        payload={"page_content": "current workflow status", "metadata": metadata},
+        payload={
+            "page_content": "shared match",
+            "metadata": _metadata("shared-id", text="shared match"),
+        },
     )
 
     class _Client:
@@ -161,9 +195,23 @@ def test_bm25_reranks_only_semantically_admitted_candidates():
 
     class _BM25:
         @staticmethod
-        def query(_query: str, *, k: int):
-            assert k >= 2
-            return [(10.0, "keyword-first", "current workflow status", metadata)]
+        def query(_query: str, *, k: int, eligible):
+            assert k == 10
+            assert eligible(_metadata("sparse-only"))
+            return [
+                (
+                    10.0,
+                    "shared-id",
+                    "shared match",
+                    _metadata("shared-id", text="shared match"),
+                ),
+                (
+                    5.0,
+                    "sparse-only",
+                    "lexical match",
+                    _metadata("sparse-only", text="lexical match"),
+                ),
+            ]
 
     retriever = RAGRetriever()
     retriever.is_initialized = True
@@ -174,17 +222,18 @@ def test_bm25_reranks_only_semantically_admitted_candidates():
     payload = json.loads(
         retriever.get_similar_examples(
             "current workflow status",
-            k=2,
-            allowed_tool_names=frozenset({"switch_panel"}),
+            k=3,
+            allowed_tool_names=frozenset({"start_training"}),
         )
     )
 
     assert [item["data"]["input"] for item in payload["items"]] == [
-        "current workflow status",
-        "inspect current state",
+        "shared match",
+        "semantic match",
+        "lexical match",
     ]
     assert all(
-        item["data"]["expected_action"]["tool_name"] == "switch_panel"
+        item["data"]["expected_proposal"]["tool_name"] == "start_training"
         for item in payload["items"]
     )
 
@@ -195,9 +244,7 @@ def test_retriever_filters_examples_to_request_scoped_tools(mock_retriever):
         score=0.8,
         payload={
             "page_content": "Scan the source",
-            "metadata": {
-                "tool_calls": ('[{"tool_name":"import_eeg_data","parameters":{}}]')
-            },
+            "metadata": _metadata("scan", "import_eeg_data"),
         },
     )
     browse_point = MagicMock(
@@ -205,11 +252,7 @@ def test_retriever_filters_examples_to_request_scoped_tools(mock_retriever):
         score=0.95,
         payload={
             "page_content": "List the files",
-            "metadata": {
-                "tool_calls": (
-                    '[{"tool_name":"list_files","parameters":{"directory":"/data"}}]'
-                )
-            },
+            "metadata": _metadata("browse", "list_files"),
         },
     )
     mock_retriever.client.query_points.return_value.points = [
@@ -226,102 +269,49 @@ def test_retriever_filters_examples_to_request_scoped_tools(mock_retriever):
     assert "list_files" not in result
 
 
-@pytest.mark.parametrize(
-    ("query", "suppressed"),
-    (
-        ("Explain what an EEG epoch is.", True),
-        ("Help me process the data.", True),
-        ("Use the option you mentioned earlier.", True),
-        ("Apply it.", True),
-        ("This.", True),
-        ("Use the previous row in the current dialog.", False),
-        ("Use the first option in the Data Import dialog.", False),
-        ("Use the option in the Data Import dialog mentioned earlier.", True),
-        ("Apply the previous filter at 40 Hz.", False),
-        ("Continue the workflow.", False),
-        ("Why is the current workflow blocked?", True),
-        ("Why can\u2019t XBrainLab continue?", True),
-        ("Why can't I train?", True),
-        ("Why is training blocked?", True),
-        ("Explain why brain waves cannot all be visualized.", True),
-        ("Explain the current workflow state.", False),
-        ("Explain the files in this folder.", False),
-        ("Show how XBrainLab understands this recording before importing.", False),
-        ("Either evaluate or train and ask me which.", True),
-        ("Start training; otherwise ask me.", False),
-        ("Train EEGNet with 20 epochs.", False),
-        ("What is saliency?", True),
-        ("Stop training.", False),
-        ("Reset preprocessing.", False),
-        ("使用它", True),
-        ("用前面提到的第一個選項", True),
-        ("使用目前對話框上面的選項", False),
-        ("繼續流程", False),
-        ("為什麼目前流程不能繼續\uff1f", True),
-        ("解釋目前狀態", False),
-        ("請幫我了解腦波", True),
-        ("幫我處理資料", True),
-        ("顯示檔案", False),
-        ("選擇模型", False),
-        ("什麼是前處理", True),
-        ("", False),
-        ("Maybe", False),
-    ),
-)
-def test_query_suppression_precedes_initialized_retrieval(
-    mock_retriever, query, suppressed
-):
-    retriever = mock_retriever
-    assert retriever.is_initialized
-    retriever.client.query_points.return_value.points = [
+def test_rrf_deduplicates_by_example_id_and_breaks_ties_stably(mock_retriever):
+    mock_retriever.client.query_points.return_value.points = [
         SimpleNamespace(
-            id="import-example",
-            score=0.95,
+            id=point_id,
+            score=0.9,
             payload={
-                "page_content": "Import an EEG dataset.",
-                "metadata": {
-                    "tool_calls": [{"tool_name": "import_eeg_data", "parameters": {}}]
-                },
+                "page_content": f"Example {example_id}",
+                "metadata": _metadata(example_id),
             },
         )
+        for point_id, example_id in [(99, "z"), (21, "a"), (22, "a")]
     ]
+    payload = json.loads(mock_retriever.get_similar_examples("training", k=20))
+    assert [item["source"]["id"] for item in payload["items"]] == ["a", "z"]
 
-    result = retriever.get_similar_examples(
-        query, allowed_tool_names=frozenset({"import_eeg_data"})
-    )
 
-    if suppressed:
-        assert result == ""
-        retriever.embeddings.embed_query.assert_not_called()
-        retriever.client.query_points.assert_not_called()
+@pytest.mark.parametrize("missing", [False, True])
+def test_sparse_failure_never_falls_back_to_available_dense_result(
+    mock_retriever, missing
+):
+    mock_retriever.client.query_points.return_value.points = [
+        SimpleNamespace(
+            id=1,
+            score=0.9,
+            payload={"page_content": "Start training.", "metadata": _metadata("dense")},
+        )
+    ]
+    if missing:
+        mock_retriever.bm25_index = None
     else:
-        retriever.embeddings.embed_query.assert_called_once_with(query)
-        retriever.client.query_points.assert_called_once()
-        payload = json.loads(result)
-        assert len(payload["items"]) == 1
-        assert payload["items"][0]["data"]["expected_action"] == {
-            "tool_name": "import_eeg_data",
-            "parameters": {},
-        }
+        mock_retriever.bm25_index = MagicMock()
+        mock_retriever.bm25_index.query.side_effect = RuntimeError("sparse failed")
+    with pytest.raises(RuntimeError, match=r"BM25|sparse"):
+        mock_retriever.get_similar_examples("training")
+    assert mock_retriever._active_operations == 0
 
 
-def test_bundled_goldset_suppression_characterization() -> None:
-    rows = json.loads(RAGConfig.get_gold_set_path().read_text(encoding="utf-8"))
-    assert len(rows) == 72
-    assert not [
-        row["id"] for row in rows if should_suppress_action_examples(row["input"])
-    ]
-
-
-def test_public_engineering_probe_suppression_characterization() -> None:
-    from scripts.dev.verify_rag import load_probes
-
-    probes = load_probes()
-    rows = probes["positive_cases"] + probes["boundary_cases"]
-    assert len(rows) == 48
-    assert {
-        row["id"] for row in rows if should_suppress_action_examples(row["query"])
-    } == {"information_01", "information_02"}
+def test_explicit_dense_only_does_not_query_sparse(mock_retriever):
+    mock_retriever.dense_only = True
+    mock_retriever.bm25_index = MagicMock()
+    mock_retriever.client.query_points.return_value.points = []
+    assert mock_retriever.get_similar_examples("training") == ""
+    mock_retriever.bm25_index.query.assert_not_called()
 
 
 def test_initialize_failure_remains_unavailable_and_closes_created_client(
@@ -394,7 +384,7 @@ def test_close_fences_in_flight_initialize_and_prevents_resource_republish():
         patch("langchain_huggingface.HuggingFaceEmbeddings"),
         patch("qdrant_client.QdrantClient", _FakeClient),
         patch("langchain_qdrant.Qdrant", return_value=object()),
-        patch.object(RAGRetriever, "_build_bm25_index", return_value=None),
+        patch.object(RAGRetriever, "_build_bm25_index", return_value=BM25Index()),
         patch.object(RAGConfig, "embedding_cache_ready", return_value=True),
     ):
         init_thread = threading.Thread(target=retriever.initialize)
@@ -438,7 +428,7 @@ def test_concurrent_initialize_has_single_initializer():
         patch("qdrant_client.QdrantClient") as mock_client_cls,
         patch("langchain_qdrant.Qdrant", return_value=object()),
         patch.object(RAGRetriever, "_auto_initialize", return_value=object()),
-        patch.object(RAGRetriever, "_build_bm25_index", return_value=None),
+        patch.object(RAGRetriever, "_build_bm25_index", return_value=BM25Index()),
         patch.object(RAGConfig, "embedding_cache_ready", return_value=True),
     ):
         mock_client_cls.return_value.get_collections.return_value.collections = []

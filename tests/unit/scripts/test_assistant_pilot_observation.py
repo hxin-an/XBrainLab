@@ -1,5 +1,6 @@
 """Evidence collection never executes tools or converts missing evidence to success."""
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -33,6 +34,10 @@ class Signals(QObject):
     activity_changed = pyqtSignal(object)
     response_presentation_ready = pyqtSignal(object)
     turn_finished = pyqtSignal(object)
+
+
+def _resample_proposal():
+    return {"tool_name": "resample_data", "parameters": {"rate": 128}}
 
 
 @pytest.fixture
@@ -81,6 +86,10 @@ def test_generations_retries_and_host_outcomes_remain_separate(host):
         "correct output",
     ]
     assert report["measurement_issues"] == []
+    assert all(
+        generation["request"]["response_contract"] == "assistant_tool_response.v1"
+        for generation in report["generations"]
+    )
     assert report["turn_terminal"]["outcome"] == "failed"
     assert "correct" not in report and "product_success" not in report
     assert report["ui_readiness"] == "not_observed"
@@ -248,7 +257,9 @@ def test_real_controller_rag_off_keeps_normal_assembly_and_observes_admission(qt
         )
         rag = next(item for item in decisions if item["kind"] == "rag")
         assert rag["enabled"] is False and rag["error"] == ""
-        controller.current_response = '{"workflow_stage":"empty","tool_name":"respond_to_user","parameters":{"message":"EEG explanation"}}'
+        controller.current_response = (
+            '{"tool_name":"respond_to_user","parameters":{"message":"EEG explanation"}}'
+        )
         controller._on_generation_finished(requests[0].generation_id, [])
         envelope = next(item for item in decisions if item["kind"] == "envelope")
         assert envelope["status"] == "no_tool"
@@ -258,37 +269,42 @@ def test_real_controller_rag_off_keeps_normal_assembly_and_observes_admission(qt
         close_controller_and_wait(controller, qtbot)
 
 
-@pytest.mark.parametrize("wrong_stage", [False, True])
-def test_real_host_rejection_is_recorded_not_recomputed_from_oracle(qtbot, wrong_stage):
+@pytest.mark.parametrize("retired_stage_echo", [False, True])
+def test_real_host_rejection_is_recorded_not_recomputed_from_oracle(
+    qtbot, retired_stage_echo
+):
     from tests.qt_lifecycle import close_controller_and_wait
     from XBrainLab.backend.study import Study
     from XBrainLab.llm.agent.controller import LLMController
 
     controller = LLMController(Study(), rag_enabled=False)
     controller._sig_dispatch_generation.disconnect()
-    decisions, requests = [], []
+    decisions, requests, presentations, commands = [], [], [], []
     controller.decision_observed.connect(decisions.append)
     controller.sig_generate.connect(requests.append)
+    controller.response_presentation_ready.connect(presentations.append)
+    controller.application_command_started.connect(lambda: commands.append("started"))
     try:
         controller.handle_user_turn(
             AssistantTurnRequest(AssistantTurnCorrelation(1, 1), "Resample to 128 Hz")
         )
-        stage = "data_loaded" if wrong_stage else "empty"
-        controller.current_response = (
-            '{"workflow_stage":"'
-            + stage
-            + '","tool_name":"resample_data","parameters":{"rate":128}}'
-        )
+        payload = _resample_proposal()
+        if retired_stage_echo:
+            payload["workflow_stage"] = "empty"
+        controller.current_response = json.dumps(payload)
         controller._on_generation_finished(requests[0].generation_id, [])
-        if wrong_stage:
+        if retired_stage_echo:
             rejection = next(item for item in decisions if item["kind"] == "envelope")
             assert rejection["status"] == "format_error"
-            assert "workflow_stage" in rejection["error"]
+            assert rejection["error"]
         else:
+            envelope = next(item for item in decisions if item["kind"] == "envelope")
+            assert envelope["status"] == "valid"
+            assert envelope["proposal"] == payload
             rejection = next(item for item in decisions if item["kind"] == "admission")
-            assert rejection["action"].endswith("blocked")
+            assert rejection["action"] in {"publication_blocked", "capability_blocked"}
             assert rejection["command_name"] == "resample_data"
-            assert rejection["params"] == {"rate": 128}
+            assert not commands
         assert rejection["generation_id"] == requests[0].generation_id
     finally:
         close_controller_and_wait(controller, qtbot)
@@ -303,16 +319,14 @@ def test_observer_exception_and_mutation_do_not_change_owner_decision(qtbot):
     controller = LLMController(Study(), rag_enabled=False)
 
     def broken_observer(payload):
-        payload["commands"][0][1]["rate"] = 64
+        payload["proposal"]["parameters"]["rate"] = 64
         raise RuntimeError("diagnostic sink failed")
 
     controller.decision_observed.connect(broken_observer)
-    envelope = CommandParser.parse_product(
-        '{"workflow_stage":"empty","tool_name":"resample_data","parameters":{"rate":128}}'
-    )
+    envelope = CommandParser.parse_product(json.dumps(_resample_proposal()))
     try:
         assert controller._handle_tool_envelope_failure(envelope) is False
-        assert envelope.commands[0][1] == {"rate": 128}
+        assert envelope.command == ("resample_data", {"rate": 128})
     finally:
         close_controller_and_wait(controller, qtbot)
 
@@ -355,7 +369,7 @@ def test_observed_request_preserves_scoring_contract_without_defaulting_missing_
             if request_kind == "wrong_contract":
                 payload["response_contract"] = "natural_language"
             host.controller.sig_generate.emit(payload)
-        raw = '{"workflow_stage":"data_loaded","tool_name":"resample_data","parameters":{"rate":128}}'
+        raw = json.dumps(_resample_proposal())
         for phase, text in [
             (AssistantGenerationEventPhase.STARTED, ""),
             (AssistantGenerationEventPhase.CHUNK, raw),
@@ -373,7 +387,7 @@ def test_observed_request_preserves_scoring_contract_without_defaulting_missing_
         assert score["final_decision_correct"] is (True if expected_valid else None)
         if expected_valid:
             saved_request = report["generations"][0]["request"]
-            assert saved_request["response_contract"] == "structured_action"
+            assert saved_request["response_contract"] == "assistant_tool_response.v1"
             assert saved_request["generation_id"] == request.generation_id
             assert [dict(message) for message in saved_request["messages"]] == (
                 request.to_model_messages()

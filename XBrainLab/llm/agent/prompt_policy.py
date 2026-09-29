@@ -53,89 +53,58 @@ class StrictToolResponsePromptPolicy:
         if self.max_format_recovery_attempts < 0:
             raise ValueError("max_format_recovery_attempts must be non-negative")
 
-    def decision_instructions(
-        self,
-        workflow_stage: str = "<exact backend workflow_stage>",
-        *,
-        include_preprocessing_guidance: bool = True,
-    ) -> str:
-        """Return the strict decision contract without Host intent routing."""
-        missing_values = (
-            "3. If the user requested exactly one callable direct preprocessing "
-            "action but omitted required values, use respond_to_user to ask only "
-            "for those values. "
-            if include_preprocessing_guidance
-            else "3. If exactly one callable direct preprocessing action is missing "
-            "required values, use respond_to_user to ask only for those values. "
-        )
-        operation_choice = (
-            " For an ambiguous action request that does not name a specific "
-            "operation, ask which operation the user wants; do not choose one "
-            "or collect its parameters."
-            if include_preprocessing_guidance
-            else ""
-        )
+    def decision_instructions(self) -> str:
+        """Separate permission to act from completeness of the user's values."""
         return (
-            "STRICT RESPONSE CONTRACT - DECISION ORDER (decide silently):\n"
-            "1. First identify the exact action requested by meaning. Only call it "
-            "when that exact action is listed as callable and contains every "
-            "required value. Tool and function names are internal: never tell the "
-            "user or a later assistant to call one.\n"
-            "2. If the exact requested action is unavailable, use respond_to_user "
-            "with parameters containing only message explaining the listed blocker. "
-            "A prerequisite named in a blocker is not a "
-            "user request: do not perform a prerequisite or substitute action.\n"
-            f"{missing_values}"
-            "Include pending_action and missing_inputs only for that exact action.\n"
-            "4. Use respond_to_user with parameters containing only message for "
-            "information, a negated, "
-            "ambiguous, or multi-action request. Never call a prerequisite, "
-            "substitute, or retired alias. Tool availability does not make it "
-            f"relevant to the user's request.{operation_choice}\n"
-            "5. Required values must come from the latest user request or verified "
-            "state. Never invent paths, settings, labels, IDs, or file names.\n"
-            "6. Host confirmation is separate. For a complete enabled action, "
-            "still propose that exact tool call. The host will request confirmation "
-            "before execution when the backend capability requires it; do not "
-            "describe it as blocked.\n"
-            "7. Copy every supported value explicitly stated by the user, even "
-            "when the schema marks it optional. Never omit an explicitly requested "
-            "supported value. A zero-parameter GUI action must always use "
-            "parameters {}. Never invent or copy dialog choices into a contract "
-            "whose parameter properties are empty; the user chooses them in the "
-            "opened product UI.\n"
-            "8. Never claim that an action completed unless a trusted tool result "
-            "confirms completion. A proposed call is not a completed action.\n"
-            "9. Return exactly one DECISION ENVELOPE. The root object must contain "
-            "exactly workflow_stage, tool_name, and parameters, with no other "
-            "top-level fields. Copy workflow_stage as "
-            + workflow_stage
-            + ". Never wrap it in tool-call, tool_call, action, or function. For "
-            "respond_to_user use parameters containing only message, except the "
-            "typed pending_action and "
-            "missing_inputs shape in rule 3. workflow_stage acknowledges the backend "
-            "publication; it does not grant permission.\n"
-            "The first non-whitespace character must be { and the last must be }. "
-            "Never use a Markdown code fence or prose outside the object."
+            "STRICT RESPONSE CONTRACT\n"
+            "Return one JSON object with exactly tool_name and parameters. "
+            "No prose, wrappers or Markdown.\n"
+            "Read current_user.text. Choose the response for THIS request:\n"
+            "- Information or explanation: respond_to_user with an English answer. "
+            "Mentioned operations and numbers are not requests to execute.\n"
+            "- Prohibition: respond_to_user and acknowledge that you will not "
+            "perform the prohibited action. Do not call it, even when all "
+            "parameter values are present. Do not ask for its missing values. "
+            "If the user also asks a question, answer it; do not stop at "
+            "acknowledging the prohibition.\n"
+            "- Requested action with missing or unclear required values: "
+            "respond_to_user, name ALL missing values and ask the user to "
+            "restate the complete request: the operation and all required "
+            "values together, including values already supplied. If one cutoff "
+            "is supplied, ask for "
+            "the other; if neither is supplied, ask for both. Do not call the "
+            "action with empty, guessed or partial parameters.\n"
+            "- One complete, enabled action requested: return its listed "
+            "tool_name and the user's complete parameters, not a promise to act.\n"
+            "- Unavailable action: respond_to_user with its listed blocker; "
+            "do not substitute an action or perform prerequisites.\n"
+            "For multiple requested actions or an explanation plus a requested "
+            "action, ask which to do first. A prohibited action is not a "
+            "requested action. "
+            "Explaining a prohibited action is one answer, not two actions. "
+            "Never partially execute.\n"
+            "For respond_to_user, message is your reply to the user. Write your "
+            "own reply, not a copy of the user's request.\n"
+            "Each turn is independent. Never fill values from examples, history, "
+            "application state or defaults. No draft is saved: a bare value or "
+            "'same as before' is not a complete action request.\n"
+            "Zero-parameter GUI actions use parameters={}; choices are made in "
+            "the dialog. Opening a dialog does not complete the operation.\n"
+            "Host confirmation is separate; never report completion without a "
+            "trusted tool result. Starting training is not training completion; "
+            "requesting stop is not stopped.\n"
+            "Tool names are internal; use plain English in message.\n"
         )
 
     def recovery_instructions(self) -> str:
-        """Return one safe correction that does not reflect model output."""
+        """One fixed correction; do not reflect malformed model output."""
         return (
-            "FORMAT CORRECTION REQUIRED. Re-evaluate the original latest user "
-            "request against the backend workflow stage and published tools. Return "
-            "exactly one JSON object. The root object must be exactly "
-            '{"workflow_stage":"<exact backend workflow_stage>",'
-            '"tool_name":"<name>","parameters":{...}}. '
-            "Use an exact enabled tool with only its supported parameters, or "
-            "respond_to_user with parameters containing only message, or the typed "
-            "pending_action and "
-            "missing_inputs clarification shape for an exact direct preprocessing "
-            "action. Copy workflow_stage exactly. Add no prose or code fence: "
-            "begin with { and end with }. Never wrap it in tool-call, tool_call, "
-            "action, or function. "
-            "Never add wrappers, aliases, or Host-inferred values, and "
-            "do not convert a blocked explanation into a different tool call."
+            "FORMAT CORRECTION REQUIRED. Re-evaluate the current user request "
+            "using the same backend tools. Return one JSON object with exactly "
+            "tool_name and parameters. Follow the same response choices above: "
+            "respond_to_user for questions, prohibitions or missing values; "
+            "call an action only when requested, complete and enabled. "
+            "No prose, wrappers or code fences."
         )
 
 

@@ -9,7 +9,6 @@ import logging
 from collections.abc import Callable
 from contextlib import suppress
 from copy import deepcopy
-from dataclasses import replace
 from enum import Enum
 from typing import Any, cast
 
@@ -17,6 +16,8 @@ from PyQt6 import sip
 from PyQt6.QtCore import QObject, QThread, QTimer, pyqtSignal, pyqtSlot
 
 from XBrainLab.backend.application import CommandName
+from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.chat_contract import LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE
 from XBrainLab.llm.action_contracts import (
     AGENT_ACTION_CONTRACTS,
 )
@@ -103,7 +104,6 @@ from .turn import (
     AssistantGenerationEventPhase,
     AssistantGenerationStopAcknowledgement,
     AssistantGenerationStopRequest,
-    AssistantToolInputReceipt,
     AssistantTurnCorrelation,
     AssistantTurnDeliveryAcknowledgement,
     AssistantTurnDeliveryPhase,
@@ -121,11 +121,7 @@ from .ui_handoff import (
     build_tool_workflow_handoff,
     workflow_ui_handoff_route_for,
 )
-from .verifier import (
-    VerificationLayer,
-    collect_direct_parameter_reply_evidence,
-    is_explicit_tool_input_cancel,
-)
+from .verifier import VerificationLayer
 from .worker import AgentWorker
 
 _DIRECT_ACTION_PANEL_TARGETS = {
@@ -597,7 +593,6 @@ class LLMController(QObject):
 
     def _emit_processing_finished(self, outcome: str = "completed") -> None:
         """Publish UI completion and a correlated host terminal exactly once."""
-        self.pending_interactions.clear_active_tool_input()
         correlation = self._turn_orchestrator.finish_host_turn()
         self.processing_finished.emit()
         if correlation is not None:
@@ -656,8 +651,6 @@ class LLMController(QObject):
             self._append_history("user", text)
 
             self._reset_user_turn_state()
-            if self._collect_active_tool_input_reply(text):
-                return
             turn_id = self._begin_rag_turn()
             self.assembler.clear_context()
 
@@ -667,7 +660,7 @@ class LLMController(QObject):
             else:
                 requested = self._rag_lifecycle.retrieve(
                     turn_id,
-                    text,
+                    self.assembler.retrieval_query(text),
                     self._publish_rag_context_ready,
                     allowed_tool_names=self.assembler.rag_allowed_tool_names(),
                 )
@@ -700,79 +693,6 @@ class LLMController(QObject):
         self._tool_attempt_session.reset_for_user_turn()
         self._turn_orchestrator.reset_for_user_turn()
         self.pending_interactions.clear_workflow_handoff()
-        self.pending_interactions.activate_tool_input()
-
-    def _collect_active_tool_input_reply(self, text: str) -> bool:
-        """Resolve one bounded receipt reply before any RAG/model dispatch."""
-        receipt = self.pending_interactions.active_tool_input
-        if receipt is None:
-            return False
-        if is_explicit_tool_input_cancel(text):
-            self.pending_interactions.clear_active_tool_input()
-            self._finalize_turn("Cancelled.")
-            return True
-        evidence = collect_direct_parameter_reply_evidence(
-            receipt.command_name,
-            receipt.verified_parameters,
-            receipt.unassigned_bandpass_cutoff,
-            text,
-        )
-        if evidence is None:
-            self.pending_interactions.clear_active_tool_input()
-            return False
-        verified_parameters, unassigned_cutoff = evidence
-        receipt = replace(
-            receipt,
-            verified_parameters=verified_parameters,
-            unassigned_bandpass_cutoff=unassigned_cutoff,
-        )
-        self.pending_interactions.replace_active_tool_input(receipt)
-        if set(dict(receipt.verified_parameters)) == set(receipt.missing_inputs):
-            return self._complete_tool_input_receipt(receipt, text)
-        requeued = self.pending_interactions.requeue_active_tool_input_for_reply()
-        if requeued is None:
-            self.pending_interactions.clear_active_tool_input()
-            self._finalize_turn(
-                "I could not confirm all required values within this clarification. "
-                "Please start the action again with all required parameters."
-            )
-            return True
-        self._finalize_turn(self._remaining_tool_input_question(requeued))
-        return True
-
-    def _complete_tool_input_receipt(
-        self,
-        receipt: AssistantToolInputReceipt,
-        latest_user_text: str,
-    ) -> bool:
-        """Finish one verified receipt without another model or RAG turn."""
-        self.pending_interactions.clear_active_tool_input()
-        try:
-            self.assembler.build_system_prompt()
-        except Exception as exc:
-            failure = safe_unexpected_failure(
-                logger,
-                exc,
-                boundary="assistant_tool_input_receipt",
-                operation="refresh_publication",
-            )
-            self._finalize_turn(failure.message)
-            return True
-        publication = self.assembler.latest_tool_publication
-        self._turn_orchestrator.set_active_publication(publication)
-        decision = self._tool_attempt_coordinator.evaluate(
-            ToolAttemptRequest(
-                command_name=receipt.command_name,
-                params=dict(receipt.verified_parameters),
-                publication=publication,
-                latest_user_text=latest_user_text,
-                tool_input_receipt=receipt,
-            )
-        )
-        if self._present_tool_attempt_boundary(decision):
-            return True
-        self._execute_tool_attempt(decision)
-        return True
 
     def _begin_rag_turn(self) -> int:
         """Open a new RAG turn token before asynchronous retrieval starts."""
@@ -916,13 +836,20 @@ class LLMController(QObject):
 
     def _finish_generation_request_failure(self, error: Exception) -> None:
         """Terminate a turn when prompt assembly or generation dispatch fails."""
-        failure = safe_unexpected_failure(
-            logger,
-            error,
-            boundary="assistant_turn_controller",
-            operation="dispatch_generation_continuation",
-        )
-        message = failure.message
+        if (
+            isinstance(error, PreconditionError)
+            and error.recoverable
+            and error.message == LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE
+        ):
+            message = LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE
+        else:
+            failure = safe_unexpected_failure(
+                logger,
+                error,
+                boundary="assistant_turn_controller",
+                operation="dispatch_generation_continuation",
+            )
+            message = failure.message
         self._invalidate_pending_rag_turn()
         generation_id = self._turn_orchestrator.active_generation_id
         if generation_id is not None:
@@ -1002,55 +929,18 @@ class LLMController(QObject):
             return
 
         envelope = CommandParser.parse_product(response_text)
-        if (
-            envelope.status in {ToolEnvelopeStatus.NO_TOOL, ToolEnvelopeStatus.VALID}
-            and envelope.workflow_stage
-            != self._turn_orchestrator.active_publication.workflow_stage
-        ):
-            envelope = ToolEnvelopeParseResult.format_error(
-                "workflow_stage does not match the current backend publication."
-            )
-
         # Invalid tool-shaped output is never treated as user-facing prose and
         # never reaches verification or execution.
         if self._handle_tool_envelope_failure(envelope):
             return
 
+        self._tool_attempt_session.clear_format_retries()
         if envelope.status is ToolEnvelopeStatus.VALID:
-            self._tool_attempt_session.clear_format_retries()
-            self._process_tool_call(envelope.commands[0], response_text)
+            if envelope.command is None:
+                raise RuntimeError("A valid tool envelope must carry a command.")
+            self._process_tool_call(envelope.command, response_text)
         else:
-            if envelope.pending_action and not self._begin_typed_tool_input(envelope):
-                invalid_clarification = ToolEnvelopeParseResult.format_error(
-                    "A typed clarification must match every required field of one "
-                    "currently published direct action."
-                )
-                if self._handle_tool_envelope_failure(
-                    invalid_clarification,
-                ):
-                    return
-            self._finalize_turn(envelope.message or response_text)
-
-    def _begin_typed_tool_input(self, envelope: ToolEnvelopeParseResult) -> bool:
-        """Store only an exact, currently callable direct-tool clarification."""
-        action = envelope.pending_action
-        missing_inputs = envelope.missing_inputs
-        if not action or not missing_inputs:
-            return False
-        publication = self._turn_orchestrator.active_publication
-        if self.pending_interactions.active_tool_input is not None:
-            return False
-        receipt = self._tool_attempt_coordinator.admit_typed_clarification(
-            command_name=action,
-            missing_inputs=missing_inputs,
-            question=envelope.message,
-            original_user_text=self._conversation.latest_user_request_text(),
-            publication=publication,
-        )
-        if receipt is None:
-            return False
-        self.pending_interactions.begin_tool_input(receipt)
-        return True
+            self._finalize_turn(envelope.message)
 
     def _handle_empty_response(self):
         """Finish a turn with a visible fallback when the model returns nothing."""
@@ -1104,8 +994,7 @@ class LLMController(QObject):
             "envelope",
             status=envelope.status.value,
             error=envelope.error,
-            workflow_stage=envelope.workflow_stage,
-            commands=envelope.commands,
+            proposal=envelope.proposal_dict(),
             recovery_action=decision.action.value,
         )
         if decision.action is StrictEnvelopeRecoveryAction.CHOOSE_ONE:
@@ -1220,30 +1109,11 @@ class LLMController(QObject):
                 operation="publish_decision_diagnostic",
             )
 
-    @staticmethod
-    def _remaining_tool_input_question(receipt: AssistantToolInputReceipt) -> str:
-        """Name the unverified bandpass cutoff instead of reasking both."""
-        if receipt.unassigned_bandpass_cutoff is not None:
-            return "Please provide one more cutoff frequency for the bandpass filter."
-        verified = dict(receipt.verified_parameters)
-        remaining = [name for name in receipt.missing_inputs if name not in verified]
-        if receipt.command_name == "apply_bandpass_filter" and len(remaining) == 1:
-            label = {
-                "low_freq": "low cutoff",
-                "high_freq": "high cutoff",
-            }.get(remaining[0])
-            if label:
-                return f"What {label} should I use?"
-        return receipt.question
-
     def _present_tool_attempt_boundary(self, decision: ToolAttemptDecision) -> bool:
         """Present block, validation, or confirmation boundaries."""
         cmd = decision.command_name
         if decision.action is ToolAttemptAction.RESPOND:
             message = decision.message or "Please provide the required values."
-            receipt = decision.tool_input_receipt
-            if receipt is not None:
-                self.pending_interactions.begin_tool_input(receipt)
             self._finalize_turn(message)
             return True
         if decision.action in {
@@ -2419,19 +2289,14 @@ class LLMController(QObject):
         self._turn_orchestrator.set_active_publication(publication)
         response_text = json.dumps(
             {
-                "workflow_stage": publication.workflow_stage,
-                "tool_name": MODEL_RESPONSE_TOOL_NAME,
+                "tool_name": "respond_to_user",
                 "parameters": dict(params),
             },
             ensure_ascii=False,
             separators=(",", ":"),
         )
         envelope = CommandParser.parse_product(response_text)
-        if (
-            envelope.status is not ToolEnvelopeStatus.NO_TOOL
-            or envelope.workflow_stage != publication.workflow_stage
-            or not envelope.message
-        ):
+        if envelope.status is not ToolEnvelopeStatus.NO_TOOL or not envelope.message:
             self._publish_response(
                 "The requested diagnostic response is invalid.",
                 kind=AssistantResponseKind.ERROR,

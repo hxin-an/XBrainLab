@@ -31,7 +31,6 @@ def _render(tmp_path, *, missing=False, issue=False):
             "scores": {
                 "attempt_decisions": [
                     {
-                        "observed_stage": "empty",
                         "observed_tool": "import_eeg_data",
                         "reason": "matched",
                         "correct": True,
@@ -74,6 +73,11 @@ def test_case_page_compares_recorded_decision_without_claiming_execution(tmp_pat
     page = _render(tmp_path)
     assert page.index("Actual user request") < page.index("Expected decision")
     assert "Recorded final decision" in page
+    assert page.count("Backend workflow stage (case context)") == 1
+    decision_section = page.split("Recorded final decision", 1)[1].split(
+        "Product outcome", 1
+    )[0]
+    assert "Workflow stage" not in decision_section
     assert "import_eeg_data" in page and "matched" in page
     assert "First decision: Incorrect" in page
     assert "Final decision: Correct" in page

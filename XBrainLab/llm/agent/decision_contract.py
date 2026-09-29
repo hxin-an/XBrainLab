@@ -1,53 +1,42 @@
-"""Model-owned response envelope that never reaches backend execution."""
-
-from __future__ import annotations
+"""The single-turn model response schema; backend schemas own tool parameters."""
 
 from typing import Any
 
 MODEL_RESPONSE_TOOL_NAME = "respond_to_user"
+MAX_NAME_LENGTH = 128
 
 
-def _message_schema() -> dict[str, Any]:
-    return {"type": "string", "pattern": r"\S"}
-
-
-def model_response_tool_contract() -> dict[str, Any]:
-    """Return the prompt-facing schema for one structured user response."""
+def model_proposal_schema() -> dict[str, Any]:
+    """Describe one tool call or a non-executable answer."""
     return {
-        "name": MODEL_RESPONSE_TOOL_NAME,
-        "description": (
-            "Return a user-facing response without executing any workflow tool. "
-            "Use it for an informational answer, a clarification question, or "
-            "a specific blocked explanation. Never select an enabled prerequisite "
-            "or substitute action."
-        ),
-        "taxonomy": "Assistant Decision",
-        "parameters": {
-            "oneOf": [
-                {
-                    "type": "object",
-                    "properties": {"message": _message_schema()},
-                    "required": ["message"],
-                    "additionalProperties": False,
-                },
-                {
-                    "type": "object",
-                    "properties": {
-                        "message": _message_schema(),
-                        "pending_action": {"type": "string", "pattern": r"\S"},
-                        "missing_inputs": {
-                            "type": "array",
-                            "items": {"type": "string", "pattern": r"\S"},
-                            "minItems": 1,
-                            "maxItems": 2,
-                            "uniqueItems": True,
-                        },
-                    },
-                    "required": ["message", "pending_action", "missing_inputs"],
-                    "additionalProperties": False,
-                },
-            ]
+        "type": "object",
+        "required": ["tool_name", "parameters"],
+        "additionalProperties": False,
+        "properties": {
+            "tool_name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_NAME_LENGTH,
+            },
+            "parameters": {"type": "object"},
         },
-        "requires_confirmation": False,
-        "decision_boundary": None,
+        "allOf": [
+            {
+                "if": {
+                    "properties": {"tool_name": {"const": MODEL_RESPONSE_TOOL_NAME}}
+                },
+                "then": {
+                    "properties": {
+                        "parameters": {
+                            "type": "object",
+                            "required": ["message"],
+                            "additionalProperties": False,
+                            "properties": {
+                                "message": {"type": "string", "pattern": r"\S"}
+                            },
+                        }
+                    }
+                },
+            }
+        ],
     }

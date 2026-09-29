@@ -21,6 +21,7 @@ def sidebar(qtbot):
     panel_mock = MagicMock()
     # Mock action handler on panel
     panel_mock.action_handler = MagicMock()
+    panel_mock.action_handler._data_interpretation.is_busy = False
     # Mock main_window
     panel_mock.main_window = None
 
@@ -499,6 +500,7 @@ def test_update_sidebar_reads_one_atomic_capability_publication(qtbot):
 
     panel = MagicMock()
     panel.action_handler = MagicMock()
+    panel.action_handler._data_interpretation.is_busy = False
     panel.main_window = QWidget()
     panel.main_window.study = Study()
     publication = get_application_service(
@@ -534,6 +536,7 @@ def test_update_sidebar_refuses_real_study_no_capability_lock_data_fallback(qtbo
 
     panel_mock = MagicMock()
     panel_mock.action_handler = MagicMock()
+    panel_mock.action_handler._data_interpretation.is_busy = False
     panel_mock.main_window = QWidget()
     panel_mock.main_window.study = Study()
 
@@ -571,6 +574,7 @@ def test_update_sidebar_missing_publication_fails_closed(
 
     panel = MagicMock()
     panel.action_handler = MagicMock()
+    panel.action_handler._data_interpretation.is_busy = False
     panel.main_window = QWidget()
     panel.main_window.study = Study()
     widget = DatasetSidebar(panel, parent=None)
@@ -600,6 +604,7 @@ def test_deferred_startup_real_study_missing_publication_fails_closed(qtbot):
 
     panel = MagicMock()
     panel.action_handler = MagicMock()
+    panel.action_handler._data_interpretation.is_busy = False
     panel.main_window = QWidget()
     panel.main_window.study = Study()
     widget = DatasetSidebar(panel, parent=None)
@@ -627,6 +632,7 @@ def test_open_channel_selection_refuses_real_study_preflight_fallback(qtbot):
 
     panel_mock = MagicMock()
     panel_mock.action_handler = MagicMock()
+    panel_mock.action_handler._data_interpretation.is_busy = False
     panel_mock.main_window = QWidget()
     panel_mock.main_window.study = Study()
 
@@ -673,6 +679,7 @@ def test_channel_selection_binds_reviewed_publication_without_false_warning(
     study.data_manager.loaded_data_list = [raw]
     panel = MagicMock()
     panel.action_handler = MagicMock()
+    panel.action_handler._data_interpretation.is_busy = False
     panel.main_window = QWidget()
     panel.main_window.study = study
     widget = DatasetSidebar(panel, parent=None)
@@ -740,6 +747,7 @@ def test_channel_selection_uses_captured_channels_when_montage_settles(
     study.set_loaded_data_list([raw], force_update=True)
     panel = MagicMock()
     panel.action_handler = MagicMock()
+    panel.action_handler._data_interpretation.is_busy = False
     panel.main_window = QWidget()
     panel.main_window.study = study
     widget = DatasetSidebar(panel, parent=None)
@@ -806,6 +814,7 @@ def test_channel_selection_metadata_change_uses_dataset_warning(
     study.data_manager.loaded_data_list = [raw]
     panel = MagicMock()
     panel.action_handler = MagicMock()
+    panel.action_handler._data_interpretation.is_busy = False
     panel.main_window = QWidget()
     panel.main_window.study = study
     widget = DatasetSidebar(panel, parent=None)
@@ -875,6 +884,7 @@ def test_channel_selection_raw_change_uses_channels_warning(qtbot, raw_change):
     study.data_manager.loaded_data_list = [raw]
     panel = MagicMock()
     panel.action_handler = MagicMock()
+    panel.action_handler._data_interpretation.is_busy = False
     panel.main_window = QWidget()
     panel.main_window.study = study
     widget = DatasetSidebar(panel, parent=None)

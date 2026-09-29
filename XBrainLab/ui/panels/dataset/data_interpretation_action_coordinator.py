@@ -214,6 +214,7 @@ class DataInterpretationActionCoordinator:
         self._loading_session: _LoadingSession | None = None
         self._operation_presenter: OwnedOperationPresenter | None = None
         self._busy_control_states: list[tuple[Any, bool]] = []
+        self._is_busy = False
         self._bindings = bindings or default_data_interpretation_action_bindings()
         self._recipe_reload = DataInterpretationRecipeReloadCoordinator(
             self,
@@ -296,6 +297,11 @@ class DataInterpretationActionCoordinator:
         presenter = self._operation_presenter
         return presenter.request_cancel() if presenter is not None else False
 
+    @property
+    def is_busy(self) -> bool:
+        """Whether the shared async import lease still fences Dataset mutations."""
+        return self._is_busy
+
     def set_busy(self, busy: bool) -> None:
         """Fence Dataset mutations without disabling the active Import cancel action.
 
@@ -306,30 +312,22 @@ class DataInterpretationActionCoordinator:
         inline table edits, while deliberately leaving the owned-operation
         control enabled for the operation presenter.
         """
+        if self._is_busy == busy:
+            return
+        self._is_busy = busy
+        sidebar = getattr(self.panel, "sidebar", None)
         if busy:
-            if self._busy_control_states:
-                return
-            sidebar = getattr(self.panel, "sidebar", None)
             if sidebar is None:
                 set_busy = getattr(self.panel, "set_busy", None)
                 if callable(set_busy):
                     set_busy(True)
                     self._busy_control_states.append((self.panel, True))
                 return
-            cancel_button = getattr(sidebar, "import_cancel_btn", None)
-            controls = list(getattr(sidebar, "_action_buttons", ()) or ())
             table = getattr(self.panel, "table", None)
             if table is not None:
-                controls.append(table)
-            for control in controls:
-                if control is None or control is cancel_button:
-                    continue
-                is_enabled = getattr(control, "isEnabled", None)
-                set_enabled = getattr(control, "setEnabled", None)
-                if not callable(is_enabled) or not callable(set_enabled):
-                    continue
-                self._busy_control_states.append((control, bool(is_enabled())))
-                set_enabled(False)
+                self._busy_control_states.append((table, table.isEnabled()))
+                table.setEnabled(False)
+            sidebar.update_sidebar()
             return
 
         control_states = self._busy_control_states
@@ -345,6 +343,10 @@ class DataInterpretationActionCoordinator:
             set_enabled = getattr(control, "setEnabled", None)
             if callable(set_enabled):
                 set_enabled(was_enabled)
+        if sidebar is not None and not self._bindings.qt_object_deleted(sidebar):
+            # Capabilities may have changed while the command was running. The
+            # existing renderer, not saved button booleans, owns availability.
+            sidebar.update_sidebar()
 
     def _ensure_operation_presenter(self) -> OwnedOperationPresenter | None:
         if self._operation_presenter is not None:

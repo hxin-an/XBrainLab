@@ -521,7 +521,7 @@ _GATE_SPECS = (
             "scripts/dev/run_stable_assistant_model_eval.py",
             "--device",
             "cuda",
-            "--require-bounded-baseline",
+            "--strict",
             "--json-out",
             f"{EVIDENCE_ROOT_TOKEN}/bounded-assistant-model-eval.json",
         ),

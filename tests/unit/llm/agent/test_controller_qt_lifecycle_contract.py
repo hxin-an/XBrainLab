@@ -290,7 +290,6 @@ def test_real_qt_shutdown_fences_late_rag_stop_and_new_typed_turn(qtbot) -> None
     from XBrainLab.llm.agent.controller import LLMController
     from XBrainLab.llm.agent.rag_process_lifecycle import ProcessRAGRetrieverLifecycle
     from XBrainLab.llm.agent.turn import (
-        AssistantToolInputReceipt,
         AssistantTurnCorrelation,
         AssistantTurnDeliveryPhase,
         AssistantTurnRequest,
@@ -325,15 +324,6 @@ def test_real_qt_shutdown_fences_late_rag_stop_and_new_typed_turn(qtbot) -> None
         )
         assert accepted.phase is AssistantTurnDeliveryPhase.ACCEPTED
         assert rag_lifecycle.pending_result_count == 1
-        controller.pending_interactions.begin_tool_input(
-            AssistantToolInputReceipt(
-                command_name="apply_bandpass_filter",
-                original_user_text="Apply a filter.",
-                question="Which cutoff should I use?",
-                publication_generation=0,
-                missing_inputs=("low_cutoff",),
-            )
-        )
 
         assert controller.close() is False
         rejected = controller.handle_user_turn(
@@ -352,8 +342,6 @@ def test_real_qt_shutdown_fences_late_rag_stop_and_new_typed_turn(qtbot) -> None
         assert shutdown_terminals == [(True, "")]
         assert rag_lifecycle.cancelled_turn_ids == [1]
         assert generation_requests == []
-        assert controller.pending_interactions.tool_input is None
-        assert controller.pending_interactions.active_tool_input is None
         assert [terminal.outcome for terminal in turn_terminals] == [
             "shutdown_cancelled",
             "rejected_closing",

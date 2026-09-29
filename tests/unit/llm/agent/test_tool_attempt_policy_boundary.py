@@ -16,7 +16,6 @@ from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptCoordinator,
     ToolAttemptRequest,
 )
-from XBrainLab.llm.agent.turn import AssistantToolInputReceipt
 from XBrainLab.llm.agent.verifier import VerificationResult
 from XBrainLab.llm.tools.application_surface import (
     ToolAvailability,
@@ -92,7 +91,6 @@ def _request(
     params: dict[str, Any] | None = None,
     text: str,
     publication: PromptToolPublication | None = None,
-    tool_input_receipt: AssistantToolInputReceipt | None = None,
 ) -> ToolAttemptRequest:
     return ToolAttemptRequest(
         command_name=tool_name,
@@ -103,7 +101,6 @@ def _request(
             backend_generation=21,
         ),
         latest_user_text=text,
-        tool_input_receipt=tool_input_receipt,
     )
 
 
@@ -307,7 +304,7 @@ def test_explicit_direct_parameter_value_reaches_execution_boundary() -> None:
         ("normalize_data", {"method": "z-score"}, "Normalize the EEG data."),
     ),
 )
-def test_invented_direct_parameter_creates_typed_followup_receipt(
+def test_invented_direct_parameter_is_rejected_without_execution(
     tool_name: str,
     params: dict[str, Any],
     text: str,
@@ -326,14 +323,12 @@ def test_invented_direct_parameter_creates_typed_followup_receipt(
     )
 
     assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.tool_input_receipt is not None
-    assert decision.tool_input_receipt.command_name == tool_name
-    assert decision.tool_input_receipt.missing_inputs == tuple(params)
-    assert decision.tool_input_receipt.verified_parameters == ()
+    assert decision.message
+    assert decision.params == params
     assert decision.result is None
     assert decision.context == _context(tool_name, command_name="preprocess")
     assert source.reads == [tool_name]
-    assert verifier.calls == []
+    assert verifier.calls == [(tool_name, params)]
 
 
 @pytest.mark.parametrize(
@@ -344,7 +339,7 @@ def test_invented_direct_parameter_creates_typed_followup_receipt(
         "Please apply a notch filter.",
     ),
 )
-def test_affirmative_direct_request_variants_create_receipt(text: str) -> None:
+def test_affirmative_request_does_not_authorize_invented_values(text: str) -> None:
     coordinator, _source, _verifier = _coordinator(
         _context("apply_notch_filter", command_name="preprocess"),
         tool=_Tool(parameters={"type": "object", "required": ["freq"]}),
@@ -355,32 +350,13 @@ def test_affirmative_direct_request_variants_create_receipt(text: str) -> None:
     )
 
     assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.tool_input_receipt is not None
-
-
-def test_typed_resample_receipt_does_not_require_host_english_action_grammar() -> None:
-    coordinator, source, verifier = _coordinator(
-        _context("resample_data", command_name="preprocess"),
-        tool=_Tool(parameters={"type": "object", "required": ["rate"]}),
-    )
-    receipt = coordinator.admit_typed_clarification(
-        command_name="resample_data",
-        missing_inputs=("rate",),
-        question="What resampling rate should I use?",
-        original_user_text="What is resampling?",
-        publication=PromptToolPublication(
-            tool_names=frozenset({"resample_data"}),
-            backend_generation=21,
-        ),
+    assert decision.message == (
+        "What notch frequency should I use? "
+        "Please restate the complete action with all required values."
     )
 
-    assert receipt is not None
-    assert receipt.command_name == "resample_data"
-    assert source.reads == []
-    assert verifier.calls == []
 
-
-def test_partial_bandpass_keeps_only_user_proven_cutoff_in_receipt() -> None:
+def test_partially_sourced_bandpass_cannot_execute() -> None:
     coordinator, _source, _verifier = _coordinator(
         _context("apply_bandpass_filter", command_name="preprocess"),
         tool=_Tool(
@@ -399,13 +375,13 @@ def test_partial_bandpass_keeps_only_user_proven_cutoff_in_receipt() -> None:
     assert decision.action is ToolAttemptAction.RESPOND
     assert (
         decision.message
-        == "What high cutoff frequency should I use for the bandpass filter?"
+        == "What high cutoff frequency should I use for the bandpass filter? "
+        "Please restate the complete action with all required values."
     )
-    assert decision.tool_input_receipt is not None
-    assert decision.tool_input_receipt.verified_parameters == (("low_freq", 1),)
+    assert decision.params == {"low_freq": 1, "high_freq": 40}
 
 
-def test_partial_bandpass_creates_receipt_before_schema_for_proven_value() -> None:
+def test_incomplete_direct_proposal_cannot_bypass_full_schema_validation() -> None:
     verifier = _Verifier(valid=False)
     coordinator, _source, observed_verifier = _coordinator(
         _context("apply_bandpass_filter", command_name="preprocess"),
@@ -423,10 +399,10 @@ def test_partial_bandpass_creates_receipt_before_schema_for_proven_value() -> No
         )
     )
 
-    assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.tool_input_receipt is not None
-    assert decision.tool_input_receipt.verified_parameters == (("high_freq", 20),)
-    assert observed_verifier.calls == []
+    assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED
+    assert decision.result is not None
+    assert decision.result.message == "schema mismatch"
+    assert observed_verifier.calls == [("apply_bandpass_filter", {"high_freq": 20})]
 
 
 def test_inadmissible_partial_bandpass_keeps_schema_rejection() -> None:
@@ -477,7 +453,7 @@ def test_model_mapped_reversed_bandpass_reaches_schema_validation() -> None:
     ]
 
 
-def test_word_number_frequency_creates_no_verified_value_in_the_receipt() -> None:
+def test_word_number_frequency_is_not_treated_as_a_verified_decimal() -> None:
     coordinator, _source, _verifier = _coordinator(
         _context("apply_notch_filter", command_name="preprocess"),
         tool=_Tool(parameters={"type": "object", "required": ["freq"]}),
@@ -492,8 +468,10 @@ def test_word_number_frequency_creates_no_verified_value_in_the_receipt() -> Non
     )
 
     assert first.action is ToolAttemptAction.RESPOND
-    assert first.tool_input_receipt is not None
-    assert first.tool_input_receipt.verified_parameters == ()
+    assert first.message == (
+        "What notch frequency should I use? "
+        "Please restate the complete action with all required values."
+    )
 
 
 @pytest.mark.parametrize(
@@ -542,7 +520,7 @@ def test_word_number_frequency_creates_no_verified_value_in_the_receipt() -> Non
         ),
     ),
 )
-def test_direct_receipt_admission_does_not_parse_user_english_intent(
+def test_direct_origin_check_does_not_infer_values_from_user_english_intent(
     tool_name: str,
     params: dict[str, Any],
     text: str,
@@ -561,14 +539,14 @@ def test_direct_receipt_admission_does_not_parse_user_english_intent(
     )
 
     assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.tool_input_receipt is not None
+    assert decision.message
     assert decision.action not in {
         ToolAttemptAction.EXECUTE,
         ToolAttemptAction.CONFIRMATION_REQUIRED,
     }
 
 
-def test_unavailable_direct_parameter_proposal_never_creates_receipt() -> None:
+def test_unavailable_unsourced_direct_proposal_cannot_execute() -> None:
     coordinator, _source, _verifier = _coordinator(
         _context("resample_data", enabled=False, command_name="preprocess"),
         tool=_Tool(parameters={"type": "object", "required": ["rate"]}),
@@ -583,7 +561,10 @@ def test_unavailable_direct_parameter_proposal_never_creates_receipt() -> None:
     )
 
     assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.tool_input_receipt is None
+    assert decision.message == (
+        "What resampling rate should I use? "
+        "Please restate the complete action with all required values."
+    )
 
 
 def test_import_eeg_data_proposal_is_not_blocked_by_host_english_intent_gate() -> None:
@@ -626,34 +607,19 @@ def test_complete_direct_preprocess_proposal_does_not_require_host_action_gramma
     assert decision.action is ToolAttemptAction.EXECUTE
 
 
-def test_complete_receipt_rebuilds_verified_values_without_model_parameters() -> None:
+def test_prior_value_cannot_authorize_current_request_without_value() -> None:
     coordinator, source, verifier = _coordinator(
         _context("resample_data", command_name="preprocess")
     )
-    receipt = AssistantToolInputReceipt(
-        command_name="resample_data",
-        original_user_text="Resample the EEG data.",
-        question="What resampling rate should I use?",
-        publication_generation=21,
-        missing_inputs=("rate",),
-        verified_parameters=(("rate", 128),),
+
+    decision = coordinator.evaluate(
+        _request("resample_data", params={"rate": 128}, text="Use the saved value.")
     )
 
-    rebuilt = coordinator.evaluate(
-        _request(
-            "resample_data",
-            params={"rate": 128},
-            text="128 Hz",
-            tool_input_receipt=receipt,
-        )
-    )
-
-    assert rebuilt.action is ToolAttemptAction.EXECUTE
-    assert rebuilt.params == {"rate": 128}
+    assert decision.action is ToolAttemptAction.RESPOND
+    assert decision.params == {"rate": 128}
     assert source.reads == ["resample_data"]
-    assert verifier.calls == [
-        ("resample_data", {"rate": 128}),
-    ]
+    assert verifier.calls == [("resample_data", {"rate": 128})]
 
 
 @pytest.mark.parametrize(
@@ -670,7 +636,7 @@ def test_complete_receipt_rebuilds_verified_values_without_model_parameters() ->
         ("normalize_data", {"method": "z-score"}, "z-score"),
     ),
 )
-def test_same_tool_clarification_reply_reaches_execution_boundary(
+def test_current_turn_direct_values_reach_execution_boundary(
     tool_name: str,
     params: dict[str, Any],
     reply: str,
@@ -678,21 +644,12 @@ def test_same_tool_clarification_reply_reaches_execution_boundary(
     coordinator, source, verifier = _coordinator(
         _context(tool_name, command_name="preprocess")
     )
-    receipt = AssistantToolInputReceipt(
-        command_name=tool_name,
-        original_user_text="Run this preprocessing action.",
-        question="Which required value should I use?",
-        publication_generation=21,
-        missing_inputs=tuple(params),
-        verified_parameters=tuple(params.items()),
-    )
 
     decision = coordinator.evaluate(
         _request(
             tool_name,
             params=params,
             text=reply,
-            tool_input_receipt=receipt,
         )
     )
 
@@ -701,64 +658,14 @@ def test_same_tool_clarification_reply_reaches_execution_boundary(
     assert verifier.calls == [(tool_name, params)]
 
 
-@pytest.mark.parametrize(
-    ("reply", "receipt_tool", "receipt_generation"),
-    (
-        ("This recording has 128 channels.", "resample_data", 21),
-        ("算了\uff0c不要 128 Hz", "resample_data", 21),
-        ("128 Hz", "apply_notch_filter", 21),
-        ("128 Hz", "resample_data", 20),
-    ),
-)
-def test_clarification_receipt_cannot_authorize_unrelated_or_stale_reply(
-    reply: str,
-    receipt_tool: str,
-    receipt_generation: int,
-) -> None:
-    coordinator, _source, _verifier = _coordinator(
-        _context("resample_data", command_name="preprocess")
-    )
-    receipt = AssistantToolInputReceipt(
-        command_name=receipt_tool,
-        original_user_text="Resample the EEG data.",
-        question="What resampling rate should I use?",
-        publication_generation=receipt_generation,
-        missing_inputs=("rate",),
-    )
-
-    decision = coordinator.evaluate(
-        _request(
-            "resample_data",
-            params={"rate": 128},
-            text=reply,
-            tool_input_receipt=receipt,
-        )
-    )
-
-    assert decision.action is ToolAttemptAction.RESPOND
-
-
-def test_clarification_reply_still_passes_schema_verification_first() -> None:
+def test_current_turn_values_still_require_full_schema_verification() -> None:
     coordinator, _source, verifier = _coordinator(
         _context("resample_data", command_name="preprocess"),
         verifier=_Verifier(valid=False),
     )
-    receipt = AssistantToolInputReceipt(
-        command_name="resample_data",
-        original_user_text="Resample the EEG data.",
-        question="What resampling rate should I use?",
-        publication_generation=21,
-        missing_inputs=("rate",),
-        verified_parameters=(("rate", 128),),
-    )
 
     decision = coordinator.evaluate(
-        _request(
-            "resample_data",
-            params={"rate": 128},
-            text="128 Hz",
-            tool_input_receipt=receipt,
-        )
+        _request("resample_data", params={"rate": 128}, text="Resample to 128 Hz.")
     )
 
     assert decision.action is ToolAttemptAction.VERIFICATION_BLOCKED

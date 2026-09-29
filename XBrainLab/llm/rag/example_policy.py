@@ -1,4 +1,4 @@
-"""RAG example policy for product-safe tool-call prompt context."""
+"""Validate complete single-turn RAG examples, never execution authority."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 from XBrainLab.llm.action_contracts import AGENT_ACTION_CONTRACTS
+from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
+from XBrainLab.llm.agent.verifier import verify_direct_parameter_origins
 
 if TYPE_CHECKING:
     from XBrainLab.llm.agent.verifier import ToolSchemaValidator
@@ -18,22 +20,20 @@ logger = logging.getLogger(__name__)
 
 @lru_cache(maxsize=1)
 def _live_tool_schema_validator() -> ToolSchemaValidator | None:
-    """Build the validator from the product tool registry, or fail closed."""
+    """Use the product schemas, failing closed when unavailable."""
     try:
-        from XBrainLab.llm.agent.verifier import (  # noqa: PLC0415
-            ToolSchemaValidator,
-        )
+        from XBrainLab.llm.agent.verifier import ToolSchemaValidator  # noqa: PLC0415
         from XBrainLab.llm.tools import get_all_tools  # noqa: PLC0415
 
-        schemas = {tool.name: tool.parameters for tool in get_all_tools()}
-        return ToolSchemaValidator(schemas)
+        return ToolSchemaValidator(
+            {tool.name: tool.parameters for tool in get_all_tools()}
+        )
     except Exception:
         logger.exception("RAG example policy could not load live tool schemas")
         return None
 
 
 def _is_strict_json_value(value: Any) -> bool:
-    """Return whether a value can appear unchanged in strict JSON output."""
     if value is None or type(value) in {bool, int, str}:
         return True
     if type(value) is float:
@@ -48,69 +48,58 @@ def _is_strict_json_value(value: Any) -> bool:
     return False
 
 
-def tool_calls_from_metadata(metadata: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """Return normalized tool-call metadata from RAG payload metadata."""
-    if not metadata:
-        return []
-    raw = metadata.get("tool_calls")
-    if raw is None:
-        raw = metadata.get("expected_tool_calls")
-    if isinstance(raw, str):
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            return []
-    else:
-        parsed = raw
-    if isinstance(parsed, dict):
-        parsed = [parsed]
-    if not isinstance(parsed, list):
-        return []
-    return [item for item in parsed if isinstance(item, dict)]
-
-
-def prompt_tool_call_from_metadata(
+def prompt_proposal_from_metadata(
     metadata: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Return one schema-valid action fragment or reject the metadata.
-
-    RAG context contains the tool name and parameters, not a complete model
-    response envelope. Legacy, multi-action, malformed, and explanation-bearing
-    examples are unsuitable for the product prompt.
-    """
-    calls = tool_calls_from_metadata(metadata)
-    if len(calls) != 1:
+    """Require the exact current wire and current-input parameter provenance."""
+    if not isinstance(metadata, dict) or "prior_turn" in metadata:
         return None
-    call = calls[0]
-    if set(call) != {"tool_name", "parameters"}:
+    source = metadata.get("source_text")
+    if not isinstance(source, str) or not source.strip():
         return None
-    tool_name = call.get("tool_name")
-    parameters = call.get("parameters")
-    if (
-        not isinstance(tool_name, str)
-        or not tool_name.strip()
-        or tool_name != tool_name.strip()
-        or not isinstance(parameters, dict)
-        or tool_name not in AGENT_ACTION_CONTRACTS.model_tool_names()
-        or not _is_strict_json_value(parameters)
-    ):
+    raw = metadata.get("proposal")
+    if isinstance(raw, dict):
+        if not _is_strict_json_value(raw):
+            return None
+        raw = json.dumps(raw)
+    if not isinstance(raw, str):
+        return None
+    parsed = CommandParser.parse_product(raw)
+    if parsed.status is ToolEnvelopeStatus.NO_TOOL:
+        return parsed.proposal_dict()
+    if parsed.status is not ToolEnvelopeStatus.VALID or parsed.command is None:
+        return None
+    action, parameters = parsed.command
+    if action not in AGENT_ACTION_CONTRACTS.model_tool_names():
         return None
     validator = _live_tool_schema_validator()
-    if validator is None:
+    if (
+        validator is None
+        or not validator.validate(action, parameters).is_valid
+        or not verify_direct_parameter_origins(action, parameters, source).is_valid
+    ):
         return None
-    try:
-        if not validator.validate(tool_name, parameters).is_valid:
-            return None
-    except Exception:
-        logger.debug(
-            "RAG example tool-schema validation failed for %s",
-            tool_name,
-            exc_info=True,
-        )
+    return parsed.proposal_dict()
+
+
+def example_search_text(metadata: dict[str, Any]) -> str | None:
+    """Index only the complete current question; there is no prior-turn merge."""
+    if prompt_proposal_from_metadata(metadata) is None:
         return None
-    return {"tool_name": tool_name, "parameters": parameters}
+    return metadata["source_text"]
+
+
+def prompt_example_from_metadata(metadata: dict[str, Any]) -> dict[str, Any] | None:
+    proposal = prompt_proposal_from_metadata(metadata)
+    if proposal is None:
+        return None
+    return {"input": metadata["source_text"], "expected_proposal": proposal}
+
+
+def example_decision_name(metadata: dict[str, Any] | None) -> str | None:
+    proposal = prompt_proposal_from_metadata(metadata)
+    return proposal["tool_name"] if proposal is not None else None
 
 
 def is_primary_workflow_example(metadata: dict[str, Any] | None) -> bool:
-    """Return whether a RAG example is safe for primary product prompting."""
-    return prompt_tool_call_from_metadata(metadata) is not None
+    return prompt_proposal_from_metadata(metadata) is not None

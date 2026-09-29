@@ -155,13 +155,9 @@ class TestStageBasedFiltering:
             ["import_eeg_data", "switch_panel", "select_model"],
         )
 
-        assert (
-            STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions(
-                "empty", include_preprocessing_guidance=False
-            )
-            in prompt
-        )
+        assert STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions() in prompt
         assert "backend-stage-published action contracts" in prompt
+        assert "Current backend workflow stage: empty\n" in prompt
         assert "Workflow Decision Context" not in prompt
         assert 'schema "xbrainlab.untrusted_context.v1"' in prompt
         assert "Only the listed workflow actions are available" in prompt
@@ -214,9 +210,9 @@ class TestStageBasedFiltering:
 
 
 class TestPromptContent:
-    """System prompt remains policy-only while context is separately encoded."""
+    """Host policy/stage stay separate from untrusted runtime context."""
 
-    def test_stage_name_is_not_in_system_policy(self):
+    def test_backend_stage_fact_is_present_without_workflow_instructions(self):
         registry = ToolRegistry()
         with patch(
             "XBrainLab.llm.agent.assembler.read_prompt_policy",
@@ -225,8 +221,8 @@ class TestPromptContent:
             assembler = ContextAssembler(registry, Study())
             prompt = assembler.build_system_prompt()
 
-        assert "Preprocessed" not in prompt
-        assert "EEG workflow guide" in prompt
+        assert "Current backend workflow stage: preprocessed\n" in prompt
+        assert "Help the user operate EEG software in English" in prompt
 
     def test_stage_guidance_is_not_in_system_policy(self):
         registry = ToolRegistry()
@@ -238,7 +234,7 @@ class TestPromptContent:
             prompt = assembler.build_system_prompt()
 
         assert "no data is loaded" not in prompt.lower()
-        assert "runtime context" in prompt.lower()
+        assert "Optional references arrive separately" in prompt
 
     def test_rag_context_is_in_separate_untrusted_message(self):
         registry = ToolRegistry()
@@ -260,9 +256,8 @@ class TestPromptContent:
         assert runtime_item["data"] == {"text": "RAG info"}
         assert runtime_item["source"] == {"kind": "assistant_runtime_context"}
 
-    def test_each_stage_acknowledges_its_exact_backend_value(self):
-        """Workflow state changes only the required stage acknowledgement."""
-        prompts = {}
+    def test_each_backend_stage_remains_in_context_not_model_output(self):
+        """The host supplies state; the model does not echo it in its decision."""
         for stage in PipelineStage:
             registry = ToolRegistry()
             with patch(
@@ -270,11 +265,17 @@ class TestPromptContent:
                 return_value=_prompt_policy_read(stage),
             ):
                 assembler = ContextAssembler(registry, Study())
-                prompt = assembler.build_system_prompt()
-            prompts[stage] = prompt
-        assert len(set(prompts.values())) == len(PipelineStage)
-        for stage, prompt in prompts.items():
-            assert f'"workflow_stage":"{stage.value}"' in prompt
+                messages = assembler.get_messages(
+                    [{"role": "user", "content": "Explain the current state."}]
+                )
+            state_card = json.loads(messages[-1]["content"])["application_state"]
+            assert state_card["workflow_stage"] == stage.value
+            assert assembler.latest_tool_publication.workflow_stage == stage.value
+            assert (
+                f"Current backend workflow stage: {stage.value}\n"
+                in messages[0]["content"]
+            )
+            assert '"workflow_stage":' not in messages[0]["content"]
 
     def test_rule_6_only_listed_tools(self):
         """Prompt instructs LLM not to call unlisted tools."""
@@ -287,4 +288,6 @@ class TestPromptContent:
             prompt = assembler.build_system_prompt()
 
         assert "backend-stage-published action contracts" in prompt
-        assert "Use only an action contract listed for this exact stage" in prompt
+        assert (
+            "Only the listed workflow actions are available at this stage" in prompt
+        ) or "No executable workflow actions are available at this stage" in prompt

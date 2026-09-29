@@ -1,0 +1,293 @@
+{
+  "version": 4,
+  "label_policy": "Single-turn contract migration: preserve all 20 original single-turn query texts and relevance labels (10 calibration, 10 review). Remove only C09/C10/R09/R10 retired multi-turn queries and the two removed contextual corpus IDs. All other eligible IDs remain unacceptable; empty acceptable sets require zero hits. Query text is the actual latest user input. Historical v1/v2/v3 fixtures and observations retain their original identities.",
+  "rule": {
+    "minimum_matched_terms": 2,
+    "minimum_coverage": 0.5,
+    "coverage_metric": "matched_idf_over_min_query_document_idf",
+    "include_oov_in_query_denominator": true,
+    "unique_query_and_document_terms": true
+  },
+  "eligible_tool_names": [
+    "apply_bandpass_filter",
+    "apply_notch_filter",
+    "resample_data",
+    "set_reference",
+    "normalize_data",
+    "start_training",
+    "stop_training",
+    "select_model"
+  ],
+  "acceptable_sets": {
+    "normalize": [
+      "normalize_data_01",
+      "normalize_data_02",
+      "normalize_data_03",
+      "normalize_data_04",
+      "normalize_data_05",
+      "normalize_data_06",
+      "normalize_data_07",
+      "normalize_data_08",
+      "respond_concept_05",
+      "normalize_data_missing_01",
+      "respond_definition_normalize_01"
+    ],
+    "reference": [
+      "set_reference_01",
+      "set_reference_02",
+      "set_reference_03",
+      "set_reference_04",
+      "set_reference_05",
+      "set_reference_06",
+      "set_reference_07",
+      "respond_concept_03",
+      "set_reference_missing_01",
+      "respond_definition_reference_01"
+    ],
+    "training_lifecycle": [
+      "stop_training_01",
+      "stop_training_02",
+      "stop_training_03",
+      "stop_training_04",
+      "stop_training_05",
+      "stop_training_06",
+      "start_training_01",
+      "start_training_02",
+      "start_training_03",
+      "start_training_04",
+      "start_training_05",
+      "start_training_06",
+      "respond_prohibition_02"
+    ],
+    "resample": [
+      "resample_data_01",
+      "resample_data_02",
+      "resample_data_03",
+      "resample_data_04",
+      "resample_data_05",
+      "resample_data_06",
+      "resample_data_07",
+      "resample_data_08",
+      "respond_concept_02",
+      "resample_data_missing_01",
+      "respond_definition_resample_01"
+    ],
+    "bandpass": [
+      "apply_bandpass_filter_01",
+      "apply_bandpass_filter_02",
+      "apply_bandpass_filter_03",
+      "apply_bandpass_filter_04",
+      "apply_bandpass_filter_05",
+      "apply_bandpass_filter_06",
+      "apply_bandpass_filter_07",
+      "apply_bandpass_filter_08",
+      "apply_bandpass_filter_09",
+      "respond_concept_01",
+      "respond_concept_02",
+      "apply_bandpass_filter_missing_01",
+      "apply_bandpass_filter_partial_low_01",
+      "apply_bandpass_filter_partial_high_01",
+      "respond_definition_bandpass_01"
+    ],
+    "notch": [
+      "apply_notch_filter_01",
+      "apply_notch_filter_02",
+      "apply_notch_filter_03",
+      "apply_notch_filter_04",
+      "apply_notch_filter_05",
+      "apply_notch_filter_06",
+      "apply_notch_filter_07",
+      "apply_notch_filter_08",
+      "apply_notch_filter_09",
+      "respond_prohibition_05",
+      "respond_concept_01",
+      "apply_notch_filter_missing_01",
+      "respond_definition_notch_01"
+    ],
+    "missing_context": [
+      "respond_reference_01",
+      "respond_reference_02",
+      "respond_reference_03",
+      "respond_reference_04",
+      "respond_reference_05",
+      "respond_reference_06"
+    ],
+    "none": []
+  },
+  "calibration": [
+    {
+      "id": "C01",
+      "family": "lexical",
+      "user_turns": [
+        "Scale my EEG with min max normalization rather than z-score."
+      ],
+      "acceptable": "normalize",
+      "required_sparse_ids": [
+        "normalize_data_06"
+      ]
+    },
+    {
+      "id": "C02",
+      "family": "lexical",
+      "user_turns": [
+        "Re-reference to the single electrode named FCz."
+      ],
+      "acceptable": "reference",
+      "required_sparse_ids": [
+        "set_reference_07"
+      ]
+    },
+    {
+      "id": "C03",
+      "family": "paraphrase",
+      "user_turns": [
+        "End the active learning run now."
+      ],
+      "acceptable": "training_lifecycle"
+    },
+    {
+      "id": "C04",
+      "family": "paraphrase",
+      "user_turns": [
+        "Reduce the recording to 160 samples each second."
+      ],
+      "acceptable": "resample"
+    },
+    {
+      "id": "C05",
+      "family": "same_word_other_meaning",
+      "user_turns": [
+        "What training plan should I use for a marathon?"
+      ],
+      "acceptable": "none"
+    },
+    {
+      "id": "C06",
+      "family": "same_word_other_meaning",
+      "user_turns": [
+        "How can I filter spam from my email inbox?"
+      ],
+      "acceptable": "none"
+    },
+    {
+      "id": "C07",
+      "family": "missing_or_prohibited",
+      "user_turns": [
+        "Use the setup my supervisor chose, but I have not told you the values."
+      ],
+      "acceptable": "missing_context"
+    },
+    {
+      "id": "C08",
+      "family": "missing_or_prohibited",
+      "user_turns": [
+        "Do not apply a 50 Hz notch. Leave the recording untouched."
+      ],
+      "acceptable": "notch"
+    },
+    {
+      "id": "C11",
+      "family": "unrelated",
+      "user_turns": [
+        "What ingredients belong in a chocolate cake?"
+      ],
+      "acceptable": "none"
+    },
+    {
+      "id": "C12",
+      "family": "unrelated",
+      "user_turns": [
+        "Explain the moons of Jupiter."
+      ],
+      "acceptable": "none"
+    }
+  ],
+  "review": [
+    {
+      "id": "R01",
+      "family": "lexical",
+      "user_turns": [
+        "Normalize with min max, not z score."
+      ],
+      "acceptable": "normalize",
+      "required_sparse_ids": [
+        "normalize_data_06"
+      ]
+    },
+    {
+      "id": "R02",
+      "family": "lexical",
+      "user_turns": [
+        "For the recordings currently loaded, I want the single electrode named FCz to be the reference. Apply that reference without modifying the montage."
+      ],
+      "acceptable": "reference",
+      "required_sparse_ids": [
+        "set_reference_07"
+      ]
+    },
+    {
+      "id": "R03",
+      "family": "paraphrase",
+      "user_turns": [
+        "Halt this learning job."
+      ],
+      "acceptable": "training_lifecycle"
+    },
+    {
+      "id": "R04",
+      "family": "paraphrase",
+      "user_turns": [
+        "Set the signal sampling frequency to 200 Hz."
+      ],
+      "acceptable": "resample"
+    },
+    {
+      "id": "R05",
+      "family": "same_word_other_meaning",
+      "user_turns": [
+        "Suggest exercises for strength training at home."
+      ],
+      "acceptable": "none"
+    },
+    {
+      "id": "R06",
+      "family": "same_word_other_meaning",
+      "user_turns": [
+        "Can a coffee filter be reused?"
+      ],
+      "acceptable": "none"
+    },
+    {
+      "id": "R07",
+      "family": "missing_or_prohibited",
+      "user_turns": [
+        "Repeat the operation written in my notebook; I have not shared the notebook."
+      ],
+      "acceptable": "missing_context"
+    },
+    {
+      "id": "R08",
+      "family": "missing_or_prohibited",
+      "user_turns": [
+        "Do not begin model training; keep the training controls unchanged."
+      ],
+      "acceptable": "training_lifecycle"
+    },
+    {
+      "id": "R11",
+      "family": "unrelated",
+      "user_turns": [
+        "Who wrote Pride and Prejudice?"
+      ],
+      "acceptable": "none"
+    },
+    {
+      "id": "R12",
+      "family": "unrelated",
+      "user_turns": [
+        "How long does a butterfly live?"
+      ],
+      "acceptable": "none"
+    }
+  ]
+}

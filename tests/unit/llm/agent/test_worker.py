@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from XBrainLab.backend.application.errors import PreconditionError
+from XBrainLab.chat_contract import LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE
 from XBrainLab.llm.agent.runtime_state import (
     AssistantRuntimePhase,
 )
@@ -162,10 +164,18 @@ class TestGenerationThread:
         assert finished == [True]
         assert errors == []
 
-    def test_failure_is_redacted_and_does_not_publish_success(self):
+    @pytest.mark.parametrize(
+        "error",
+        [
+            RuntimeError("private generation detail"),
+            PreconditionError("private generation detail"),
+            RuntimeError(LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE),
+        ],
+    )
+    def test_failure_is_redacted_and_does_not_publish_success(self, error):
         from XBrainLab.llm.agent.worker import GenerationThread
 
-        engine = _StreamingEngine(error=RuntimeError("private generation detail"))
+        engine = _StreamingEngine(error=error)
         thread = GenerationThread(engine, _request(generation_id=18))
         finished: list[bool] = []
         errors: list[str] = []

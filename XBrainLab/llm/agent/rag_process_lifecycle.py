@@ -10,6 +10,7 @@ import time
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
 from XBrainLab.llm.tools.result_contract import safe_unexpected_failure
@@ -25,11 +26,13 @@ RAGResultCallback = Callable[[int, str, str, str], None]
 RAGProcessTarget = Callable[[Any, Any], None]
 
 
-def _run_rag_process(command_queue: Any, result_queue: Any) -> None:
+def _run_rag_process(
+    command_queue: Any, result_queue: Any, *, dense_only: bool = False
+) -> None:
     """Own all heavyweight RAG state inside one terminable child process."""
     from XBrainLab.llm.rag import RAGRetriever  # noqa: PLC0415
 
-    retriever = RAGRetriever()
+    retriever = RAGRetriever(dense_only=dense_only)
     try:
         retriever.initialize()
         result_queue.put(("ready", bool(retriever.is_initialized)))
@@ -107,7 +110,10 @@ class ProcessRAGRetrieverLifecycle:
         retrieval_timeout_seconds: float = RAG_RETRIEVAL_TIMEOUT_SECONDS,
         shutdown_wait_seconds: float = RAG_PROCESS_SHUTDOWN_SECONDS,
         process_target: RAGProcessTarget = _run_rag_process,
+        dense_only: bool = False,
     ) -> None:
+        if type(dense_only) is not bool:
+            raise ValueError("dense_only must be a boolean")
         self._initialization_timeout_seconds = max(
             0.01,
             float(initialization_timeout_seconds),
@@ -117,7 +123,12 @@ class ProcessRAGRetrieverLifecycle:
             float(retrieval_timeout_seconds),
         )
         self._shutdown_wait_seconds = max(0.01, float(shutdown_wait_seconds))
-        self._process_target = process_target
+        if not dense_only:
+            self._process_target = process_target
+        else:
+            if process_target is not _run_rag_process:
+                raise ValueError("dense_only requires the product RAG process target")
+            self._process_target = partial(_run_rag_process, dense_only=True)
         self._context = multiprocessing.get_context("spawn")
         self._lock = threading.Lock()
         self._closed = False

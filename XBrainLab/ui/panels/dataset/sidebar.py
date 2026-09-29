@@ -477,6 +477,7 @@ class DatasetSidebar(QWidget):
 
     def update_sidebar(self):
         """Update info panel and button states."""
+        import_busy = self.panel.action_handler._data_interpretation.is_busy
         publication = get_application_view_publication(self)
         if has_real_application_context(self) or publication is not None:
             if self._uses_startup_bootstrap_state():
@@ -510,7 +511,7 @@ class DatasetSidebar(QWidget):
                 else None
             )
             if scan_capability is not None:
-                self.import_btn.setEnabled(scan_capability.enabled)
+                self.import_btn.setEnabled(scan_capability.enabled and not import_busy)
                 source_tooltip = (
                     "Choose EEG files or a folder, review metadata and labels, "
                     "then import"
@@ -528,7 +529,9 @@ class DatasetSidebar(QWidget):
                 )
 
             if reload_capability is not None:
-                self.reload_recipe_btn.setEnabled(reload_capability.enabled)
+                self.reload_recipe_btn.setEnabled(
+                    reload_capability.enabled and not import_busy
+                )
                 self.reload_recipe_btn.setToolTip(
                     "Review a saved import recipe before applying it"
                     if reload_capability.enabled
@@ -544,7 +547,9 @@ class DatasetSidebar(QWidget):
                 )
 
             if preprocess_capability is not None:
-                self.chan_select_btn.setEnabled(preprocess_capability.enabled)
+                self.chan_select_btn.setEnabled(
+                    preprocess_capability.enabled and not import_busy
+                )
                 self.chan_select_btn.setToolTip(
                     "Select specific channels to keep"
                     if preprocess_capability.enabled
@@ -582,7 +587,8 @@ class DatasetSidebar(QWidget):
                     else []
                 )
                 self.electrode_layout_btn.setEnabled(
-                    layout_capability.enabled or bool(layout_channels)
+                    (layout_capability.enabled or bool(layout_channels))
+                    and not import_busy
                 )
                 self.electrode_layout_btn.setToolTip(
                     "Map existing EEG channels to reviewed electrode positions"

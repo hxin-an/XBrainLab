@@ -1,14 +1,15 @@
 """RAG retriever for querying similar examples from Qdrant.
 
 Explicitly initializes a pinned local embedding and verified gold-set index.
-Cosine similarity admits candidates; a weighted combination of cosine and
-normalized BM25 scores ranks that pool. The retriever is synchronous; GUI
-callers run it through the owned RAG process lifecycle.
+Dense and sparse branches independently admit eligible candidates, then
+reciprocal-rank fusion orders their stable-identity union. The synchronous
+retriever runs through the owned RAG process lifecycle for GUI callers.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from contextlib import suppress
 from dataclasses import dataclass
@@ -17,9 +18,10 @@ from typing import TYPE_CHECKING
 from XBrainLab.llm.agent.context_encoding import (
     UntrustedContextItem,
     UntrustedContextSource,
+    decode_untrusted_context,
     encode_untrusted_context,
 )
-from XBrainLab.llm.agent.intent import should_suppress_action_examples
+from XBrainLab.llm.agent.decision_contract import MODEL_RESPONSE_TOOL_NAME
 
 if TYPE_CHECKING:
     from langchain_huggingface import HuggingFaceEmbeddings
@@ -29,7 +31,8 @@ if TYPE_CHECKING:
 from .bm25 import BM25Index
 from .config import RAGConfig
 from .example_policy import (
-    prompt_tool_call_from_metadata,
+    example_decision_name,
+    prompt_proposal_from_metadata,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,7 +45,7 @@ class _RetrievalLease:
     client: QdrantClient
     embeddings: HuggingFaceEmbeddings
     bm25_index: BM25Index | None
-    hybrid_alpha: float
+    dense_only: bool
 
 
 class RAGRetriever:
@@ -51,10 +54,8 @@ class RAGRetriever:
     Call ``initialize`` before retrieval to load the local embedding and verify
     or rebuild the collection from the bundled ``gold_set.json``.
 
-    **Hybrid mode** (default, configurable via ``hybrid_alpha``):
-    combines dense semantic scores with sparse BM25 keyword scores.
-    ``alpha=1.0`` uses cosine ranking; ``alpha=0.0`` uses BM25 ranking within
-    the semantically admitted pool, not a separate keyword-only search.
+    Hybrid mode independently retrieves dense and sparse candidates. Explicit
+    ``dense_only=True`` omits sparse construction and querying for ablation.
 
     Attributes:
         client: The ``QdrantClient`` instance (``None`` until initialized).
@@ -62,20 +63,14 @@ class RAGRetriever:
         embeddings: The HuggingFace embedding model.
         is_initialized: Whether initialization has completed successfully.
         bm25_index: In-memory BM25 index for keyword scoring.
-        hybrid_alpha: Interpolation weight (1.0 = pure semantic).
+        dense_only: Whether to omit the sparse branch explicitly.
 
     """
 
-    # Ranking weight; this constant alone is not evidence of validation tuning.
-    DEFAULT_HYBRID_ALPHA = 0.7
-
-    def __init__(self, hybrid_alpha: float | None = None):
-        """Initializes the RAGRetriever in an unloaded state.
-
-        Args:
-            hybrid_alpha: Optional semantic weight override.  When
-                ``None``, ``DEFAULT_HYBRID_ALPHA`` is used.
-        """
+    def __init__(self, *, dense_only: bool = False):
+        """Initialize unloaded resources with an explicit retrieval mode."""
+        if type(dense_only) is not bool:
+            raise ValueError("dense_only must be a boolean")
         self.client: QdrantClient | None = None
         self.vectorstore: Qdrant | None = None
         self.embeddings: HuggingFaceEmbeddings | None = None
@@ -86,9 +81,7 @@ class RAGRetriever:
         self._active_operations = 0
         self._retired_clients: list[QdrantClient] = []
         self.bm25_index: BM25Index | None = None
-        self.hybrid_alpha: float = (
-            hybrid_alpha if hybrid_alpha is not None else self.DEFAULT_HYBRID_ALPHA
-        )
+        self.dense_only = dense_only
 
     def initialize(self) -> None:
         """Explicitly initialize the local RAG components once.
@@ -121,7 +114,13 @@ class RAGRetriever:
                 local_embeddings,
             )
             self._require_verified_vectorstore(local_vectorstore)
-            local_bm25_index = self._build_bm25_index()
+            if not self.dense_only:
+                local_bm25_index = self._build_bm25_index()
+                if local_bm25_index is None:
+                    # Keep resource cleanup in the initialization failure path.
+                    raise RuntimeError(  # noqa: TRY301
+                        "Hybrid retrieval requires a valid BM25 index"
+                    )
 
         except Exception as e:
             logger.error("Failed to init RAGRetriever: %s", e)
@@ -148,8 +147,8 @@ class RAGRetriever:
             local_client = None
 
         logger.info(
-            "RAGRetriever initialized (hybrid_alpha=%.2f).",
-            self.hybrid_alpha,
+            "RAGRetriever initialized (dense_only=%s).",
+            self.dense_only,
         )
 
     @staticmethod
@@ -250,8 +249,8 @@ class RAGRetriever:
     def _build_bm25_index(self) -> BM25Index | None:
         """Builds the in-memory BM25 index from the bundled gold-set.
 
-        Falls back gracefully if the gold-set file is missing — hybrid
-        retrieval degrades to pure semantic search.
+        Failure leaves hybrid initialization unavailable, never silently labelled
+        as a successful hybrid run. Explicit dense-only mode skips this build.
         """
         from pathlib import Path
 
@@ -301,7 +300,7 @@ class RAGRetriever:
                 client=self.client,
                 embeddings=self.embeddings,
                 bm25_index=self.bm25_index,
-                hybrid_alpha=self.hybrid_alpha,
+                dense_only=self.dense_only,
             )
 
     def _release_retrieval_lease(self) -> None:
@@ -327,12 +326,10 @@ class RAGRetriever:
         *,
         allowed_tool_names: frozenset[str] | None = None,
     ) -> str:
-        """Retrieves similar gold-set examples via hybrid ranking.
+        """Retrieve independently admitted examples, ordered by equal-weight RRF.
 
-        Combines dense (Qdrant cosine) and sparse (BM25 keyword)
-        scores with a weighted interpolation controlled by
-        ``self.hybrid_alpha``.  When BM25 is unavailable, falls back
-        to pure semantic search.
+        Each branch contributes only its admitted ranks, never a normalized
+        confidence. Hybrid requires both components; failures propagate.
 
         This method performs embedding and vector search synchronously. The
         production controller runs it in an isolated RAG process.
@@ -349,8 +346,6 @@ class RAGRetriever:
             matches are found.
 
         """
-        if should_suppress_action_examples(query):
-            return ""
         safe_k = min(max(int(k), 0), RAGConfig.TOP_K)
         if safe_k == 0:
             return ""
@@ -363,109 +358,125 @@ class RAGRetriever:
             if self._is_closed():
                 return ""
 
-            # Fetch more candidates for re-ranking
-            dense_k = max(safe_k * 3, 10)
+            from qdrant_client.http import models
+
+            # Filter inside search: unavailable examples must not consume the
+            # candidate budget before the eligible examples can be ranked.
+            query_filter = None
+            if allowed_tool_names is not None:
+                query_filter = models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="metadata.decision_name",
+                            match=models.MatchAny(
+                                any=sorted(
+                                    allowed_tool_names | {MODEL_RESPONSE_TOOL_NAME}
+                                ),
+                            ),
+                        ),
+                    ],
+                )
             search_result = lease.client.query_points(
                 collection_name=RAGConfig.COLLECTION_NAME,
                 query=query_vector,
-                limit=dense_k,
+                limit=RAGConfig.CANDIDATES_PER_BRANCH,
                 with_payload=True,
+                query_filter=query_filter,
             ).points
             if self._is_closed():
                 return ""
 
-            if not search_result:
-                return ""
-
-            # ── 2. Build candidate pool with dense scores ──
-            # Admission uses raw cosine scores, before BM25 reranking.
-            semantically_admitted = [
-                point
-                for point in search_result
-                if float(point.score) >= RAGConfig.SIMILARITY_THRESHOLD
-            ]
-            if not semantically_admitted:
-                return ""
-
-            candidates: dict[str, dict] = {}
-            for p in semantically_admitted:
-                payload = p.payload or {}
+            dense: list[tuple[float, str, str, dict]] = []
+            for point in search_result:
+                score = float(point.score)
+                if not math.isfinite(score) or score < RAGConfig.SIMILARITY_THRESHOLD:
+                    continue
+                payload = point.payload or {}
+                metadata = payload.get("metadata", {})
+                if not self._example_is_allowed(
+                    metadata, allowed_tool_names=allowed_tool_names
+                ):
+                    continue
                 content = payload.get("page_content", "") or payload.get(
                     "input",
                     "",
                 )
-                doc_id = str(p.id)
-                candidates[doc_id] = {
-                    "content": content,
-                    "metadata": payload.get("metadata", {}),
-                    "dense_score": float(p.score),
-                    "bm25_score": 0.0,
-                }
-            candidates = {
-                doc_id: candidate
-                for doc_id, candidate in candidates.items()
-                if self._example_is_allowed(
-                    candidate.get("metadata", {}),
-                    allowed_tool_names=allowed_tool_names,
-                )
-            }
+                dense.append((score, metadata["id"], content, metadata))
 
-            # ── 3. BM25 sparse scoring (if available) ──
-            if lease.bm25_index is not None:
-                bm25_results = lease.bm25_index.query(query, k=dense_k)
-                if self._is_closed():
-                    return ""
-                if bm25_results:
-                    bm25_max = bm25_results[0][0]  # already sorted desc
-                    for score, _bm_id, bm_text, _bm_meta in bm25_results:
-                        norm_bm25 = score / bm25_max if bm25_max > 0 else 0.0
-                        # Try to match to dense candidate by content
-                        for cval in candidates.values():
-                            if cval["content"] == bm_text:
-                                cval["bm25_score"] = norm_bm25
-                                break
-                        # BM25 may rerank semantically admitted candidates, but
-                        # it cannot admit a tool example on keyword overlap alone.
-
-            # ── 4. Hybrid interpolation ──
-            alpha = lease.hybrid_alpha
-            ranked: list[tuple[float, str, dict]] = []
-            for c in candidates.values():
-                hybrid = alpha * c["dense_score"] + (1 - alpha) * c["bm25_score"]
-                ranked.append((hybrid, c["content"], c["metadata"]))
-
-            ranked.sort(key=lambda x: x[0], reverse=True)
-            if not ranked or self._is_closed():
+            # Sparse eligibility is independent of the dense search result.
+            sparse: list[tuple[float, str, str, dict]] = []
+            if not lease.dense_only:
+                if lease.bm25_index is None:
+                    raise RuntimeError("Hybrid retrieval requires a valid BM25 index")
+                sparse = [
+                    row
+                    for row in lease.bm25_index.query(
+                        query,
+                        k=RAGConfig.CANDIDATES_PER_BRANCH,
+                        eligible=lambda metadata: self._example_is_allowed(
+                            metadata, allowed_tool_names=allowed_tool_names
+                        ),
+                    )
+                    if math.isfinite(row[0]) and row[0] > 0
+                ]
+            if self._is_closed():
                 return ""
 
-            # ── 5. Encode top-k as typed, provenance-labelled data ──
+            candidates: dict[str, tuple[str, dict]] = {}
+            fused_scores: dict[str, float] = {}
+            for branch in (dense, sparse):
+                seen: set[str] = set()
+                for _score, doc_id, content, metadata in sorted(
+                    branch, key=lambda row: (-row[0], row[1])
+                ):
+                    if doc_id in seen:
+                        continue
+                    seen.add(doc_id)
+                    candidates.setdefault(doc_id, (content, metadata))
+                    fused_scores[doc_id] = fused_scores.get(doc_id, 0.0) + 1.0 / (
+                        RAGConfig.RRF_RANK_CONSTANT + len(seen)
+                    )
+            ranked_ids = sorted(
+                candidates, key=lambda doc_id: (-fused_scores[doc_id], doc_id)
+            )
+
             context_items: list[UntrustedContextItem] = []
-            for _score, content, meta in ranked[:safe_k]:
-                prompt_call = prompt_tool_call_from_metadata(meta)
-                if prompt_call is None:
+            encoded = ""
+            for doc_id in ranked_ids:
+                _content, meta = candidates[doc_id]
+                proposal = prompt_proposal_from_metadata(meta)
+                if proposal is None:
                     continue
-                context_items.append(
+                data = {"input": meta.get("source_text"), "expected_proposal": proposal}
+                candidate_items = [
+                    *context_items,
                     UntrustedContextItem(
                         item_type="rag_example",
                         source=UntrustedContextSource(
                             kind="xbrainlab_bundled_gold_set",
-                            id=str(meta.get("id") or "unknown"),
+                            id=doc_id,
                             category=str(meta.get("category") or "uncategorized"),
                         ),
-                        data={
-                            "input": str(content),
-                            "expected_action": prompt_call,
-                        },
-                    )
+                        data=data,
+                    ),
+                ]
+                candidate_encoded = encode_untrusted_context(
+                    candidate_items,
+                    max_chars=RAGConfig.MAX_CONTEXT_CHARS,
+                    max_items=safe_k,
+                    max_string_chars=RAGConfig.MAX_EXAMPLE_CONTENT_CHARS,
                 )
-            if not context_items:
-                return ""
-            return encode_untrusted_context(
-                context_items,
-                max_chars=RAGConfig.MAX_CONTEXT_CHARS,
-                max_items=safe_k,
-                max_string_chars=RAGConfig.MAX_EXAMPLE_CONTENT_CHARS,
-            )
+                # A proposal and its quoted source are an indivisible example.
+                # Redaction or clipping cannot publish a changed demonstration.
+                if decode_untrusted_context(candidate_encoded) != tuple(
+                    candidate_items
+                ):
+                    continue
+                context_items = candidate_items
+                encoded = candidate_encoded
+                if len(context_items) == safe_k:
+                    break
+            return encoded
         finally:
             self._release_retrieval_lease()
 
@@ -475,9 +486,11 @@ class RAGRetriever:
         *,
         allowed_tool_names: frozenset[str] | None,
     ) -> bool:
-        prompt_call = prompt_tool_call_from_metadata(metadata)
-        if prompt_call is None:
+        if not isinstance(metadata.get("id"), str) or not metadata["id"]:
+            return False
+        decision_name = example_decision_name(metadata)
+        if decision_name is None:
             return False
         if allowed_tool_names is None:
             return True
-        return prompt_call["tool_name"] in allowed_tool_names
+        return decision_name in (allowed_tool_names | {MODEL_RESPONSE_TOOL_NAME})

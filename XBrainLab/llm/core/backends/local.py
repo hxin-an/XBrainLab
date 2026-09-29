@@ -518,7 +518,7 @@ class LocalBackend:
         *,
         max_input_tokens: int,
     ) -> str:
-        """Drop optional context or reject before token-level truncation."""
+        """Pack whole ranked examples after required context, without truncation."""
         processed_messages = self._process_messages_for_template(messages)
         prompt, token_count = self._render_chat_template_with_token_count(
             tokenizer,
@@ -538,8 +538,57 @@ class LocalBackend:
             )
         )
         if required_token_count > max_input_tokens:
-            raise RuntimeError(LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE)
-        return required_prompt
+            raise PreconditionError(LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE)
+
+        # Optional runtime notes yield first. RAG items arrive in
+        # relevance order; retain each complete item only when its exact template
+        # fits. Never re-project or clip fields inside an admitted example.
+        packed_messages = list(required_messages)
+        packed_prompt = required_prompt
+        for message in messages[:-1]:
+            if message.get("role") != "user" or not self._is_untrusted_context_message(
+                message
+            ):
+                continue
+            payload = json.loads(message["content"])
+            selected = []
+            packed_index = len(packed_messages) - 1
+            for item in payload["items"]:
+                if (
+                    type(item) is not dict
+                    or item.get("type") != "rag_example"
+                    or type(item.get("source")) is not dict
+                    or type(item["source"].get("kind")) is not str
+                    or "data" not in item
+                ):
+                    continue
+                candidate_context = {
+                    **payload,
+                    "items": [*selected, item],
+                    "truncated": True,
+                }
+                candidate_message = {
+                    "role": "user",
+                    "content": json.dumps(
+                        candidate_context, ensure_ascii=False, separators=(",", ":")
+                    ),
+                }
+                candidate_messages = list(packed_messages)
+                if selected:
+                    candidate_messages[packed_index] = candidate_message
+                else:
+                    candidate_messages.insert(packed_index, candidate_message)
+                candidate_prompt, candidate_count = (
+                    self._render_chat_template_with_token_count(
+                        tokenizer,
+                        self._process_messages_for_template(candidate_messages),
+                    )
+                )
+                if candidate_count <= max_input_tokens:
+                    selected.append(item)
+                    packed_messages = candidate_messages
+                    packed_prompt = candidate_prompt
+        return packed_prompt
 
     def _acquire_generation_lease(self) -> _GenerationLease:
         """Reserve the loaded model for exactly one generation."""

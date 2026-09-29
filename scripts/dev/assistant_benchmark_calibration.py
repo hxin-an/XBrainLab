@@ -22,7 +22,7 @@ from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
 from XBrainLab.llm.agent.verifier import ToolSchemaValidator
 from XBrainLab.llm.tools import get_all_tools
 
-SCHEMA = "xbrainlab.assistant_benchmark_calibration.v1"
+SCHEMA = "xbrainlab.assistant_benchmark_calibration.v5"
 DEFAULT_CASES = Path(__file__).with_name("assistant_benchmark_calibration_cases.json")
 LAYERS = ("raw", "agent", "outcome")
 _CASE_FIELDS = {
@@ -116,7 +116,7 @@ def _validate_case(case: dict[str, Any], schemas: dict[str, Any]) -> None:
         for key in ("id", "family_id", "input", "stage")
     ):
         raise ValueError("Case identity, family, input and stage are required")
-    if case["decision"] not in {"no_call", "clarification", "action"}:
+    if case["decision"] not in {"no_call", "action"}:
         raise ValueError("Unknown expected decision")
     if type(case["requires_confirmation"]) is not bool:
         raise ValueError("Confirmation expectation must be a boolean")
@@ -153,14 +153,6 @@ def _validate_case(case: dict[str, Any], schemas: dict[str, Any]) -> None:
             raise ValueError("No-call cannot expect an action or pending receipt")
     elif case["tool"] not in schemas:
         raise ValueError("Expected tool is not in the current product surface")
-    elif decision == "clarification":
-        required = schemas[case["tool"]].get("required", [])
-        if not missing or not set(missing) <= set(required) or case["parameters"]:
-            raise ValueError("Clarification must name actual required tool inputs")
-        if case["completion"] != "clarification" or effects != [
-            {"kind": "pending", "tool": case["tool"]}
-        ]:
-            raise ValueError("Clarification expects only an observed pending receipt")
     else:
         if not case["requires_confirmation"] and any(
             tool.name == case["tool"] and tool.requires_confirmation
@@ -208,25 +200,15 @@ def _decision_score(
     envelope = CommandParser.parse_product(response)
     if envelope.status not in {ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL}:
         return {"passed": False, "decision": "invalid", "reason": "invalid_envelope"}
-    decision = (
-        "action"
-        if envelope.status is ToolEnvelopeStatus.VALID
-        else ("clarification" if envelope.pending_action else "no_call")
-    )
-    passed = decision == case["decision"] and envelope.workflow_stage == case["stage"]
+    decision = "action" if envelope.status is ToolEnvelopeStatus.VALID else "no_call"
+    passed = decision == case["decision"]
     if decision == "action":
-        tool, parameters = envelope.commands[0]
+        tool, parameters = envelope.command
         passed = (
             passed
             and tool == case["tool"]
             and _equal(parameters, case["parameters"])
             and ToolSchemaValidator(schemas).validate(tool, parameters).is_valid
-        )
-    elif decision == "clarification":
-        passed = (
-            passed
-            and envelope.pending_action == case["tool"]
-            and set(envelope.missing_inputs) == set(case["missing_inputs"])
         )
     return {
         "passed": bool(passed),
@@ -254,19 +236,9 @@ def score_observation(
             "success": True,
         }
     expected_pending = None
-    if case["decision"] == "clarification":
-        expected_pending = {
-            "tool": case["tool"],
-            "missing_inputs": sorted(case["missing_inputs"]),
-        }
     pending = observation.get("pending")
-    if isinstance(pending, dict) and isinstance(pending.get("missing_inputs"), list):
-        fields = pending["missing_inputs"]
-        if all(isinstance(field, str) for field in fields):
-            pending = {**pending, "missing_inputs": sorted(fields)}
     terminal = {
         "response": "response",
-        "clarification": "clarification",
         "backend": "completed",
         "gui": "gui_ready",
     }[case["completion"]]
@@ -367,6 +339,10 @@ def calibrate(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema": SCHEMA,
         "evidence_kind": "synthetic_development_calibration",
+        "parameter_scope": "single_turn_complete_parameters",
+        "source_validation": "not_evaluated",
+        "clarification_semantics": "not_evaluated",
+        "retired_observation_ids": ["clarify.pass", "clarify.fail"],
         "model_executed": False,
         "product_benchmark_score": None,
         "human_agreement": None,

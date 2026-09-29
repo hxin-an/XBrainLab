@@ -36,6 +36,8 @@ from XBrainLab.llm.agent.ui_handoff import (
 )
 from XBrainLab.llm.core.generation import GenerationProfile
 
+_IMPORT_PROPOSAL = '{"tool_name":"import_eeg_data","parameters":{}}'
+
 
 class _ScriptedWorker(QObject):
     """Qt worker seam that emits complete scripted generations."""
@@ -227,11 +229,19 @@ def _submit_user_turn(
     )
 
 
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        '```json\n{"tool_name":"import_eeg_data"}\n```',
+        '{"decision":"execute","mode":"new_request",'
+        '"action":"import_eeg_data","changes":{},"message":null}',
+    ],
+)
 def test_malformed_tool_envelopes_stop_after_one_repair_without_execution(
     qtbot,
+    malformed,
 ):
-    malformed = '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```'
-    valid = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    valid = _IMPORT_PROPOSAL
     controller, worker, coordinator = _controller_with_script(
         [malformed, malformed, valid]
     )
@@ -258,8 +268,8 @@ def test_malformed_tool_envelopes_stop_after_one_repair_without_execution(
             "or describe one workflow step more specifically."
         ]
         assert all(
-            "Return exactly one DECISION ENVELOPE" in messages[0]["content"]
-            and "Never use a Markdown code fence" in messages[0]["content"]
+            "exactly tool_name and parameters" in messages[0]["content"]
+            and "No prose, wrappers or code fences" in messages[0]["content"]
             for messages in worker.messages[1:]
         )
         assert "FORMAT CORRECTION REQUIRED" not in worker.messages[0][0]["content"]
@@ -273,8 +283,8 @@ def test_malformed_tool_envelopes_stop_after_one_repair_without_execution(
         close_controller_and_wait(controller, qtbot)
 
 
-def test_multiple_objects_never_reach_execution_or_create_input_receipt(qtbot):
-    action = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+def test_multiple_objects_never_reach_execution_or_create_pending_request(qtbot):
+    action = _IMPORT_PROPOSAL
     controller, worker, coordinator = _controller_with_script([f"{action}\n{action}"])
 
     try:
@@ -285,8 +295,7 @@ def test_multiple_objects_never_reach_execution_or_create_input_receipt(qtbot):
         assert controller._tool_attempt_session.retry_count == 0
         assert controller._tool_attempt_session.execution_count == 0
         assert coordinator.commands == []
-        assert controller.pending_interactions.tool_input is None
-        assert controller.pending_interactions.active_tool_input is None
+        assert not controller.pending_interactions.has_pending
         assert controller.pending_interactions.workflow_handoff is None
     finally:
         close_controller_and_wait(controller, qtbot)
@@ -295,8 +304,8 @@ def test_multiple_objects_never_reach_execution_or_create_input_receipt(qtbot):
 def test_recovered_valid_envelope_reaches_real_execution_coordinator(
     qtbot,
 ):
-    malformed = '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```'
-    valid = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    malformed = '```json\n{"tool_name":"import_eeg_data"}\n```'
+    valid = _IMPORT_PROPOSAL
     controller, worker, coordinator = _controller_with_script([malformed, valid])
 
     try:
@@ -326,8 +335,8 @@ def test_parsed_import_handoff_executes_once_despite_recovery_or_duplicate_finis
     fenced: bool,
 ) -> None:
     """One parsed proposal cannot become a second tool execution in one turn."""
-    malformed = '```json\n{"tool_name":"import_eeg_data","parameters":{}}\n```'
-    valid = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    malformed = '```json\n{"tool_name":"import_eeg_data"}\n```'
+    valid = _IMPORT_PROPOSAL
     if fenced:
         valid = f"```json\n{valid}\n```"
     controller, worker, coordinator = _controller_with_script(
@@ -376,7 +385,7 @@ def test_same_import_action_in_three_fresh_turns_never_accumulates_a_loop(
     qtbot,
 ) -> None:
     """Repeat across user turns is legal; each fresh turn still owns one action."""
-    valid = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    valid = _IMPORT_PROPOSAL
     controller, worker, coordinator = _controller_with_script([valid, valid, valid])
     terminals = []
     controller.turn_finished.connect(terminals.append)
@@ -415,7 +424,7 @@ def test_same_import_action_in_three_fresh_turns_never_accumulates_a_loop(
 
 @pytest.mark.parametrize("fenced", (False, True))
 def test_adjacent_objects_never_execute_even_inside_one_fence(qtbot, fenced):
-    action = '{"workflow_stage":"empty","tool_name":"import_eeg_data","parameters":{}}'
+    action = _IMPORT_PROPOSAL
     multiple = f"{action}\n{action}"
     if fenced:
         multiple = f"```json\n{multiple}\n```"

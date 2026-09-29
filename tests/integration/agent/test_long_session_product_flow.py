@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from math import ceil
 from time import monotonic
-from typing import Any, ClassVar, cast
+from typing import Any, cast
 from unittest.mock import patch
 
 import mne
@@ -183,8 +183,7 @@ class _ImmediateRagLifecycle:
 class _DeterministicModelWorker(AgentWorker):
     """Worker-contract model double that still crosses the queued Qt boundary."""
 
-    proposed_tool_name = "respond_to_user"
-    proposed_tool_parameters: ClassVar[dict[str, object] | None] = None
+    proposed_action: str | None = None
 
     def __init__(self) -> None:
         super().__init__()
@@ -194,14 +193,11 @@ class _DeterministicModelWorker(AgentWorker):
         self.requests.append(request)
         generation_id = request.generation_id
         response_text = f"Bounded deterministic response {len(self.requests)}."
-        parameters = self.proposed_tool_parameters
-        if parameters is None:
-            parameters = {"message": response_text}
+        action = self.proposed_action
         response_text = json.dumps(
             {
-                "workflow_stage": _request_workflow_stage(request),
-                "tool_name": self.proposed_tool_name,
-                "parameters": parameters,
+                "tool_name": action or "respond_to_user",
+                "parameters": {"message": response_text} if action is None else {},
             },
             separators=(",", ":"),
         )
@@ -378,46 +374,19 @@ def _request_latest_user_text(request: AssistantGenerationRequest) -> str:
         if message.get("role") == "user":
             content = message.get("content")
             if isinstance(content, str) and decode_untrusted_context(content) is None:
-                return content
+                current_user = json.loads(content)["current_user"]
+                assert set(current_user) == {"text"}
+                return current_user["text"]
     raise AssertionError("Model request omitted the latest user turn.")
 
 
 def _request_workflow_stage(request: AssistantGenerationRequest) -> str:
-    for message in request.to_model_messages():
-        content = message.get("content")
-        if not isinstance(content, str):
-            continue
-        prompt_marker = 'root object must be exactly {"workflow_stage":"'
-        marker_index = content.find(prompt_marker)
-        if marker_index >= 0:
-            stage_start = marker_index + len(prompt_marker)
-            stage_end = content.find('"', stage_start)
-            if stage_end > stage_start:
-                return content[stage_start:stage_end]
-        try:
-            payload = json.loads(content)
-        except json.JSONDecodeError:
-            continue
-        if (
-            not isinstance(payload, dict)
-            or payload.get("schema") != "xbrainlab.untrusted_context.v1"
-            or payload.get("trust") != "untrusted"
-        ):
-            continue
-        items = payload.get("items")
-        if not isinstance(items, list):
-            continue
-        for item in items:
-            if not isinstance(item, dict) or item.get("type") != "state_card":
-                continue
-            assert item.get("source") == {"kind": "application_service_publication"}
-            data = item.get("data")
-            if not isinstance(data, dict):
-                continue
-            stage = data.get("workflow_stage")
-            if isinstance(stage, str):
-                return stage
-    raise AssertionError("Model request omitted current workflow publication context.")
+    payload = json.loads(request.to_model_messages()[-1]["content"])
+    state = payload["application_state"]
+    assert isinstance(state, dict)
+    stage = state["workflow_stage"]
+    assert isinstance(stage, str)
+    return stage
 
 
 def _request_utf8_bytes(request: AssistantGenerationRequest) -> int:
@@ -769,8 +738,7 @@ def test_ui_settle_gate_rejects_sustained_or_severe_stalls(
 class _ResetPreprocessingProposalWorker(_DeterministicModelWorker):
     """Propose one real destructive tool through the ordinary model boundary."""
 
-    proposed_tool_name = "reset_preprocessing"
-    proposed_tool_parameters: ClassVar[dict[str, object]] = {}
+    proposed_action = "reset_preprocessing"
 
 
 def _prepare_preprocessed_confirmation_state(

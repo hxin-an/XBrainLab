@@ -14,7 +14,7 @@ from contextlib import suppress
 from typing import Any, Protocol
 
 from .config import RAGConfig
-from .example_policy import is_primary_workflow_example
+from .example_policy import example_decision_name, example_search_text
 
 try:
     from langchain_core.documents import Document as _Document
@@ -58,7 +58,7 @@ class RAGIndexer:
 
         Each entry in the JSON array is expected to have an ``input``
         field (used as searchable content) and optional ``id``,
-        ``category``, and ``expected_tool_calls`` fields (stored as
+        ``category``, and ``expected_proposal`` fields (stored as
         metadata).
 
         Args:
@@ -83,15 +83,20 @@ class RAGIndexer:
             # Content is what we search against (Subject's input)
             content = item.get("input", "")
 
-            # Metadata contains the answer (Tool Calls)
+            # Keep the example's source separate from its untrusted proposal.
             metadata = {
                 "id": item.get("id"),
                 "category": item.get("category"),
-                "tool_calls": json.dumps(item.get("expected_tool_calls")),
+                "proposal": json.dumps(item.get("expected_proposal")),
+                "source_text": content,
             }
-
-            if content and is_primary_workflow_example(metadata):
-                docs.append(Document(page_content=content, metadata=metadata))
+            if "prior_turn" in item:
+                continue
+            search_text = example_search_text(metadata)
+            if search_text:
+                # Derived from the validated fragment, never a second authority.
+                metadata["decision_name"] = example_decision_name(metadata)
+                docs.append(Document(page_content=search_text, metadata=metadata))
 
         logger.info("Loaded %s documents from %s", len(docs), json_path)
         return docs

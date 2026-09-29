@@ -20,6 +20,17 @@ from XBrainLab.llm.agent.context_encoding import (
 
 
 def _encoded_tool_context(tool_name: str) -> str:
+    parameters = {
+        "switch_panel": {"panel_name": "evaluation"},
+        "respond_to_user": {"message": "No operation will be performed."},
+        "apply_bandpass_filter": {"low_freq": 2, "high_freq": 35},
+        "apply_notch_filter": {"freq": 50},
+        "resample_data": {"rate": 160},
+        "set_reference": {"method": "average"},
+        "normalize_data": {"method": "z-score"},
+    }.get(tool_name, {})
+    user_input = "test prompt " + json.dumps(parameters)
+    proposal = {"tool_name": tool_name, "parameters": parameters}
     return encode_untrusted_context(
         [
             UntrustedContextItem(
@@ -30,48 +41,14 @@ def _encoded_tool_context(tool_name: str) -> str:
                     category="test",
                 ),
                 data={
-                    "input": "test prompt",
-                    "expected_action": {
-                        "tool_name": tool_name,
-                        "parameters": {},
-                    },
+                    "input": user_input,
+                    "expected_proposal": proposal,
                 },
             )
         ],
         max_chars=4_096,
         max_items=1,
         max_string_chars=768,
-    )
-
-
-def test_evaluate_context_result_requires_expected_tool() -> None:
-    result = verify_rag.evaluate_context_result(
-        _encoded_tool_context("import_eeg_data"),
-        expected_tool="import_eeg_data",
-    )
-
-    assert result == {
-        "ok": True,
-        "expected_tool": "import_eeg_data",
-        "observed_tool": "import_eeg_data",
-        "item_count": 1,
-    }
-
-
-def test_evaluate_context_result_rejects_empty_or_wrong_context() -> None:
-    assert (
-        verify_rag.evaluate_context_result(
-            "",
-            expected_tool="start_training",
-        )["ok"]
-        is False
-    )
-    assert (
-        verify_rag.evaluate_context_result(
-            _encoded_tool_context("get_dataset_info"),
-            expected_tool="start_training",
-        )["ok"]
-        is False
     )
 
 
@@ -107,6 +84,77 @@ def test_rank_three_hit_does_not_hide_an_unauthorized_candidate() -> None:
     assert result["top3_hit"] is True
     assert result["membership_ok"] is False
     assert result["unauthorized_tools"] == ["get_dataset_info"]
+
+
+def test_response_example_is_legal_without_becoming_a_callable_tool() -> None:
+    result = verify_rag.evaluate_probe_context(
+        _encoded_tool_context("respond_to_user"),
+        expected_tool="respond_to_user",
+        allowed_tools=frozenset({"import_eeg_data"}),
+    )
+    assert result["membership_ok"] is True
+    assert result["top1_hit"] is True
+
+
+def test_prior_metadata_is_rejected_not_merged_by_verifier():
+    payload = json.loads(_encoded_tool_context("apply_bandpass_filter"))
+    payload["items"][0]["data"]["prior_turn"] = {"input": "2 Hz"}
+    result = verify_rag.evaluate_probe_context(
+        json.dumps(payload),
+        expected_tool="apply_bandpass_filter",
+        allowed_tools=frozenset({"apply_bandpass_filter"}),
+    )
+    assert not result["membership_ok"]
+
+
+def test_index_count_contains_only_standalone_rows():
+    corpus = json.loads(verify_rag.RAGConfig.get_gold_set_path().read_text())
+    assert not any("prior_turn" in row for row in corpus)
+    assert verify_rag._count_indexable_examples() == len(corpus) == 161
+
+
+def test_response_name_does_not_hide_an_invalid_response_contract() -> None:
+    payload = json.loads(_encoded_tool_context("respond_to_user"))
+    payload["items"][0]["data"]["expected_proposal"]["parameters"]["message"] = None
+    result = verify_rag.evaluate_probe_context(
+        json.dumps(payload),
+        expected_tool="respond_to_user",
+        allowed_tools=frozenset(),
+    )
+    assert result["context_valid"] is False
+    assert result["membership_ok"] is False
+
+
+def test_paired_probes_are_separate_independent_and_stage_legal() -> None:
+    paired = verify_rag.load_paired_probes()
+    assert len(paired) == 24
+    old = verify_rag.load_probes()
+    old_queries = {
+        case["query"].casefold()
+        for case in old["positive_cases"] + old["boundary_cases"]
+    }
+    assert not old_queries.intersection(case["query"].casefold() for case in paired)
+    publications = verify_rag.stage_tool_publications()
+    for case in paired:
+        assert case["expected_tool"] == "respond_to_user" or case["expected_tool"] in (
+            publications[case["stage"]].tool_names
+        )
+
+
+def test_mixed_paired_probes_require_choose_first_without_partial_execution() -> None:
+    mixed = [
+        case
+        for case in verify_rag.load_paired_probes()
+        if case["category"] == "mixed_request"
+    ]
+    assert {case["id"] for case in mixed} == {
+        "rag_pair_bandpass_action",
+        "rag_pair_normalize_action",
+    }
+    for case in mixed:
+        assert case["expected_tool"] == "respond_to_user"
+        assert case["expected_parameters"] == {}
+        assert case["response_requirement"] == "ask_which_to_do_first"
 
 
 def test_empty_tool_name_cannot_hide_beside_a_valid_hit() -> None:
@@ -210,6 +258,15 @@ def test_baseline_comparison_rejects_fewer_hits_or_changed_probe_identity() -> N
     }
     baseline = json.loads(json.dumps(report))
     assert verify_rag.compare_baseline(report, baseline)["ok"] is True
+    # One repaired case must not conceal a different pass-to-fail regression.
+    exchanged = json.loads(json.dumps(report))
+    exchanged["retrieval_cases"][0]["candidate_tools"] = []
+    exchanged["retrieval_cases"][34]["candidate_tools"] = [
+        exchanged["retrieval_cases"][34]["expected_tool"]
+    ]
+    comparison = verify_rag.compare_baseline(exchanged, baseline)
+    assert comparison["ok"] is False
+    assert comparison["regressed_case_ids"] == [report["retrieval_cases"][0]["id"]]
     baseline["retrieval_summary"]["top3_hits"] = 35
     baseline["retrieval_cases"][34]["candidate_tools"] = [
         baseline["retrieval_cases"][34]["expected_tool"]
@@ -229,17 +286,33 @@ def test_verification_passes_the_entire_production_publication_to_retrieval() ->
     publications = verify_rag.stage_tool_publications()
     cases = {
         case["query"]: case
-        for case in probes["positive_cases"] + probes["boundary_cases"]
+        for case in probes["positive_cases"]
+        + probes["boundary_cases"]
+        + verify_rag.load_paired_probes()
     }
     observed: list[str] = []
+    admission_fixture = verify_rag.load_admission_cases()
+    admission_queries = {
+        "\n".join(case["user_turns"])
+        for split in ("calibration", "review")
+        for case in admission_fixture[split]
+    }
+    observed_admission = []
 
     def retrieve(query, *, k, allowed_tool_names):
+        if query in admission_queries:
+            assert allowed_tool_names == frozenset(
+                admission_fixture["eligible_tool_names"]
+            )
+            observed_admission.append(query)
+            return ""
         case = cases[query]
         assert k == 3
         assert allowed_tool_names == publications[case["stage"]].tool_names
         assert len(allowed_tool_names) > 1
         observed.append(case["id"])
-        return _encoded_tool_context(case["tool"]) if "tool" in case else ""
+        tool = case.get("tool", case.get("expected_tool"))
+        return _encoded_tool_context(tool) if tool else ""
 
     retriever = MagicMock()
     retriever.is_initialized = True
@@ -265,9 +338,91 @@ def test_verification_passes_the_entire_production_publication_to_retrieval() ->
         ),
     ):
         report = verify_rag.run_verification()
-    assert len(observed) == 48
+    assert report["identity"]["sparse_minimum_matched_terms"] == 2
+    assert report["identity"]["sparse_minimum_coverage"] == 0.5
+    assert "sparse_threshold" not in report["identity"]
+    assert len(observed) == 72
+    assert set(observed_admission) == admission_queries
+    assert len(observed_admission) == 20
+    assert len(report["paired_cases"]) == 24
     assert report["retrieval_summary"]["top3_hits"] == 36
-    assert report["ok"] is True
+    # Existing positive probes cannot certify the newly frozen admission cases.
+    assert report["ok"] is False
+    assert any(
+        check["name"] == "fixed_v5_retrieval_admission" and not check["ok"]
+        for check in report["checks"]
+    )
+    assert report["schema"] == "xbrainlab.rag-verification.v5"
+    assert report["fixed_v5_admission"]["dense_candidates"]["status"] == "not_assessed"
+    assert (
+        report["fixed_v5_admission"]["acceptance_scope"]
+        == "selected_relevance_and_required_sparse_ids"
+    )
+
+
+@pytest.mark.parametrize("changed", ["fixture", "corpus"])
+def test_admission_rejects_changed_frozen_inputs(tmp_path, monkeypatch, changed):
+    path = tmp_path / "changed.json"
+    path.write_text("{}", encoding="utf-8")
+    if changed == "fixture":
+        monkeypatch.setattr(verify_rag, "ADMISSION_PATH", path)
+    else:
+        monkeypatch.setattr(verify_rag.RAGConfig, "get_gold_set_path", lambda: path)
+    with pytest.raises(ValueError, match="Frozen v5 RAG admission"):
+        verify_rag.load_admission_cases()
+
+
+def test_admission_keeps_real_sparse_candidates_distinct_from_wrong_final_examples():
+    from XBrainLab.llm.rag.bm25 import BM25Index
+
+    fixture = verify_rag.load_admission_cases()
+    retriever = verify_rag.RAGRetriever()
+    retriever.bm25_index = BM25Index()
+    retriever.bm25_index.build_from_json(verify_rag.RAGConfig.get_gold_set_path())
+    # Isolate only final context delivery; sparse admission/ranking stays real.
+    wrong = json.loads(_encoded_tool_context("apply_notch_filter"))
+    wrong["items"][0]["source"]["id"] = "apply_notch_filter_01"
+    with patch.object(
+        retriever, "get_similar_examples", return_value=json.dumps(wrong)
+    ):
+        result = verify_rag.evaluate_admission_cases(retriever, fixture)
+    by_id = {row["id"]: row for row in result["cases"]}
+    assert by_id["R01"]["sparse_candidates"]["missing_required_ids"] == []
+    assert by_id["R01"]["selected_examples"]["wrong_ids"] == ["apply_notch_filter_01"]
+    assert not by_id["R01"]["selected_examples"]["ok"]
+    assert by_id["R02"]["sparse_candidates"]["missing_required_ids"] == []
+    assert by_id["R02"]["sparse_candidates"]["ok"]
+    assert "R10" not in by_id  # Retired multi-turn evidence stays only in v3.
+    assert by_id["R12"]["query"] == "How long does a butterfly live?"
+    assert result["measured_checks_ok"] is False
+    assert result["fixture_sha256"] == verify_rag.ADMISSION_SHA256
+    assert result["corpus_sha256"] == verify_rag.ADMISSION_CORPUS_SHA256
+
+
+def test_admission_allows_empty_in_domain_but_requires_specified_sparse_ids():
+    fixture = verify_rag.load_admission_cases()
+    retriever = MagicMock()
+    retriever.get_similar_examples.return_value = ""
+    retriever.bm25_index.query.return_value = []
+    result = verify_rag.evaluate_admission_cases(retriever, fixture)
+    rows = {row["id"]: row for row in result["cases"]}
+    assert rows["R03"]["selected_examples"]["ids"] == []
+    assert rows["R03"]["selected_examples"]["ok"]
+    assert rows["R03"]["sparse_candidates"]["ok"]
+    assert rows["R02"]["selected_examples"]["ok"]
+    assert not rows["R02"]["sparse_candidates"]["ok"]
+    assert rows["R02"]["sparse_candidates"]["missing_required_ids"] == [
+        "set_reference_07"
+    ]
+    assert not result["measured_checks_ok"]
+    retriever.bm25_index.query.return_value = [
+        (1.0, "apply_notch_filter_01", "candidate text", {})
+    ]
+    candidate_only = verify_rag.evaluate_admission_cases(retriever, fixture)
+    row = next(row for row in candidate_only["cases"] if row["id"] == "R03")
+    assert row["sparse_candidates"]["wrong_ids"] == ["apply_notch_filter_01"]
+    assert row["sparse_candidates"]["ok"]
+    assert row["selected_examples"]["ids"] == []
 
 
 def test_strict_main_returns_failure_for_failed_report(capsys) -> None:

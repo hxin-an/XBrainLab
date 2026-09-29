@@ -1,55 +1,23 @@
-"""Strict product boundary for model-proposed tool calls."""
+"""Strict product boundary for a single model-proposed command."""
 
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, TypeAlias
 
-from XBrainLab.backend.application.pipeline_stage import PipelineStage
+from XBrainLab.backend.utils.public_diagnostics import public_exception_message
 
-from .decision_contract import MODEL_RESPONSE_TOOL_NAME
+from .decision_contract import MAX_NAME_LENGTH, MODEL_RESPONSE_TOOL_NAME
 
 ToolCommand: TypeAlias = tuple[str, dict[str, Any]]
 
-_BARE_COMMANDS = frozenset(
-    {
-        "scan_source",
-        "preview_interpretation",
-        "validate_interpretation",
-        "apply_interpretation",
-        "save_interpretation_recipe",
-        "reload_interpretation_recipe",
-        "apply_standard_preprocess",
-        "apply_bandpass_filter",
-        "epoch_data",
-        "create_epoch",
-        "configure_dataset_split",
-        "configure_training",
-        "start_training",
-        "train",
-        "evaluate",
-        "visualize",
-        "saliency",
-        "query_state",
-        "get_dataset_info",
-    }
-)
-_NO_TOOL_SENTINELS = frozenset(
-    {"ask_clarification", "clarify", "none", "no_tool", "null"}
-)
-_TOOL_MARKER = re.compile(
-    r'["\']?(?:decision|tool_name|tool_call|tool_calls|command)'
-    r'["\']?\s*:',
-)
-_STRICT_TOOL_FIELDS = frozenset({"workflow_stage", "tool_name", "parameters"})
-_WORKFLOW_STAGES = frozenset(stage.value for stage in PipelineStage) | {"unavailable"}
-
 
 class ToolEnvelopeStatus(str, Enum):
-    """Classification of one complete model response at the product boundary."""
+    """Classification before request admission or product execution."""
 
     NO_TOOL = "no_tool"
     VALID = "valid"
@@ -59,49 +27,36 @@ class ToolEnvelopeStatus(str, Enum):
 
 @dataclass(frozen=True)
 class ToolEnvelopeParseResult:
-    """Typed parse result used before any product tool execution can begin."""
+    """A parsed command or non-executable reply; validity is not admission."""
 
     status: ToolEnvelopeStatus
-    commands: tuple[ToolCommand, ...] = ()
     error: str = ""
-    workflow_stage: str | None = None
-    pending_action: str = ""
-    missing_inputs: tuple[str, ...] = ()
     message: str = ""
+    command: ToolCommand | None = None
 
-    @classmethod
-    def no_tool(
-        cls,
-        *,
-        workflow_stage: str | None = None,
-        missing_inputs: tuple[str, ...] = (),
-        pending_action: str = "",
-        message: str = "",
-    ) -> ToolEnvelopeParseResult:
-        return cls(
-            ToolEnvelopeStatus.NO_TOOL,
-            workflow_stage=workflow_stage,
-            pending_action=pending_action,
-            missing_inputs=missing_inputs,
-            message=message,
-        )
+    @property
+    def decision(self) -> str:
+        """Semantic label for diagnostics, not a second model wire contract."""
+        if self.status is ToolEnvelopeStatus.VALID:
+            return "execute"
+        if self.status is ToolEnvelopeStatus.NO_TOOL:
+            return "reply"
+        return ""
 
-    @classmethod
-    def valid(
-        cls,
-        command: ToolCommand,
-        *,
-        workflow_stage: str,
-    ) -> ToolEnvelopeParseResult:
-        return cls(
-            ToolEnvelopeStatus.VALID,
-            (command,),
-            workflow_stage=workflow_stage,
-        )
+    def proposal_dict(self) -> dict[str, Any] | None:
+        """Serialize only a successfully parsed two-field response."""
+        if self.status is ToolEnvelopeStatus.NO_TOOL:
+            return {
+                "tool_name": MODEL_RESPONSE_TOOL_NAME,
+                "parameters": {"message": self.message},
+            }
+        if self.status is ToolEnvelopeStatus.VALID and self.command is not None:
+            tool_name, parameters = self.command
+            return {"tool_name": tool_name, "parameters": parameters}
+        return None
 
     @classmethod
     def multiple_objects(cls) -> ToolEnvelopeParseResult:
-        """Classify an adjacent object stream without exposing commands."""
         return cls(
             ToolEnvelopeStatus.MULTIPLE_OBJECTS,
             error="A response contained multiple complete top-level JSON objects.",
@@ -112,216 +67,105 @@ class ToolEnvelopeParseResult:
         return cls(ToolEnvelopeStatus.FORMAT_ERROR, error=message)
 
 
-class _DuplicateKeyError(ValueError):
-    pass
-
-
-class _NonStandardJsonValueError(ValueError):
-    pass
-
-
 def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise _DuplicateKeyError(f"duplicate JSON key: {key}")
+            raise ValueError(f"Duplicate JSON key: {key}.")
         result[key] = value
     return result
 
 
 def _reject_non_standard_json(value: str) -> None:
-    raise _NonStandardJsonValueError(f"non-standard JSON value: {value}")
+    raise ValueError(f"Non-standard JSON value: {value}.")
+
+
+def _finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError("JSON numbers must be finite.")
+    return parsed
+
+
+def _bounded_text(value: Any, limit: int) -> bool:
+    return isinstance(value, str) and bool(value.strip()) and len(value) <= limit
+
+
+def _name(value: Any) -> bool:
+    return _bounded_text(value, MAX_NAME_LENGTH) and value == value.strip()
 
 
 class CommandParser:
-    """Parse strict product envelopes."""
+    """Parse one strict proposal, without inferring intent or repairing values."""
 
     @staticmethod
     def parse_product(text: str) -> ToolEnvelopeParseResult:
-        """Classify a complete model response without recovering malformed calls.
-
-        A product action is exactly one top-level JSON object with
-        ``workflow_stage``, ``tool_name`` and ``parameters``. One whole-response
-        json or unlabeled Markdown fence is accepted as formatting only. Prose,
-        wrappers, arrays, duplicate keys, partial JSON and multiple calls never
-        reach execution; the caller's raw response remains unchanged.
-        """
-
+        """Accept one JSON object, optionally in one whole-response JSON fence."""
         stripped = text.strip()
-        if not stripped:
-            return ToolEnvelopeParseResult.no_tool()
-
         fence = re.fullmatch(
             r"```(?:json)?[ \t]*\r?\n(.*)\r?\n```", stripped, re.DOTALL
         )
         if fence is not None:
             stripped = fence.group(1).strip()
-
-        try:
-            decoded = json.loads(
-                stripped,
-                object_pairs_hook=_unique_object,
-                parse_constant=_reject_non_standard_json,
-            )
-        except _DuplicateKeyError:
-            return ToolEnvelopeParseResult.format_error(
-                "A tool proposal must not contain duplicate JSON keys.",
-            )
-        except _NonStandardJsonValueError:
-            return ToolEnvelopeParseResult.format_error(
-                "A tool proposal must not contain non-standard JSON values.",
-            )
-        except json.JSONDecodeError as exc:
-            if CommandParser._has_multiple_adjacent_objects(stripped):
-                return ToolEnvelopeParseResult.multiple_objects()
-            if not CommandParser._looks_like_tool_attempt(stripped):
-                return ToolEnvelopeParseResult.format_error(
-                    "A structured assistant response must be one JSON object.",
-                )
-            if stripped.startswith("```") or not stripped.startswith(("{", "[")):
-                message = (
-                    "A tool proposal must occupy the entire response as one JSON "
-                    "object, optionally inside one json or unlabeled code fence, "
-                    "with no surrounding prose."
-                )
-            elif stripped.startswith("["):
-                message = "A tool proposal must be one top-level object, not an array."
-            else:
-                message = f"A tool proposal must be complete JSON: {exc.msg}."
-            return ToolEnvelopeParseResult.format_error(message)
-
-        if not isinstance(decoded, dict):
-            return ToolEnvelopeParseResult.format_error(
-                "A tool proposal must be one top-level object.",
-            )
-
-        keys = frozenset(decoded)
-        if keys != _STRICT_TOOL_FIELDS:
-            return ToolEnvelopeParseResult.format_error(
-                "An assistant action must be exactly workflow_stage, tool_name, "
-                "and parameters.",
-            )
-
-        workflow_stage = decoded["workflow_stage"]
-        tool_name = decoded["tool_name"]
-        parameters = decoded["parameters"]
-        if (
-            not isinstance(workflow_stage, str)
-            or workflow_stage not in _WORKFLOW_STAGES
-        ):
-            return ToolEnvelopeParseResult.format_error(
-                "workflow_stage must be an exact backend stage value.",
-            )
-        if not isinstance(tool_name, str) or not tool_name.strip():
-            return ToolEnvelopeParseResult.format_error(
-                "tool_name must be a non-empty string.",
-            )
-        if tool_name.strip().lower() in _NO_TOOL_SENTINELS:
-            return ToolEnvelopeParseResult.format_error(
-                "Use normal text instead of a no-tool sentinel envelope.",
-            )
-        if not isinstance(parameters, dict):
-            return ToolEnvelopeParseResult.format_error(
-                "parameters must be a JSON object.",
-            )
-        if tool_name.strip() == MODEL_RESPONSE_TOOL_NAME:
-            return CommandParser._parse_model_response(
-                parameters,
-                workflow_stage=workflow_stage,
-            )
-
-        return ToolEnvelopeParseResult.valid(
-            (tool_name, parameters),
-            workflow_stage=workflow_stage,
-        )
-
-    @staticmethod
-    def _has_multiple_adjacent_objects(text: str) -> bool:
-        """Recognize only a whitespace-separated stream of complete objects."""
         decoder = json.JSONDecoder(
             object_pairs_hook=_unique_object,
             parse_constant=_reject_non_standard_json,
+            parse_float=_finite_float,
         )
+        try:
+            decoded = decoder.decode(stripped)
+        except json.JSONDecodeError:
+            if CommandParser._has_multiple_adjacent_objects(stripped, decoder):
+                return ToolEnvelopeParseResult.multiple_objects()
+            return ToolEnvelopeParseResult.format_error(
+                "Return one complete JSON object occupying the entire response.",
+            )
+        except (ValueError, RecursionError) as exc:
+            return ToolEnvelopeParseResult.format_error(public_exception_message(exc))
+        try:
+            return CommandParser._parse_proposal(decoded)
+        except ValueError as exc:
+            return ToolEnvelopeParseResult.format_error(public_exception_message(exc))
+
+    @staticmethod
+    def _has_multiple_adjacent_objects(text: str, decoder: json.JSONDecoder) -> bool:
         cursor = 0
         objects = 0
         try:
             while cursor < len(text):
                 while cursor < len(text) and text[cursor].isspace():
                     cursor += 1
-                if cursor == len(text) or text[cursor] != "{":
-                    return False
+                if cursor == len(text):
+                    break
                 decoded, cursor = decoder.raw_decode(text, cursor)
-                if (
-                    not isinstance(decoded, dict)
-                    or frozenset(decoded) != _STRICT_TOOL_FIELDS
-                ):
+                if not isinstance(decoded, dict):
                     return False
                 objects += 1
-        except (json.JSONDecodeError, _DuplicateKeyError, _NonStandardJsonValueError):
+        except (ValueError, RecursionError):
             return False
         return objects >= 2
 
     @staticmethod
-    def _parse_model_response(
-        parameters: dict[str, Any],
-        *,
-        workflow_stage: str,
-    ) -> ToolEnvelopeParseResult:
-        """Validate the reserved no-execution response envelope."""
-        parameter_keys = frozenset(parameters)
-        if parameter_keys == {"message"}:
-            pending_action = ""
-            missing_inputs: tuple[str, ...] = ()
-        elif parameter_keys == {"message", "pending_action", "missing_inputs"}:
-            pending_action_value = parameters["pending_action"]
-            missing_value = parameters["missing_inputs"]
-            if (
-                not isinstance(pending_action_value, str)
-                or not pending_action_value.strip()
-            ):
-                return ToolEnvelopeParseResult.format_error(
-                    "pending_action must be a non-empty string.",
-                )
-            if (
-                not isinstance(missing_value, list)
-                or not 1 <= len(missing_value) <= 2
-                or any(
-                    not isinstance(name, str) or not name.strip()
-                    for name in missing_value
-                )
-                or len({name.strip() for name in missing_value}) != len(missing_value)
-            ):
-                return ToolEnvelopeParseResult.format_error(
-                    "missing_inputs must be one or two unique non-empty field names.",
-                )
-            pending_action = pending_action_value.strip()
-            missing_inputs = tuple(name.strip() for name in missing_value)
-        else:
-            return ToolEnvelopeParseResult.format_error(
-                "respond_to_user parameters must be message only or a typed "
-                "clarification.",
+    def _parse_proposal(value: Any) -> ToolEnvelopeParseResult:
+        if not isinstance(value, dict) or set(value) != {"tool_name", "parameters"}:
+            raise ValueError(
+                "A response must contain exactly tool_name and parameters."
             )
-
-        message = parameters["message"]
-        if not isinstance(message, str):
-            return ToolEnvelopeParseResult.format_error(
-                "message must be a string.",
-            )
-        if not message.strip():
-            return ToolEnvelopeParseResult.format_error(
-                "A non-tool decision requires a user-facing message.",
-            )
-
-        return ToolEnvelopeParseResult.no_tool(
-            workflow_stage=workflow_stage,
-            pending_action=pending_action,
-            missing_inputs=missing_inputs,
-            message=message.strip(),
+        tool_name = value["tool_name"]
+        parameters = value["parameters"]
+        if not _name(tool_name):
+            raise ValueError("tool_name must be a bounded non-empty name.")
+        if not isinstance(parameters, dict):
+            raise ValueError("parameters must be an object.")
+        if tool_name == MODEL_RESPONSE_TOOL_NAME:
+            if set(parameters) != {"message"}:
+                raise ValueError(
+                    "respond_to_user requires exactly a message parameter."
+                )
+            message = parameters["message"]
+            if not isinstance(message, str) or not message.strip():
+                raise ValueError("respond_to_user requires a non-empty message.")
+            return ToolEnvelopeParseResult(ToolEnvelopeStatus.NO_TOOL, message=message)
+        return ToolEnvelopeParseResult(
+            ToolEnvelopeStatus.VALID, command=(tool_name, parameters)
         )
-
-    @staticmethod
-    def _looks_like_tool_attempt(text: str) -> bool:
-        if text.startswith(("{", "[", "```")) or _TOOL_MARKER.search(text):
-            return True
-        command = re.split(r"[\s:]+", text, maxsplit=1)[0]
-        return command in _BARE_COMMANDS

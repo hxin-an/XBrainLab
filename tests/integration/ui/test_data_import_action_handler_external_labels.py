@@ -66,6 +66,59 @@ EXPECTED_TARGET_EVENT_CODES = {"769", "770", "771", "772"}
 pytestmark = pytest.mark.usefixtures("allow_real_modals")
 
 
+@pytest.mark.parametrize("check_during_busy", [False, True])
+def test_import_busy_tracks_new_publication_without_disabling_cancel(
+    qtbot, tmp_path: Path, check_during_busy: bool
+) -> None:
+    """Render the imported capability before releasing the original busy lease."""
+    from tests.integration.data_interpretation_support import (
+        import_recording_through_interpretation,
+    )
+    from tests.integration.ui.data_import_wizard_harness import build_dataset_panel
+
+    host, panel, runtime = build_dataset_panel(qtbot)
+    service = get_application_service(host.study)
+    coordinator = panel.action_handler._data_interpretation
+    sidebar = panel.sidebar
+    assert not sidebar.chan_select_btn.isEnabled()
+    sidebar.import_cancel_btn.setEnabled(True)
+    source_path = tmp_path / "busy-render_raw.fif"
+    mne.io.RawArray(
+        np.zeros((2, 256)),
+        mne.create_info(["C3", "C4"], sfreq=128, ch_types="eeg"),
+        verbose=False,
+    ).save(source_path, overwrite=True, verbose=False)
+
+    coordinator.set_busy(True)
+    try:
+        assert sidebar.import_cancel_btn.isEnabled()
+        assert not sidebar.import_btn.isEnabled()
+        assert not panel.table.isEnabled()
+        assert import_recording_through_interpretation(service, source_path).ok
+        publication = service.get_view_publication()
+        assert publication.effective_capabilities.get("preprocess").enabled
+        qtbot.waitUntil(
+            lambda: panel._last_application_revision == publication.revision,
+            timeout=3_000,
+        )
+        assert sidebar.import_cancel_btn.isEnabled()
+        if check_during_busy:
+            assert all(
+                not button.isEnabled()
+                for button in sidebar._action_buttons
+                if button is not sidebar.import_cancel_btn
+            )
+            assert not panel.table.isEnabled()
+    finally:
+        coordinator.set_busy(False)
+        runtime.close()
+
+    assert sidebar.chan_select_btn.isEnabled()
+    assert sidebar.import_btn.isEnabled()
+    assert panel.table.isEnabled()
+    assert sidebar.import_cancel_btn.isEnabled()
+
+
 def _source_cues(source: mne.io.BaseRaw) -> np.ndarray:
     """Read the source independently of the product's reviewed label plan."""
     events, event_ids = mne.events_from_annotations(source, verbose=False)

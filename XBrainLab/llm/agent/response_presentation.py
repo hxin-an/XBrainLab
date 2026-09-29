@@ -10,7 +10,11 @@ from XBrainLab.backend.utils.public_diagnostics import (
     DiagnosticTextLayout,
     public_diagnostic_text,
 )
-from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH, bounded_chat_string
+from XBrainLab.chat_contract import (
+    LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE,
+    MAX_CHAT_MESSAGE_CONTENT_LENGTH,
+    bounded_chat_string,
+)
 from XBrainLab.llm.tools.result_contract import ToolCommandResult, UiRequest
 from XBrainLab.product_language import tool_action_label
 
@@ -141,6 +145,13 @@ def _command_identifier(command_identity: str | CommandName) -> str:
 
 def user_facing_generation_error(raw_error: object) -> str:
     """Return actionable generation failure copy without exposing internals."""
+    if type(raw_error) is str and raw_error == LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE:
+        return (
+            "The current request is too long for the local model input limit. "
+            "Shorten the request and try again. If it still does not fit, "
+            "choose New chat to discard the pending request, then restate "
+            "the action and its values."
+        )
     normalized = " ".join(str(raw_error or "").split()).lower()
     if any(marker in normalized for marker in ("out of memory", "cuda oom")):
         return (

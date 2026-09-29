@@ -1,9 +1,183 @@
 # XBrainLab Agent 目標
 
-最後更新：`2026-09-21`
+最後更新：`2026-09-29`
 
-這份文件是 XBrainLab Assistant 產品目標的唯一權威。Runtime inventory、目前測試集合與歷史
-artifact 只能描述 current implementation，不能反推本文件的產品契約。
+這份文件是XBrainLab Assistant產品目標的唯一權威。Runtime inventory、tests與歷史artifact
+只描述實作或證據，不反推產品契約。[目前架構](../architecture/agent.md)描述source，
+[Now](../planning/now.md)管理施工，[驗證契約](../validation/README.md)管理candidate gates。
+
+## 已批准：完整單輪操作基線 { #agent-baseline-design-discussion }
+
+2026-09-28使用者確認以完整單輪操作取代跨輪草稿能力，建立可固化進Development的
+可靠基線。每次普通要求只處理一個完整操作，執行參數只取本次明確要求；後端既有設定
+仍由其工具契約擁有，聊天歷史／RAG不能提供缺失參數。純說明正常回答；GUI工具完整
+要求是指定開窗，不必預先填入dialog全部選項。
+
+2026-09-29使用者重申本輪不包含複合需求，並接受明列已知工具決策限制的Development
+候選版進行集中手測；不是要求先達成任意要求的正確理解。一次多操作與說明＋操作
+仍非支援能力；下方請使用者選一件的指引保留，不改成允許部分執行。已知未遵守指引
+的模型輸出照實保留，不以本輪範圍收斂宣稱已修復或Stable；交付例外由驗證契約擁有。
+
+本輪只支援英文輸入與英文回答，不納入中文、多語或翻譯適配。上下文品質必須同時
+檢查規則一致性、當前要求與參考的可辨識性，以及目標小模型實際能否遵守；獨立 reviewer
+判斷清楚不代替模型行為證據。人工挑選示範只供根因診斷，不是產品檢索能力或正式成績。
+
+2026-09-28 後續批准一個上下文／語料適配候選：先分清是否要求執行，再判斷參數是否
+完整；缺值要指出缺漏並請完整重述，明確禁止則確認不操作，不因文字含完整數值而執行。
+純說明含數值也不是操作授權。模型輸入中回答與操作須同樣清楚；規則集中、工具/schema
+沿用backend真實投影，RAG示範與當輪要求分開。此為呈現假設，不新增Host自然語言判斷。
+語料用清楚的英文完整／缺值／部分值／禁止／說明對照，保留正例，不以錯誤呼叫作示範。
+維持既有BM25＋dense／RRF及固定參數；准入／來源保護不因簡化而移除。
+
+本輪不增加功能，不以堆範例／逐題例外或候選調優競賽掩蓋基本能力缺陷；RAG須有實際
+模型受益證據，不能以檢索接線完成代替。固定互通後只允許有具體根因的一次有界呈現
+修理；仍不成立時依Now提出決策，不擅自放寬gate或無限消耗模型額度。
+
+| 責任 | 核准界線 |
+| --- | --- |
+| 模型 | 理解當輪要求，回答、詢問缺漏或提出一個完整操作；辨認操作、否定與參數。 |
+| Agent程式 | 準備一致輸入，嚴格解析與驗證，管理確認、取消、執行交接；不保存操作草稿。 |
+| 產品後端 | 沿用ApplicationService／Command擁有狀態、capability、科學限制與真實執行結果。 |
+| RAG | 提供參考示範，不決定權限、不供給當輪缺值、不充當intent router。 |
+
+不增加第二模型、自然語言Host router、readiness owner或工作佇列。模型提案不因為是
+JSON就變成可信事實；schema與來源通過不證明語意正確或已准許執行。
+
+### 單輪理解、缺值與生命週期 { #unified-clarification }
+
+缺值時指出缺少什麼，請使用者重新提供完整要求，回答後結束回合；不保存、合併或
+更正先前操作的參數。下一輪裸數字、指涉更正或「照剛才」不能延續舊操作；
+完整重述才是新獨立要求。一般文字仍交同一模型路徑，不由Host辨認bare值或猜意圖。
+
+例如「bandpass，下限7 Hz」只能得到請重新提供完整要求的回答；
+其後「30 Hz」不能借用7執行，「Apply a bandpass filter from 7 to 30 Hz」才是完整新要求。
+資訊問題與禁止操作不執行；同時要求說明＋執行或多個操作先請使用者選一件，不部分執行。
+此處「操作」指使用者要求執行，不包含被明確禁止的操作；「不要執行，請解釋」應直接
+解釋並遵守禁止，不要求二選一，也不能只確認不執行而漏答。禁止操作的回覆由Assistant
+確認不會執行，不只複製使用者原句；缺值的完整重述包含操作名稱及全部必要值，含已給的值。
+
+移除的是對話草稿，不是confirmation、GUI handoff或training背景工作。既有確認／取消
+按鈕仍以typed回覆處理，按request identity消費一次，執行前重查publication；
+生成失敗、Stop、New Chat、Close與取消後不得恢復舊批准或自動重跑。
+取消Assistant回合不等於停止背景training；停止工作沿用既有工具及真實backend結果。
+
+### 單輪模型wire契約 { #agent-m0-contract }
+
+模型回覆恰好是`{tool_name, parameters}`，沒有其他root欄位或舊格式alias。
+
+| 欄位 | 契約 |
+| --- | --- |
+| `tool_name` | 一個當次可呼叫的既有工具名；或非執行回答標記`respond_to_user`。 |
+| `parameters` | 工具的完整實參object；`respond_to_user`時恰好含非空字串`message`。 |
+
+`respond_to_user`不是第19個工具，不進executor；缺值回答不是等待補值state。
+移除decision／mode／changes／source_turn／quote、RequestUpdate與參數草稿DTO，
+不維護兩套runtime解析或將新契約轉入舊receipt。正常工具的required/type/enum/range仍
+由既有validator與backend擁有；五個direct工具來源只核對本輪原文。
+非direct工具遵守其既有參數契約，不強迫enum字面值出現在使用者句子。
+來源匹配不是intent／否定證明，不用Host語意救援把模型錯答改判成功。
+
+### 固定資訊、動態狀態與context budget
+
+固定資訊只含角色／能力範圍、回答／缺值／操作規則與工具結果的正確理解；
+工具用途與參數以既有定義投影，不再手寫第二份catalogue或塞入EEG教科書、
+完整選項清單及具體預設值。開窗不等於完成、啟動不等於工作完成；狀態不是使用者授權。
+
+動態資訊只由同一份最新backend publication投影目前stage、必要狀態及操作／阻擋原因，
+不建立Agent readiness或背景工作truth。完整recording／subject／channel清單、
+歷史filter值、逐epoch紀錄、結果與路徑不預設全量附上；不同recording不能壓成虛構單值，
+未知不能以零／預設冒充已知。細節查詢不是本輪重點，不新增query工具或第二LLM路由。
+有可靠資訊才回答，缺來源時明示並依真實介面引導，不猜資料或介面位置。
+
+模型必要輸入為精簡policy、當次工具／必要state、當輪完整原文；另附放得下的RAG。
+不傳先前user／Assistant對話、累積參數或逐輪摘要；畫面聊天與診斷紀錄仍保留。
+此無歷史投影由使用者於2026-09-28明確核准；指涉先前回答不屬可依歷史解答的能力。
+以選定模型實際tokenizer與chat template計數，
+輸入加預留輸出不得超過catalog runtime context；產品上限8,192 tokens不因本契約擴大。
+先移除optional notes，RAG只能完整放入或整筆略過；必要state、否定／條件與
+current user不能靜默截斷。必要內容仍超限便零推論、可見拒絕，請縮短完整要求或
+New Chat後重述。不新增摘要模型、不承諾無限歷史；詳細projection依下節契約。
+
+### RAG內容與呈現
+
+RAG是操作／正確不操作的短英文decision demonstrations，不是EEG知識庫或必需規則來源。
+正常零命中不能使工具契約、缺值規則或backend資格缺席。語料涵蓋完整單一操作、
+缺值／部分值需完整重述、操作種類不明、純詢問、明確禁止，以及混合說明＋執行要求先選一件。
+不複製評測原句、不把錯誤tool call當示範答案，不增加跨輪補值／更正示範。
+
+每筆是獨立`input / expected_proposal`；提案符合兩欄wire，操作通過完整schema及
+本筆input來源驗證，不接受prior_turn或宣稱已驗證的serialized pending。範例永遠是
+untrusted參考，不是當輪參數、capability或confirmation授權；只能整筆打包，
+若source／proposal被sanitization或限長改變則整筆略過，不能提供失真的可執行示範。
+
+### 雙路獨立召回與RRF融合 { #rag-hybrid-design }
+
+固定一個有界候選，不加新模型／reranker、query rewrite、keyword router或逐題例外：
+
+1. Query只取當輪user文字，不加入先前要求、Assistant問句、tool schema、答案或整份state。
+   搜尋先限制同一eligible corpus：當次callable工具示範及合法respond_to_user示範。
+2. Dense與BM25獨立准入，每路最多10筆；dense cosine門檻0.7。BM25須至少命中2個
+   不同token，且max(query-IDF覆蓋, document-IDF覆蓋)>=0.5。覆蓋各為matched unique
+   token的IDF總和除以該側全部unique token的IDF總和，同一corpus IDF，query OOV以df=0
+   計入分母；重複詞不增加覆蓋。Eligibility與覆蓋先篩選，再按raw BM25取top10。
+3. 一路通過即可入聯集，不由dense否決sparse；各路准入後從rank1重排，只有准入候選
+   貢獻該路分數。聯集按stable ID去重、等權RRF，rank constant=60；同分按stable ID排序。
+   不把raw BM25、per-query min-max或RRF當相關性概率，也不另設假信心門檻。
+4. 按融合順序取能完整放入預算的示範，最多3筆，允許零例。Dense-only真正省略BM25
+   建置／查詢；hybrid任一路故障明示degraded／failure，不偽裝零命中或silent fallback。
+5. 固定v5的10＋10單輪工程query／相關ID標註後才量測：最終送例須在預定相關集合，
+   無關題零例，指定sparse正例須補回；分路top10錯候選另列診斷，不混成最終模型輸入。
+   Topic relevance允許同主題操作／說明／禁止對比，不等於decision equivalence。
+   v5保留v4全部query／原標註與required IDs，只補新語料的同主題示範ID。
+   v4只從原v3的24題移除4個跨輪案例；v1 raw-cutoff、
+   v2 query-only覆蓋與v3原fixture／失敗報告保留歷史身分，不改寫成成功。
+6. 短doc可能匹配帶無關附加詞的query；此對稱重疊與固定0.5不是未知輸入保證。
+   驗證失敗如實保留，不調到全空、不加逐題例外或dense全域否決，也不反覆調詞追分。
+   語料／索引／規則／fixture均以版本與hash識別，變更不能沿用舊准入證據。
+
+10＋10是有界工程核對，不是論文holdout或統計代表性。參數已固定但不是永久最佳值；
+准入通過與模型受益必須分開。Token分配服從完整template實測，不藉此改context或研究輸出上限。
+
+### RAG本輪須有模型受益證據 { #rag-benefit-acceptance }
+
+檢索正確、沒有破壞既有功能，都是必要但不充分的條件；本輪RAG的outcome包括對模型
+有實際幫助。必要調整屬於本輪，不移交正式Development，也不先保證目前RRF提案必然有效。
+
+具體驗證建議：整體Agent契約與上下文接好後，在同一source、模型／revision、生成設定、
+資料狀態及user要求下做少量RAG開／關配對；只改是否提供RAG參考，不連帶更換prompt
+規則或工具。事先固定代表性情境，包含預期RAG能補足的需求、原本已會的操作及容易被
+誤導的不操作／追問情境；不用正式Validation／Test題、不複製評測原句進語料。
+
+- 看raw模型的操作選擇、參數或追問是否有可重現的改善，並核對實際產品結果；Host擋錯、
+  命中更多例子或輸出更長，不能代替模型受益。基線已強時，不要求任意總分漲幅，但也
+  不能因「天花板效應」就免除受益證據。
+- 一併列出退步與額外等待／token成本，不只挑改善案例；新增嚴重誤操作或系統性誤導
+  不能用其他題加分抵銷。小範圍配對只支持已測情境，不宣稱統計顯著或所有模型都受益。
+- 未觀察到幫助時，先依完整輸入／檢索／raw輸出定位原因，再做必要修正；不機械掃描
+  參數組合、反覆刷分或為個別題堆特例。若仍無支持證據，明示RAG尚未達本輪要求，
+  不冒稱完成、不默默刪掉RAG，也不無限消耗額度；需要改變方案／資源時提出具體決策。
+
+通過後固定語料、查詢組裝、准入／融合參數與範例呈現的版本；正式Development不再把
+它們當調參軸。日後研究若要改RAG，屬另行批准的新基線，而非本輪未完工作順延。
+
+### 完整模型輸入的獨立覆核
+
+使用者要求獨立subagent審查候選經組裝、限長、role處理及chat template後的實際完整
+prompt，不能只看system、RAG或作者重寫的示意。核對messages、token數、輸出預算、
+model／tokenizer／template／decoding設定與source身分；capture沿用受控工程位置，
+不擴大收集真實聊天／EEG資料或新增審查平台。
+
+- 覆蓋完整／缺值／否定／多步／資訊、GUI、狀態變動、RAG零命中／不可用與超限，
+  有format repair時也看其實際輸入。超限須證明未推論，不偽造成功capture。
+- Reviewer先只看模型可見內容，檢查當輪要求、參數與資格是否清楚，規則是否矛盾或重複，
+  範例帶值、過期歷史與截斷是否誤導，再對照契約與後端事實；不能先用標準答案補足缺口。
+- 以具體capture／片段區分資訊缺漏、呈現與模型能力，修正後覆核受影響及相鄰邊界。
+  按輸入身分去重並列明覆蓋，不把happy path說成全部context已審。
+- 標準是產品小模型理解負擔，不是強reviewer能否推知答案；塞得下window不等於可靠。
+  不堆更多警告／例外掩蓋問題，Reviewer不成為產品第二模型或語意攔截器。
+
+此覆核支持輸入清晰度，不證明模型準確率；仍須真模型raw輸出、Host驗證與產品結果。
+主agent驗收實際diff及證據，施工／交付進度與具體gate不在本頁另建清單。
 
 ## 角色與邊界
 
@@ -18,9 +192,25 @@ autonomous planner。
 
 - local model 與 revision 必須精確固定；缺少時 fail closed，不 silent fallback。
 - ApplicationService、capability policy 與 application publication 是唯一 workflow truth。
-- 每個 user turn 最多一個 tool 或一個 `respond_to_user`；成功、blocked、取消或失敗都結束 turn。
+- 每個user turn最多一個操作；`respond_to_user`不執行工具。成功、blocked、取消或失敗都結束 turn。
 - GUI decision 由既有 dialog／panel 的使用者操作完成；模型不代填高影響選項。
 - tool result 直接使用 trusted backend／UI public result，不再交給 Granite 改寫。
+
+### 單次決策的需求邊界（2026-09-28 確認）
+
+- 明確、可用且參數完整的單一操作：提出該 exact action，沿用後端驗證與 confirmation。
+- 純概念／使用方式詢問或明確禁止操作：使用`respond_to_user`，不產生操作。
+- 操作目前不可用：說明同一 publication 的真正 blocker，不代做前置或替代操作。
+- 「處理資料」「做 filter」等尚未確定操作種類的要求：先詢問，不自行選工具。
+- 種類已確定但必要參數不足：說明缺少值並請重新提供完整要求；不保存已提供值、
+  不從範例複製數值，也不擴張其他GUI tools的參數契約。
+- 同一要求包含概念解釋＋要求執行，或多個要求執行的操作：請使用者選擇先做哪一件，
+  本回合不部分執行。明確禁止執行但要求解釋時，只回答並遵守禁止，不要求二選一。
+  操作後的 trusted terminal 訊息不是第二次模型解釋，也不啟動 autonomous continuation。
+
+這是批准目標，不代表目前 prompt／corpus／scorer 已全部對齊。遷移須同時處理範例與
+驗收預期，保留原題與歷史 raw／分數身分；不能把「只操作」評為已完成解釋＋操作，
+也不能把更正評分規則宣稱模型能力提升。
 
 ## Local model selection contract
 
@@ -81,7 +271,7 @@ semantic rescue 隱藏。
 ### Direct preprocessing tools
 
 下列五個工具直接走既有 Preprocess command owner。Raw data 保留，因此不加 Assistant confirmation；
-缺少必要參數時用 `respond_to_user` 詢問，不套 default、不改走 GUI、不使用 standard bundle。
+缺少必要參數時用`respond_to_user`請重新提供完整要求，不保存值、不套default、不改走GUI或standard bundle。
 Backend 仍負責 Nyquist、range、state、resource 與 scientific precondition。
 
 | Tool | Required parameters | Published stage | Terminal |
@@ -98,46 +288,31 @@ preprocess command owner 必須在 MNE prepare 前，從本次 source data 的�
 可採取的下一步。若 sampling rate 無法可靠取得，維持既有 execution，不猜測阻擋。若資料已 resample，
 訊息可指示使用者 reset → notch → resample；Assistant 不自動重排或套用這些動作。
 
-### Direct-preprocess bounded Host collection
+### Direct-preprocess 單輪要求
 
-當模型已提出一個 exact direct-preprocess tool、該 tool 仍由 current publication 啟用時，Host 可使用既有
-`AssistantToolInputReceipt` 收集缺少的 **user-authored evidence**。這是 bounded form，不是 general
-intent router：它不能由 user text 選 tool、替換 tool、恢復 unavailable capability、推論科學值或執行。
-Host 不解析 `use`、`apply`、`run`、`do` 等英文 action verb，也不判斷肯定、否定或 request grammar。generic
-「filter data」仍不是 tool identity：模型必須先決定 exact tool，Host 才能建立 receipt。
-
-form 只可處理下列五個已核准 tool 的 required fields，且只接受現有 origin grammar 可證明的值：
-
-| Tool | Bounded form evidence |
-| --- | --- |
-| `apply_bandpass_filter` | Host 只檢查 model-proposed `low_freq`、`high_freq` 是否各自出現在 latest user text 的 Arabic decimals；tool identity 和 low/high mapping 都是模型責任，Host 不解析 `bandpass`、`filter`、action verb 或 request grammar。receipt 首次沒有 assigned field 時，兩個 bare decimal cutoffs 以 `min → low_freq`、`max → high_freq` 收集；單一 bare cutoff 暫存為 unassigned evidence。已有一個 verified field 時，一個 bare cutoff 只填 sole remaining field，既有 schema/range validation 仍決定是否可執行。 |
-| `apply_notch_filter` | 一個 user-proven decimal `freq`。 |
-| `resample_data` | 一個 user-proven decimal `rate`。 |
-| `set_reference` | 一個符合既有 backend-supported reference contract 的 user-proven `method`。 |
-| `normalize_data` | 一個 user-proven `method`，僅 `z-score` 或 `min-max`。 |
-
-receipt 可保存已驗證 fields 與 bandpass 的單一 unassigned cutoff evidence；這是既有 receipt 的最小 field
-extension，不新增 receipt type、queue、state machine 或 owner。已驗證 field immutable：任何 correction、
-contradiction、invalid value 或 mixed ambiguous evidence 都清除 receipt，使用者必須以新 request 重啟。publication
-change、explicit cancel、new chat、topic switch、different tool 或 reply budget exhausted 也一律清除 receipt，零
-execution。word-number parsing（例如 `fifty hertz`）不屬於此 contract，保持 fail closed。
-
-form 收齊 fields 後，Host 必須取得 fresh publication，並以 receipt 原有 exact tool identity 與 verified
-parameters 走既有 strict schema、range、publication、capability、confirmation 與 one-action checks。它不建立
-alternate execution path，也不採用模型臆測的 values；完成 receipt 不得再要求模型輸出同一 JSON，並且零 RAG、
-零 LLM generation。不同 tool、stale publication、explicit cancel 或任何未完成 form 均不得藉 receipt 執行。
+依[單輪理解邊界](#unified-clarification)與[模型契約](#agent-m0-contract)，五個direct工具
+只從本輪原文驗證完整實參。Host不得用歷史、RAG、預設或舊receipt補齊；bare值不是
+沿用上一操作的授權。值來源核對不取代模型對操作、否定或多步要求的理解。
+舊Host補值、bandpass排序、草稿與跨輪來源DTO退出產品路徑；原實驗保留歷史版本身分。
 
 ### Lifecycle tools
 
 | Tool | Parameters | Published stage | Confirmation／terminal |
 | --- | --- | --- | --- |
-| `start_training` | none | `epoch_ready`、`dataset_ready`、`trained` | backend 缺 setup 時 blocked；ready 時使用既有 start confirmation，之後以 real training terminal 收尾 |
-| `stop_training` | none | `training` | 只接受使用者明確要求；stopped／cancelled／idle-blocked terminal |
+| `start_training` | none | `epoch_ready`、`dataset_ready`、`trained` | backend 缺 setup 時 blocked；沿用 start confirmation，後端確認成功啟動後以「已啟動」結束本回合，不等待整場訓練完成 |
+| `stop_training` | none | `training` | 只接受使用者明確要求；依後端結果區分「已要求停止」與「已停止」，不可將前者宣稱為工作已結束 |
 | `reset_preprocessing` | none | raw data 存在且未 training | 使用既有 destructive confirmation；保留 raw、清除 derived state |
 | `clear_training_history` | none | history 存在且未 training | 使用既有 destructive confirmation；清除 runs/history，不清除可重用 setup |
 
 Confirmation、resource receipt、generation token與 filesystem path 都由 trusted product code處理，
 模型不得輸出或保存。
+
+2026-09-28討論確認：保留training非同步，取代先前start_training等待real training terminal
+才結束Assistant回合的文字。啟動成功須由後端確認，不把送出／排程當啟動成功，更不等於
+訓練完成。回合結束後可繼續對話，後續決策取fresh publication；重複啟動與不相容操作仍由
+既有capability policy阻擋。訓練完成／失敗由既有後端與介面回報，不重新呼叫模型、不自動
+接下一操作；Agent不另存背景工作truth。此契約不擴張至compute_saliency或其他工具，
+也不表示已完成所有啟動／停止／背景 terminal 的實機驗收。
 
 ### Owned analysis action
 
@@ -208,63 +383,19 @@ publication產生。若 publication generation 在生成、repair、confirmation
 
 ## Strict model output contract
 
-每個受支援模型每次只能提出一個 JSON object，且 top level 恰有三個欄位：
+正式輸出使用[單輪兩欄契約](#agent-m0-contract)；每回合一個JSON object，不回填stage、
+backend publication或generation。接受裸JSON，或整份回答恰為一層`json`／無語言
+Markdown fence；只能解除外框，raw output原樣保留。不從prose、任意code block或多個
+候選中抽取指令；前後prose、array、額外欄位、重複key、非標準數值與舊格式皆拒絕。
 
-```json
-{
-  "workflow_stage": "preprocessed",
-  "tool_name": "create_epochs",
-  "parameters": {}
-}
-```
+只有parser證明raw含兩個以上相鄰且完整的top-level objects，才直接給可信choose-one
+terminal；不挑第一個、不format retry，也不confirmation、GUI handoff或execution。
+其他格式錯誤最多在初次生成後加一次repair，使用同一當輪要求與publication；
+Host不補欄或改寫操作。來源／schema拒絕及backend執行失敗不增加模型repair loop。
+任何side effect、confirmation cancel或GUI cancel／fail後不得重送操作。
+歷史schema／scorer成績保留原身分；相同兩欄形狀不代表不同版本契約與結果等同。
 
-2026-09-21 使用者批准正式研究基線前的共用格式相容性：接受裸 JSON，或整份回答恰為
-一層 `json`／無語言 Markdown code fence 包住的 JSON。只能解除整份回答的該層外框，
-不能從 prose、任意 code block 或多個候選中抽取指令；raw output 仍原樣保留。
-禁止前後 prose、array、多個 calls／code blocks、額外欄位、重複 key、非標準數值、
-寬鬆抽取與 legacy fallback。工具／參數仍受原 schema、publication、confirmation 約束。
-`workflow_stage` 是對 backend stage 的 acknowledgement，不是 authority。
-
-只有 parser 能證明 raw output 含兩個以上相鄰、各自完整的 top-level JSON objects 時，它才是獨立的
-fail-closed classification：不得進入 first-command selection、format retry、receipt admission、confirmation、
-UI handoff 或 execution。Host 直接輸出可信的單一動作回覆，例如「I can perform one action at a time. Which
-action should I do first?」。top-level array 與其他無法證明為上述相鄰完整 objects 的 malformed JSON 維持既有
-strict format rejection／有限 repair budget；不能以 error-string heuristic 把它誤判為 multiple action。
-
-不執行 tool 時使用保留 branch：
-
-```json
-{
-  "workflow_stage": "data_loaded",
-  "tool_name": "respond_to_user",
-  "parameters": {"message": "..."}
-}
-```
-
-`respond_to_user.parameters` 接受兩種 strict shape：一般 answer／blocked reply 為
-`{"message": "..."}`；只有模型已精確辨識一個目前 callable 的 direct-preprocess action、且只缺
-該 schema 必要欄位時，clarification 可為
-`{"message": "...", "pending_action": "<exact direct tool>", "missing_inputs": ["<required field>", ...]}`。
-這仍是 no-execution branch，不增加 top-level field、tool 或 decision enum。`pending_action` 不得用於
-generic filter／模糊 action，Host 不從 user text 或 bubble 推測它；模型必須先以一般回覆請使用者選定
-exact action。
-
-符合上述 typed clarification 的 response，或模型已提出缺少值的 direct tool 時，Host 可以在零 execution
-的具體追問旁建立 typed tool-input receipt。Receipt 只保存 exact tool ID、實際缺少欄位、
-可由 user 原文驗證的 values、bounded question evidence、prompt-time publication generation 與最多兩次
-parameter reply budget；不得保存或授權模型臆測的參數。它不是新的 model output branch，也不改變三欄
-envelope。
-
-2026-09-21 正式基線準備採 initial generation 加最多一次 format repair；同一修復指示
-失敗後停止，不再送出第二次相同策略的生成。先前兩次 repair 的 Pilot 快照保持歷史身分。
-
-- 可 repair malformed JSON、wrong stage、unpublished tool、extra／invalid parameter。
-- 只有 user text 已含完整值時才能 repair parameter；不得發明缺少的科學或訓練值。
-- backend generation 改變時 discard proposal，重新讀取最新 publication。
-- backend blocked、confirmation cancel、GUI cancel／fail或任何 side effect 後不得 repair。
-- 同一訊息要求多個 mutation時不部分執行；用 `respond_to_user` 請使用者選第一個。
-
-## Prompt、state card與RAG
+## Prompt、必要狀態與RAG
 
 每回合 prompt 只含：
 
@@ -272,9 +403,9 @@ envelope。
 2. backend stage 與同一generation capability都允許的 target callable schemas。
 3. 已註冊但本回合不可呼叫的target action reference；每項只有stable tool ID與bounded public reason，
    不含schema，也不是合法output candidate。
-4. hidden minimal state card。
-5. 最新 user message。
-6. 最多上一則 Assistant-visible message。
+4. 最後一則必要user-role JSON：`application_state`與`current_user: {text}`，保留當輪完整原文。
+5. 空間允許的完整RAG示範，明標untrusted參考；不附先前user／Assistant對話、草稿、
+   對話來源ID或累積參數。畫面聊天紀錄不等於模型上下文。
 
 Callable集合固定為approved stage membership、同一份ApplicationService publication的enabled
 `ToolAvailability`與目前registry／target membership的交集。其餘已註冊target tools只可出現在明確分隔的
@@ -283,12 +414,12 @@ enabled但target stage未發布時，使用「此action在目前workflow stage�
 Confirmation-required但enabled的action仍是callable，不得列為unavailable。
 
 Unavailable reference不建立新tool、schema、readiness owner、RAG example、confirmation、GUI handoff或
-execution permission。模型被問到這些action時應以`respond_to_user`說明對應blocker，不得改呼叫前置或
+execution permission。模型被問到這些 action 時應以`respond_to_user`說明對應blocker，不得改呼叫前置或
 替代action；若模型仍輸出該stable tool ID，既有`PromptToolPublication`／attempt admission以同一backend
 generation與同一reason fail closed。Prompt projection不加入general semantic Host router，也不以文字
 heuristic推翻另一個當下確實callable的model proposal。
 
-State card 只投影 ApplicationService publication：
+必要 `application_state` 只投影同一份 ApplicationService publication：
 
 - always：stage、internal backend generation、`state_reliable`。
 - stage-relevant counts／readiness。
@@ -297,37 +428,45 @@ State card 只投影 ApplicationService publication：
 - trained：finished run count、results available。
 
 不放 file paths、完整 channels、完整 settings、diagnostics、recommended next step、full capability map、
-舊 tool output或一般pending intent。receipt 不投影進 prompt；它只在 Host lifecycle 中保存 verified values，
-並且不能恢復 stale capability。
+舊tool output或對話草稿。必要state與當前原文不能當optional context丟棄。
+Assembler先守完整UTF-8 byte bound，local backend再用exact tokenizer／chat template與
+預留輸出計數；先移除optional notes，再按原排名打包完整範例。
+必要內容仍超限則零推論、可見拒絕，請縮短完整要求或New Chat後重述；
+不能裁掉否定、條件或靜默截斷current user。New Chat不是保存／恢復草稿的入口。
 
 RAG／examples規則：
 
-- stage 只發布 1–3 callable tools 時，使用每個 visible tool 一個 compact canonical example，不做 semantic
-  retrieval。
-- stage 發布 4 個以上 callable tools 時，只在該 stage 的 approved examples中取 top 2。
-- example retrieval failure時退回schema／format，不擴大tool surface。
-- unavailable-action reference永遠不提供example，也不進RAG allowed tool names。
-- example不能授予capability、confirmation或continuation權限。
+- RAG提供操作／正確不操作的英文決策示範，不承擔EEG知識庫或第二套intent／permission router。
+  不以文字關鍵字先判定是否檢索，也不按callable數量切換固定範例與semantic retrieval兩套policy。
+- 搜尋前限制為當次callable action examples及既有`respond_to_user` examples；後者不是新增可執行
+  action。示範須以actual action schema或strict response parser驗證，不允許額外欄位或多action。
+- 採[雙路獨立召回與RRF融合](#rag-hybrid-design)；最多三例與允許零命中保持。
+  Dense-only須真正省去BM25建置／查詢，不另維護production retriever；hybrid缺BM25不得silent fallback。
+- 範例內容涵蓋參數與相鄰操作差異、概念詢問、只要說明、明確禁止操作與無法辨識的指涉；
+  不機械湊數、不複製驗收題，缺參數範例須請使用者重新提供完整要求，不示範跨輪補值。
+- RAG 延遲後，最終 prompt 以同一份 publication 組 schemas／required application_state 並重查範例資格；
+  unavailable-action reference永遠不提供可操作示範，也不進RAG allowed tool names。
+- retrieval failure退回既有schema／format並明示degraded，不擴大tool surface或冒稱正常零命中。
+  範例不能授予capability或confirmation權限，也不能供給未出現在使用者要求的參數。
+- 驗證同時看工具／參數、正確不操作、實際副作用與分段延遲；retrieval命中不等於模型效果。
+  保留固定48個工程probe輸入，另列24個成對probe；說明性問題檢查安全資格而非必須無context。
+  BM25去留以同source／corpus／model對照證據判斷，不因小樣本打平刪除，不以放寬gate完成驗收。
 
-Backend state不可靠時，state card固定為 `workflow_stage: "unavailable"`、
-`state_reliable: false`，只允許 `respond_to_user` 與 `switch_panel`；不沿用 stale tool set。Granite
+Backend state 不可靠時，required `application_state` 固定為 `workflow_stage: "unavailable"`、
+`state_reliable: false`，只發布 `switch_panel` 操作；`respond_to_user`仍可回覆，不屬於工具 registry。
+不沿用 stale tool set。Granite
 runtime本身失敗時不做生成，ChatPanel顯示local runtime error。
 
 ## Verification、execution與presentation
 
-Execution verification順序固定為：strict schema → backend generation／stage → target publication → parameter
-schema → ApplicationService capability → confirmation。對 direct preprocess 的 schema-incomplete proposal，Host 可先做
-zero-execution Arabic-decimal membership admission，以保存 user-proven fields 到既有 receipt；receipt 完成後仍依上述
-完整順序重跑，任何 model-mapped reversal 都由 schema/range 拒絕。Prompt與UI不可成為alternate readiness engine。
+模型回覆先經strict parser；非執行回答只呈現訊息，其餘單一command送既有tool attempt
+boundary，核對當輪來源、完整schema／range、backend generation／stage、target publication、
+ApplicationService capability、one-action限制及必要confirmation。
+Prompt與UI不建立alternate readiness engine；模型JSON不能關閉來源或確認檢查。
 
-Direct-preprocess clarification 的第一個 action identity 由模型選擇；receipt-bound form 只把 latest user
-evidence累積成該 receipt 的 fields，且不採用模型、prompt、history 或 default 的 value。收齊 fields 後，Host
-以 fresh publication 和 receipt 的同一 exact tool 重建 parameters，依上述固定順序重跑 schema、range、current
-publication、capability、confirmation 與 one-action checks；不再次問模型。不同 action／topic、explicit cancel、
-stale publication、new chat、stop、close 或第三次 parameter reply 都清除 receipt，零 execution。
-同 action 的 NO_TOOL、single malformed envelope 或尚缺值只可在剩餘 budget 內維持既有 requeue semantics；
-proven adjacent-complete-object multiple proposal 遵守 strict-output contract 的直接 choose-one terminal，不能
-requeue 成 action。
+一般文字均走同一模型理解路徑；Host不自行排序bandpass、辨認意圖、合併舊值或把回答
+升級成操作。缺值回覆結束當輪，不建立等待補值state。確認、GUI handoff與async工作仍
+由既有typed correlation及backend lifecycle處理；失敗／取消不恢復或重跑操作。
 
 GUI completion使用既有 pending interaction與request correlation。`accepted`、`navigated`、
 `command_pending`或`deferred_to_ui`是否terminal必須依execution kind判斷：GUI completion只能等實際
@@ -354,78 +493,26 @@ command policy或fake backend。
 
 ## Candidate validation與claims
 
-Engineering candidate的active suite固定為81個英文cases：36個positive cases（18個target tool各2個）、
-14個challenge、24個no-action precision與7個controller-backed clarification trajectories。Challenge必須包含
-五個missing-parameter、跨stage lifecycle、out-of-stage、general、ambiguous與multi-mutation；raw score保留
-用來暴露選定模型限制，不把Host拒絕冒充raw-model accuracy。中文intent／verifier可作未承諾相容基礎，
-不屬於active evidence。Candidate gates把raw model、Host safety與product outcome分開報告：
+2026-09-28使用者釐清本輪驗收以tool-call正確性為限：是否應呼叫、工具選擇、參數及
+合法格式；不操作情境不可提出工具或產生confirmation／GUI／執行副作用，應操作時不能
+以回答取代工具。回答完整度、措辭、複誦與知識性品質不是本輪準確率或freeze門檻。
+前述回答指引仍是產品期望，已知未達項如實保留；不改寫舊完整語意分數，也不宣稱
+一般問答品質合格。此範圍不削弱backend驗證、來源、publication、confirmation或取消保護。
 
-Evaluator v11 保留第一次未受 Host collection／recovery 影響的 raw score，另將 post-recovery score 只作
-diagnostic；candidate raw-model gate 只讀第一次 generation。candidate 判定仍必須走與產品相同的
-structured-decision token resolver、strict parser 及最多一次一般 format recovery（2026-09-21
-共同預算；舊兩次上限的 evidence 保留原身分）；proven
-adjacent-complete-object multiple proposal 是直接 Host choose-one terminal，不屬於可修成 action 的 recovery。
-每次 response／taxonomy 都留在 artifact，最後一個 accepted、blocked、choose-one 或 exhausted presentation
-outcome 才是 product score。format
-recovery 只修 envelope，不得把 semantic tool-selection failure 重分類為通過。
+候選案例、門檻、runner／report版本與同版本gate只由
+[驗證契約](../validation/README.md)擁有，不在target複製另一份可漂移的出口。
+新單輪基本集合為20題（`scripts/dev/stable_assistant_single_turn_cases_v1.json`），
+74題單輪breadth另列；歷史81題含7條跨輪trajectory，保留原source／schema／分母與失敗，
+不重標為新單輪通過，也不能直接比較總分。
 
-v11 report 固定保留 81 個英文 case（36 positive、14 challenge、24 precision、7 clarification）的
-denominator、case identity 與既有 raw gate；不得用新增 Host rescue、替換 case 或降低 required count 改善分數。
-每個 row 必須以同一 controller/pending boundary 依序記錄：
+產品與evaluator須共用stage-consistent publication、assembler、LocalBackend role/template、
+parser與驗證；不手組全開catalog，不從gold補參數、來源或假pending。
+First raw、format recovery、Host admission與product outcome分開記錄；Host擋錯不增加
+模型分數，模型選錯工具不是格式修復成功。工程scripted模型只能證明程式邊界，不冒稱
+真模型或workflow效果。RAG檢索准入與[模型受益](#rag-benefit-acceptance)分開驗收。
 
-1. first raw model response、strict-envelope taxonomy 與 raw score；
-2. first-turn Host admission（current publication、parameter value-origin outcome、receipt created 或
-   rejected）；
-3. 每一個 follow-up raw response 與 receipt form transition（bound、unassigned、reconstructed、requeued 或
-   cleared）；
-4. receipt-direct reconstructed parameters、normal verification／confirmation／handoff decision，
-   以及可信 product terminal。
-
-Evaluator 不得直接建構 `AssistantToolInputReceipt`、手動塞入 pending coordinator、合成 verified parameters
-或把 source raw、follow-up raw 與 product outcome 互相計分。它可使用 product-equivalent controller harness
-觀察 receipt 與 terminal，但 source raw score、Host safety／admission、follow-up diagnostic 與 product outcome
-必須是分開欄位。focused natural import dispatch 與 adjacent-complete-object choose-one probes 是額外
-deterministic boundary evidence，不改 81-case denominator。
-
-36 positive、14 challenge與24 no-action precision的每個first turn都必須以stage-consistent
-`ApplicationViewPublication`經`ContextAssembler.get_messages`產生；state card、callable set、blocked reasons
-與LocalBackend role boundary皆不可用手組catalog替代。positive fixture另必須真的publish其expected tool。
-36-case coverage count不變；`start_training`以可呼叫的`dataset_ready` state取代舊手組`epoch_ready` stage，
-所以v9與此前歷史prompt的分數不可直接比較。
-
-- invalid／out-of-stage／stale execution、cancel後continuation與multi-mutation partial action皆為0。
-- 36個positive全部得到exact final tool＋parameters，且五個direct preprocess的值都能從latest user
-  request驗證；完整值不新增confirmation。
-- 五個 missing-parameter cases 的 first raw model response（理想為直接 `respond_to_user` 並指出缺少欄位）
-  必須逐 case 完整報告；若模型提出 tool，parameter-origin guard仍必須確保零ApplicationService／tool
-  execution，但該Host rescue不得回填 raw-model accuracy。
-- Clarification gate固定為7條production trajectory：五種direct-preprocess bounded form 證明 user evidence
-  收齊後以 receipt 的同一 exact model-selected tool、fresh publication與receipt-reconstructed parameters執行；generic filter先選
-  bandpass後才建立typed receipt；bandpass 的 explicit labels、同／跨 reply unlabelled pair collect-then-sort、
-  單一 unassigned cutoff 與 correction fail-closed restart 都須在既有兩次 reply budget 內可觀察。取消、無關回答、
-  stale generation與不同tool不得使用receipt取得execution authority。這是clarification recovery evidence，
-  不回填第一輪raw-model accuracy。
-- Raw-model gate只要求 first-generation positive `36/36`。14 challenge、24 precision與7 clarification的raw
-  first-generation result仍逐 case 完整報告，包含critical／wording分類，但不得由Host rescue灌成通過，也不以
-  `24/24` raw precision或`7/7` raw clarification作本次candidate gate。Host safety gate要求10/10
-  direct preprocess value-origin checks；direct Host clarification admission另要求5/5 exact receipts；controller unit/integration另覆蓋cancel、
-  topic switch、stale receipt、different tool、partial reply與multi-action。
-- Precision gate要求24/24 product outcomes沒有confirmation、GUI handoff、ApplicationService／tool
-  execution或state mutation。五個缺參數direct tools可由既有parameter-origin guard轉成具體追問；
-  out-of-stage的精確requested tool可由既有publication／capability boundary安全阻擋。General、negated、
-  ambiguous與multi-action不得以任何substitute tool進入執行路徑。Raw model選擇另行記錄，不冒充產品結果。
-- Direct Host clarification admission gate要求5/5 exact direct receipts；product clarification要求7/7 verified
-  execution boundary。proven adjacent-complete-object multiple output 的 focused probe 必須是零 execution、零
-  confirmation、零 UI handoff。81-case 中所有 no-action row 與上述
-  focused probe 的 confirmation、GUI handoff、ApplicationService／tool execution或state mutation都使
-  product gate fail closed。
-- 同一訊息要求多個mutation時一律用`respond_to_user`請使用者選擇第一個要執行的action；本回合不部分
-  執行，也不在下一回合自動continuation。
-- 真model safe E2E：Switch Dataset、Import GUI、direct Resample。
-
-這些是產品候選gate，不是thesis benchmark或安全零容忍。Thesis evidence另由frozen source、case set、
-runner、model revision與至少三次repeat定義；mock、host-assisted guard、dashboard或單次walkthrough
-不能宣稱raw-model accuracy。
-
-目前產品在完成migration與同一exact-SHA candidate evidence前，不能宣稱Stable v2、18-tool
-runtime、model-free walkthrough或Assistant-ready。
+Source／unit通過、歷史Stable成績或相同wire形狀都不能宣稱新版Assistant-ready；
+仍需同一候選的真模型、完整輸入獨立覆核及適用Windows真人驗收。這些是bounded
+產品要求，不是安全零容忍、任意語意正確或thesis benchmark。
+正式Development只調[研究規格](../validation/thesis_protocol.md#6)核准項目；
+RAG語料／檢索設定與模型／生成參數不是額外搜尋軸，不改寫歷史封存與原失敗。

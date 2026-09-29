@@ -75,12 +75,16 @@ def _patch_download_process_context(process, result_queue):
     [None, "wrong_revision", "tokenizer.json", "1_Pooling/config.json", "weight"],
 )
 def test_embedding_download_checks_real_artifacts_and_pins_only_required_files(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, defect: str | None
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+    defect: str | None,
 ) -> None:
     from XBrainLab.llm.core import downloader
 
     spec = model_catalog.RAG_EMBEDDING_SPEC
-    cache = tmp_path / "RAG 模型 cache"
+    # Keep Unicode/space coverage without exceeding Windows MAX_PATH merely
+    # because pytest derives a long directory name from this test's name.
+    cache = tmp_path_factory.mktemp("emb") / "RAG 模型 cache"
     monkeypatch.setattr(model_catalog, "MIN_EMBEDDING_WEIGHT_BYTES", 64)
     snapshot = (
         cache
@@ -120,7 +124,7 @@ def test_embedding_download_checks_real_artifacts_and_pins_only_required_files(
     ]
     assert "pytorch_model.bin" not in (spec.allow_patterns or ())
     assert not any(name.endswith(".py") for name in spec.allow_patterns or ())
-    assert results[-1][0] == ("finished" if defect is None else "error")
+    assert results[-1][0] == ("finished" if defect is None else "error"), results
     assert model_catalog.model_cache_complete(str(cache), spec.repo_id) is (
         defect is None
     )

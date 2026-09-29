@@ -40,9 +40,12 @@ from XBrainLab.llm.core.model_catalog import (
 )
 from XBrainLab.llm.tools.definitions.ui_control_def import BaseSwitchPanelTool
 
-_STRUCTURED_SMOKE_STAGE = "unavailable"
 _STRUCTURED_SMOKE_TOOL = "switch_panel"
 _STRUCTURED_SMOKE_PARAMETERS = {"panel_name": "dataset"}
+_STRUCTURED_SMOKE_PROPOSAL = {
+    "tool_name": _STRUCTURED_SMOKE_TOOL,
+    "parameters": _STRUCTURED_SMOKE_PARAMETERS,
+}
 
 
 def classify_runtime(config: LLMConfig) -> dict[str, Any]:
@@ -299,7 +302,7 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
             "response": "",
         }
 
-    config.max_new_tokens = min(int(config.max_new_tokens), 96)
+    config.max_new_tokens = min(int(config.max_new_tokens), 256)
     config.do_sample = False
     engine: LLMEngine | None = None
     try:
@@ -312,17 +315,15 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
                         "role": "system",
                         "content": (
                             "You emit exactly one compact JSON object for XBrainLab "
-                            "tool calls. The only available action is switch_panel. "
+                            "proposals. The only available action is switch_panel. "
                             "Do not use markdown, prose, aliases, or extra fields."
                         ),
                     },
                     {
                         "role": "user",
                         "content": (
-                            "The user asked to open the Dataset panel. Return exactly "
-                            '{"workflow_stage":"unavailable",'
-                            '"tool_name":"switch_panel",'
-                            '"parameters":{"panel_name":"dataset"}}'
+                            "U1: Open the Dataset panel. Return exactly "
+                            + json.dumps(_STRUCTURED_SMOKE_PROPOSAL)
                         ),
                     },
                 ],
@@ -350,21 +351,23 @@ def run_structured_output_smoke(config: LLMConfig) -> dict[str, Any]:
 
     model_tools = AGENT_ACTION_CONTRACTS.model_tool_names()
     switch_tool = BaseSwitchPanelTool()
-    command_name, parameters = envelope.commands[0]
+    if envelope.command is None:
+        raise RuntimeError("Valid execute proposal lacks its required action")
+    command_name, parameters = envelope.command
     schema_result = ToolSchemaValidator(
         {switch_tool.name: switch_tool.parameters}
     ).validate(command_name, parameters)
     target_matches = (
         _STRUCTURED_SMOKE_TOOL in model_tools
         and schema_result.is_valid
-        and envelope.workflow_stage == _STRUCTURED_SMOKE_STAGE
         and command_name == _STRUCTURED_SMOKE_TOOL
         and parameters == _STRUCTURED_SMOKE_PARAMETERS
+        and envelope.proposal_dict() == _STRUCTURED_SMOKE_PROPOSAL
     )
     if target_matches:
         return {
             "status": "passed",
-            "message": "Stable v2 target tool-envelope smoke completed.",
+            "message": "Strict proposal protocol smoke completed; no action was executed.",
             "response": response[:500],
         }
     return {

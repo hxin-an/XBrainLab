@@ -1,9 +1,9 @@
 # Assistant Benchmark：第一輪判分校準
 
-最後更新：`2026-09-16`
+最後更新：`2026-09-28`
 
 依據[使用者的 Notion 計畫](https://app.notion.com/p/3ce4ab11187a81c0a30ade5cf08b1b52)，
-本輪先固定三種決策與三層判分，驗證 scorer 能區分明定正反例。
+本輪以單輪操作／不操作與三層判分，驗證 scorer 能區分明定正反例。
 **目前只有離線、agent-authored、Development 校準，不是正式 Benchmark 或真人一致性結果。**
 不改產品工具契約、模型、prompt、RAG、Host、GUI 或既有 acceptance gate。
 
@@ -14,25 +14,31 @@
 `ToolSchemaValidator` 與 `get_all_tools()`；不執行工具、不建立 ApplicationService，也不載入模型。
 它是讀取觀察資料的純判分器，不是新的執行、admission 或 capability owner。
 
-Checked-in corpus 有四個案例、八份合成觀察：No-call、Clarification、backend Action、
+Checked-in v5 corpus 有三個案例、六份合成觀察：No-call、backend Action、
 GUI-opening Action 各有一正一反例。另有 focused tests 變更觀察欄位以檢查誤判。
+退役跨輪草稿的一題／兩份觀察不計入新分母；其餘 input／oracle 不變。
+舊完整 v4 fixture 留在 `assistant_benchmark_calibration_cases_v4.json` 作歷史資料，
+現行 runner 拒絕舊 schema，不用新 parser 重評舊輸出。
 案例的 `source` 必須是 `agent_authored_calibration`，不能標成人寫的 seed。
 這些案例不是完整工具覆蓋、真實 EEG 操作或真模型軌跡。
 
-既有 `run_stable_assistant_model_eval.py` v12 與 frozen 81 cases 保持原樣、原 gate 用途。
+`run_stable_assistant_model_eval.py` 現為 v17，固定 20 題基本 gate 與 74 題單輪廣度分列；
+舊 81 題／七條跨輪軌跡是歷史身分，驗收由 [validation contract](README.md) 擁有。
+產品回覆為兩欄 envelope，stage 保留為 backend 情境。本校準不評缺值回答語意或來源
+驗證，報告明示 `clarification_semantics`／`source_validation` 為 `not_evaluated`；
+不能由合法 response 宣稱模型知道缺少什麼，不能回算歷史成績。
 `main@73acb83a` 盤點時，81 題中的 23 個第一輪輸入與 RAG gold 的輸入在空白／大小寫正規化後
 相同（positive 19、challenge 2、precision 2）；這不表示每次都檢索到答案，但它們不能被重新
 包裝成未見過的 sealed test。v12 抑制真實工具執行，因此舊分數也不能改名為 Product Outcome。
 
-## 三種決策與三層分數
+## 兩種決策與三層分數
 
 每個案例只指定一種預期決策。三層保留各自的結果，不用 Host 修復後的成功回填 raw 分數。
 
 | 決策 | Raw／Agent 決策判分 | Outcome 額外必要證據 |
 | --- | --- | --- |
-| `no_call` | 正確 stage 的 `respond_to_user`，無 pending action。 | 完成回覆、無 action proposal／執行／GUI／確認、無多餘 pending，狀態不變。 |
-| `clarification` | `respond_to_user` 帶正確 pending tool 與完整 missing-input 集合。 | 觀察到相符的 pending receipt，沒有執行，狀態不變。 |
-| `action` | 正確 stage、精確工具與符合產品 schema 的參數。 | Host 驗證成功、必要確認、依案例完成 GUI 或 backend 操作，結果及狀態符合預期。 |
+| `no_call` | 合法兩欄 `respond_to_user`，無 pending action。 | 完成回覆、無 action proposal／執行／GUI／確認、無多餘 pending，狀態不變。 |
+| `action` | 精確工具與符合產品 schema 的參數；不評模型stage回填。 | Host 驗證成功、必要確認、依案例完成 GUI 或 backend 操作，結果及狀態符合預期。 |
 
 - `raw`：第一次模型原始輸出的結構決策；不修復格式、不以關鍵字猜工具或缺少參數。
 - `agent`：Host 處理後最後被選定的決策 envelope；與 raw 使用同一決策 oracle。
@@ -53,10 +59,10 @@ GUI-opening Action 各有一正一反例。另有 focused tests 變更觀察欄�
 [研究規格](thesis_protocol.md)第 4 節為準，不以此處的 typed clarification／完整 Outcome
 契約覆蓋正式研究方法。它不改變目前產品工具、GUI 或 confirmation 契約。
 
-## v1 校準資料契約
+## v5 校準資料契約
 
 頂層固定為 `schema`、`cases`、`observations`、`expected_scores`；schema 值為
-`xbrainlab.assistant_benchmark_calibration.v1`。拒絕重複 JSON keys、NaN／Infinity、
+`xbrainlab.assistant_benchmark_calibration.v5`。拒絕重複 JSON keys、NaN／Infinity、
 重複 ID、空庫、缺少案例觀察、缺少或多出的標註。未知觀察欄位也不能通過 Outcome。
 
 Case 欄位：
@@ -65,7 +71,7 @@ Case 欄位：
   runner 只接受 `development`，不發現／載入其他 split；`family_id` 在此是標記，
   **尚無跨 split 分組或防洩漏實作**。
 - `decision`、`tool`、`parameters`、`missing_inputs`：事先寫好的 oracle，不從實際答案生成。
-- `completion`：`response`、`clarification`、`backend` 或 `gui`；
+- `completion`：`response`、`backend` 或 `gui`；
   `requires_confirmation`：案例當下需要的確認。
 - `before`、`after`：同一組非空欄位的狀態投影；`ui`：預期 UI 投影。
   目前範例使用合成 generation、rate、count，並非已接上產品 snapshot。
@@ -79,7 +85,7 @@ Backend success 必須同時有正確 `execution: {tool, parameters, success: tr
 proposal → 必要的 confirmation_approved → execution、有預期的最終狀態、無 errors／pending。
 GUI-opening success 必須有 proposal → 必要確認 → gui、`gui_ready`、正確 surface、
 `visible: true`、`enabled: true`，且沒有 backend execution；它不取得 backend 成功分數。
-No-call 的 effects 為空，Clarification 只有對應 pending effect，兩者 execution 都是 null。
+No-call 的 effects 為空，execution 為 null；不再有建立參數草稿的 effect。
 
 工具宣告必要確認時，oracle 不能省略。額外的動態 backend／資源政策仍由產品擁有，不能從
 工具的靜態 flag 推斷全部已核准；未來真實收集器必須取得當次產品政策與確認紀錄。
@@ -104,7 +110,7 @@ Exit `0` 表示所有校準標註一致，`1` 表示有誤判，`2` 表示資料
 報告保留 cases 與 scorer SHA-256、逐觀察三層結果；hash 不涵蓋產品依賴或環境，
 重現時仍須記錄 Git source、dirty state、命令與環境版本。報告固定
 `model_executed: false`、`product_benchmark_score: null`、`human_agreement: null`。
-四題八觀察共 24 個分層標註比較，不是 24 題、81 題新模型評測或產品成功率。
+三題六觀察共 18 個分層標註比較，不是 18 題模型評測或產品成功率。
 
 ## 後續正式 Benchmark 的必要條件（本輪未實作）
 

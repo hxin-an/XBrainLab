@@ -11,7 +11,6 @@ from XBrainLab.llm.agent.verifier import (
     ValidatorStrategy,
     VerificationLayer,
     VerificationResult,
-    collect_direct_parameter_reply_evidence,
     verify_direct_parameter_origins,
 )
 
@@ -51,14 +50,12 @@ def _verify_product_envelope(tool_name: str, params: dict) -> VerificationResult
 
     schemas = {tool.name: tool.parameters for tool in get_all_tools()}
     assert set(schemas) == set(_CURRENT_TOOL_PARAMETERS)
-    response = json.dumps(
-        {"workflow_stage": "empty", "tool_name": tool_name, "parameters": params}
-    )
+    response = json.dumps({"tool_name": tool_name, "parameters": params})
     envelope = CommandParser.parse_product(response)
     assert envelope.status is ToolEnvelopeStatus.VALID
-    assert len(envelope.commands) == 1
+    assert envelope.command is not None
     return VerificationLayer(tool_schemas=schemas).verify_tool_call(
-        envelope.commands[0],
+        envelope.command,
     )
 
 
@@ -107,16 +104,13 @@ def test_current_tools_reject_undeclared_parameters(tool_name: str) -> None:
 def test_schema_valid_tool_inside_non_product_envelope_is_rejected(
     wrapper: str,
 ) -> None:
-    response = json.dumps(
-        {
-            "workflow_stage": "empty",
-            "tool_name": "configure_training",
-            "parameters": {},
-        }
-    )
+    response = json.dumps({"tool_name": "configure_training", "parameters": {}})
     envelope = CommandParser.parse_product(wrapper.format(response))
-    assert envelope.status is ToolEnvelopeStatus.FORMAT_ERROR
-    assert envelope.commands == ()
+    assert envelope.status in {
+        ToolEnvelopeStatus.FORMAT_ERROR,
+        ToolEnvelopeStatus.MULTIPLE_OBJECTS,
+    }
+    assert envelope.command is None
 
 
 def test_missing_direct_preprocess_parameters_are_typed_schema_failures() -> None:
@@ -297,56 +291,6 @@ def test_direct_parameter_verifiers_reject_word_number_frequency() -> None:
         verify_direct_parameter_origins("apply_notch_filter", params, text).is_valid
         is False
     )
-    assert (
-        collect_direct_parameter_reply_evidence(
-            "apply_notch_filter", (), None, "fifty hertz"
-        )
-        is None
-    )
-
-
-@pytest.mark.parametrize(
-    ("tool_name", "text", "expected"),
-    (
-        ("apply_notch_filter", "50 Hz", (("freq", 50),)),
-        ("resample_data", "128 Hz", (("rate", 128),)),
-        ("set_reference", "average", (("method", "average"),)),
-        ("normalize_data", "z-score", (("method", "z-score"),)),
-    ),
-)
-def test_direct_form_collects_only_current_user_values_for_single_field_tools(
-    tool_name: str,
-    text: str,
-    expected: tuple[tuple[str, object], ...],
-) -> None:
-    evidence = collect_direct_parameter_reply_evidence(
-        tool_name,
-        (),
-        None,
-        text,
-    )
-
-    assert evidence == (expected, None)
-
-
-def test_direct_form_collects_bare_bandpass_values_without_host_label_mapping() -> None:
-    first = collect_direct_parameter_reply_evidence(
-        "apply_bandpass_filter", (), None, "12"
-    )
-    second = collect_direct_parameter_reply_evidence(
-        "apply_bandpass_filter", (), 12, "40"
-    )
-    same_reply = collect_direct_parameter_reply_evidence(
-        "apply_bandpass_filter", (), None, "40 12"
-    )
-    sole_remaining = collect_direct_parameter_reply_evidence(
-        "apply_bandpass_filter", (("low_freq", 12),), None, "40 Hz"
-    )
-
-    assert first == ((), 12)
-    assert second == ((("low_freq", 12), ("high_freq", 40)), None)
-    assert same_reply == ((("low_freq", 12), ("high_freq", 40)), None)
-    assert sole_remaining == ((("low_freq", 12), ("high_freq", 40)), None)
 
 
 def test_bandpass_provenance_uses_decimal_membership_not_english_labels() -> None:
@@ -366,24 +310,6 @@ def test_model_mapped_reversed_bandpass_remains_range_invalid() -> None:
     )
 
     assert result.is_valid is False
-
-
-@pytest.mark.parametrize(
-    "text",
-    ("low 12 Hz and 40 Hz", "Instead, resample to 100 Hz.", "fifty hertz", "cancel"),
-)
-def test_direct_form_fails_closed_for_mixed_or_non_value_reply_shape(
-    text: str,
-) -> None:
-    assert (
-        collect_direct_parameter_reply_evidence(
-            "apply_bandpass_filter",
-            (),
-            None,
-            text,
-        )
-        is None
-    )
 
 
 @pytest.mark.parametrize(

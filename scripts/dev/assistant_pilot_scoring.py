@@ -2,7 +2,7 @@
 
 Consumes a normalized non-Test bank case and one *actual* model response.
 It does not generate responses, infer side effects or certify product outcomes.
-Legacy synthetic calibration and frozen acceptance scoring remain unchanged.
+Case semantics remain frozen; model envelopes follow the current product contract.
 """
 
 from __future__ import annotations
@@ -13,11 +13,13 @@ from typing import Any
 from XBrainLab.backend.application.pipeline_stage import PipelineStage
 from XBrainLab.llm.agent.decision_contract import MODEL_RESPONSE_TOOL_NAME
 from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
-from XBrainLab.llm.agent.verifier import DIRECT_PARAMETER_TOOLS, ToolSchemaValidator
-from XBrainLab.llm.pipeline_state import STAGE_CONFIG
+from XBrainLab.llm.agent.prompt_policy import STRICT_TOOL_RESPONSE_PROMPT_POLICY
+from XBrainLab.llm.agent.verifier import ToolSchemaValidator
 from XBrainLab.llm.tools import get_all_tools
 
 _CATEGORIES = {"Action", "Clarification", "No-call"}
+SCORER_SCHEMA = "xbrainlab.assistant_decision_scores.v6"
+RESPONSE_CONTRACT = "assistant_tool_response.v1"
 
 
 def _finite_json(value: Any) -> bool:
@@ -58,7 +60,8 @@ def score_decision(
     Invalid oracles raise a measurement error. Invalid/missing model output is
     an incorrect decision. Caller must separately establish trace completeness,
     case identity, decision timeout and whether this was first or final output.
-    Neither a correct response nor a parser result proves Host admission.
+    Neither a correct response nor a parser result proves Host admission or
+    source validity. Only the current complete command parameters are scored.
     """
     category = case.get("decision")
     stage = case.get("expected_workflow_stage")
@@ -90,7 +93,6 @@ def score_decision(
         "correct": False,
         "reason": "missing_response",
         "observed_tool": None,
-        "observed_stage": None,
     }
     actual_parameters = None
 
@@ -98,11 +100,12 @@ def score_decision(
         scored = {**result, "correct": bool(correct), "reason": reason}
         if explain:
             mismatches = []
-            if reason in {"missing_response", "invalid_envelope"}:
+            if reason in {
+                "missing_response",
+                "invalid_envelope",
+            }:
                 mismatches.append(reason)
             else:
-                if result["observed_stage"] != stage:
-                    mismatches.append("workflow_stage")
                 if result["observed_tool"] != tool:
                     mismatches.append("tool")
                 if (
@@ -118,13 +121,12 @@ def score_decision(
                 ):
                     mismatches.append("parameters")
             scored["explanation"] = {
+                "expected_backend_workflow_stage": stage,
                 "expected": {
-                    "workflow_stage": stage,
                     "tool": tool,
                     "parameters": expected,
                 },
                 "observed": {
-                    "workflow_stage": result["observed_stage"],
                     "tool": result["observed_tool"],
                     "parameters": actual_parameters,
                 },
@@ -135,32 +137,18 @@ def score_decision(
     if not isinstance(response, str) or not response.strip():
         return finish("missing_response")
     parsed = CommandParser.parse_product(response)
-    result["observed_stage"] = parsed.workflow_stage
     if parsed.status not in {ToolEnvelopeStatus.VALID, ToolEnvelopeStatus.NO_TOOL}:
         return finish("invalid_envelope")
     if parsed.status is ToolEnvelopeStatus.NO_TOOL:
         result["observed_tool"] = MODEL_RESPONSE_TOOL_NAME
-        # Static output validity uses the same direct-tool/schema/stage sources
-        # as product clarification admission; it cannot establish live admission.
-        if parsed.pending_action and (
-            parsed.pending_action not in DIRECT_PARAMETER_TOOLS
-            or parsed.pending_action not in STAGE_CONFIG[PipelineStage(stage)]["tools"]
-            or not set(parsed.missing_inputs).issubset(
-                schemas.get(parsed.pending_action, {}).get("required", [])
-            )
-        ):
-            return finish("invalid_envelope")
-        correct = (
-            category != "Action"
-            and parsed.workflow_stage == stage
-            and bool(parsed.message.strip())
-        )
+        correct = category != "Action" and bool(parsed.message.strip())
     else:
-        actual_tool, actual_parameters = parsed.commands[0]
+        if parsed.command is None:
+            return finish("invalid_envelope")
+        actual_tool, actual_parameters = parsed.command
         result["observed_tool"] = actual_tool
         correct = (
             category == "Action"
-            and parsed.workflow_stage == stage
             and actual_tool == tool
             and validator.validate(actual_tool, actual_parameters).is_valid
             and _same_parameters(actual_parameters, expected)
@@ -189,9 +177,10 @@ def score_case_decisions(
         or max_format_recovery_attempts < 0
     ):
         raise ValueError("Invalid frozen format recovery limit")
-    # No policy is the actual historical migration path, not today's product default.
     recovery_limit = (
-        2 if max_format_recovery_attempts is None else max_format_recovery_attempts
+        STRICT_TOOL_RESPONSE_PROMPT_POLICY.max_format_recovery_attempts
+        if max_format_recovery_attempts is None
+        else max_format_recovery_attempts
     )
     score_decision(case, None)  # Invalid oracles remain measurement errors.
     issues = list(trace.get("measurement_issues", []))
@@ -228,7 +217,7 @@ def score_case_decisions(
             if (
                 not isinstance(request, dict)
                 or request.get("generation_id") != identity
-                or request.get("response_contract") != "structured_action"
+                or request.get("response_contract") != RESPONSE_CONTRACT
                 or not request.get("messages")
             ):
                 issues.append(f"invalid_generation_request:{identity}")
@@ -273,7 +262,6 @@ def score_case_decisions(
                     "correct": False,
                     "reason": "model_error" if phase == "error" else "cancelled",
                     "observed_tool": None,
-                    "observed_stage": None,
                 }
             )
             attempts.append({"generation_id": identity, **result})
@@ -307,14 +295,11 @@ def score_case_decisions(
         else "completed"
     )
     return {
-        **(
-            {
-                "scorer_schema": "xbrainlab.assistant_decision_scores.v2",
-                "max_format_recovery_attempts": recovery_limit,
-            }
-            if max_format_recovery_attempts is not None
-            else {}
-        ),
+        "max_format_recovery_attempts": recovery_limit,
+        "scorer_schema": SCORER_SCHEMA,
+        "response_contract": RESPONSE_CONTRACT,
+        "parameter_scope": "single_turn_complete_parameters",
+        "source_validation": "not_evaluated",
         "measurement_valid": valid,
         "measurement_issues": list(dict.fromkeys(issues)),
         "execution_status": status,

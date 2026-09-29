@@ -1,8 +1,826 @@
 # XBrainLab Now
 
-最後更新：`2026-09-27`
+最後更新：`2026-09-29`
 
-## Active — 單一 main 基線先穩定，再分產品與實驗兩線
+## Active — Agent Development候選版集中手測交付
+
+### 本輪整理範圍收斂（2026-09-29）
+
+使用者在核對RAG組成及模型輸出後同意「就整理到這段」：維持161個英文單輪示範
+（117個操作、44個回答／不操作）、BM25＋dense＋RRF及最多3個參考；輸入使用當輪
+要求、後端狀態／工具與參考，不帶過去對話；模型只輸出`tool_name`與`parameters`。
+不再擴充語料、增加多輪補值或追加prompt／檢索調參。這是本輪整理範圍的終點，
+不表示下列模型決策失敗已修復，也不改寫歷史判分或授權merge。
+
+使用者隨後明確接受「保留已知限制的Development候選版」交付，並澄清本輪開發目標
+本來就不包含複合需求。Outcome是完整、單一英文要求的Windows集中手測候選，不是
+Stable或任意工具要求皆正確的可靠性宣稱。複合要求不納入本輪支援／手測成功門檻；
+既有拒絕複合要求的產品指引不改，失敗不重標成功。Reset漏執行、空資料epoch誤切panel、
+不可用工具提案等非複合失敗仍明列為此Development版本的已知限制，不說成全部是scope外。
+Scope／non-goals：僅同步current／target／validation及交付文件；不改產品、模型、語料、
+prompt、工具或UI，不新增推論。沿用既有工程證據及已說明的parser等價性，不冒稱重新實測。
+步驟／next：文件focused audit與strict build→提交既有PR #149→同head適用CI閉合→
+Windows原生啟動及確認有回應→交付短清單與重開指令。測試使用可丟棄的working data，
+保留原始資料與settings.json；PowerShell即時log，不另開Live Log視窗。
+Stop：候選已開啟並交集中手測，或必要資源／CI新缺陷確實阻擋；手測通過與merge另待批准。
+UI確認：不變更layout、文案或互動。此決策取代下方歷史「待接受限制」的阻擋。
+
+### 前次授權與已完成檢查：依tool-call範圍整合驗證與凍結
+
+2026-09-28使用者澄清「只有tool call準確率，沒有要審回答品質」，並批准架構／程式碼
+足夠清楚後進行整合驗證與凍結。這是明示縮限驗收維度，不把舊完整回答失敗改標成功。
+Scope：唯讀獨立覆核Agent decision/admission與Qt/runtime/RAG ownership；同步target／
+validation／current的驗收界線；保留現有產品source、模型／prompt／RAG及固定題目。
+不新增架構、不再為回答文案調參，不重跑既有52首答，舊report／scorer／失敗證據不改寫。
+Outcome：同一確切版本可追溯tool選擇／參數／合法格式／正確不操作及實際執行、確認取消、
+UI correlation／shutdown；回答完整度／措辭／知識性品質僅保留觀察，不作本輪阻擋。
+Host擋錯不救模型分數；回答不能替代本來應執行的工具。真錯誤side effect仍阻擋。
+步驟：兩個互補獨立source覆核；以既有capture核對20＋6題tool-only結果；一次74題
+既有單輪廣度報告；Windows真模型ChatPanel四步及必要confirmation／cancel直接驗證；
+精確head推送既有PR #149並追蹤全部non-skipped CI，通過後凍結SHA／模型／corpus及證據、
+開啟Windows給集中手測。不是論文正式Test，不宣稱所有未知要求正確。
+Validation：重用同產品source的52首答及相關工程tests，新增必要整合證據，不跑等價本機全套。
+Rollback：本輪預期只改文件；具體整合defect依原owner做必要修復並重驗受影響證據。
+UI確認：無layout改動，使用者已批准回答品質不作此輪gate。settings.json保持不動。
+Stop：凍結版本及所有必要gate閉合並開Windows給手測；或重現tool/執行缺陷、必要資源缺失。
+兩個獨立source覆核均GO：decision/admission／Command與Qt/runtime/RAG責任清楚，無確認
+阻擋；大controller與少量RAG metadata重複只是後續維護項。另以既有capture獨立tool-decision
+覆核：hybrid原20題20/20、另6題6/6；off14/20與4/6，首答／格式修復後分數各自相同。
+舊完整回答語意失敗未改寫。下列整合結果取代先前待跑狀態。
+
+#### 整合檢查結果與當時的可靠基線凍結阻擋（2026-09-29）
+
+產品仍是`77edf12e`；文件checkpoint `d586a173`的Windows真模型ChatPanel四步全部通過：
+Dataset→EDF匯入→選C3/Cz/C4→真Command重取樣64Hz，capture完整、資料變更正確，
+關閉後剩餘worker／subprocess皆0。另5個原生Windows確認／取消／stale確認／匯入取消／
+停止後關閉測試通過；這5項使用scripted generation隔離邊界，不冒稱真模型選擇證據。
+
+既有74題一次hybrid推論完成，74首答＋1次既有格式修復；75份capture、74份首答輸入hash
+全部核對，engine正常關閉。獨立tool-decision為首答65/74、修復後66/74；其中positive
+35/36、challenge 11/14、no-action precision首答19/24→20/24。歷史自動content screening
+是63/74→64/74，未改寫成新分數。19題positive原文與檢索範例重合，74題只有64份不同
+rendered prompt，因此只作固定工程廣度，不是holdout或論文準確率。
+
+8個最終失敗case對應7種不同原句：要求reset卻回答不執行；複合操作只提案bandpass或
+average reference；空資料的epoch要求改提案切Preprocess；以及dashboard／尚不可用的
+split／training settings仍提案操作。4個no-action case（3種不同原句）錯誤提案通過產品
+准入、抵達evaluator抑制的執行邊界；另3個被Host擋下，但仍算模型錯誤。沒有真Command
+或資料mutation發生，不把「未執行」包裝成正確不操作。這是工具決策缺陷，不是回答品質。
+
+因此當時source架構覆核GO，但整合candidate未通過可靠基線gate；後續Development候選
+交付依上方明示接受限制的決策，不將此失敗改成通過。
+不增加Host意圖判斷、重試、prompt候選，也不因74題是breadth而忽略錯誤准入。既有52首答、
+本次失敗及舊判分全部保留於ignored `build/dev-artifacts/agent-toolcall-freeze/`與
+`agent-answer-completeness-v1/`；新input bundle SHA為
+`52293dd515647c27b40cdaccc974d95052cedf2cf88ea84fb2a7f1639eb78871`。
+
+同head CI仍作獨立工程驗證，最新狀態由GitHub PR #149擁有；即使全綠也不能補掉上面的
+模型gate失敗。當時待決策已由上方使用者接受Development候選限制閉合；不得再自行
+啟動模型調整，亦不提升為Stable。settings.json未改。
+
+已完成直接修理：CI run36449067516的`linux-unit-rest`揭露parser兩處`str(exception)`
+違反既有診斷邊界。Duplicate key由模型文字提供，確可將私人路徑／email／token帶入error。
+先新增真parser惡意key回歸並重現，再重用既有`public_exception_message`；不加owner、不放寬
+source guard、不改accepted JSON／格式修復、模型輸入／tool admission或UI流程。
+Focused：parser與result contract、strict recovery；獨立覆核，以及保存capture重播證明
+所有既有proposal判定不變（不是新模型分數）。完成後提交精確head CI；舊CI失敗保留。
+此修理只閉合必要工程驗證，不授權追加prompt實驗；後續交付依最新Development決策。
+同輪CI另有3項過時測試：Dev context仍要求舊untrusted items包裝與空history user訊息；
+runtime trace及pilot outcome fixture仍用退役`structured_action`。依既定
+`application_state/current_user`與`assistant_tool_response.v1`同步測試，保留真resample、
+correlation、格式錯誤不救分等assertions；不修改runtime/scorer或fixture中的故意錯誤輸出。
+實測：3個privacy案例RED→GREEN，parser／診斷邊界／strict recovery共120 passed；
+3項舊fixture先重現，遷移後相關156 passed。Production僅parser +4/-2（淨增2），
+owner不增；tests保留真Command等斷言。獨立覆核將先前53＋75＋4份capture共132份
+交給前後parser重播，status／message／command／error完全相同；這是修理等價性證據，
+不是新版真模型準確率或重新推論。舊source／模型失敗原樣保留，只有診斷隱私修正進新head。
+
+### 歷史候選：回答完整性修正未通過當時的完整語意gate
+
+2026-09-28使用者批准「那就修吧」的一次有界候選已實作並測完；規則歧義確實移除，
+但未達「三類回答問題收尾且既有操作不退步」outcome，不能宣稱修好或交手測。
+僅prompt policy +13/-4（淨增9行），測試+25/-3（淨增22行）；沒有新增owner、欄位、
+Host意圖判斷、語意重試或補答案。模型／revision、RAG語料／排名／top-k、題目／oracle、
+confirmation／取消及UI layout皆未改。target只釐清已批准的回答要求。
+
+RED是前版真模型失敗capture；另2個policy投影保護先失敗再通過，不能當模型理解證據。
+工程baseline90 passed；最終直接回歸126 passed（含真Command、normal/recovery及budget），
+Ruff、型別、guidance audit與strict docs通過。途中舊文案斷言失敗已同步，沒有放寬語意判準。
+獨立覆核全部52份輸入後凍結；bundle SHA前綴`e302ea1c`。463份runtime檔案hash與
+當前候選相符；推論時HEAD為`90b6a528`加本slice，不冒稱該HEAD本身包含修正。
+新證據位於ignored `build/dev-artifacts/agent-answer-completeness-v1/`；舊候選不覆寫。
+初次export缺embedding快取連結而中止，補用既有pinned models後完成；無下載、無失敗推論重跑。
+
+| 固定案例 | 前版完整語意 | 本次完整語意 | 本次自動判分 |
+| --- | --- | --- | --- |
+| 原20題／RAG off | 9/20 | 8/20 | 14/20 |
+| 原20題／RAG hybrid | 16/20 | 17/20 | 20/20 |
+| 既有另6題／RAG off | 2/6 | 2/6 | 4/6 |
+| 既有另6題／RAG hybrid | 5/6 | 5/6 | 6/6 |
+
+獨立覆核全部52組raw／final及新舊106份capture，結論為candidate gate failed；詳見
+該證據目錄的`independent-semantic-review.md`。52首答＋off Channel Selection既有格式修復1次；四份capture／首答輸入身分verified，
+engine皆closed。兩组題目分母不合併，不是論文成績。hybrid的reference禁止回覆改善；
+E10b仍只確認不執行而不解釋、bandpass仍漏完整重述、normalize仍複誦（另6題亦同）。
+off E10b已解釋但未確認不執行，依完整契約仍不計通過；off E10a新增把8–30 Hz稱為
+alpha的錯誤，屬回答準確性退步而非誤執行；[MNE頻帶範例](https://mne.tools/stable/auto_tutorials/time-freq/20_sensors_time_frequency.html)
+明分Alpha與Beta。此嚴格計分與具體改善並列，不把漏確認說成漏解釋或危險操作。
+
+Next／待決策：prompt釐清不足以解決剩餘問題。E10b在off已能解釋、hybrid卻仍跟隨
+僅確認不執行的參考，支持進一步檢查RAG示範適配，但不證明其他失敗也有相同根因。
+保留這一版失敗checkpoint；不再追加候選／模型推論，不改gate、merge或開手測。
+須先決定下一個有界修正範圍或明確接受哪些產品限制；通過原模型gate後，仍需74題廣度、
+真模型ChatPanel／確認取消及同head CI才能交Windows集中手測。下方各候選結果保留歷史身分。
+
+### 已完成：模型輸入不帶對話歷史
+
+依2026-09-28使用者授權，刪除舊Assistant回覆投影、專屬限長及無用helpers／測試；
+畫面與診斷紀錄、當輪原文、confirmation／取消／格式recovery保持。
+Production +21／-118，淨減97行；測試+91／-183，淨減92行；owner數不變。
+7個新增／改寫案例先RED再GREEN；相關Windows回歸211 passed，assembler型別檢查通過，
+獨立覆核無未解source／test blocker。52份既有凍結首答輸入各比對有／無舊對話，
+104次完整messages比對相同；未呼叫模型或檢索，不能算新模型成績。
+當前契約見current／architecture／target；下方模型結果仍屬舊checkpoint，已知語意
+失敗尚未解決，仍不交手測／merge，也不自行追加prompt候選或調參。
+
+### 最新施工：英文上下文與 RAG 單一候選收斂
+
+使用者於 2026-09-28 批准「那就開始吧」，並要求收尾時整理整輪改善前後的具體差別
+與影響。此節取代下方已完成診斷的等待決策；只做一版整體候選，不換模型、不追加
+多輪能力／Host intent router／第二控制層，不以 reviewer 看得懂代替小模型實際可用。
+
+證據／假設：旧 off/on 均13/20；人工正確選例5題只改善2題、3題仍失敗、另2題語料
+缺口。規則正確不表示容易使用；本輪假設可透過回答／操作平衡呈現、合併重複規則、
+清楚區別当輪與參考、以及直接英文正反對照降低小模型理解負擔，尚非已證實因果。
+
+Scope／outcome：僅英文；維持18工具、兩欄wire、完整單輪要求及一次格式修復。
+整理既有 assembler／prompt policy，保留安全、來源、publication、confirmation、取消
+與真後端 owner；RAG維持BM25＋dense＋RRF，不改模型／top-k／准入門檻，不新增分流。
+語料對齊常見英文操作，補同操作的禁止不執行示範；明分完整、全缺值、部分值、
+否定及純說明，不複製測試原句或用錯誤tool call當範例。無UI layout／工具contract變更。
+只刪／收斂重複呈現，不刪必要狀態，不藉fail closed隱藏模型錯誤。
+
+施工步驟：
+1. 先由獨立 reviewer 凍結6題新英文問法與判準，完整／缺值／否定各2題；原20題不動。
+2. 主agent整理最終輸入；RAG語料獨立寫入；保持對應baseline tests，再完成focused
+   regression及離線檢索。不得為通過而刪反例／改oracle／掃參數。
+3. 在任何新模型結果出現前，完整候選與案例凍結並獨立覆核所有實際輸入；新候選26題
+   各跑off/on一次，52首答，最多每題原產品格式修復一次，無semantic retry。
+4. 逐題比對首答、格式修復、Host admission與獨立語意；原20題須全符合契約，新6題
+   不得猜缺值／違反否定或新增錯誤副作用。RAG需具體受益且不新增錯誤，不要求任意漲幅。
+5. 通過才同head CI／適用真模型GUI journey及Windows交付；仍失敗先保留source/失敗
+   並提出模型／產品取捨，不再開始第二版prompt、偷偷放寬gate或交使用者替失敗驗收。
+
+Complexity：owner不增；刪除候選是重複policy／schema重述與只供Host追蹤的多餘呈現，
+不是驗證本身。production delta逐slice記錄；單一PR#149既有大小例外仍有效。
+UI確認：只改已授權Assistant英文理解／回答契約的內部呈現，無layout改動。
+驗證／stop：focused assembly、安全隔離、budget、parser及真Command保護；offline corpus/
+retrieval；固定52首答；獨立完整context與語意review；通過適用同版本gate才handoff-ready。
+本輪結束另列已接受main、單輪簡化前、13/20中間版與最終候選的差異，分清code/tests/
+scripts/docs/corpus、實測與未驗證影響；不將不同題目分母直接加總。
+Next／狀態：唯一候選已實作、凍結、完成52首答及獨立內容覆核；仍未通過基本模型
+gate，屬需要後續決策的checkpoint，不是handoff-ready。不得重跑抽成功或追加候選；
+也不啟動手測／merge。settings.json不動。結果與整輪差異如下，下方舊Next皆為歷史。
+
+#### 英文候選實測與整輪比較（2026-09-28）
+
+產品候選checkpoint `2bc64c44b442421927c57316488e1c0b79ae9a97`。推論時Git HEAD仍為
+`00a8c829`、本輪source尚未commit；不是clean-head gate。462份runtime檔案的凍結hash
+與後續checkpoint內容逐一相同，runtime fingerprint為
+`99fa8c7ffae169012b813a324d1419ad918d594e91631392ddc7786f4f950ce5`。
+完整證據在ignored `build/dev-artifacts/agent-english-candidate-v1/`；原失敗與舊結果未覆寫。
+52份完整輸入在生成前獨立覆核，bundle SHA為
+`1d1595b39b07202af7b09f5f4ee12451d255526e46756155e0c31eca96fb0c2b`。
+模型／revision／greedy設定不變；52首答＋1次既有格式修復，無semantic retry。
+四份report全部capture verified、engine closed，首答prompt逐份符合凍結內容。
+
+| 同一英文候選 | 原20題自動判分 | 原20題獨立完整語意 | 新6題自動判分 | 新6題獨立完整語意 |
+| --- | --- | --- | --- | --- |
+| RAG off | 14/20 | 9/20 | 4/6 | 2/6 |
+| RAG hybrid | 20/20 | 16/20 | 6/6 | 5/6 |
+
+首答與一次格式修復後分數相同。自動分數只代表工具／參數／格式及既有content screening，
+不能冒稱完整語意通過；兩组分母不合併，也不是論文準確率。新6題凍結在候選前且
+未複製語料／原20題；仍只是小型工程檢查，不是統計泛化保證。
+
+hybrid剩餘4個原題：E10b「不要執行，請解釋」只確認不執行，漏掉解釋；bandpass全缺值
+已正確問上下限，但未明確要求完整操作重述；reference與normalize禁止題只複誦原句，
+未確認會遵守。新6題只剩normalize禁止題同樣複誦。後三類是回答品質／契約完整性，
+不是此次誤執行；即使較寬鬆接受複誦或重述措辭，E10b仍足以阻擋原有gate。
+E10b前一版off/on有解釋，因此這是確定退步，不用其他題改善抵銷。
+
+前一版相同20題off/on自動皆13/20；本次hybrid五種缺值都能指出正確缺項、不再猜參數，
+其中bandpass仍有上述重述缺口。當前候選off→hybrid，原20題完整語意改善7題、新6題
+改善3題，各自無語意退步；這支持這個固定組合下RAG確有幫助，不隔離prompt／corpus
+各自因果，也不證明換組件仍有同樣效果。off仍猜缺值，且Channel Selection格式修復
+後仍失敗；不是修復機制能修好所有理解錯誤。
+此次所有no-action題未到錯誤執行邊界；正向操作由evaluator刻意抑制，不能當真GUI執行。
+
+離線v5准入20題通過；36個positive retrieval probes top1由34降至32、top3維持35。
+bandpass全缺值未取到對應示範、normalize／reference否定仍取到操作示範等限制保留，不能說檢索
+全面修好。實際輸入1400–2284tokens、預算7680，無截斷；原20題off中位數1875→1947、
+on2122.5→2212，清楚呈現不等於更短或已證明更快。
+
+直接回歸在checkpoint通過1251項（66.93秒）；涵蓋Agent／parser／真Command integration／
+context template／RAG／verifier與新案例fixture，非全專案coverage宣稱。獨立覆核包含全部
+52份新輸入／輸出；原20題另核對40份舊capture。Ruff、changed-source型別檢查、hooks、
+guidance audit與strict MkDocs通過。三筆新增secret baseline只標註公開source／fixture hash，
+未排除整份檔案或減少gate。模型未合格，因此未推送新手測head、未以舊CI補位，未跑
+真模型GUI交付流程；不能宣稱整輪基線已完成。
+
+整輪相對已接受main `a5f57a15`，而非只相對上一小步：
+
+| 部分 | 之前 → 本輪候選 | 具體影響／代價 |
+| --- | --- | --- |
+| 模型契約 | stage＋tool＋parameters、typed補值 → 恰好tool＋parameters、完整獨立要求 | 刪跨輪累積／猜意圖分支；缺值後須重述整個操作，不能只回數字。中途五欄草稿方案已刪除。 |
+| RAG | 手寫分流、dense池內BM25重排 → 已發布工具／回答集合，獨立dense＋BM25及RRF | BM25可補召回；不取得授權、不能填當輪缺值，仍可能選到不合適示範。 |
+| 語料 | main72筆 → 現161筆；本小步157→161 | 包含完整、缺值、部分值、禁止、純說明；數量不是效果保證。 |
+| Context | state與參考共用可裁減區塊 → state與當輪原文是必要輸入，參考獨立 | 沿用同publication；整例packing、回答與執行並列，不是更短prompt宣稱。 |
+| 驗證 | 歷史81題契約 → 保留歷史，固定新20題＋6題，raw／修復／Host／語意分開 | 不將舊成績、Host擋錯或合法JSON當作本輪模型答對。 |
+
+以2bc64c44為統計截止：production Python +730/-1891（淨減1161行）、scripts Python
++892/-2114（淨減1222）、tests Python +3568/-4256（淨減688）。含JSON fixture後scripts
+共淨減677、tests共淨增35；語料JSON淨增943，文件當時淨增829，另有30行公開hash
+allowlist。後續只補本節及current事實，不把文件／fixture膨脹包裝成產品程式縮減。
+18工具、backend owner、confirmation／取消／publication及一次格式修復保留；沒有新增
+第二模型／控制層。這是已完成候選工程與實測的結論，非可靠基線已驗收。
+
+### 已完成診斷：英文小模型上下文與人工選例
+
+2026-09-28 使用者批准「好施工」：本輪僅支援英文輸入／回答，先對既有失敗的
+7 個單輪案例做人工選取既有 RAG 示範的診斷。舊 off／hybrid-native 配對保留且不重跑。
+問題與證據：規則正確、無截斷不等於小模型容易使用；bandpass 全缺值要求收到兩個
+完整操作與一個 partial-high 示範，實際只問 lower，五個完整缺值示範未進融合候選。
+
+Outcome：區分「找錯參考」和「即使提供適合參考仍無法遵守」；不是正式準確率、
+RAG 改善宣稱或最終交付。現有基本模型 gate 仍有效，不以人工選例替代。
+Scope：先盤點既有語料、凍結選例／判準／模型與來源身分，再每題一次首答診斷（最多
+7 次生成，不做格式或語意重試），保存完整輸入／原始輸出與逐題獨立語意覆核。
+原產品最多一次格式修復仍保留；此診斷只比較舊首答，不能把零重試診斷冒稱產品改版。
+不改 system／工具／state／使用者原文、產品提示、語料、檢索參數、模型、settings 或
+UI。人工選例只走既有 RAG 編碼與 context 組裝，不另建 production owner 或逐題路由。
+若既有語料無合適示範，明記缺口並不生成該題，不為題目現寫答案；分母仍列全 7 題。
+
+步驟／focused validation：
+1. 記錄 7 題、既有示範 ID 與選擇理由，覆核沒有變造語料／補答案；先凍結再推論。
+2. 重用現有 assembler／模型 runtime 與既有快取；逐 byte 核對 system/current_user
+   對舊 capture 一致，確認只替換參考；無執行副作用，輸入輸出有 hash 與確切來源身分。
+3. 每題一次生成；不以格式合法或 Host 擋錯評為答對。判斷缺值項目／完整重述與否定
+   不操作的語意；獨立覆核全部 7 題，說明人工選例、範例數量改變等因果限制。
+4. 有證據才決定最多一版整體修正；沒有則提出模型／產品取捨，不自動 sweep。
+   修正版仍需固定 20 題、事先凍結少量新問法、RAG 受益及同版本整合 gate 才手測。
+
+UI 確認：本次診斷無可見產品改動。Complexity：production +0／-0、owner 不變；
+只用有界診斷附件，不新增通用測量平台。Stop：診斷完成後依結果判定可修範圍；
+不能將 reviewer 看得懂當小模型可用，也不將 checkpoint 冒稱 handoff-ready。
+診斷已執行，結果與接續如下；不重跑抽到成功。
+
+#### 人工選例首答診斷（已跑、非產品成績）
+
+Source `14ddc4ca644cdbd70c591b4f24a0514a762df5d9`；只有本節與 target 文件改動，
+產品程式及使用者 settings 未改。附件在
+`build/dev-artifacts/agent-single-turn-v1/oracle-reference-v1/`；凍結 manifest SHA
+`2a779a57f790a0b1aae2afabe3a4de8479a2c18ce6722fdd86833486a9af257e`。
+診斷腳本 `build/dev-artifacts/diagnose-single-turn-oracle.py` 只用既有 assembler／encoder／
+LLMEngine，無 executor、Host admission 或重試。只讀既有 D 槽 pinned Granite 快取，
+與舊 control 相同 CUDA／非4bit／greedy／512；Windows native 一次載入、5 次首答生成，
+engine_closed=true。生成前已獨立覆核選例，核對舊 off 的整份 rendered prompt、
+舊 on 的 system/current_user 與當前一致；新 5 captures 與凍結 prompt/output hash 一致。
+
+| 固定案例 | 人工選例首答 | 判斷 |
+| --- | --- | --- |
+| missing_bandpass_en | apply_bandpass_filter，parameters={} | 仍錯；沒有詢問上下限。原 hybrid 只問下限，兩者都失敗但形態不同。 |
+| missing_notch_en | apply_notch_filter，parameters={} | 仍錯；沒有詢問頻率。 |
+| missing_resample_en | resample_data，parameters={}，尾端多一個 code fence | 仍錯；另有格式錯，不以修復重跑掩蓋。 |
+| missing_reference_en | 詢問 reference method/channel 並要求完整重述 | 改善；原 off/on 均猜 average。 |
+| missing_normalize_en | 詢問 z-score/min-max 並要求完整重述 | 改善；原 off/on 均猜 z-score。 |
+| single_turn_negated_resample_en | 未生成：語料缺口 | 沒有同操作、單純禁止、respond_to_user 的既有示範；不是通過。 |
+| single_turn_negated_normalize_en | 未生成：語料缺口 | 同上；不能把其他操作的否定當等效參考。 |
+
+準確的語料缺口不是「完全沒有否定」：apply_notch_filter_07 與 resample_data_07 的
+混合要求分別包含禁止 resample／normalize，但示範是執行另一個操作，不適用此條件。
+7 題完整列出，5 題已生成中 2 題行為改善、3 題仍失敗，2 題未生成不計 pass／fail。
+此診斷未執行工具，也未測 Host 擋錯；不能說三個空參數操作已在本次被後端擋下。
+
+支持的結論：現有單一合適示範能幫助 reference／normalize；相同介入不足以讓另三題
+遵守缺值契約。不是「只修檢索即可完成」，也不證明模型天生不會、RAG 永遠無效。
+人工選例同時改了 relevance、範例數量與競爭內容；未隔離其因果，未跑新問法或正向
+回歸，不能把 2 題改善併入原 20 題宣稱 15/20，亦不能宣稱產品 RAG 已受益。
+獨立覆核已完成：manifest、腳本、corpus／case hash、14 份舊 capture 與5份新 capture
+核對一致，語意判斷同表；未找到規則矛盾、參考遺失／截斷或組裝錯誤，不能由失敗
+直接推導應改哪段 prompt。Guidance audit／strict MkDocs／diff 檢查通過。
+Next：帶著此結果討論下一個有明確假設的模型／上下文適配取捨；目前沒有足夠根因
+支持直接動用唯一有界修正，不追加候選或重跑。原20題 gate 與否定風險仍阻擋手測。
+本次只完成已批准的先跑診斷，產品可靠基線仍未完成；不能把文件與診斷收尾當整輪完成。
+
+### 最新決策：完整單輪操作基線（取代下方跨輪施工方向）
+
+使用者於2026-09-28同意「好這輪做到這樣」：本輪以責任清楚、各部件直接測試、完整
+模型輸入覆核、同版本整合及可重現封存達到集中手測；不是零缺陷承諾，不增加功能。
+產品改為每次一個完整獨立要求；缺值回答需要重新提供完整要求，不保存或合併跨輪值。
+正常說明、GUI開窗、一次格式修復、backend publication／confirmation／取消／資料驗證
+保留；training背景工作與停止不是草稿能力。不做Host意圖猜測，不增加第二模型／owner。
+
+證據：目前五欄及累積來源契約使E01基本操作退步；同模型舊prompt重播正確，兩次有界
+刪減診斷未解決。不可用更多prompt範例掩蓋。已增五筆單純說明示範，但尚未證實模型
+受益；這批及RAG參數先固定，不繼續調詞／門檻。settings.json仍完全保留。
+
+施工與分工：
+1. 先更新target，以單一兩欄tool_name／parameters模型回覆投影現有18工具；純回答用
+   respond_to_user/message表示，非新增可執行工具。移除mode／changes／source_turn／quote
+   與pending草稿傳遞，不保留舊wire相容分支；本輪direct參數來源檢查仍由既有validator做。
+2. parser／prompt／assembler、runtime／confirmation邊界、RAG／研究consumers各自獨立
+   寫入；先小模型基本互通再擴展驗證，不能完成大遷移後才第一次看模型是否能用。
+3. 移除跨輪專屬程式與測試；以缺值後只回數字不執行、完整重述才可執行取代產品需求。
+   歷史81題／累積實驗artifact保留原身分，不覆寫成新gate；研究runner明示新版本契約。
+4. 固定基本模型驗證：5種direct操作各一完整／缺值／否定（15），2種GUI開窗，2個
+   純說明，E01完整7–30（共20個單回合）；加獨立工程軌跡保護不沿用舊值／RAG值。
+   工程不變量全通過；這20個基本契約案例需全過且不能由Host擋錯冒充模型答對；不是
+   所有自然語言100%準確宣稱。其餘固定廣度題保持分母、逐項回報，不要求無限刷分。
+5. 初版只做一次固定互通比較；僅有具體根因才容許一次有界模型呈現修理再驗相同案例，
+   不掃候選。若仍無法保住基本能力，候選不進基線並提出取捨，不擅自放寬gate。
+6. RAG另按既有受益要求做固定開關比較，不以能檢索代替受益。完成source、test品質與
+   完整context的獨立覆核後，跑同head必要CI/native gates，再開Windows供集中手測。
+
+Complexity：刪AssistantPendingRequest/ParameterChange/RequestUpdate及跨輪merge、來源
+鏈和相關research/runtime轉接；PendingInteractionCoordinator保留confirmation／GUI交接，
+backend仍唯一執行owner，owner不增加。各slice記實際production/tests/scripts/docs增刪。
+UI確認：本次已授權缺值時重述完整要求的互動變更，不改layout／工具membership／確認。
+Stop condition：符合上述固定scope、獨立覆核與同版本gate才handoff-ready；沒有merge授權。
+Next：續作以緊接下方的「當前施工與接續」及固定模型驗證結果為準。
+
+### 當前施工與接續 { #agent-baseline-construction-plan }
+
+本輪仍為單一整合 PR #149（使用者明確批准大小例外），不將切片當多次手測。
+前一個 source checkpoint `223c624b2a194221c69cfc22e3431ce4092eb0a5` 不是新單輪候選；
+本輪遷移保存為本機工程 checkpoint，不推送為手測候選。`settings.json` 是使用者原有
+修改，必須保留。Git 擁有即時版本事實。
+本輪 outcome、scope、非目標與 stop condition 由頁首定義；不再按下方歷史跨輪任務施工。
+
+| 範圍 | 已做／下一步 |
+| --- | --- |
+| Wire／context | parser、schema、policy、assembler 已改兩欄；刪除草稿來源 ID／quote／mode。必要 state 與當前原文完整保留。直接 200 tests 及下列整合檢查完成；模型 gate 未過。 |
+| Runtime | 刪跨輪保存、合併、失效與 draft origin bypass；保留 confirmation／GUI owner、publication、取消及 training async。獨立 reviewer 未見 runtime blocker；真 Command 測試保護完整重述與不沿用舊值。 |
+| RAG | 157 筆，schema 6，刪兩個跨輪示範並保留五種單純說明。v4 檢索 fixture 實際是 20 題（原 24 只刪四個跨輪），不是原先錯估的 16；unrelated 反例不刪。offline 已通過，尚非模型受益。 |
+| Consumers | runner v17 預設固定 20；舊 81 原始案例及報告保持歷史身分，74 個仍適用單輪另列廣度。研究 scorer／capture／report／gate readers 已同步並直接驗證，不新增相容草稿層。 |
+| 文件 | 刪除 active target 的被取代跨輪說法；current／architecture／validation 同步。此處保留失敗位置，不複製另一份產品契約。 |
+| 整合出口 | 完整真 input 獨立覆核、所有 directly affected tests/static checks、同 head CI 與適用 native journey 後，開 Windows 完整程式及 PowerShell log 集中手測。不 merge。 |
+
+### 固定模型驗證與目前證據 { #agent-m0-acceptance }
+
+固定 20 題 manifest：
+`scripts/dev/stable_assistant_single_turn_cases_v1.json`，
+SHA `5ef6bca6053b835ce1e21a68b51735e69630d0c881e28cf072fa61135abbd1a4`。
+完整契約在 [validation](../validation/README.md#single-turn-assistant-candidate)：
+raw 與一次格式修復後分開，20/20 要求含獨立回答語意覆核，Host 擋錯不救分。
+模型是 pinned Granite 4.0 Micro，CUDA／非4bit／structured greedy 512；只用既有快取。
+不改 settings，不下載或 silent fallback。
+
+證據位於 ignored `build/dev-artifacts/agent-single-turn-v1/`，每次失敗不覆寫：
+
+- `off/report.json`：預設設定找不到 cache，零推論；不是模型失敗。
+- `off-cached/`：明確既有 D 槽模型快取，20 真生成與 capture hash 核對完成，
+  raw/post 均 13/20。E01 7–30 及 E10a 說明恢復；五個缺值猜參數、两個否定誤操作。
+  來源 validator 擋住五個缺值，但否定 resample 到 suppressed execution boundary，
+  不能宣稱後端已理解否定。兩個其他否定回覆只重複原句，尚非完整語意品質通過。
+- `offline-report.json`：157 筆真離線索引、v4 20 題准入及既有 retrieval 保護通過。
+  36 retrieval probes top1 34、top3 35；這不是生成模型正確率。
+- `hybrid/`：本機測量包裝缺 Windows multiprocessing main guard，檢索退化；
+  不是有效 RAG-on 對照。包裝已修，產品 prompt／模型／語料未變。
+- `hybrid-native/`：有效配對完成，20 captures核對成功，18 retrieved／2正常empty，
+  raw/post仍13/20，沒有case-level fail→pass或pass→fail。RAG使notch否定回覆改善，
+  bandpass缺值不再猜操作但抄partial例只問lower、漏upper；notch／resample缺值改抄
+  示範數值。獨立review確認與off相同system/current_user、僅RAG不同，無packing遺失。
+  這支持局部行為影響，未達可靠基線或RAG完整受益要求；不啟動prompt sweep。
+- `retrieval-diagnosis.json`：CPU／offline只讀既有索引，五題最終ID逐項重現。
+  五個完整缺值例都沒有進融合候選：bandpass／notch dense rank6／3、cosine
+  .6830／.6371被.7准入擋；resample／reference／normalize rank34／28／19在top10外
+  且也低於.7。五例BM25只命中一詞，未達min2與coverage；filtering/filter、
+  sampling rate/resample、normalization/normalize及recording/EEG data表述不匹配。
+  不是最後top3排序壓掉已召回正例，也不證明降低門檻或加stemming即可解決。
+
+Consumer／docs遷移、直接驗證與獨立覆核已收斂，保存為可回退本機checkpoint。
+以下是人工選例診斷前的阻擋狀態；新授權的最多 7 次診斷依頁首施工，不宣稱已可手測。
+模型gate目前阻擋交付；完整輸入覆核未發現足以支持有界呈現修理的source缺陷。
+若沒有可證的實作錯誤，不擅改retrieval設計、加Host語意路由／第二模型或放寬gate；
+完成coherent工程checkpoint後提出具體設計決策，不把此候選交手測或merge。
+需決策的是是否另授權一次檢索／語料適配修理；這不保證能解決off已存在的否定理解問題，
+不能將兩個問題合併聲稱只修RAG就會可靠。
+
+工程收尾證據（不合併重疊測試數，也不替代模型gate）：
+- Assistant unit＋integration 1,064 passed／1舊current_user.id斷言失敗；改斷言後該檔及
+  registry focused共25通過。真Command、confirmation、取消、stale／async保護與長session在內。
+- Consumer／RAG／research直接集合561通過；後續兩個純死碼刪除的186子集合另通過。
+- 新研究report v4原被呈現為Pilot，先RED再修兩處schema membership；5個新舊版本／
+  不混算focused及2個render-time capture drift通過。較廣兩檔I/O測試100秒timeout，
+  Windows process確認已退出；未延長timeout或宣稱全report suite完成。
+- Runtime focused Basedpyright為0 errors；額外scripts掃描有14個diagnostics，涉及既有
+  optional narrowing／evaluator duck-typed harness，這些scripts不在既有XBrainLab typing
+  gate內。未宣稱所有腳本typing通過，未為此擴大改寫或修改baseline。
+- Scope lint／diff檢查、guidance audit、strict MkDocs通過；獨立review修正報告reader只信
+  PASS flags的假綠及malformed nested JSON crash。讀取器檢查實際20題、trace、capture、
+  模型版本、cleanup與RAG狀態；CLI機械結果與獨立語意覆核分開，13/20報告仍拒絕。
+
+尚未跑final-head CI／真模型GUI journey／Windows真人驗收，因候選基本模型gate已失敗，
+不把無法交付的版本推成驗收候選。工程checkpoint不是scope-complete或handoff-ready。
+只有具體根因才動用一次有界呈現修理；不能因 20 題未過而另掃語料、門檻或 prompt。
+尚未 scope-complete／handoff-ready。Compaction 與 CI pending 不是停止條件。
+
+### 先前跨輪設計的診斷證據（已被單輪契約取代）
+
+歷史細節可從 checkpoint `223c624b` 的本文件及 ignored artifacts 還原；保留 source、
+失敗與分母，不把舊累積功能當新待辦：
+
+- `agent-baseline-rag-v3/`：154 筆舊 corpus 的固定 9 題 hybrid 4/9、off 5/9；
+  ordered-hybrid／ordered-off 均 5/9。不是 RAG 淨受益或基線通過。
+- `e01-accepted-prompt-diagnostic/`：accepted main capture control 逐 byte 重現；
+  舊 prompt off 的相同 E01／E10a 正確。只支持上下文／契約組合退步，非單欄因果。
+- `agent-e01-catalog-scope/` 與 `agent-e01-added-examples/`：兩個 bounded 刪減診斷
+  均未解決 E01；沒有採用或繼續掃描變體。
+- `agent-rag-m3/` 及先前 v1／v2 admission 失敗保留；固定准入的政策決策見 target。
+- 舊跨輪專屬測試／DTO／提案 wire 已批准刪除，不以搬 legacy 或兼容空殼保留能力。
+
+## 歷史 — RAG／決策與追問聯合修理與撤回（不再派工）
+
+以下保留前次修理範圍、撤回與證據，已由頁首的整體設計討論取代；其中Next與舊授權
+不是本次施工指令。Public contract仍須先核准，撤回不代表RAG品質已完成。
+
+### Outcome、scope與現況
+
+Outcome：補檢索缺口且不增加既有逐題pass→fail，不把工具命中、安全擋錯與正確回答混為一談。
+Scope為RAG表示／召回／排序、既有決策提示與直接追問交界；不換模型、不動正式研究題庫、
+不新增intent router／owner、不放寬Host保護。UI layout、工具名稱／副作用與兩欄root維持。
+受保護的root settings.json不動。跨既有參數來源／追問output contract須另核准target。
+
+PR #149未merge；c753撤回fe533改動之後，獨立語意覆核又發現保留的catalogue修正仍有新增錯誤，
+因此連Split／Training描述也撤回。當前產品／測試／scripts與2e3b逐byte相同，本次聯合修理
+**沒有被採用的runtime改動**；不能以淨增行數、診斷數量或green測試聲稱能力提升。
+目前仍145筆、schema2、cosine准入後BM25重排；已知兩筆正確例被dense門檻排除，並未修好。
+**本輪不是scope-complete，也不是handoff-ready；不開手測、不merge、不開始下一部件。**
+
+### 已完成的有界診斷與否決
+
+固定MiniLM／Granite revision、工程題目與生成設定；以下是development，不是sealed thesis evidence。
+不得重跑抽到通過、改題降gate、把粗工具命中冒稱完整語意正確。
+
+| 候選／診斷 | 證據與判斷 |
+| --- | --- |
+| b4c7：dense／BM25獨立聯集 | positive檢索Top3 34→36/36，但模型positive36→35、追問6→4/7；已撤回。 |
+| 序列化input先於answer | 98 fresh control逐byte重現，196 captures；6 raw退步0改善，否決。 |
+| catalogue／最後reminder分開比較 | 98題、122 fresh；catalogue先通過機器非退步，但c753後續語意覆核失敗亦撤回；reminder3退步，否決。 |
+| 僅decision name，移除現成答案 | 98題，新增錯誤操作／虛報完成；input仍帶數字，否決。 |
+| fe533：聯集＋五種typed缺值例＋pending資格 | 150筆、426 focused通過；完整105題positive36/36但追問4/7，否決並撤回。 |
+| 固定同候選、每decision選代表 | 100 contexts重建一致；typed缺值命中仍1/5、22/36正向增加其他action；離線否決，未跑模型。 |
+
+fe533的103 captures經獨立hash／trace覆核。五typed例都在union，但排名6/5/3/8/12，
+Recall@3/5/10為1/5、2/5、4/5；resample例進prompt後仍猜128。17題rank audit完整context
+重建一致。缺值與完整參數題可得到相同context，故增加k或宣稱corpus覆蓋齊全不是修復。
+Selection文獻支持檢查集合冗餘，不證明這個decision-label heuristic有效：
+[Coverage-based Example Selection](https://aclanthology.org/2023.findings-emnlp.930/)。
+
+失敗commits、完整inputs/raw/逐題結果保留在build/dev-artifacts：
+rag-b4c7-*、rag-example-order-replay-*、rag-contract-clarity-replay-*、
+rag-decision-reference-replay-*、rag-fe533-*；不覆寫、不刪失敗證據。
+fe533 CI failure來自multi-GDF外部labels UI walkthrough等待publication逾時，aggregate連帶失敗；
+不是已定位的RAG型別錯誤，不以偶發失敗名義忽略。c753的後續CI屬於已撤回候選的證據。
+
+### 撤回驗證與仍缺的證據
+
+c753：217個RAG/context/tools focused通過；explicit-file hooks、guidance audit與MkDocs strict通過。
+完整105題真Windows模型／Host診斷已完成；source changes排除settings後為空，positive36/36、
+product no-action23/24、追問6/7，逐題pass/fail與f89f完全一致。raw precision仍15/24，
+raw clarification2/7；Host協助後6/7不能當成模型本身全會追問。paired為21 machine pass、
+1待語意覆核、2失敗，沒有把安全未操作算語意答對。
+產物rag-c753-hybrid-model.json與rag-c753-prompts；獨立覆核103 captures／provenance通過，
+99個raw與f89f逐byte相同；但capture90新增「產品提供Dense/CNN/RNN」錯誤選項宣稱，
+既有no-action機器分數未察覺，main依不新增語意錯誤準則否決保留catalogue。
+c753 CI run36377377474、docs36377377389是已撤回候選證據；未做新的native GUI handoff。
+完整撤回後不重跑與已驗證source逐byte一致的模型全套；核對差異、直接工具測試與新head CI。
+完整撤回已驗：git diff對2e3b的XBrainLab/tests/scripts為空；124個工具／context測試、
+兩個變更檔hooks、guidance audit、MkDocs strict通過。受保護settings保持原差異。
+
+### 待核准的追問契約與下一步
+
+另一個RED重現的defect：模型typed追問時，原要求已有的單側cutoff未保留。
+Host label parser候選雖測試通過，但違反target的「模型負責low/high mapping」；已撤回，
+未核准patch保留在build/dev-artifacts/partial-cutoff-host-parser-unapproved.patch。
+已詢問使用者選擇：建議typed追問攜帶model-proposed已知欄位，由Host沿用來源驗證；
+或明確授權Host label解析；或另輪處理。**這項契約修理不保證解決RAG排序／模型抄例。**
+
+Next：完成安全撤回的diff／focused檢查與CI追蹤，取得上述public contract選擇後先更新target，
+再RED→修理→直接validation。RAG選例目前沒有可採用的非退步候選；不得自動再排列
+權重／prompt／模型。需以已觀察的錯誤定位界定下一個有根據的修理，而非補題求綠。
+Stop condition是有證據的部件收尾，或真正的新契約／必要資源決策；不因一個切片或CI pending結束。
+
+## 歷史 — 前次 RAG 工程收尾（檢索品質判斷由上節取代）
+
+2026-09-28 使用者要求先做到 RAG 收尾，再討論下一組件。本輪 source 為 `f89f3f89`，
+已推送既有 PR #149，未 merge；本機只有受保護的 `settings.json` 差異。獨立 reviewer
+完成 source、145筆語料、測試品質與實際模型產物覆核，RAG 工程範圍無 blocker。
+這是部件 scope-complete，不是整合 handoff-ready，不開手測程式或自動開始下一組件。
+
+- 四筆解釋＋操作示範保留問題／ID，改為先選一件；145筆現為117操作／28回答。
+  既有 prompt rule 同步，owner 不增；production Python 本 slice +6/-3/net+3，corpus另計。
+- Scorer v14 保留全部81＋24題，兩個 mixed probes 的預期按新契約改正；安全不操作與
+  `semantic_review_required` 分開。歷史報告不改，不把評分規則更正算準確率提升。
+- RED5→RAG/context/process190通過，controller RAG7通過；評分先RED後相關131通過。
+  hooks、guidance audit、MkDocs strict通過，獨立實際diff覆核無blocker。
+- f89f 真 offline hybrid/dense皆Top-3 34/36、145points，資格／bounds／manifest／repeat
+  initialization通過；hybrid對舊36題基準non-regression通過。新隔離vectors只連結既有D槽
+  embedding，不下載／改共享模型。報告如實標示worktree dirty（僅使用者settings）。
+- f89f 完整105題真模型診斷完成；103個prompt/raw capture逐byte/hash經獨立覆核，
+  75次retrieved、28次正常empty、0degraded；model source_changes排除settings後為空。
+  positive36/36、raw precision15/24、product no-action23/24、clarification6/7。
+  相同81題相對15e無pass→fail或新增執行邊界；training-settings的raw加分仍非正確blocker說明。
+- 混合bandpass已收到正確範例／規則，仍只解釋，語意覆核不通過；normalize輸出雙JSON，
+  Host回choose-one但模型格式失敗；paired21機器成功＋1待覆核＋2失敗，不與舊契約總分比進步。
+  待覆核bandpass現已獨立判為不完成，保留原機器報告，不回填或重算它。
+- 初次model preflight因預設C槽無模型在零生成時停止，失敗報告保留；重跑明確使用啟動器
+  同樣的D槽model cache，完整結果另檔，沒有silent fallback或重抽失敗題。
+
+Evidence：`build/dev-artifacts/rag-f89f-{hybrid,dense}-retrieval.json`、
+`rag-f89f-hybrid-model-offline.json`、`rag-f89f-hybrid-prompts/`；前置失敗為
+`rag-f89f-hybrid-model.json`。f89f同source CI run `36369844021` 已 completed/success，
+全部適用non-skipped jobs成功；後續本文件收尾不改產品，不將該結果冒稱新head的CI。
+
+**下一次討論而非自動施工**：決策提示／輸出契約是否先做受控回退比較，再處理模糊要求
+`ambiguous_en`擅選channels與`generic_filter_selection`追問缺口。現行兩欄不變，未達
+product gate，不宣稱Stable、可集中手測或最佳RAG。回退的必要授權已有，但最新要求是先
+討論下一組件；不再自動調RAG權重、門檻、加例或跑組合搜尋。
+
+## 歷史 — 已執行的 RAG 收尾計畫與後續共同基線方向
+
+2026-09-27 使用者批准實作：先把 RAG 作為完整部件整理，再往下一部件推進。
+起點 main `a5f57a15`；單一 task branch `fix/rag-component-baseline`，不更動使用者
+`settings.json`、共用環境／模型、正式研究題庫或既有結果。這一輪包含 product、tests、scripts、
+corpus、必要 prompt 及 canonical docs，不以補到指定筆數或單組測試通過當成完成。
+
+### 歷史決策與施工順序（2026-09-28；續作以頁首為準）
+
+使用者確認：這輪先建立可靠共同基線，不追求讓 RAG 適配當前所有組件的最高分；
+基線通過後再逐個打磨工具說明／決策提示、追問／上下文，於 Development 驗證組合效果。
+產品行為以 [Agent target](../target/agent.md) 的單次決策規則為準。解釋＋操作不再以
+「只執行操作」當完整成功；模糊要求先確認種類、缺參數不猜、不可用操作不代做前置步驟。
+使用者同意必要時受控回退已實測退步的兩欄輸出／提示遷移；不是自動認定三欄有效，
+也不授權雙格式相容、改模型、放寬後端保護或合併 PR。這次先固化文件，尚未修改產品。
+
+**問題與證據**：f329f3c9 的適用 CI／Windows 四步 journey 通過，但不等於整合基線過關。
+15e 模型報告的新增不可用 split／training-settings 誤選尚未解決；既有產品 gate 仍是
+no-action 23/24、clarification 6/7。前者的 `ambiguous_en` 將「process this EEG data」
+自行解讀為 select_channels，已抵達被 harness 抑制的執行邊界；後者
+`generic_filter_selection` 曾提出無來源的 1–40 Hz，Host 擋住卻未完成必要追問軌跡。
+這兩項與 paired probes 的模糊 import／解釋＋操作案例不同，不混成同一失敗。
+
+**Outcome／scope**：保留有效 RAG 結構整理與 import busy 修理，收尾語料契約、檢索資格、
+生命週期及可追溯性；依責任修理上述整合阻擋，再一次交 Windows 手測。
+假設是整體準確率受多組件交互影響；不宣稱輸出 stage 是必要推理機制，或回退能修好全部問題。
+不增加 router、planner、模型、permission owner、第二套 evaluator 或通用實驗平台。
+暫停擴充同義句、調權重／門檻／top-k；145 筆現有語料可作契約一致性修正，不是固定最佳值。
+UI 確認：沿用已確認的 layout／工具／confirmation；此次批准混合要求先選一件的回應語意，
+不新增視窗或多步執行。使用者 settings、共享環境、sealed 題庫與歷史 raw/report 不動。
+
+**施工順序與 focused validation**：
+
+1. 先對齊已批准的單次決策：target → 語料／prompt → oracle／tests；獨立覆核預期是否符合
+   產品承諾，包含四筆解釋＋操作示範及 paired cases。保留題目及歷史結果，新版契約／scorer
+   另記身分；不能刪難題、重標舊分數或把規則更正宣稱準確率提高。
+2. 固定其他變因，受控比較輸出／提示遷移的回退。先驗真 parser、publication／stale、
+   confirmation、參數來源及一次執行；再以同契約、同題意的完整模型比較逐筆確認。
+   歷史 785c 只作參考，不冒充新規則下的 contemporaneous control；採用與否依新證據。
+3. 在選定契約上處理模糊要求與 generic-filter 追問缺口，先重現再修理其真正 owner；
+   不把後端安全拒絕當模型答對，也不以新增 RAG 範例替代決策／追問責任。
+4. 凍結整合 source，跑適用 focused／完整模型 gate、RAG 開關與必要 ranking 對照、
+   同版本 CI、Windows 真操作與獨立覆核；通過後開程式及一個 PowerShell log，集中手測。
+   不每個切片要求手測，不自動 merge。對照重用現有 runner，不做全因子暴力搜尋。
+
+**完成層級／stop condition**：RAG 部件完成指契約、檢索、生命週期及直接證據可靠；
+整合 handoff 仍須必要產品 gate 通過且沒有未處理的新增退步，不以「部件完成」豁免。
+最佳組合留給後續 Development／Validation；重要組件變更時才做原／新組件 × 原／候選
+RAG 的有界交叉比較，正式 Test 不參與選擇。若有界修理仍無法達標，保留失敗並提出具體
+取捨，不無限加例／改 prompt 或默認放寬 gate。
+
+**本次施工界線（使用者追加確認）**：先做到 RAG 部件收尾，再討論下一個組件。此次實作
+步驟 1 的契約／語料／評分對齊及 RAG 檢索／索引／生命週期直接驗證、獨立覆核；
+不自動開始步驟 2–3 的輸出回退或追問修理，不把部件結案冒稱整合 handoff-ready。
+寫入分工：主 agent 負責 corpus、prompt 的既有單次決策規則、直接產品測試及 canonical docs；
+評分 slice 負責 paired probes／runner 身分及正反例測試；独立 reviewer 檢查未改 RAG owner、
+取消／publication／cache 與 evidence 充分性。維持 owner 數，不新增 parser／compatibility／控制層。
+刪除候選是四筆 mixed-request 示範中錯誤的操作答案及 paired 舊期望，不刪題目或歷史 evidence。
+Rollback 以本 slice source／corpus／scorer 一起回退；既有 settings 與失敗產物不動。
+先建立新規則的 RED，再修 corpus／prompt／scorer；跑同測試及必要鄰接、真 offline retrieval、
+版本／來源核對。若改動 prompt，真模型工程診斷仍需記錄，不用其結果追分或宣称整合過關。
+RAG 部件完成後回報實際驗證、未解整合缺口及下一個建議議題，依最新要求先討論再施工。
+
+**進度／Next**：四筆 corpus 錯誤操作答案及缺少 prompt 規則先 RED（5 failures），修正後
+RAG／context／process lifecycle 190、controller RAG 7 通過；scorer 另先 RED，相關 131 通過。
+維持145問題／ID，現為117操作＋28回答；paired 24題只改兩個 mixed-request 期望，問題不動。
+Evaluator v14 將安全不操作與待語意覆核分開，舊 raw／report 不改。獨立 source／語料／測試
+覆核無 blocker。真 offline hybrid 新隔離索引145 points、12 checks 通過、Top-3 34/36；
+source 當時為 dirty，report如實記錄，不冒充 clean commit。使用既有 D 槽 pinned embedding，
+沒有下載或修改共享模型，重用既有 cache helper 隔離 vectors。下一步凍結 source，跑一次
+完整105題真模型工程診斷並覆核實際回覆；這不是整合 promotion，也不按結果無限追分。
+回退授權已解除，但是否啟動回退比較留待下一組件。產品仍為兩欄，尚無本次新模型成績。
+
+### 歷史施工與失敗證據（保留溯源，不作續作指令）
+
+以下為最新決策前的實作／診斷紀錄；其中舊 Next、等待批准及 mixed-request 評分假設
+均由上節取代，不重寫原實驗成績。
+
+曾選定並已否決的候選：以既有publication-filtered contracts生成單一兩欄JSON Schema，
+互斥alternatives重用各工具參數與response schema；blocked reason另置於schema外。
+取代混合catalog與重複輸出形狀，不新增permission owner／constrained decoder。
+RAG corpus／ranking／example內容不改；先以schema membership／真parser測試RED，
+再驗fixed105逐題語意。依據為[Granite官方JSON schema範例](https://github.com/ibm-granite/granite-4.0-language-models/blob/main/Granite%204.0%20Prompt%20engineering%20guide%20v2.md)，
+不把該文件當成Micro一定改善的證據。
+仍保留固定105完整對照、原門檻及所有失敗，避免逐題搜索；若產品設計必須變更則另需授權。
+Import先RED確定busy→新publication→release順序，再讓既有render owner提供當前可用性，
+不增加狀態owner。兩項寫入分離、共享邊界獨立覆核；凍結整合source驗CI、offline retrieval、
+真model與Windows journey後開程式＋PowerShell log交付一次手測，不合併。
+施工進度：import兩種真Qt／FIF publication交錯先RED後GREEN；直接176案例（含原失敗的
+GUI import→subject training→重開結果流程）及重疊的sidebar/presentation124案例通過。
+Production兩檔+27/-19/net+8，只有既有owner的busy狀態投影，Cancel及generic async不改。
+Schema呈現一檔+40/-51/net-11，97個直接測試通過；獨立覆核兩項diff無blocker，
+另驗103個已保存輸入的schema結構，但不把它當模型語意通過。
+**bfad6446否決**：完整105真跑positive36/36，但raw precision8/24（15e14/24、785c16/24），
+paired first21/24、final22/24；新增多個不可用操作誤選及negated navigation，不能交手測。
+回退該schema呈現及專屬測試／文件到23693406，保留已批准兩欄契約及632b94e0的import修理。
+所有bfad報告／capture保留，不再修補oneOf提示。獨立檢查發現103個15e prompt中，
+不可用tool ID只出現在status reference；Host才需要stable ID作admission。
+**已完成的status-label隔離診斷**：固定15e全部98個首輪case（不冒稱包含7個
+clarification trajectories），只把reference字典key換成既有trusted tool description，
+保留數量／順序／reason／其他所有prompt內容，98個control rendered hash全吻合才允許生成。
+不改RAG／callable IDs／Host map，不重抽control、不將raw-only證據冒稱產品成功；此診斷
+不直接解釋normalize雙JSON，也不授權回退使用者批准的兩欄契約。依結果決定是否採用此
+呈現修理，不降低原門檻、未知模型誤選不稱RAG已完成。
+f329診斷98個control輸入逐byte相同，98個treatment capture全部驗證、source／設定不變，
+零重試、零Host執行，正常cleanup。positive36/36、precision14→15/24、paired22/24，
+但`split_before_epochs_en`從不可用split改成可用`set_montage {}`，在同state會通過既有
+admission而開錯GUI；這是source-supported reachable risk，診斷並未真的開窗或改資料。
+新增training-settings no-action分數只是收集不應收集的參數，不是正確解釋阻擋。
+獨立覆核否決採用；script／report保留在`build/dev-artifacts/rag-status-label-*`，產品未改。
+
+f329產品版最終證據：回退後context／真command111及evaluator109通過；PR run36335898154
+所有適用non-skipped checks completed/success（含macOS原失敗流程、Windows lifecycle及source-diverse）。
+`rag-f329-native/journey.json`四步通過，source／隔離設定／EDF不變，0 owned workers/subprocesses，
+未修改root settings或使用者per-user設定。這不覆蓋模型誤選、不等於Stable或手測候選。
+後續Agent討論已核對三個真正產品決策：解釋＋單一操作的完成語意、clarification支援邊界、
+對話指涉／歷史範圍；不先加planner或第二套控制層。當時等待契約回退授權，未merge；
+現行授權與續作順序見本節開頭。
+
+**前一checkpoint**：兩欄契約已實作，但15e06744真模型驗證仍有新增
+語意退步，獨立覆核不批准non-regression／交付。需要決定暫緩此遷移，或明確接受新增限制；
+不再自動調prompt追分，也未合併。2026-09-28 使用者批准獨立遷移模型輸出契約：
+移除模型回填的 `workflow_stage`，只接受 `tool_name` 與 `parameters`；階段仍由後端提供給
+模型，publication generation、工具資格、參數來源與confirmation保護不變。先更新target，
+再以parser RED／既有execution baseline施工，接續focused與真模型／native驗證及獨立覆核。
+
+本切片證據：RAG提供兩欄decision片段，正式輸出要求三欄；controller只比對模型抄回的stage，
+真正stale admission由host保存的publication generation驗證。差異不是已證明的漏執行成因。
+Outcome是責任清楚且安全邊界不退步，不承諾模型語意準確率提高。UI無可見改動，使用者已確認。
+Scope包含product parser/prompt/controller/RAG consumer、直接測試、實驗runner/scorer與canonical
+文件；後端stage/state card、既有題意與oracle、BM25/門檻/排序、語料內容、模型與UI不改。
+刪除候選是model stage echo／mismatch分支；既有owner不增不減，不新增兼容三欄輸出或新控制層。
+歷史raw evidence不重寫，不把host stage冒充model輸出；新版scorer身分與舊結果分開記錄。
+先驗兩欄接受／舊三欄拒絕，再驗真tool admission、同stage換資料的stale拒絕、confirmation、
+format recovery、no-action與評分一致性。模型比較固定原81＋24題，分開格式與語意結果；
+不使用sealed研究題庫、不改失敗題追分。獨立覆核後檢查同head適用CI及Windows native journey。
+Stop condition為此切片安全／契約／evidence一致且必要驗證完成；不等同整輪RAG已解決。
+可獨立回退本契約切片；既有24題診斷與失敗證據保留，PR #149尚不交付手測／merge。
+
+2026-09-28切片進度：parser兩個新契約測試已RED→GREEN，全parser87、RAG邊界44、
+unit／真command／Qt整合556通過。五個production檔+22/-81/net-59，owner不變；獨立覆核
+確認host generation、confirmation及execution保護仍在。Script評分移除model echo並分別升版
+stable v13／pilot scores v3／synthetic calibration v2；保留backend案例情境與原81＋24題。
+另以RED補上raw scorer拒絕多JSON物件，避免移除stage比對後錯入內容評分。
+Script evaluator109、runtime evidence14、report／observer直接案例37通過；與前述測試有重疊，
+不相加為coverage。額外直接typing檢查的product無診斷，
+scripts出現15項既有duck-typing／Optional診斷（canonical typing範圍原為XBrainLab），不宣稱全scripts
+typing乾淨；本切片沒有修改那些型別責任。
+
+c49f3625已實測hybrid105且capture完整：positive36/36、raw precision14/24（785c為16/24）、
+paired22/24；product precision23/24、clarification6/7。新增split-before-epochs及start-before-setup
+語意錯選，均被Host擋住；mixed normalize改成雙JSON仍失敗，不能用安全拒絕冒稱模型正確。
+Windows四步真模型journey通過，資料／隔離設定／source未變、關閉後worker/process皆0。
+初次native preflight因受保護settings選Phi而拒絕，未生成；改用明示的隔離Granite設定，未覆寫settings。
+獨立覆核發現移除output echo時亦移除了trusted system中的stage值，state card仍有stage並非全失。
+批准scope原本保留stage輸入；15e06744只從已讀publication補回一行trusted stage事實，
+不新增policy/router/output欄位或再次讀state。該輸入位置先RED，相關102測試GREEN。
+兩欄切片合計五個production檔+27/-85/net-58；parser／prompt／consumer刪除stage echo，owner不變。
+
+15e06744完成同105題與Windows四步真模型journey；獨立覆核逐筆驗103個capture hash，
+確認模型／cases／corpus／retrieval一致、無degraded。positive36/36、raw precision14/24，
+paired22/24，product precision23/24、clarification6/7。相對785c新增失敗為
+`split_before_epochs_en`與`training_settings_before_epochs_en`：提出不可用工具，被Host擋住。
+`start_before_setup_en`相對c49f恢復不操作；challenge3→4/14只通過措辭oracle，
+新回答誤列必要前置操作，不能宣稱語意品質提高。mixed normalize仍輸出兩個JSON；
+模糊import仍誤提開窗。Native完成真匯入／三channel／160→64Hz，source、隔離設定及EDF不變，
+關閉時0 worker／subprocess；不代表全產品或模型語意驗收。
+
+獨立code／evidence覆核通過可追溯性及Host保護，但不批准模型非退步；所有失败產物留在
+`build/dev-artifacts/rag-{c49f,15e0}-*`，舊785c不重評、不覆寫。PR #149目前不是手測候選。
+另c49f的macOS lifecycle CI實際失敗：匯入完成且最新preprocess capability可用，Channels卻disabled。
+source-based獨立診斷指向import busy release恢復舊enabled值、蓋掉最新publication render；
+尚未建立確定性重現，未修改UI或擴大本切片。保留run36333439996/job108659706271證據，
+不加timeout或盲目重跑。15e同head CI仍在追蹤，不用較新綠燈抹除這個既有race finding。
+**Next／需決策**：建議暫緩兩欄遷移、保留此失敗比較，再另定修理邊界；不默認接受語意退步，
+不擅自回退已批准public contract。上述import競態需另准最小RED→GREEN修理，不混入廣泛UI清理。
+
+### 問題、outcome 與邊界
+
+- 現行文字分流使同義詢問／混合要求走不同路；全庫 dense top-10 後才篩 callable tools
+  可能漏掉合格範例。改為不做手寫語意分流、在已發布工具及合法 response 範例內搜尋。
+- 保留 BM25；目前沒有足夠移除證據。共同修正後，以同source/corpus/model的 hybrid 與
+  dense-only 做有界消融，不將old/new總體差異誤稱BM25效果，不因小樣本打平刪除。
+- 約108操作＋24正確不操作範例是初始整理預算，不強迫湊數；最多約180，新增須對應
+  真語意／參數缺口。示範、公開工程probes及sealed研究題庫隔離，不複製驗收題進corpus。
+- UI、18個action contracts、confirmation、模型及正式研究政策不變；response範例重用
+  `respond_to_user`既有契約，不新增tool、owner、classifier、reranker或第二套評測平台。
+- 保持門檻0.7、top-3及bounded context，量測初始化／暖機／檢索／決策，不靠放寬timeout
+  或依速度silent skip取得綠燈。缺資源須degraded，不能冒稱正常empty。
+
+### 施工與驗證
+
+1. 保存目前source/config身分及focused基準；先RED重現post-filter候選飢餓，再最小修理。
+2. 更新範例驗證、搜尋前篩選、索引版本；刪除僅供RAG的intent規則及無用途測試／引用。
+   必要輸出schema、資格、取消、close、late callback與index integrity保護留下。
+3. 逐筆審corpus，補獨立英文案例；原48個retrieval probes不改題，新增24個成對工程案例。
+   查驗GUI／Assistant／實驗runner送入同一產品RAG路徑，actual context及身分可追查。
+4. 用既有產品模型／evaluator比較原main、新hybrid、新dense-only、新RAG-off；既有81題
+   與新增24題保留首發輸出、side effects、失敗與時段。只屬工程準備，非正式DEV／VALID／TEST。
+5. focused lint/tests與真offline retrieval後做獨立覆核，再同head applicable CI、Windows
+   native Assistant操作／相鄰流程。覆核含未改生命週期、測試oracle及剩餘複雜度，非只看diff。
+
+### 複雜度、交付與停止條件
+
+- Owner維持retriever持有embedding/client、indexer借用、process lifecycle持有程序；assembler
+  讀後端publication。篩選metadata由已驗證decision推導，不成為第二權限來源。
+- 刪除候選：RAG專用intent grammar及exclusive characterization；保留BM25、完整性與
+  lifecycle保護。各slice記錄實際production +/-/net，不以LOC證明品質；小commit可回退。
+- 原gate不降低，不新增錯誤開窗／confirmation／execution，不注入不可用action。若合適示範
+  已提供但model仍錯，定位責任，不無限增例；若無可辨識RAG收益，不宣稱效果已證實。
+- 正向選擇已有36/36的工程基準，不以顯著增分作為整理有價值或結案的必要條件。
+  分別評估既有能力不退步、混合／不操作要求、檢索資格與生命週期正確性，以及移除分流
+  規則後的可讀性和維護成本；架構整理價值不等於已證明準確率提升，新回歸仍須處置。
+- 完成獨立覆核及同版本適用驗證後，開Windows程式＋一個PowerShell log，附重啟指令，
+  一次集中手測。Pending CI、commit或compaction不是停止理由；merge另待明確批准。
+- **進度／Next**：原main retrieval34/36，81題真模型原始輸出已保留（非全對）；
+  候選132範例與搜尋前篩選已完成。BM25候選遺漏、prompt最終publication漂移、
+  malformed context／metadata及comparison失敗exit0均先RED再修理；整合focused306通過，
+  獨立source／test覆核無blocker。Production Python +119/-572/net-453，corpus JSON
+  +372/-12/net+360；owner不增加，刪除534行intent grammar，未增第二router。
+  Next固定source後真模型四條件比較、同head CI及Windows手測交付；目前不是scope-complete。
+  原產品的新增24題比較採共同harness回植到臨時snapshot、完整跑105題；記錄原產品SHA與
+  三份harness hash，明示modified harness，不將其冒稱clean原main或拼接原81題結果。
+- **18b8de9a真跑發現**：retrieval33/36，相對原34/36退步一題，原non-regression gate
+  保留失敗；獨立語料審查發現12個有效舊表達被改寫取代。恢復原72筆，僅追加9個有新
+  區辨意義的改寫（另3個與新增例重複），總141筆；不抄probe、不降低0.7／33/36門檻。
+  同版模型105題已生成，但最終stdout因Windows CP950無法編碼U+202F中斷，僅checkpoint／
+  raw保留，不冒稱完成。修理CLI以ASCII-safe JSON輸出、先保存UTF-8 report再寫stdout，
+  補CP950及pipe failure測試；舊版105比較使用UTF-8環境獨立執行。候選修理後重凍结真驗。
+- **325fdbbd驗證**：141例hybrid／dense offline均34/36、non-regression通過；真hybrid
+  105題完整，既有positive36/36、no-action product23/24、clarification6/7，原有限制仍在。
+  成對題first22/24（原版21/24）、final22/24（原版22/24），不是明顯收益證據。
+  PR #149 CI發現partial(custom兩參數target, hybrid_alpha)型別不符，及三個security fixture
+  仍用retired get_dataset_info或缺少decision。修為explicit product-target binding、提前拒絕
+  不支援的custom+alpha組合；fixture改合法response並保留原攻擊／隱私斷言。隨後同head重驗。
+- **bce55990內容覆核**：hybrid／dense／off各105題完成；原81題皆維持同樣結果，
+  paired hybrid／dense first22、final22，off first21、final22。逐題揭露交換：RAG修正
+  禁止開training settings，卻新增「說明再normalize」只說明未操作；兩邊都仍誤解模糊import
+  指涉。Evaluator的舊output_format標籤在這個normalize案例實為合法response選錯語意，
+  不可宣稱JSON壞掉或Host擋住了模糊import（harness只抑制實際副作用）。
+  獨立審查確認117個action示範完全沒有說明＋明確執行的類型；最後有界補齊4筆獨立
+  bandpass／notch／resample／min-max例，145筆上限（121操作／24回應）。Author未讀probes／
+  輸出，參數直述，不新增router／回合／tool。只承諾選對既有單一action，不宣稱同時完整解說。
+  Next重凍結、整批三條件與原gate比較；若合適例已取回仍錯，定位prompt／model，不再加同義句。
+- **785cf2d1責任定位**：145例offline兩模式仍34/36；hybrid／dense／off各105題完整，
+  mixed normalize的合法response仍漏操作，四例不能修正它。既有action示範已取回；不再加例。
+  獨立覆核指出canonical decision rule 4將information及multi-action都列response，未區分
+  「解說＋單一明確操作」。直接修理只在既有prompt policy釐清information-only及單一未否定
+  操作；rules 1–3的可用性、必填值及禁止操作保護不變，不加assembler第二套政策。
+  785c真模型結果作RED，既有prompt composition／contract測試及最後同版本三條件真模型
+  作回歸；不以文字斷言冒稱模型會遵循。維持145例、原門檻與所有失敗產物，再做Windows真旅程。
+- **10a5b4ee否決與回退**：三條件完整105題，generic prompt釐清未修正normalize混合要求，
+  並使原positive split第二題選成training settings（35/36）。撤回該prompt與專屬文字斷言，
+  回到785c相同產品code／corpus，不把unit／CI通過當模型行為通過；所有失敗保留。
+  2026-09-27使用者同意一次受控定位：固定全部24個paired probes、785c control輸入／原始
+  輸出與生成條件，只在檢索後排除response示範、不補位，觀察操作與不操作兩面。
+  此為ignored一次性diagnostic，不改production、不作promotion或新held-out成績；control
+  rendered prompt必須逐筆hash相同，記錄移除ID／完整模型輸入輸出。結論決定下一個最小
+  修理，禁止無限prompt／語料搜尋；手測仍待新退步處置、同版本CI／native及獨立覆核。
+- **55632eb2受控診斷**：產品／tests／scripts與785c完全相同；Windows真Assistant四步
+  開Dataset→匯入→選三channel→160轉64Hz通過，source／原始EDF／設定不變、cleanup零
+  owned worker／subprocess。此不代表mixed-request或全產品驗收。
+  ignored診斷先核對24個785c control rendered prompt hash，再只移除response示範、不補位。
+  六題context有變，其餘18題prompt及原始輸出逐byte一致；24筆capture完整，source／設定
+  不變。操作首發11/12→12/12，不操作首發11/12→9/12，總22/24→21/24；normalize混合
+  操作改善，但純說明變非JSON，training settings禁止開窗卻選switch_panel。這是raw-only
+  一次性因果定位，不是Host執行、重試後成績或獨立泛化證據；歷史control非同時隨機重跑，
+  舊settings位元與全部載入參數未保存，限制明列於診斷report。
+  獨立覆核確認回答示範兼有格式／不操作保護與概念回答干擾，沒有建立通用更佳政策。
+  使用者關切局部最佳解；本輪不再逐題調優，不能把可靠基線誤作這24題全對，也不能以
+  未來Development為由默認接受本輪新回歸。需要上述職責決策才繼續新的有界設計施工。
+
+## Context — 單一 main 基線先穩定，再分產品與實驗兩線
 
 PR #147 已於 2026-09-27 合併；使用者完成最終 Windows 手測並明確同意合併。
 產品與研究量測程式現在共用 `main`，原三條施工 worktree 與手測 worktree 已清理。

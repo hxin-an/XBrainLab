@@ -178,15 +178,15 @@ def test_controller_prompt_generation(controller: LLMController) -> None:
     controller._append_history("user", "Hello")
 
     msgs = controller.assembler.get_messages(controller.history)
-    assert len(msgs) == 3
+    assert [message["role"] for message in msgs] == ["system", "user"]
     assert (
         "Action Contract Catalog (input definitions, never an output array):"
         in msgs[0]["content"]
     )
-    context = json.loads(msgs[1]["content"])
-    assert context["schema"] == "xbrainlab.untrusted_context.v1"
-    assert context["trust"] == "untrusted"
-    assert msgs[2] == {"role": "user", "content": "Hello"}
+    context = json.loads(msgs[-1]["content"])
+    assert context["application_state"]["workflow_stage"] == "empty"
+    assert context["application_state"]["state_reliable"] is True
+    assert context["current_user"] == {"text": "Hello"}
 
 
 def test_format_retry_dispatch_uses_system_policy_and_resets_for_next_turn(
@@ -219,7 +219,6 @@ def test_format_retry_dispatch_uses_system_policy_and_resets_for_next_turn(
     assert controller._tool_attempt_session.retry_count == 1
     controller.current_response = json.dumps(
         {
-            "workflow_stage": controller.assembler.latest_tool_publication.workflow_stage,
             "tool_name": "respond_to_user",
             "parameters": {"message": "The workflow is awaiting input."},
         }

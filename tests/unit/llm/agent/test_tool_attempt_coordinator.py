@@ -145,69 +145,6 @@ def _training_preflight() -> dict[str, Any]:
     }
 
 
-def test_typed_clarification_admission_uses_published_direct_tool_schema() -> None:
-    tool_name = "apply_bandpass_filter"
-    registry = _Registry(
-        _Tool(
-            parameters={
-                "type": "object",
-                "required": ["low_freq", "high_freq"],
-            }
-        )
-    )
-    coordinator, _source, _verifier, _registry = _coordinator(
-        _context(tool_name=tool_name),
-        registry=registry,
-    )
-    publication = PromptToolPublication(
-        tool_names=frozenset({tool_name}),
-        workflow_stage="data_loaded",
-        backend_generation=17,
-    )
-
-    receipt = coordinator.admit_typed_clarification(
-        command_name=tool_name,
-        missing_inputs=("low_freq", "high_freq"),
-        question="What low and high cutoffs should I use?",
-        original_user_text="Apply a bandpass filter.",
-        publication=publication,
-    )
-
-    assert receipt is not None
-    assert receipt.command_name == tool_name
-    assert receipt.missing_inputs == ("low_freq", "high_freq")
-    assert receipt.publication_generation == 17
-    incomplete_model_receipt = coordinator.admit_typed_clarification(
-        command_name=tool_name,
-        missing_inputs=("low_freq",),
-        question="What low cutoff should I use?",
-        original_user_text="Apply a bandpass filter.",
-        publication=publication,
-    )
-    assert incomplete_model_receipt is not None
-    assert incomplete_model_receipt.missing_inputs == ("low_freq", "high_freq")
-    assert (
-        coordinator.admit_typed_clarification(
-            command_name=tool_name,
-            missing_inputs=("unknown",),
-            question="What value should I use?",
-            original_user_text="Apply a bandpass filter.",
-            publication=publication,
-        )
-        is None
-    )
-    assert (
-        coordinator.admit_typed_clarification(
-            command_name=tool_name,
-            missing_inputs=("low_freq", "high_freq"),
-            question="What low and high cutoffs should I use?",
-            original_user_text="Apply a bandpass filter.",
-            publication=PromptToolPublication.empty(),
-        )
-        is None
-    )
-
-
 def test_schema_rejection_prevents_registry_and_confirmation_checks() -> None:
     coordinator, source, verifier, registry = _coordinator(
         _context(),

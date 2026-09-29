@@ -19,6 +19,33 @@ from XBrainLab.llm.agent.rag_process_lifecycle import (
 _CALLBACK_WAIT_SECONDS = 30.0
 
 
+@pytest.mark.parametrize("dense_only", [None, 0, 1, "dense"])
+def test_invalid_retrieval_mode_cannot_start_a_process(dense_only):
+    with pytest.raises(ValueError, match="dense_only"):
+        ProcessRAGRetrieverLifecycle(dense_only=dense_only)
+
+
+def test_dense_only_mode_is_bound_into_spawn_target():
+    from functools import partial
+
+    lifecycle = ProcessRAGRetrieverLifecycle(dense_only=True)
+    try:
+        target = lifecycle._process_target
+        assert isinstance(target, partial)
+        assert target.func is rag_process_lifecycle._run_rag_process
+        assert target.keywords == {"dense_only": True}
+    finally:
+        lifecycle.close()
+
+
+def test_dense_only_mode_cannot_be_silently_bound_to_a_custom_two_argument_worker():
+    def worker(command_queue, result_queue):
+        raise AssertionError("Rejected configuration must not start a worker")
+
+    with pytest.raises(ValueError, match="product RAG process target"):
+        ProcessRAGRetrieverLifecycle(process_target=worker, dense_only=True)
+
+
 @pytest.mark.parametrize("phase", ["initialize", "retrieve", "close"])
 @pytest.mark.parametrize("error_type", [RuntimeError, KeyboardInterrupt])
 def test_child_failure_logs_are_safe_and_preserve_queue_contract(
@@ -38,6 +65,9 @@ def test_child_failure_logs_are_safe_and_preserve_queue_contract(
 
     class FaultingRetriever:
         is_initialized = True
+
+        def __init__(self, *, dense_only=False):
+            assert dense_only is False
 
         def initialize(self):
             if phase == "initialize":

@@ -10,6 +10,85 @@ import pytest
 from XBrainLab.llm.rag.bm25 import BM25Index
 
 
+def test_eligible_keyword_match_is_not_lost_behind_global_top_ten():
+    index = BM25Index()
+    for number in range(12):
+        index.add_document(str(number), "apply 60 hz notch filter", {"allowed": False})
+    index.add_document("eligible", "apply 60 hz notch filter please", {"allowed": True})
+
+    matches = index.query(
+        "apply 60 hz notch filter", k=3, eligible=lambda metadata: metadata["allowed"]
+    )
+
+    assert len(matches) == 1
+    assert matches[0][1] == "eligible"
+    assert matches[0][0] > 0
+
+
+def test_equal_sparse_scores_use_stable_identity_not_insertion_order():
+    index = BM25Index()
+    index.add_document("z-last", "notch filter")
+    index.add_document("a-first", "notch filter")
+
+    assert [row[1] for row in index.query("notch filter")] == ["a-first", "z-last"]
+
+
+def test_duplicate_query_terms_do_not_change_sparse_admission_or_ranking():
+    index = BM25Index()
+    index.add_document("notch", "notch filter")
+    index.add_document("other", "filter notch notch")
+    assert index.query("notch filter notch filter") == index.query("notch filter")
+
+
+def test_exact_half_symmetric_coverage_is_admitted_but_less_than_half_is_not():
+    index = BM25Index()
+    index.add_document("candidate", "alpha beta gamma delta")
+    index.add_document("other", "epsilon zeta eta theta")
+    assert [row[1] for row in index.query("alpha beta epsilon zeta")] == [
+        "candidate",
+        "other",
+    ]
+    assert index.query("alpha epsilon absent") == []
+
+    below = BM25Index()
+    below.add_document("candidate", "alpha beta gamma delta iota")
+    below.add_document("other", "epsilon zeta eta theta kappa")
+    assert [row[1] for row in below.query("alpha beta epsilon zeta eta")] == ["other"]
+
+
+def test_short_document_containment_survives_long_query_including_oov_tradeoff():
+    index = BM25Index()
+    index.add_document("candidate", "notch filter")
+    # v2 rejected this OOV-diluted query; v3 deliberately permits containment.
+    assert index.query("notch filter coffee butterflies marathon") == index.query(
+        "notch filter"
+    )
+
+
+def test_oov_terms_still_dilute_query_when_document_does_not_cover_half():
+    index = BM25Index()
+    index.add_document("candidate", "notch filter signal frequency removal")
+    assert index.query("notch filter")
+    assert index.query("notch filter coffee butterflies marathon") == []
+    assert index.query("coffee butterflies marathon") == []
+
+
+def test_unique_document_terms_define_coverage_not_repetition():
+    index = BM25Index()
+    index.add_document("candidate", "alpha beta gamma gamma gamma delta delta")
+    index.add_document("other", "epsilon zeta eta theta")
+    assert [
+        row[1] for row in index.query("alpha beta coffee butterflies marathon")
+    ] == ["candidate"]
+
+
+def test_single_generic_term_cannot_admit_even_with_full_coverage():
+    index = BM25Index()
+    index.add_document("candidate", "the filter")
+    assert index.query("the") == []
+    assert index.query("the the") == []
+
+
 def test_query_ranks_matching_document_and_preserves_public_metadata() -> None:
     index = BM25Index()
     index.add_document(
@@ -52,9 +131,10 @@ def test_build_from_json_indexes_only_primary_workflow_examples(tmp_path: Path) 
                     "id": "import-eeg",
                     "input": "import an EEG dataset",
                     "category": "dataset",
-                    "expected_tool_calls": [
-                        {"tool_name": "import_eeg_data", "parameters": {}}
-                    ],
+                    "expected_proposal": {
+                        "tool_name": "import_eeg_data",
+                        "parameters": {},
+                    },
                 },
                 {
                     "id": "legacy-load",
@@ -77,9 +157,7 @@ def test_build_from_json_indexes_only_primary_workflow_examples(tmp_path: Path) 
     assert index.doc_count == 1
     assert len(results) == 1
     assert results[0][1] == "import-eeg"
-    assert json.loads(results[0][3]["tool_calls"]) == [
-        {"tool_name": "import_eeg_data", "parameters": {}}
-    ]
+    assert json.loads(results[0][3]["proposal"])["tool_name"] == "import_eeg_data"
 
 
 def test_build_from_missing_json_keeps_index_empty(tmp_path: Path) -> None:

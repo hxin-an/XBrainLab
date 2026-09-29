@@ -134,7 +134,7 @@ class _ControlledEngine:
         self.generated_profiles: list[GenerationProfile] = []
         self.generation_failure: Exception | None = None
         self.generation_output = (
-            '{"workflow_stage":"empty","tool_name":"respond_to_user",'
+            '{"tool_name":"respond_to_user",'
             '"parameters":{"message":"I inspected the requested EEG workflow. '
             'No application command was executed."}}'
         )
@@ -584,8 +584,7 @@ def test_real_runtime_command_trace_remains_scoreable(qtbot, monkeypatch, tmp_pa
             get_application_service(harness.study), path
         ).ok
         harness.engine.generation_output = (
-            '{"workflow_stage":"data_loaded","tool_name":"resample_data",'
-            '"parameters":{"rate":64}}'
+            '{"tool_name":"resample_data","parameters":{"rate":64}}'
         )
         trace = PilotCaseTrace(case["case_id"])
         trace.attach(harness.controller, harness.runtime)
@@ -604,7 +603,10 @@ def test_real_runtime_command_trace_remains_scoreable(qtbot, monkeypatch, tmp_pa
             generation = report["generations"][0]
             assert generation["raw_response"] == harness.engine.generation_output
             assert generation["terminal"] == "finished"
-            assert generation["request"]["response_contract"] == "structured_action"
+            assert (
+                generation["request"]["response_contract"]
+                == "assistant_tool_response.v1"
+            )
             assert [dict(message) for message in generation["request"]["messages"]] == (
                 harness.engine.generated_messages[0]
             )

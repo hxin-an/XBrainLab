@@ -333,13 +333,21 @@ def test_initial_input_audit_rejects_history_and_authoritative_missing_value():
     context = {
         "schema": "xbrainlab.untrusted_context.v1",
         "trust": "untrusted",
-        "items": [{"type": "state_card", "data": {"high_freq": 30}}],
+        "items": [],
     }
     messages = [
         {"role": "system", "content": "policy"},
         {"role": "user", "content": json.dumps(context)},
         {"role": "assistant", "content": "Old answer"},
-        {"role": "user", "content": case["input"]},
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "current_user": {"text": case["input"]},
+                    "application_state": {"high_freq": 30},
+                }
+            ),
+        },
     ]
     trace = {"generations": [{"request": {"messages": messages}}]}
     result = audit_initial_input(case, fixture, trace)
@@ -356,14 +364,21 @@ def test_initial_input_audit_keeps_untrusted_rag_examples_separate_from_state():
         "schema": "xbrainlab.untrusted_context.v1",
         "trust": "untrusted",
         "items": [
-            {"type": "state_card", "data": {"raw_count": 1}},
             {"type": "rag_example", "data": {"high_freq": 30}},
         ],
     }
     messages = [
         {"role": "system", "content": "policy"},
         {"role": "user", "content": json.dumps(context)},
-        {"role": "user", "content": case["input"]},
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "current_user": {"text": case["input"]},
+                    "application_state": {"raw_count": 1},
+                }
+            ),
+        },
     ]
     trace = {
         "generations": [{"request": {"messages": [list(m.items()) for m in messages]}}]

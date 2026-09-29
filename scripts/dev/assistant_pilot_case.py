@@ -138,7 +138,7 @@ def audit_initial_input(
     neither is an authoritative value supplied by this case's user or state.
     Semantic absence from reviewed English input remains a human-review claim.
     """
-    issues, contexts = [], []
+    issues, contexts, state_cards = [], [], []
     generations = trace.get("generations", [])
     if not generations:
         submitted = [
@@ -177,8 +177,16 @@ def audit_initial_input(
             if value.get("trust") != "untrusted":
                 issues.append("context_trust_mismatch")
             contexts.extend(value.get("items", []))
+        elif isinstance(value, dict) and isinstance(value.get("current_user"), dict):
+            current_user = value["current_user"]
+            if set(current_user) != {"text"}:
+                issues.append("initial_conversation_not_fresh")
+            requests.append(current_user.get("text"))
+            state = value.get("application_state")
+            if isinstance(state, dict):
+                state_cards.append(state)
         else:
-            requests.append(content)
+            issues.append("initial_request_contract_mismatch")
     if requests != [case["input"]]:
         issues.append("initial_user_input_mismatch")
 
@@ -189,9 +197,10 @@ def audit_initial_input(
             )
         return isinstance(value, list) and any(has_value(item, key) for item in value)
 
-    state_cards = [
-        item.get("data", {}) for item in contexts if item.get("type") == "state_card"
-    ]
+    if len(state_cards) != 1:
+        issues.append("initial_state_not_observed")
+    if any(item.get("type") == "conversation_history" for item in contexts):
+        issues.append("initial_conversation_not_fresh")
     missing = fixture.get("conditions", {}).get("missing_authoritative_values", [])
     for field in missing:
         if has_value(state_cards, field):

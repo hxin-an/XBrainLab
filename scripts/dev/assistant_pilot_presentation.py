@@ -424,7 +424,7 @@ def _case_page(root: Path, output: Path, row: dict, detail: dict) -> None:
                 fields(
                     [
                         (
-                            "Workflow stage",
+                            "Backend workflow stage (case context)",
                             case.get("expected_workflow_stage", "unavailable"),
                         ),
                         ("Tool", case.get("expected_tool", "unavailable")),
@@ -435,7 +435,6 @@ def _case_page(root: Path, output: Path, row: dict, detail: dict) -> None:
                 '<section class="panel"><h2>Recorded final decision</h2>',
                 fields(
                     [
-                        ("Workflow stage", final.get("observed_stage", "unavailable")),
                         ("Tool", final.get("observed_tool", "unavailable")),
                         ("Score reason", final.get("reason", "unavailable")),
                     ]
@@ -592,7 +591,16 @@ def _render_detailed_markdown(
 ) -> list[str]:
     """Retain technical statistics in README, separate from the simple HTML view."""
     current = is_experiment_protocol(report.get("experiment"))
-    dev = report["schema"] == "xbrainlab.assistant_dev_report.v1" or current
+    dev = (
+        report["schema"]
+        in {
+            "xbrainlab.assistant_dev_report.v1",
+            "xbrainlab.assistant_dev_report.v2",
+            "xbrainlab.assistant_dev_report.v3",
+            "xbrainlab.assistant_dev_report.v4",
+        }
+        or current
+    )
     md = []
 
     def paragraph(value: str) -> None:
@@ -998,11 +1006,12 @@ def write_presentation(report: dict, output: Path) -> None:
     """Write a local report and case index without changing aggregate report JSON."""
     root = Path(report["run"])
     (output / "cases").mkdir()
-    dev = report[
-        "schema"
-    ] == "xbrainlab.assistant_dev_report.v1" or is_experiment_protocol(
-        report.get("experiment")
-    )
+    dev = report["schema"] in {
+        "xbrainlab.assistant_dev_report.v1",
+        "xbrainlab.assistant_dev_report.v2",
+        "xbrainlab.assistant_dev_report.v3",
+        "xbrainlab.assistant_dev_report.v4",
+    } or is_experiment_protocol(report.get("experiment"))
     details = {
         row["id"]: _details(root, row, require_generation=dev)
         for row in report["cases"]

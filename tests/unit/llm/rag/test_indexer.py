@@ -13,6 +13,13 @@ from XBrainLab.llm.rag.config import RAGConfig
 from XBrainLab.llm.rag.indexer import RAGIndexer
 
 
+def _proposal(action):
+    return {
+        "tool_name": action,
+        "parameters": {},
+    }
+
+
 class _DeterministicEmbeddings(Embeddings):
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return [self.embed_query(text) for text in texts]
@@ -42,7 +49,8 @@ def identity_docs() -> list[Document]:
             metadata={
                 "id": "dataset-info",
                 "category": "dataset",
-                "tool_calls": '[{"tool_name":"import_eeg_data","parameters":{}}]',
+                "proposal": json.dumps(_proposal("import_eeg_data")),
+                "source_text": "inspect the dataset",
             },
         )
     ]
@@ -92,7 +100,7 @@ def test_load_gold_set(mock_indexer, tmp_path: Path):
             "id": "test_01",
             "category": "test",
             "input": "User Input",
-            "expected_tool_calls": [{"tool_name": "import_eeg_data", "parameters": {}}],
+            "expected_proposal": _proposal("import_eeg_data"),
         }
     ]
 
@@ -103,7 +111,10 @@ def test_load_gold_set(mock_indexer, tmp_path: Path):
     assert len(docs) == 1
     assert docs[0].page_content == "User Input"
     assert docs[0].metadata["id"] == "test_01"
-    assert "tool_calls" in docs[0].metadata
+    assert json.loads(docs[0].metadata["proposal"]) == _proposal("import_eeg_data")
+    assert docs[0].metadata["source_text"] == "User Input"
+    assert "tool_calls" not in docs[0].metadata
+    assert docs[0].metadata["decision_name"] == "import_eeg_data"
 
 
 def test_load_gold_set_missing_file_raises_without_mutating_index(
@@ -115,6 +126,31 @@ def test_load_gold_set_missing_file_raises_without_mutating_index(
     with pytest.raises(FileNotFoundError):
         mock_indexer.load_gold_set(str(tmp_path / "missing.json"))
 
+    assert mock_indexer.client.mock_calls == []
+
+
+def test_load_gold_set_rejects_legacy_or_fabricated_source_examples(
+    mock_indexer, tmp_path
+):
+    fabricated = _proposal("resample_data")
+    fabricated["parameters"] = {"rate": 128}
+    rows = [
+        {
+            "id": "legacy",
+            "input": "Import EEG",
+            "expected_tool_calls": [
+                {"tool_name": "import_eeg_data", "parameters": {}},
+            ],
+        },
+        {
+            "id": "fabricated",
+            "input": "Resample to 256 Hz",
+            "expected_proposal": fabricated,
+        },
+    ]
+    corpus = tmp_path / "rejected.json"
+    corpus.write_text(json.dumps(rows), encoding="utf-8")
+    assert mock_indexer.load_gold_set(str(corpus)) == []
     assert mock_indexer.client.mock_calls == []
 
 
@@ -323,7 +359,8 @@ def test_index_data_rebuilds_same_count_when_document_content_changes(
             "metadata": {
                 "id": "dataset-info",
                 "category": "dataset",
-                "tool_calls": '[{"tool_name":"start_training","parameters":{}}]',
+                "proposal": json.dumps(_proposal("start_training")),
+                "source_text": "inspect the dataset",
             }
         },
     ),

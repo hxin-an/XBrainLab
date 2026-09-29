@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-09-27`
+最後更新：`2026-09-28`
 
 ## 一句話
 
@@ -46,7 +46,7 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 | Model catalog | Pinned Braindecode 1.6.1提供61個可搜尋contracts，其中54個符合目前classification workflow而可選；provider失效時改列distinct `legacy.braindecode.*` recovery IDs。Model Selection使用catalog reviewed defaults。 | 不可選contracts會顯示license、task或resource reason；桌面UI不提供model constructor調參；upstream與legacy禁止silent fallback，catalog execution不代表科學品質。 |
 | Evaluation | Individual fold/run支援Train、Validation、Test；Evaluation／Visualization選單只列完成的run（含正常Early Stop），不列中途停止的run，保留原始編號與歷史；cross-fold Summary只pool同一training round的disjoint Test masks。已完成結果的讀取綁定所選結果與trainer／split來源，不因其他fold的訓練進度失效，也不計算saliency producer SHA。 | 真正的來源或所選結果替換仍拒絕過期讀取；完成訓練但未計算saliency的run仍可選取Compute；`All Folds`的Split只有Test是刻意的統計邊界。 |
 | Saliency | 桌面Compute／Recompute只執行Settings選定的方法，一次涵蓋目前訓練結果中所有subject的已完成fold／run，排除未完成者；Fold／Run／Method選單只控制顯示。未選的相容既有方法直接保留，不加入重算；所選方法僅保留最新成功結果，整批成功才發布。沿用exact Fold／Evaluation-admitted Fold Set publication；尚未計算者顯示Compute要求，舊結果可刻意回看；單一class selector可切all-class比較與single-class細看，3D控制使用epoch-relative time並在重複render維持單一orientation widget。 | 不代表attribution具科學有效性或腦內source localisation，不把epoch time冒充已審查event marker，也不保證所有模型梯度相容。 |
-| Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；per-user settings保留上次確認的supported model，已退役selection會靜默正規化為recommended model。Strict envelope、18-action stage surface、parameter provenance、typed pending receipt infrastructure、capability、confirmation、GUI handoff與model-free walkthrough存在。 | PR #71 的exact 3B bounded baseline為36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product no-action與6/7 clarification execution boundary；`desktop-source` release profile可重跑其frozen 81-case no-regression evidence，但artifact明示它不是24/24、7/7 Stable promotion或安全零容忍。 |
+| Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；per-user settings保留上次確認的supported model，已退役selection會靜默正規化為recommended model。18-action stage surface、parameter provenance、capability、confirmation及GUI handoff存在；施工中的完整單輪兩欄契約見下節，不保存對話草稿。 | PR #71 的exact 3B bounded baseline為36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product no-action與6/7 clarification execution boundary；frozen 81-case保留原source／契約的歷史回歸身分。舊結果不是新單輪契約已通過，也不是24/24、7/7 Stable promotion或安全零容忍。 |
 | MCP | Executable package、transport、CLI、capture、schema projection與tests已退役；provenance只留在Git history。 | 不是release能力；未來若要恢復，必須另開public contract、security與validation decision。 |
 | Packaging | Windows source bootstrap 經確認後準備生成模型與固定版本 RAG embedding，離線檢索驗證通過才完成／啟動；重跑重用完整 cache。入口與路徑見[本機環境](developer/local-setup.md)。 | 沒有 signed installer；流程回歸與既有 cache 離線驗證不代表全新 Windows 整機安裝已實測。 |
 
@@ -65,6 +65,68 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 - Repo-root `settings.json`是本機設定，不屬於release tree。
 
 ## Assistant research baseline
+
+### 已核准契約的施工source（2026-09-28）
+
+以下描述本輪已落地的source，不表示已合併、模型基本流程已通過或handoff-ready；
+產品基線仍以`main`為準，進度與未解阻擋由[Now](planning/now.md)擁有。
+使用者後續將本輪驗收明確限於tool-call正確性，不審自然語言回答品質；完整回答語意的
+歷史失敗保留，但不再自動阻擋此範圍的整合驗證。Tool選擇／參數／是否應操作與實際副作用
+仍須驗證；固定20＋6題的自動分數不替代獨立tool-decision覆核、真GUI或同版本CI。
+模型只輸出恰好兩欄`tool_name / parameters`；一個既有工具名表示完整單一操作，
+`respond_to_user`的parameters只能含非空message，是非執行回答標記，不是第19個工具。
+不接受舊五欄／三欄格式；每次要求獨立，不保存或合併跨輪參數。缺值時回答缺少什麼並
+請重新提供完整要求；裸值、指涉更正與「照剛才」不能借用先前操作參數。
+模型輸入不附先前user／Assistant對話，連上一則Assistant回覆也不附；畫面聊天與診斷
+紀錄仍保留。模型只取得當輪原文、必要後端狀態／工具／規則及可選參考，不支援依聊天
+歷史理解「你剛才說的」。此刪除不是已知模型漏答的修復或新的模型成績。
+Host不解析自然語言意圖、不排序bandpass值，也沒有零LLM補值捷徑；五個direct工具仍
+依當輪原文驗證參數來源。確認及GUI handoff保留既有typed回呼、取消與freshness邊界。
+來源匹配不證明理解正確；執行仍須通過完整schema、capability與確認。格式錯誤最多
+一次修復，多個完整JSON操作要求選一件，不執行其中任何一個。
+完整契約見[Agent target](target/agent.md)，責任分工見[Agent架構](architecture/agent.md)。
+新固定20個基本單輪案例位於`scripts/dev/stable_assistant_single_turn_cases_v1.json`；
+早期20題真模型RAG開／關自動各13/20；英文候選開／關自動20/20與14/20，
+獨立完整語意16/20與9/20。後續一次回答完整性修正只改policy，明分禁止與要求執行、
+要求自己組織回覆及完整重述；原20題自動分數不變，完整語意開／關為17/20與8/20。
+既有另6題語意開／關仍5/6與2/6，不併入原分母。關閉RAG的解釋內容有改善也有新錯誤；
+開啟RAG時reference禁止回覆改善，但仍漏解釋、缺完整重述提醒及normalize複誦；這些是
+已知回答品質限制，不是後續批准的tool-call驗收阻擋。整體是否ready仍依Now的整合證據判定。
+2026-09-29追加的固定74題廣度獨立tool-decision為65/74首答、66/74修復後：發現複合操作
+部分提案、不可用操作替代及漏執行等工具決策問題。4題錯誤提案通過准入但被evaluator
+抑制執行；沒有實際資料變更，亦不能宣稱安全不操作通過。真模型Windows四步操作及
+確認／取消邊界檢查通過，source覆核亦通過，但上述模型問題不支持可靠基線／Stable宣稱。
+使用者於2026-09-29接受保留這些限制的Development候選版進行集中手測，並重申本輪
+只支援完整、單一英文要求，不包含複合需求。非複合的漏執行、誤切panel及不可用工具
+提案仍是已知錯誤，不因此變成scope外或通過；原判分、分母與失敗證據保留。
+此廣度集含語料重合及重複prompt，不是獨立holdout；明細及後續決策由Now擁有。
+所有數字各自綁定凍結source；規則更清楚不代表模型已遵守，也不以局部改善抵銷退步。
+Host擋錯、合法JSON與部件測試均不能代替模型語意成功；舊81題／跨輪實驗結果也不能
+當作本契約通過。實際artifact、比較限制與後續決策由Now擁有。
+
+### RAG 部件邊界（2026-09-28）
+
+RAG改為在已發布action及合法response示範內檢索，不再先以手寫語句分流。
+目前共161筆英文單輪示範：前一版157筆再補4筆純否定示範；7筆缺值／部分值改為
+直接操作用語並指出精確缺項與完整重述。原正向／純說明示範保留，兩筆跨輪示範已移除。
+解釋＋操作的四筆問題仍請使用者選擇先做哪一件，不示範部分執行。
+當前施工source使用固定MiniLM、獨立dense／BM25召回及RRF融合，最多三例；
+語料使用兩欄tool_name／parameters，索引schema為6，語料hash由`RAGConfig`固定，
+舊索引不可混用；prior_turn不再接受，缺值示範請使用者重新提供完整要求。
+最終prompt按同一份當前publication
+重新確認範例資格，僅加入完整範例；不擴大tool、權限、confirmation或參數來源。
+細節由[目前架構](architecture/agent.md)擁有。此為source行為，不表示語料數量已證明
+模型收益、Stable promotion或正式論文效果；本輪比較與交付進度見[Now](planning/now.md)。
+舊dense候選池內重排無法補回cosine漏例；早先獨立召回聯集候選曾因真模型退步撤回，
+該歷史失敗保留，不等於本輪RRF已驗收。新准入的原分數門檻漏掉短句必要例；
+後續v2至少兩詞／IDF query覆蓋0.5規則仍漏掉長句必要例，另有dense分路候選超出
+預定相關集合；分路候選不等於最後送出的範例。對稱覆蓋與最終送例相關性gate沿用；
+目前v5沿用v4的20題（10＋10）、原相關標註、required IDs與無關反例，僅為新語料
+版本補四個新示範的同主題標註；主題相關不是決策等效。v4及更早fixture／失敗證據
+保留歷史身分，新範例標註在觀測前固定。
+實際驗證尚不在此宣稱通過；契約由[Agent target](target/agent.md)
+擁有。檢索准入與模型收益分開判定，最新證據見[Now](planning/now.md)；已有固定案例下
+的模型受益，整體基線與交付仍未成立，不能把檢索／索引／生命週期驗證當作整體品質通過。
 
 ### 共同工程基線：PR #147 已合併（2026-09-27） { #assistant-integration-baseline }
 

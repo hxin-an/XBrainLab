@@ -292,7 +292,7 @@ def _experiment_run(tmp_path):
             **identity, experiment=experiment, seed=0, case=case, case_id=job["case_id"]
         )
         result["scores"].update(
-            scorer_schema="xbrainlab.assistant_decision_scores.v2",
+            scorer_schema="xbrainlab.assistant_decision_scores.v3",
             max_format_recovery_attempts=1,
             first_decision_correct=job["repeat"] == 0,
             final_decision_correct=job["repeat"] != 1,
@@ -435,9 +435,17 @@ def test_experiment_report_keeps_repeat_and_candidate_denominators_separate(tmp_
     }
 
 
-def test_experiment_report_rejects_cross_repeat_saved_identity(tmp_path):
+@pytest.mark.parametrize("damage", ["cross_repeat", "old_three_field_scorer"])
+def test_experiment_report_rejects_incompatible_saved_identity(tmp_path, damage):
     root = _experiment_run(tmp_path)
-    _change_result(root, lambda result: result.update(repeat=2), index=0)
+
+    def mutate(result):
+        if damage == "cross_repeat":
+            result.update(repeat=2)
+        else:
+            result["scores"]["scorer_schema"] = "xbrainlab.assistant_decision_scores.v2"
+
+    _change_result(root, mutate, index=0)
     result = report.build_report(root)
     assert result["cases"][0]["decision_valid"] is False
     assert result["complete_selected_schedule"] is False
@@ -784,6 +792,133 @@ def _change_result(root, mutate, index=0):
     path.write_text("".join(json.dumps(row) + "\n" for row in records))
 
 
+def _proposal_scores(result, *, historical=False):
+    result["scores"].update(
+        scorer_schema="xbrainlab.assistant_decision_scores.v4"
+        if historical
+        else "xbrainlab.assistant_decision_scores.v5",
+        response_contract="assistant_proposal.v1"
+        if historical
+        else "assistant_proposal.v2",
+        parameter_scope="single_turn_replace_changes"
+        if historical
+        else "single_turn_new_request_changes",
+        source_validation="not_evaluated",
+    )
+    for generation in result.get("trace", {}).get("generations", []):
+        generation["request"] = {
+            "response_contract": result["scores"]["response_contract"]
+        }
+
+
+@pytest.mark.parametrize("historical", [False, True])
+def test_proposal_report_identity_is_distinct_without_rescoring_artifacts(
+    tmp_path, historical
+):
+    root = _run(tmp_path, [("Action", True, True, "completed")])
+    _change_result(root, lambda result: _proposal_scores(result, historical=historical))
+    before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    actual = report.build_report(root)
+    assert (
+        actual["schema"]
+        == f"xbrainlab.assistant_pilot_report.v{2 if historical else 3}"
+    )
+    assert (
+        actual["conditions"]["phi4-rag-off"]["categories"]["Action"]["final"][
+            "numerator"
+        ]
+        == 1
+    )
+    assert before == {
+        path: path.read_bytes() for path in root.rglob("*") if path.is_file()
+    }
+
+
+def test_proposal_report_rejects_old_trace_identity(tmp_path):
+    root = _run(tmp_path, [("Action", True, True, "completed")])
+
+    def damage(result):
+        _proposal_scores(result)
+        result["trace"] = {
+            "generations": [{"request": {"response_contract": "structured_action"}}],
+        }
+
+    _change_result(root, damage)
+    actual = report.build_report(root)
+    assert (
+        actual["conditions"]["phi4-rag-off"]["categories"]["Action"]["final"][
+            "denominator"
+        ]
+        == 0
+    )
+
+
+def test_report_does_not_pool_historical_and_proposal_scores(tmp_path):
+    root = _run(tmp_path, [("Action", True, True, "completed")] * 2)
+    _change_result(root, _proposal_scores)
+    with pytest.raises(ValueError, match="historical and proposal"):
+        report.build_report(root)
+
+
+def test_report_does_not_pool_nested_and_flat_proposal_scores(tmp_path):
+    root = _run(tmp_path, [("Action", True, True, "completed")] * 2)
+    _change_result(root, _proposal_scores)
+    _change_result(
+        root, lambda result: _proposal_scores(result, historical=True), index=1
+    )
+    with pytest.raises(ValueError, match="historical and proposal"):
+        report.build_report(root)
+
+
+def test_new_dev_report_preserves_capture_checks_and_presentation(tmp_path):
+    root = _run(tmp_path, [("Action", True, True, "completed")], dev=True)
+    _change_result(root, _proposal_scores)
+    output = tmp_path / "proposal-report"
+    actual = report.write_report(root, output)
+    assert actual["schema"] == "xbrainlab.assistant_dev_report.v3"
+    assert actual["cases"][0]["capture_integrity"]["verified"] is True
+    assert (output / "README.md").is_file()
+    assert (output / "index.html").is_file()
+
+
+def _single_turn_scores(result):
+    result["scores"].update(
+        scorer_schema="xbrainlab.assistant_decision_scores.v6",
+        response_contract="assistant_tool_response.v1",
+        parameter_scope="single_turn_complete_parameters",
+        source_validation="not_evaluated",
+    )
+    for generation in result.get("trace", {}).get("generations", []):
+        generation["request"] = {"response_contract": "assistant_tool_response.v1"}
+
+
+def test_single_turn_dev_report_keeps_dev_identity_and_generation_evidence(tmp_path):
+    root = _run(tmp_path, [("Action", True, True, "completed")], dev=True)
+    _change_result(root, _single_turn_scores)
+    before = {path: path.read_bytes() for path in root.rglob("*") if path.is_file()}
+    output = tmp_path / "single-turn-report"
+
+    actual = report.write_report(root, output)
+
+    assert actual["schema"] == "xbrainlab.assistant_dev_report.v4"
+    assert actual["cases"][0]["capture_integrity"]["verified"] is True
+    for name in ("README.md", "index.html"):
+        content = (output / name).read_text(encoding="utf-8")
+        assert "DEV initial baseline" in content
+        assert "DEV Pilot" not in content
+    assert before == {
+        path: path.read_bytes() for path in root.rglob("*") if path.is_file()
+    }
+
+
+def test_single_turn_report_does_not_pool_old_proposal_scores(tmp_path):
+    root = _run(tmp_path, [("Action", True, True, "completed")] * 2)
+    _change_result(root, _single_turn_scores)
+    _change_result(root, _proposal_scores, index=1)
+    with pytest.raises(ValueError, match="historical and proposal"):
+        report.build_report(root)
+
+
 @pytest.mark.parametrize(
     "audit,missing",
     [
@@ -1046,10 +1181,13 @@ def test_dev_completed_decision_requires_generation_but_predispatch_timeout_does
     assert report.build_report(root)["complete_selected_schedule"] is False
 
 
+@pytest.mark.parametrize("single_turn", [False, True])
 def test_dev_capture_drift_during_render_never_publishes_success_json(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, single_turn
 ):
     root = _run(tmp_path, [("Action", True, True, "completed")], dev=True)
+    if single_turn:
+        _change_result(root, _single_turn_scores)
     render = report.write_presentation
 
     def change_then_render(value, output):
