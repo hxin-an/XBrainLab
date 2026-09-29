@@ -27,6 +27,7 @@ from scripts.dev.assistant_experiment_config import experiment_identity
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = "xbrainlab.assistant_experiment_package.v2"
 _PREVIOUS_SCHEMA = "xbrainlab.assistant_experiment_package.v1"
+_PORTABLE_SCHEMA = "xbrainlab.assistant_experiment_package.v3"
 
 
 def _json(path: Path) -> dict:
@@ -89,6 +90,7 @@ def create_package(
     output: Path,
     *,
     coordinator_root: Path = ROOT,
+    wheel_cache: Path | None = None,
 ) -> Path:
     """Create a new sealed package; failures leave no published manifest.
 
@@ -139,6 +141,19 @@ def create_package(
     shutil.copyfile(config, output / "inputs/config-original.json")
     shutil.copyfile(resources, output / "inputs/resources.json")
     _write(output / "inputs/config.json", sealed)
+    portable_files = []
+    if wheel_cache is not None:
+        from scripts.dev.assistant_experiment_portable import prepare_assets
+
+        portable_files = [
+            prepare_assets(output, values, config.parent, wheel_cache),
+            output / "environment/requirements.txt",
+            output / "README.md",
+        ]
+        for model in sealed["models"]:
+            model["model_cache"] = "../models"
+        sealed["embedding_cache"] = "../models"
+        _write(output / "inputs/config.json", sealed)
     shell = (
         "#!/bin/sh\nset -eu\n"
         'PACKAGE_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\n'
@@ -157,17 +172,30 @@ def create_package(
     entries = []
     for name, action in (("run.sh", "launch"), ("compare.sh", "compare")):
         entry = output / name
-        entry.write_text(
+        text = (
             shell
             + f'exec "$PYTHON" "$PACKAGE_ROOT/sources/{coordinator}/scripts/dev/assistant_experiment_package.py" '
-            + f'{action} --package "$PACKAGE_ROOT" "$@"\n',
-            encoding="utf-8",
+            + f'{action} --package "$PACKAGE_ROOT" "$@"\n'
         )
+        if wheel_cache is not None:
+            text = (
+                "#!/bin/sh\nset -eu\n"
+                'PACKAGE_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\n'
+                f"exec python{sys.version_info.major}.{sys.version_info.minor} -I "
+                f'"$PACKAGE_ROOT/sources/{coordinator}/scripts/dev/assistant_experiment_portable.py" '
+                f'--package "$PACKAGE_ROOT" --entry {action} "$@"\n'
+            )
+        entry.write_text(text, encoding="utf-8")
         entry.chmod(0o755)
         entries.append(entry)
-    immutable = [*entries, *sorted((output / "inputs").iterdir()), *specifications]
+    immutable = [
+        *entries,
+        *sorted((output / "inputs").iterdir()),
+        *specifications,
+        *portable_files,
+    ]
     manifest = {
-        "schema": SCHEMA,
+        "schema": _PORTABLE_SCHEMA if wheel_cache is not None else SCHEMA,
         "coordinator": coordinator,
         "sources": sorted(sources),
         "files": {
@@ -184,9 +212,11 @@ def verify_package(package: Path) -> dict:
     """Check sealed inputs and independent Git snapshots without model access."""
     package = package.resolve(strict=True)
     manifest = _json(package / "manifest.json")
-    if manifest.get("schema") not in {SCHEMA, _PREVIOUS_SCHEMA} or manifest.get(
-        "coordinator"
-    ) not in manifest.get("sources", []):
+    if manifest.get("schema") not in {
+        SCHEMA,
+        _PREVIOUS_SCHEMA,
+        _PORTABLE_SCHEMA,
+    } or manifest.get("coordinator") not in manifest.get("sources", []):
         raise ValueError("Invalid experiment package manifest")
     for relative, expected in manifest["files"].items():
         path = (package / relative).resolve(strict=True)
@@ -201,8 +231,15 @@ def verify_package(package: Path) -> dict:
     }
     # Historical packages remain readable; their frozen entry never gains new
     # capabilities. Newly sealed packages also bind the offline compare entry.
-    if manifest["schema"] == SCHEMA:
+    if manifest["schema"] in {SCHEMA, _PORTABLE_SCHEMA}:
         required.add("compare.sh")
+    if manifest["schema"] == _PORTABLE_SCHEMA:
+        from scripts.dev.assistant_experiment_portable import validate_layout
+
+        required.update(
+            {"environment/portable.json", "environment/requirements.txt", "README.md"}
+        )
+        validate_layout(package)
     for head in manifest["sources"]:
         source = (package / "sources" / head).resolve(strict=True)
         if (
@@ -234,6 +271,11 @@ def verify_package(package: Path) -> dict:
             or source["root"] != f"../sources/{source['head']}"
         ):
             raise ValueError("Candidate source differs from package inventory")
+    if manifest["schema"] == _PORTABLE_SCHEMA and (
+        config["embedding_cache"] != "../models"
+        or any(model["model_cache"] != "../models" for model in config["models"])
+    ):
+        raise ValueError("Portable resources must remain inside the package")
     return manifest
 
 
@@ -252,6 +294,13 @@ def _retained_run(package: Path, requested: Path) -> Path:
     return run
 
 
+def _portable_output_root(package: Path, name: str) -> Path:
+    root = package / name
+    if root.is_symlink() or (root.exists() and not root.is_dir()):
+        raise ValueError("Portable output must use a physical package directory")
+    return root
+
+
 def launch_package(
     package: Path,
     *,
@@ -267,6 +316,19 @@ def launch_package(
         raise ValueError("Replacement requires resume; select only one run action")
     package = package.resolve(strict=True)
     manifest = verify_package(package)
+    if manifest["schema"] == _PORTABLE_SCHEMA:
+        _portable_output_root(package, "runs")
+        retained = resume or report_only or audit
+        if retained is not None:
+            run = _retained_run(package, retained)
+            for path in run.rglob("*"):
+                if path.is_symlink() and not (
+                    path.relative_to(run).as_posix() == "raw/rag/models"
+                    and path.resolve() == (package / "models").resolve()
+                ):
+                    raise ValueError(
+                        "Portable retained outputs must not redirect writes through links"
+                    )
     module = "scripts.dev.run_assistant_dev"
     if audit is not None:
         run = _retained_run(package, audit)
@@ -315,8 +377,14 @@ def compare_package(
     """Use the frozen offline reader; runs may belong to different round packages."""
     package = package.resolve(strict=True)
     manifest = verify_package(package)
-    if manifest["schema"] != SCHEMA:
+    if manifest["schema"] not in {SCHEMA, _PORTABLE_SCHEMA}:
         raise ValueError("Historical package has no sealed comparison entry")
+    if manifest["schema"] == _PORTABLE_SCHEMA:
+        comparison_root = _portable_output_root(package, "comparisons")
+        if output is not None and not output.resolve().is_relative_to(comparison_root):
+            raise ValueError(
+                "Portable comparison output must be inside package/comparisons"
+            )
     # Resolve user paths before dispatch changes cwd to the sealed source.
     arguments = [str(first.resolve(strict=True)), str(second.resolve(strict=True))]
     if output is None:
@@ -334,6 +402,11 @@ def main(argv=None) -> int:
     )
     for name in ("bank", "config", "output"):
         create.add_argument(f"--{name}", type=Path, required=True)
+    create.add_argument(
+        "--wheel-cache",
+        type=Path,
+        help="Seal a portable offline Linux bundle using exact installed-version wheels",
+    )
     launch = actions.add_parser("launch", help="Internal run.sh adapter")
     launch.add_argument("--package", type=Path, required=True)
     selection = launch.add_mutually_exclusive_group()
@@ -350,7 +423,11 @@ def main(argv=None) -> int:
     compare.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     if args.action == "create":
-        print(create_package(args.bank, args.config, args.output))
+        print(
+            create_package(
+                args.bank, args.config, args.output, wheel_cache=args.wheel_cache
+            )
+        )
         return 0
     if args.action == "compare":
         return compare_package(args.package, args.first, args.second, args.output)

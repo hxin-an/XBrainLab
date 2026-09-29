@@ -189,6 +189,31 @@ v1歷史封存仍可讀取，但不往舊包加新入口或更改manifest；如�
 
 ### 可封存 DEV／VALID 協定
 
+#### 同137工作站的可搬移副本
+
+使用者另批准同機NAS帳號間的整包複製目標。`create --wheel-cache EXISTING_CACHE`
+建立v3可搬移包：程式、非TEST題庫、設定、固定模型／embedding與目前環境精確版本的
+相容wheels均放包內。只複製資源清單列出的模型檔案，不複製cache token／私人settings；
+wheel缺失或不一致即拒絕，不下載新版或退回另一模型。原始v1/v2封存及證據不原地改寫。
+
+接收者在自己的可寫NAS目錄執行`./run.sh`；system Python／Git仍是同機先決條件。
+首次使用包內離線wheels及hash-pinned requirements建立副本內環境，之後重用並檢查
+安裝版本。Ubuntu缺ensurepip時由固定pip wheel啟動，無sudo、無全域pip安裝。不同
+副本路徑／UID另建環境，不沿用複製來的venv絕對路徑。`./run.sh --check-environment`
+只建立／核對環境，不呼叫模型、不消耗研究案例。正式run仍須逐輪批准。
+
+可寫資料限包內`.runtime/`、`runs/`及`comparisons/`；不允許這些輸出經symlink重導外部。
+v3比較的明確`--output`也須位於包內`comparisons/`。模型完整hash由既有runner在推論
+前核對，不每題或在bootstrap重複掃描整套權重。移動後新run重新記錄真實路徑與環境；
+舊run不可改manifest冒充可resume，仍保留原始證據。應散布未執行的乾淨包，避免把
+先前`.runtime/`、診斷或runs當新包必要輸入；程式不自行刪除這些內容。
+
+這不建立跨使用者GPU排程：既有lock為每使用者，仍需協調137 GPU使用。模型與研究
+資料的接收者權利須確認；不自動開放hxin家目錄或變更群組權限。同帳號換路徑、另一
+帳號、真CUDA／模型執行是三種不同證據，不互相替代；可用範圍與缺口由Current記錄。
+
+#### 一般封存與執行
+
 `scripts/dev/assistant_experiment_package.py create --bank BANK --config CONFIG --output PACKAGE`
 把編輯完成的 config 與題庫封存為新包。只接受 clean exact source，不能覆寫既有包。
 每個不同 source 各存獨立 shallow Git checkout，不依賴開發 worktree 或外部 Git objects。

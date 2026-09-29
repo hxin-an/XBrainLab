@@ -2,7 +2,45 @@
 
 最後更新：`2026-09-29`
 
-## Active — DEV工具工程驗證完成，待工具PR授權與第1輪討論
+## Active — 137同機跨帳號可搬移實驗包；正式DEV仍未開跑
+
+2026-09-29新增使用者授權：在137使用NAS的另一帳號，將整包複製到自己的目錄後，
+以`./run.sh`建立必要的本地環境並執行；不要求另設共用路徑。現有v2封存包只保證
+已provision環境內重跑：Python symlink與模型設定仍綁定hxin的絕對路徑，私人目錄
+權限也阻止其他帳號讀取。既有source／input快照不是可搬移安裝包。
+
+Outcome／scope：沿用既有封存器與runner，加入同機Linux/Python固定版本的可搬移包；
+包含獨立source、非TEST題庫、設定、已固定模型／embedding及離線環境安裝依賴。
+包內相對路徑定位；首次執行在副本內建立固定環境，重跑重用；輸出／cache只寫副本。
+不得複製credential、使用者settings或私人SSH資料；不分享hxin家目錄權限。
+Non-goals：不改產品UI、Agent、題目、oracle、scorer、模型revision或研究政策；不啟動
+正式DEV／VALID／TEST、不刪舊包、不下載新模型、不承諾跨OS或其他GPU工作站。
+先前「不新建環境」限制僅對前一工程切片；本切片明確包含副本內首次環境重建。
+尚未授權對外散布模型、建立系統帳號、sudo／ACL變更或正式DEV推論；若需要另提確認。
+
+施工：盤點已安裝Python／依賴／wheel cache與runner資源路徑→先加搬移／離線首次
+啟動失敗測試→新增bounded封裝／bootstrap→真137不同路徑（含空白／非ASCII）驗證
+環境重建、資源核對、重啟、壞包拒絕與唯讀原包→獨立安全／封裝覆核與同head CI。
+新環境使用現有固定版本與套件來源；缺少離線依賴時先確認下載清單與容量，不silent fallback。
+不為新包重跑已用完的fixed20推論；先用不生成的preflight及既有結果離線比較驗工程。
+另一帳號實測需要合法可用的測試帳號，目前未知；先完成不受阻工作，不以同帳號搬移
+冒充跨帳號通過。最後必要真模型驗證範圍／額度另明列後取得確認。
+
+Complexity review：沿用package為封存owner、runner為執行／journal／budget owner，
+bootstrap只負責副本內環境建立與啟動，不新增評分或實驗排程owner。刪除候選是重複
+shell entry生成與個人絕對路徑綁定；保留真實歷史v1/v2讀取，不原地修改舊證據。
+若需新module限封裝環境責任，預估腳本+300–600 LOC、產品XBrainLab/零變動；實際
+diff超出時重新審查，不藉generic installer/platform擴張scope。
+Stop：可搬移包與直接測試／獨立覆核閉合，清楚區分同帳號搬移、跨帳號及真推論證據；
+缺必要帳號／資源時報告具體阻擋，不宣稱完成、不開正式DEV。UI確認不適用。
+Next：盤點資源與環境、完成characterization，再實作可搬移封裝。
+
+### 前一工具切片（已開PR，未合併）
+
+使用者已授權工具PR；[#151](https://github.com/hxin-an/XBrainLab/pull/151) head
+`bdc63837b2c6c0576825ec67aab4500bb14ee9c7`的22項non-skipped CI全部completed/success，
+另5項依scope skip；base為`d4e54b628bd49d71fb2df73e7bbdf8b0c36efef0`。本次擴充後
+舊head CI不能替新head放行。尚未授權merge或完整DEV執行。
 
 2026-09-29使用者確認每模型五輪都完成、基準占第一輪，並要求每輪可一鍵執行，另有
 一個腳本比較兩份結果；不是只對單份結果做audit。輪次、封存與比較契約由
@@ -66,8 +104,8 @@ run：`20260929-063418-83bfd335`。本機報告與核對副本位於
 保存真環境／資源與完整排程。本機同名副本加round-01前綴；TEST未讀、VALID未評估。
 另經使用者明確授權完成Windows本機SSH key與`ssh xbrainlab-137`別名，金鑰不進repo。
 
-Next：使用者確認是否建立本次工具PR；適用CI與合併按repo規則，不把本機驗證叫作
-handoff-ready。接著共同確認第1輪版本、配置及完整執行額度，才可run；不開始第2輪。
+前一切片Next已由頁首可搬移包施工取代。接著共同確認第1輪版本、配置及完整執行
+額度，才可run；不開始第2輪。
 這是約定的討論交接點，不授權跳過PR／CI或自行開始完整實驗。
 
 ## Closed — Agent Development基線已手測通過並合併
