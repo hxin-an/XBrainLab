@@ -38,6 +38,13 @@ single/bulk cancel、shutdown、close、restart/publication 12 passed。三個re
 由主agent核對，reviewer未重跑。新增owner 0，產品service淨增4行，沒有新UI／契約。
 Next：修復commit `a4aec703`加本次授權文件送PR，追蹤同head適用CI；核對137資源、
 固定五模型新run配置與新source封存，完成合併後啟動。以頁首全五模型授權取代528題提案。
+CI首次head `6b27fe90`：21成功，Windows lifecycle有一項既有刷新計數失敗；原失敗保留
+於Actions run36585733302。獨立追查顯示測試只等eval/visualization到STOP_REQUESTED，
+未等待Training自己的queued render便開始計terminal刷新數；bulk cancel僅teardown路徑。
+直接修正驗證阻擋：先確定三面板preterminal都已render，再保留terminal exactly-once
+斷言；不改產品、不放寬數量或timeout。CI失敗作red證據，本機原測試單次pass不能
+排除此排程競態；修後重跑直接案例與同headCI。新source封存重建，未開始推論的舊
+準備包只作中間產物；不以舊head成功項冒充新head全部通過。
 
 ## 已執行 — 合併工具PR，啟動DEV第1輪後交回
 
