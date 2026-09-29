@@ -443,7 +443,12 @@ def _run_job(
                 raise RuntimeError(
                     f"Fixture {name} terminated {operation.phase.value}: {operation.message}"
                 )
-            break
+            # Worker completion precedes terminal view acknowledgement. Keep Qt
+            # dispatching until the existing backend restart barrier is satisfied.
+            if name != "training" or service.training.wait_until_restart_safe(
+                timeout=0
+            ):
+                break
         if time.monotonic() >= deadline:
             raise TimeoutError(f"Fixture {name} deadline exceeded")
         _pump_events()
@@ -496,7 +501,7 @@ def prepare_fixture(
             while any(
                 not service.get_owned_operation(job["operation_id"]).phase.terminal
                 for job in jobs.values()
-            ):
+            ) or not service.training.wait_until_restart_safe(timeout=0):
                 if time.monotonic() >= deadline:
                     raise RuntimeError(
                         "Fixture owned jobs did not stop within cleanup budget"

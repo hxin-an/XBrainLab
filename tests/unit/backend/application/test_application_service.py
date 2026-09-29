@@ -9555,7 +9555,8 @@ def test_explicit_saliency_compute_runs_outside_shared_command_lock() -> None:
     )
 
 
-def test_explicit_saliency_operation_cancel_is_immediate_and_terminal() -> None:
+@pytest.mark.parametrize("bulk", [False, True])
+def test_explicit_saliency_operation_cancel_is_immediate_and_terminal(bulk) -> None:
     service, trainer, _holder, record, old_eval_record = _saliency_recompute_service()
     run = TrainingRunIdentity(
         trainer_id=trainer.get_state_snapshot_identity(),
@@ -9591,7 +9592,9 @@ def test_explicit_saliency_operation_cancel_is_immediate_and_terminal() -> None:
     def cancel():
         try:
             cancel_results.append(
-                service.cancel_owned_operation(operation.operation_id)
+                operation.operation_id in service.cancel_all_owned_operations()
+                if bulk
+                else service.cancel_owned_operation(operation.operation_id)
             )
         except BaseException as exc:
             cancel_errors.append(exc)

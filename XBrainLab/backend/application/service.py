@@ -1705,7 +1705,11 @@ class ApplicationService(Observable):
 
     def cancel_all_owned_operations(self) -> tuple[str, ...]:
         """Cancel every cooperative operation without taking the command lock."""
-        return self.owned_work.cancel_all()
+        return tuple(
+            operation.operation_id
+            for operation in self.owned_work.active_snapshots()
+            if self.cancel_owned_operation(operation.operation_id)
+        )
 
     def _execute_stop_training_control(
         self,

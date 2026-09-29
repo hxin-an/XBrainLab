@@ -269,6 +269,66 @@ def test_renderable_fixture_uses_real_saliency_computation(study, tmp_path):
     )
 
 
+def test_trained_fixture_waits_for_delayed_terminal_view_before_reset(
+    study, tmp_path, qtbot, monkeypatch
+):
+    from PyQt6.QtCore import QTimer
+
+    from XBrainLab.backend.application import (
+        APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT,
+        ResetSessionCommand,
+    )
+    from XBrainLab.backend.utils.observer import ObserverDeliveryStatus
+
+    service = get_application_service(study)
+    deferred = []
+    acknowledged = []
+
+    def defer_terminal(publication):
+        if publication.state.training.terminal_outcome.is_terminal:
+            deferred.append(publication.revision)
+            return ObserverDeliveryStatus.DEFERRED
+        return None
+
+    def deliver_after_worker():
+        if deferred:
+            revision = deferred[-1]
+            service.acknowledge_view_publication_delivery(revision)
+            acknowledged.append(revision)
+            timer.stop()
+
+    timer = QTimer()
+    timer.timeout.connect(deliver_after_worker)
+    get_operation = service.get_owned_operation
+
+    def observe_terminal(operation_id):
+        operation = get_operation(operation_id)
+        if operation.phase.terminal and not acknowledged:
+            # Queue delivery only once the real worker is observed complete.
+            # Returning this snapshot must not let the fixture skip Qt delivery.
+            timer.start(0)
+        return operation
+
+    monkeypatch.setattr(service, "get_owned_operation", observe_terminal)
+    service.subscribe(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, defer_terminal)
+    try:
+        for index in range(2):
+            acknowledged.clear()
+            deferred.clear()
+            result = prepare_fixture(
+                study, _fixture("trained"), tmp_path / f"repeat-{index}"
+            )
+            assert result["jobs"]["training"]["phase"] == "completed"
+            assert acknowledged, "Fixture returned before terminal view acknowledgement"
+            assert service.training.wait_until_restart_safe(timeout=0)
+            assert service.execute(ResetSessionCommand(confirmed=True)).ok
+    finally:
+        timer.stop()
+        if deferred:
+            service.acknowledge_view_publication_delivery(deferred[-1])
+        service.unsubscribe(APPLICATION_VIEW_PUBLICATION_CHANGED_EVENT, defer_terminal)
+
+
 def test_running_fixture_is_actual_cancellable_cpu_job(study, tmp_path):
     result = prepare_fixture(
         study,
@@ -286,6 +346,18 @@ def test_running_fixture_is_actual_cancellable_cpu_job(study, tmp_path):
     assert service.wait_for_background_tasks(timeout=10.0)
     assert not service.get_state().training.is_running
     assert service.get_owned_operation(operation_id).phase.terminal
+
+
+def test_bulk_cancel_stops_real_fixture_training(study, tmp_path):
+    result = prepare_fixture(
+        study, _fixture("training"), tmp_path / "case", running_training_epochs=10000
+    )
+    service = get_application_service(study)
+    operation_id = result["jobs"]["training"]["operation_id"]
+    assert operation_id in service.cancel_all_owned_operations()
+    assert service.wait_for_background_tasks(timeout=5)
+    assert not service.get_state().training.is_running
+    assert service.get_owned_operation(operation_id).phase.value == "cancelled"
 
 
 @pytest.mark.parametrize(
