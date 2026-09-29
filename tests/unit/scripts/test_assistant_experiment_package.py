@@ -51,6 +51,14 @@ class ExperimentPackageTests(unittest.TestCase):
             "(out / 'audit-called.json').write_text(json.dumps({'args': args}))\n",
             encoding="utf-8",
         )
+        (scripts / "assistant_experiment_compare.py").write_text(
+            "import json, pathlib, sys\n"
+            "args = sys.argv[1:]\n"
+            "out = pathlib.Path(args[args.index('--output') + 1])\n"
+            "out.mkdir()\n"
+            "(out / 'called.json').write_text(json.dumps({'args': args, 'cwd': str(pathlib.Path.cwd())}))\n",
+            encoding="utf-8",
+        )
         (self.source / "pyproject.toml").write_text("# fixture project\n")
         (self.source / "poetry.lock").write_text("# fixture lock\n")
         (self.source / ".gitignore").write_text("__pycache__/\nprivate/\n")
@@ -183,6 +191,67 @@ class ExperimentPackageTests(unittest.TestCase):
             ["--package", str(self.output), "--run", str(run)],
         )
         self.assertFalse((run / "called.json").exists())
+
+    def test_compare_entry_uses_sealed_code_and_original_relative_run_paths(self):
+        self.create()
+        first = self.root / "first run"
+        second = self.root / "second run"
+        first.mkdir()
+        second.mkdir()
+        self.source.rename(self.root / "source-unavailable")
+        output = self.root / "comparison"
+        result = subprocess.run(
+            [
+                "bash",
+                str(self.output / "compare.sh"),
+                first.name,
+                second.name,
+                "--output",
+                output.name,
+            ],
+            cwd=self.root,
+            env=dict(os.environ, XBL_PYTHON=sys.executable),
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        called = json.loads((output / "called.json").read_text())
+        self.assertEqual(
+            called["args"], [str(first), str(second), "--output", str(output)]
+        )
+        self.assertEqual(Path(called["cwd"]), self.output / "sources" / self.head)
+        self.assertFalse((self.output / "runs").exists())
+
+    def test_compare_entry_is_immutable_and_not_an_inference_route(self):
+        self.create()
+        entry = self.output / "compare.sh"
+        self.assertIn("compare.sh", self.api.verify_package(self.output)["files"])
+        entry.write_text(entry.read_text() + "\n# edited\n")
+        with self.assertRaises(ValueError):
+            self.api.verify_package(self.output)
+
+    def test_repeated_run_entry_creates_distinct_outputs(self):
+        self.create()
+        for _ in range(2):
+            result = self.launch()
+            self.assertEqual(result.returncode, 0, result.stderr)
+        calls = list((self.output / "runs").glob("*/called.json"))
+        self.assertEqual(len(calls), 2)
+        self.assertNotEqual(calls[0].parent, calls[1].parent)
+
+    def test_historical_v1_package_remains_readable_without_new_entry(self):
+        self.create()
+        manifest_path = self.output / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["schema"] = "xbrainlab.assistant_experiment_package.v1"
+        del manifest["files"]["compare.sh"]
+        (self.output / "compare.sh").unlink()
+        manifest_path.write_text(json.dumps(manifest))
+        self.assertEqual(self.api.verify_package(self.output), manifest)
+        with self.assertRaisesRegex(ValueError, "no sealed comparison entry"):
+            self.api.compare_package(self.output, self.root, self.root)
 
     def test_foreign_run_with_same_source_but_different_config_refused(self):
         self.create()

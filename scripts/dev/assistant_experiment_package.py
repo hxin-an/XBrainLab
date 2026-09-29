@@ -25,7 +25,8 @@ if __package__ in (None, ""):
 from scripts.dev.assistant_experiment_config import experiment_identity
 
 ROOT = Path(__file__).resolve().parents[2]
-SCHEMA = "xbrainlab.assistant_experiment_package.v1"
+SCHEMA = "xbrainlab.assistant_experiment_package.v2"
+_PREVIOUS_SCHEMA = "xbrainlab.assistant_experiment_package.v1"
 
 
 def _json(path: Path) -> dict:
@@ -138,8 +139,7 @@ def create_package(
     shutil.copyfile(config, output / "inputs/config-original.json")
     shutil.copyfile(resources, output / "inputs/resources.json")
     _write(output / "inputs/config.json", sealed)
-    entry = output / "run.sh"
-    entry.write_text(
+    shell = (
         "#!/bin/sh\nset -eu\n"
         'PACKAGE_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\n'
         'PYTHON=${XBL_PYTHON:-"$PACKAGE_ROOT/environment/python"}\n'
@@ -153,12 +153,19 @@ def create_package(
         '  echo "Bind environment/python or set XBL_PYTHON to the locked Python executable" >&2\n'
         "  exit 2\n"
         "fi\n"
-        f'exec "$PYTHON" "$PACKAGE_ROOT/sources/{coordinator}/scripts/dev/assistant_experiment_package.py" '
-        'launch --package "$PACKAGE_ROOT" "$@"\n',
-        encoding="utf-8",
     )
-    entry.chmod(0o755)
-    immutable = [entry, *sorted((output / "inputs").iterdir()), *specifications]
+    entries = []
+    for name, action in (("run.sh", "launch"), ("compare.sh", "compare")):
+        entry = output / name
+        entry.write_text(
+            shell
+            + f'exec "$PYTHON" "$PACKAGE_ROOT/sources/{coordinator}/scripts/dev/assistant_experiment_package.py" '
+            + f'{action} --package "$PACKAGE_ROOT" "$@"\n',
+            encoding="utf-8",
+        )
+        entry.chmod(0o755)
+        entries.append(entry)
+    immutable = [*entries, *sorted((output / "inputs").iterdir()), *specifications]
     manifest = {
         "schema": SCHEMA,
         "coordinator": coordinator,
@@ -177,7 +184,7 @@ def verify_package(package: Path) -> dict:
     """Check sealed inputs and independent Git snapshots without model access."""
     package = package.resolve(strict=True)
     manifest = _json(package / "manifest.json")
-    if manifest.get("schema") != SCHEMA or manifest.get(
+    if manifest.get("schema") not in {SCHEMA, _PREVIOUS_SCHEMA} or manifest.get(
         "coordinator"
     ) not in manifest.get("sources", []):
         raise ValueError("Invalid experiment package manifest")
@@ -192,6 +199,10 @@ def verify_package(package: Path) -> dict:
         "inputs/config-original.json",
         "inputs/resources.json",
     }
+    # Historical packages remain readable; their frozen entry never gains new
+    # capabilities. Newly sealed packages also bind the offline compare entry.
+    if manifest["schema"] == SCHEMA:
+        required.add("compare.sh")
     for head in manifest["sources"]:
         source = (package / "sources" / head).resolve(strict=True)
         if (
@@ -278,6 +289,12 @@ def launch_package(
             "--output",
             str(package / "runs" / identifier),
         ]
+    _dispatch(package, manifest, module, arguments)
+
+
+def _dispatch(
+    package: Path, manifest: dict, module: str, arguments: list[str]
+) -> NoReturn:
     environment = dict(os.environ)
     coordinator = package / "sources" / manifest["coordinator"]
     environment.update(
@@ -290,6 +307,23 @@ def launch_package(
         [sys.executable, "-m", module, *arguments],
         environment,
     )
+
+
+def compare_package(
+    package: Path, first: Path, second: Path, output: Path | None = None
+) -> NoReturn:
+    """Use the frozen offline reader; runs may belong to different round packages."""
+    package = package.resolve(strict=True)
+    manifest = verify_package(package)
+    if manifest["schema"] != SCHEMA:
+        raise ValueError("Historical package has no sealed comparison entry")
+    # Resolve user paths before dispatch changes cwd to the sealed source.
+    arguments = [str(first.resolve(strict=True)), str(second.resolve(strict=True))]
+    if output is None:
+        identifier = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
+        output = package / "comparisons" / identifier
+    arguments.extend(["--output", str(output.resolve())])
+    _dispatch(package, manifest, "scripts.dev.assistant_experiment_compare", arguments)
 
 
 def main(argv=None) -> int:
@@ -307,10 +341,19 @@ def main(argv=None) -> int:
     selection.add_argument("--report-only", type=Path)
     selection.add_argument("--audit", type=Path)
     launch.add_argument("--replace-invalid", action="store_true")
+    compare = actions.add_parser(
+        "compare", help="Read-only comparison of two saved runs"
+    )
+    compare.add_argument("--package", type=Path, required=True)
+    compare.add_argument("first", type=Path)
+    compare.add_argument("second", type=Path)
+    compare.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     if args.action == "create":
         print(create_package(args.bank, args.config, args.output))
         return 0
+    if args.action == "compare":
+        return compare_package(args.package, args.first, args.second, args.output)
     return launch_package(
         args.package,
         resume=args.resume,
