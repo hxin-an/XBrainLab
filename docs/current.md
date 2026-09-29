@@ -132,10 +132,11 @@ RAG改為在已發布action及合法response示範內檢索，不再先以手寫
 
 ### DEV逐輪工具候選（2026-09-29） { #dev-round-tooling }
 
-本機候選`7a2fc9ed`新增封存包v2的`compare.sh`：唯讀比較兩份已存run，分開首次／最終、
+工具候選[PR #151](https://github.com/hxin-an/XBrainLab/pull/151)尚未合併。Source
+`7a2fc9ed`新增封存包v2的`compare.sh`：唯讀比較兩份已存run，分開首次／最終、
 工具／參數一致與正誤變化，明列缺失、版本／scorer差異及各模型／repeat時間。
 不重新推論、改原分數或使用新版scorer重評；v1歷史包保持可讀。使用方式由
-[研究協定](validation/thesis_protocol.md)擁有。本候選尚未建立新PR，不宣稱已進main。
+[研究協定](validation/thesis_protocol.md)擁有，不宣稱已進main。
 
 該source的137固定五模型×四題工程驗證已完成：20筆有效、首次及最終15對5錯、
 無格式重試；真RAG與capture完整、無fallback、cleanup通過。報告重建、原版audit、
@@ -143,6 +144,15 @@ RAG改為在已發布action及合法response示範內檢索，不再先以手寫
 或補跑；20題不是正式DEV成績。Windows比較17案、Linux封存／比較40案及相鄰runner／
 audit／report117案通過；初次合跑逾時與拆開驗證的限制記錄於Now。
 產品UI／Agent／RAG程式與已驗收基線相同；第1輪完整1320次只prepare、尚未執行。
+
+Source `33f4d3fa`另加入137同機Linux可搬移包v3：內含固定模型／embedding與154個
+離線wheel，包內相對路徑；首次建立副本私有環境，之後重用，不下載、不自動換模型。
+19個可搬移包測試與既有封存／比較40案通過，獨立安全覆核通過。137真NAS不同路徑
+（含空白／非ASCII）複製後，首次離線安裝388.16秒、重複檢查0.62秒；直接執行
+`./run.sh --check-environment`也成功，66初始情境／264 oracle預檢通過。完整模型hash與
+1320-job prepare-only通過，所有runtime資源及私有Python均位於副本；未建立研究run。
+這些是環境／工程證據，不是新環境的模型生成或正式DEV成績；實際另一帳號的複製／
+權限仍待合法測試帳號與交付位置，不宣稱跨帳號已驗收，也不支援任意OS／工作站。
 
 ### 共同工程基線：PR #147 已合併（2026-09-27） { #assistant-integration-baseline }
 

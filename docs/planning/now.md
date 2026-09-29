@@ -33,7 +33,26 @@ shell entry生成與個人絕對路徑綁定；保留真實歷史v1/v2讀取，�
 diff超出時重新審查，不藉generic installer/platform擴張scope。
 Stop：可搬移包與直接測試／獨立覆核閉合，清楚區分同帳號搬移、跨帳號及真推論證據；
 缺必要帳號／資源時報告具體阻擋，不宣稱完成、不開正式DEV。UI確認不適用。
-Next：盤點資源與環境、完成characterization，再實作可搬移封裝。
+進度：source `33f4d3fa6eac16d4e08cdd5627546716039d0417`實作v3可搬移包與離線bootstrap。
+19個真Git／shell／venv／pip搬移測試、原封存23與比較17通過；輸出root／retained-run
+symlink漏洞先重現後修正，獨立安全覆核GO。既有runner仍核對完整模型hash並擁有推論／
+判分／budget。腳本本切片+560/-11/net549，tests+427；產品XBrainLab/未改。
+137已確認154個已安裝套件皆有相容cached wheel（3,166,572,697 bytes），不需下載；
+Ubuntu缺ensurepip，以封入的固定pip wheel離線安裝。私人NAS新包
+`distributions/dev-round-01-portable-33f4d3fa`已建置成功（991.28秒），舊包不動。
+實際複製到`engineering/portable-copy-33f4d3fa 空白`成功（1718.99秒）；首次離線安裝
+388.16秒、重複檢查0.62秒、66 fixture／264 oracle預檢57.22秒、完整資源hash與1320-job
+prepare-only 770.23秒，五步exit 0；另直接執行`./run.sh --check-environment`成功。
+新環境154套件版本完全符合wheel inventory；五模型各264個DEV、candidate1／repeat0／
+seed0，所有runtime source／模型／embedding路徑皆在副本。原包manifest未變、未生成
+runtime，副本未建立runs；沒有LLM推論。模型及wheel約38 GB，不需新下載。
+script／log／逐step結果位於`engineering/portable-build-33f4d3fa/`；本機小報告在
+`build/dev-artifacts/portable-bundle/`。封存source固定33f4d3fa，後續文件commit不是重跑
+推論證據；不重複整包複製、不覆寫bundle／驗證副本。
+實機artifact獨立覆核GO（僅同帳號搬移／離線安裝及prepare，不外推跨帳號或推論）。
+Next：推送文件收尾，追蹤PR #151新head全部適用CI。
+跨帳號仍待合法測試帳號及可交付NAS位置，已詢問使用者；新環境真模型驗證額度另確認。
+PR維持draft，尚未授權merge或正式DEV，上一head綠燈不放行新source。
 
 ### 前一工具切片（已開PR，未合併）
 
