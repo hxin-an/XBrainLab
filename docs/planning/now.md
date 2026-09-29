@@ -2,7 +2,154 @@
 
 最後更新：`2026-09-29`
 
-## Active — 無施工；本輪已手測通過並合併
+## Active — 合併工具PR，啟動DEV第1輪後交回
+
+最新授權（2026-09-29）：使用者同意合併PR #151並開跑第1輪，要求確認正常啟動後
+停止監控，不等待整輪結束。範圍為137上五模型各264個DEV、共1320案例；candidate1、
+seed0／repeat0、RAG on、既定一次格式修復、14400秒active執行預算。不追加smoke、
+跨機／跨帳號測試，不開第2輪／VALID／TEST、不調整模型／prompt／RAG／題庫／scorer。
+步驟：提交本次文件收尾→精確head既有CI閉合→通知並guarded merge→核对137 GPU
+與既有封存包／配置→使用既有runner背景啟動→確認進程、模型載入及最初有效案例落盤。
+封存source及實際路徑保留在run manifest，不改寫原包或既有證據；文件收尾與merge SHA
+不冒充封存source。已驗證副本可直接用於本輪，避免重複複製38 GB或無必要重建環境。
+Stop：初始案例與raw／journal正常持續落盤後交回PID／run／log位置，不自動監控到完成、
+不因錯答調參或重跑；若啟動失敗則先判明工程原因、保留失敗，不報成已正常開跑。
+UI未改；保留settings.json、模型／環境／題庫／原始證據及正在使用的檔案。
+
+### 已完成的可搬移實驗包準備與驗證界線
+
+最新決定（2026-09-29，優先於下方原施工範圍）：使用者說明各工作站共用NAS，接受
+以已在137完成的證據採用現有包，不再追加跨工作站、跨帳號或新環境推論驗證，也不再
+以測試帳號／另一台工作站作收尾阻擋。使用目標是環境相容的實驗室Linux工作站，
+137是已實測機器，不是hostname／IP准入限制；既有Python／平台相容性核對保持不變。
+未執行的測試仍記為未驗證，不改標通過；不修改封存包、不放寬私人目錄權限。
+該次僅固化驗收決定；後續merge及第1輪授權由頁首最新決定取代，仍不追加工程smoke。
+
+2026-09-29新增使用者授權：在137使用NAS的另一帳號，將整包複製到自己的目錄後，
+以`./run.sh`建立必要的本地環境並執行；不要求另設共用路徑。現有v2封存包只保證
+已provision環境內重跑：Python symlink與模型設定仍綁定hxin的絕對路徑，私人目錄
+權限也阻止其他帳號讀取。既有source／input快照不是可搬移安裝包。
+
+Outcome／scope：沿用既有封存器與runner，加入同機Linux/Python固定版本的可搬移包；
+包含獨立source、非TEST題庫、設定、已固定模型／embedding及離線環境安裝依賴。
+包內相對路徑定位；首次執行在副本內建立固定環境，重跑重用；輸出／cache只寫副本。
+不得複製credential、使用者settings或私人SSH資料；不分享hxin家目錄權限。
+Non-goals：不改產品UI、Agent、題目、oracle、scorer、模型revision或研究政策；不啟動
+正式DEV／VALID／TEST、不刪舊包、不下載新模型、不承諾跨OS或其他GPU工作站。
+先前「不新建環境」限制僅對前一工程切片；本切片明確包含副本內首次環境重建。
+尚未授權對外散布模型、建立系統帳號、sudo／ACL變更或正式DEV推論；若需要另提確認。
+
+施工：盤點已安裝Python／依賴／wheel cache與runner資源路徑→先加搬移／離線首次
+啟動失敗測試→新增bounded封裝／bootstrap→真137不同路徑（含空白／非ASCII）驗證
+環境重建、資源核對、重啟、壞包拒絕與唯讀原包→獨立安全／封裝覆核與同head CI。
+新環境使用現有固定版本與套件來源；缺少離線依賴時先確認下載清單與容量，不silent fallback。
+不為新包重跑已用完的fixed20推論；先用不生成的preflight及既有結果離線比較驗工程。
+另一帳號實測需要合法可用的測試帳號，目前未知；先完成不受阻工作，不以同帳號搬移
+冒充跨帳號通過。最後必要真模型驗證範圍／額度另明列後取得確認。
+
+Complexity review：沿用package為封存owner、runner為執行／journal／budget owner，
+bootstrap只負責副本內環境建立與啟動，不新增評分或實驗排程owner。刪除候選是重複
+shell entry生成與個人絕對路徑綁定；保留真實歷史v1/v2讀取，不原地修改舊證據。
+若需新module限封裝環境責任，預估腳本+300–600 LOC、產品XBrainLab/零變動；實際
+diff超出時重新審查，不藉generic installer/platform擴張scope。
+Stop：可搬移包與直接測試／獨立覆核閉合，清楚區分同帳號搬移、跨帳號及真推論證據；
+缺必要帳號／資源時報告具體阻擋，不宣稱完成、不開正式DEV。UI確認不適用。
+進度：source `33f4d3fa6eac16d4e08cdd5627546716039d0417`實作v3可搬移包與離線bootstrap。
+19個真Git／shell／venv／pip搬移測試、原封存23與比較17通過；輸出root／retained-run
+symlink漏洞先重現後修正，獨立安全覆核GO。既有runner仍核對完整模型hash並擁有推論／
+判分／budget。腳本本切片+560/-11/net549，tests+427；產品XBrainLab/未改。
+137已確認154個已安裝套件皆有相容cached wheel（3,166,572,697 bytes），不需下載；
+Ubuntu缺ensurepip，以封入的固定pip wheel離線安裝。私人NAS新包
+`distributions/dev-round-01-portable-33f4d3fa`已建置成功（991.28秒），舊包不動。
+實際複製到`engineering/portable-copy-33f4d3fa 空白`成功（1718.99秒）；首次離線安裝
+388.16秒、重複檢查0.62秒、66 fixture／264 oracle預檢57.22秒、完整資源hash與1320-job
+prepare-only 770.23秒，五步exit 0；另直接執行`./run.sh --check-environment`成功。
+新環境154套件版本完全符合wheel inventory；五模型各264個DEV、candidate1／repeat0／
+seed0，所有runtime source／模型／embedding路徑皆在副本。原包manifest未變、未生成
+runtime，副本未建立runs；沒有LLM推論。模型及wheel約38 GB，不需新下載。
+script／log／逐step結果位於`engineering/portable-build-33f4d3fa/`；本機小報告在
+`build/dev-artifacts/portable-bundle/`。封存source固定33f4d3fa，後續文件commit不是重跑
+推論證據；不重複整包複製、不覆寫bundle／驗證副本。
+實機artifact獨立覆核GO（僅同帳號搬移／離線安裝及prepare，不外推跨帳號或推論）。
+PR #151 head `a433a5055f1e2ecd3e98ef193487982deda02e67`已有22項non-skipped CI成功，
+另5項scope skip；以上僅文件後續調整不冒稱已在該head執行。依頁首最新決定停止追加
+驗證，不再索取另一帳號／工作站作驗收。原待確認的PR處置及第1輪授權已由頁首更新；
+接續以Git／PR狀態與實際run manifest為準。
+
+### 前一工具切片（已開PR，未合併）
+
+使用者已授權工具PR；[#151](https://github.com/hxin-an/XBrainLab/pull/151) head
+`bdc63837b2c6c0576825ec67aab4500bb14ee9c7`的22項non-skipped CI全部completed/success，
+另5項依scope skip；base為`d4e54b628bd49d71fb2df73e7bbdf8b0c36efef0`。本次擴充後
+舊head CI不能替新head放行。尚未授權merge或完整DEV執行。
+
+2026-09-29使用者確認每模型五輪都完成、基準占第一輪，並要求每輪可一鍵執行，另有
+一個腳本比較兩份結果；不是只對單份結果做audit。輪次、封存與比較契約由
+[研究協定](../validation/thesis_protocol.md)擁有；既定四表輸出沿用，不另設報告系統。
+
+使用者隨後確認新批次以本次已驗收產品基線加必要實驗工具準備作第1輪，舊d0保留歷史，
+不拼接為新版成績。優先順序固定為：實驗工具準備→五輪DEV→VALID選版→TEST與三項
+消融→再討論全面清理、UI打磨與非必要優化。這是工作順序與設計決定，不提前解封TEST
+或略過各階段的配置凍結、執行範圍／額度確認。
+實驗期間只修阻礙執行、判分／計時、證據完整性、可重現性或資料安全的必要問題；
+不因模型答錯重開產品清理／RAG調參。修理若影響實驗來源，另建版本與run，保留原結果。
+各輪的既定DEV調整不算另開泛用優化；VALID／TEST不因結果回頭調參。
+
+使用者最新確認採逐輪討論，不授權agent連續自主完成五輪：先完成工具與直接工程驗證，
+第1輪完整DEV開跑前交代精確source、配置、題目範圍及執行條件，取得確認再跑；每輪
+完成後共同看結果／錯誤類型、決定下一輪調整，再封存執行。日常工具施工及focused
+tests不逐次要求使用者介入；本次授權不包含完整DEV或任何下一輪模型調參。
+
+原問題：`assistant_experiment_package.py`已有獨立source快照、`run.sh`及resume／report／
+audit，但缺兩run比較；研究文件也仍混有舊wire／RAG敘述。本輪已補齊並以新source在137
+工程驗證，不拿舊Windows d0或先前smoke冒充本次結果；没有新增執行／評分owner。
+
+Outcome：已準備環境的137上，每輪固定程式、五模型各自設定、題庫、RAG／資源及scorer；
+一鍵跑完本輪並產生新run。另一個入口唯讀比較兩份run，輸出決策／參數一致率、正誤
+變化、時間差異與逐題明細，明列來源差異及缺漏；不重新推論或改原分數。
+Scope：文件同步、既有封存／runner接線、bounded comparison與直接測試。
+Complexity review：沿用runner／scorer／report原owner，比較器只讀已存結果，不新增評分或
+執行owner。新增v2只為封存compare.sh；v1讀取分支對象是仍保留的真實歷史研究包，
+不新增舊版執行fallback；只有使用者明確退役所有v1證據後才可移除。刪除候選是重複
+launcher文字（共用同一shell前綴）；不刪有實際重現用途的audit或歷史reader。
+Non-goals：不改可見產品UI、Agent政策、模型／prompt／RAG；不讀TEST、不執行正式DEV／
+VALID／TEST、不新建環境或下載資源；完整跑分仍另在開跑前批准。
+使用者已批准137固定20次工程驗證：五模型各4題（既定開窗／填參數／缺值／不操作），
+累計最多60分鐘、不含資源複製；不依分數調參、不計DEV輪次。先確認共享GPU負載。
+
+預定施工：先同步研究文件與最新契約／137環境，固定已確認新批次的精確基準與候選帳目；核對既有
+封存器及所有caller→補兩run比較→用固定小樣本驗封存重建、續跑、不覆寫、報告與比較。
+Focused validation：同份結果自比、工具／參數改變、錯變對／對變錯、相同錯誤、缺題／
+損壞／重複ID、不同source／題庫／scorer／環境、首次與格式修復後、無可比較案例；
+比較前後原檔hash不變，非操作訊息措辭不當成tool-call差异，不能將兩份缺失當一致。
+封存驗證須證明不依賴開發worktree、資源被改會拒絕、新run不覆寫、續跑不重複計題。
+Stop：兩個入口與可重現性證據完成且限制明列，準備第1輪開跑確認；不自動消耗正式額度。
+進度：封存v2的compare.sh與唯讀兩run比較已實作，原runner／scorer不變；模型選擇仍在
+封存前config擁有，不另增執行時覆蓋。初始封存19 tests通過；缺compare入口的2案red後，
+封存23＋比較17通過，獨立diff／證據覆核GO。Windows相鄰runner／audit／report首輪150秒
+逾時，定位為1,320筆合成fixture耗時；該案單獨100.81秒通過，其餘116案37.79秒通過。
+Hook／guidance及strict docs通過；Windows比較17案亦通過。Script +701/-9/net692，
+tests +551/-0；`XBrainLab/`產品程式無差異，沒有為smoke錯答調參。
+
+137工程驗證source為`7a2fc9edcb3f2af743d6e268bc1df4a48be6d810`：66個初始狀態／264個
+DEV oracle預檢通過；固定20次有效量測全部完成，首次／最終15對5錯、無格式重試，
+active budget用88.34/3600秒。report-only、原版audit及自比通過，raw／inputs 179項
+hash不變，獨立實機artifact覆核GO。舊v5與新v6比較正確標示不可直接比較正誤。
+工程包：`/mnt/home/2025/hxin/XBrainLab-experiments/engineering/dev-round-tools-20260929-7a2fc9ed`；
+run：`20260929-063418-83bfd335`。本機報告與核對副本位於
+`build/dev-artifacts/dev-round-tools/`。這是工程證據，不是正式DEV準確率。
+
+第1輪包已prepare但未run：`/mnt/home/2025/hxin/XBrainLab-experiments/development/round-01`，
+同source、五模型candidate=1、各264題／共1320次、DEV repeat0、seed0、RAG on、一次
+格式修復；config預算14400秒只是待確認上限，不是開跑授權。`prepared-for-discussion.json`
+保存真環境／資源與完整排程。本機同名副本加round-01前綴；TEST未讀、VALID未評估。
+另經使用者明確授權完成Windows本機SSH key與`ssh xbrainlab-137`別名，金鑰不進repo。
+
+前一切片Next已由頁首可搬移包施工取代。接著共同確認第1輪版本、配置及完整執行
+額度，才可run；不開始第2輪。
+這是約定的討論交接點，不授權跳過PR／CI或自行開始完整實驗。
+
+## Closed — Agent Development基線已手測通過並合併
 
 2026-09-29使用者完成Windows手測並回覆「我實際測完了沒有問題」，接著明確批准
 「同意 MERGE」。[PR #149](https://github.com/hxin-an/XBrainLab/pull/149)已合併至main，
@@ -11,7 +158,7 @@ merge commit為`97a76f7a478d3865220f6b99bbe9b365355370b5`；驗收head為
 驗收範圍是保留已知限制的Development單一英文要求基線，不包含複合需求、Stable或
 論文準確率宣稱。產品事實由[Current](../current.md#assistant-research-baseline)擁有；
 下方保留歷史施工與失敗，不再派工、不要求重跑或追加prompt／RAG調整。
-Next：等使用者決定下一個部件或研究工作；不自行開新worktree、實驗或重構。
+後續研究準備依頁首新計畫，不回頭追加產品調參。
 
 ## 歷史 — Agent Development候選版集中手測交付（PR #149，已結案）
 
