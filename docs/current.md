@@ -66,10 +66,12 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 
 ## Assistant research baseline
 
-### 已核准契約的施工source（2026-09-28）
+### 已接受的Development基線（2026-09-29）
 
-以下描述本輪已落地的source，不表示已合併、模型基本流程已通過或handoff-ready；
-產品基線仍以`main`為準，進度與未解阻擋由[Now](planning/now.md)擁有。
+以下source已透過[PR #149](https://github.com/hxin-an/XBrainLab/pull/149)合併至main。
+使用者完成Windows手測並明示同意merge；驗收head為`ec646126`，merge為`97a76f7a`。
+這是接受已知限制的Development基線，不代表74題全對、Stable或任意要求可靠。
+產品基線以`main`為準，下一步由[Now](planning/now.md)擁有；歷史證據仍綁定各自source。
 使用者後續將本輪驗收明確限於tool-call正確性，不審自然語言回答品質；完整回答語意的
 歷史失敗保留，但不再自動阻擋此範圍的整合驗證。Tool選擇／參數／是否應操作與實際副作用
 仍須驗證；固定20＋6題的自動分數不替代獨立tool-decision覆核、真GUI或同版本CI。

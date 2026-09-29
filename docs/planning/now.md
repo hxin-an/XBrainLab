@@ -2,7 +2,18 @@
 
 最後更新：`2026-09-29`
 
-## Active — Agent Development候選版集中手測交付
+## Active — 無施工；本輪已手測通過並合併
+
+2026-09-29使用者完成Windows手測並回覆「我實際測完了沒有問題」，接著明確批准
+「同意 MERGE」。[PR #149](https://github.com/hxin-an/XBrainLab/pull/149)已合併至main，
+merge commit為`97a76f7a478d3865220f6b99bbe9b365355370b5`；驗收head為
+`ec646126ad5a8078d609d0ee72a737bdbdac1d05`，24項non-skipped CI全部成功。
+驗收範圍是保留已知限制的Development單一英文要求基線，不包含複合需求、Stable或
+論文準確率宣稱。產品事實由[Current](../current.md#assistant-research-baseline)擁有；
+下方保留歷史施工與失敗，不再派工、不要求重跑或追加prompt／RAG調整。
+Next：等使用者決定下一個部件或研究工作；不自行開新worktree、實驗或重構。
+
+## 歷史 — Agent Development候選版集中手測交付（PR #149，已結案）
 
 ### 本輪整理範圍收斂（2026-09-29）
 
