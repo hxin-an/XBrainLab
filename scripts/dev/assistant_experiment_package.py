@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = "xbrainlab.assistant_experiment_package.v2"
 _PREVIOUS_SCHEMA = "xbrainlab.assistant_experiment_package.v1"
 _PORTABLE_SCHEMA = "xbrainlab.assistant_experiment_package.v3"
+_SHARED_SCHEMA = "xbrainlab.assistant_experiment_package.v4"
 
 
 def _json(path: Path) -> dict:
@@ -91,6 +92,8 @@ def create_package(
     *,
     coordinator_root: Path = ROOT,
     wheel_cache: Path | None = None,
+    shared_python: Path | None = None,
+    notes: Path | None = None,
 ) -> Path:
     """Create a new sealed package; failures leave no published manifest.
 
@@ -102,6 +105,10 @@ def create_package(
         config.resolve(strict=True),
         output.absolute(),
     )
+    if wheel_cache is not None and shared_python is not None:
+        raise ValueError("Choose bundled offline wheels or a shared environment")
+    if notes is not None and shared_python is None:
+        raise ValueError("Candidate notes require the shared-resource package format")
     if output.exists():
         raise FileExistsError(output)
     values = _json(config)
@@ -142,6 +149,25 @@ def create_package(
     shutil.copyfile(resources, output / "inputs/resources.json")
     _write(output / "inputs/config.json", sealed)
     portable_files = []
+    if shared_python is not None:
+        from scripts.dev.assistant_experiment_shared import prepare_binding
+
+        for original, model in zip(values["models"], sealed["models"], strict=True):
+            model["model_cache"] = str(
+                (config.parent / original["model_cache"]).resolve(strict=True)
+            )
+        sealed["embedding_cache"] = str(
+            (config.parent / values["embedding_cache"]).resolve(strict=True)
+        )
+        _write(output / "inputs/config.json", sealed)
+        portable_files = [
+            prepare_binding(
+                output,
+                shared_python,
+                notes="" if notes is None else notes.read_text(encoding="utf-8"),
+            ),
+            output / "README.md",
+        ]
     if wheel_cache is not None:
         from scripts.dev.assistant_experiment_portable import prepare_assets
 
@@ -177,12 +203,17 @@ def create_package(
             + f'exec "$PYTHON" "$PACKAGE_ROOT/sources/{coordinator}/scripts/dev/assistant_experiment_package.py" '
             + f'{action} --package "$PACKAGE_ROOT" "$@"\n'
         )
-        if wheel_cache is not None:
+        if wheel_cache is not None or shared_python is not None:
+            bootstrap_module = (
+                "assistant_experiment_shared"
+                if shared_python is not None
+                else "assistant_experiment_portable"
+            )
             text = (
                 "#!/bin/sh\nset -eu\n"
                 'PACKAGE_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\n'
-                f"exec python{sys.version_info.major}.{sys.version_info.minor} -I "
-                f'"$PACKAGE_ROOT/sources/{coordinator}/scripts/dev/assistant_experiment_portable.py" '
+                f"exec python{sys.version_info.major}.{sys.version_info.minor} -I -B "
+                f'"$PACKAGE_ROOT/sources/{coordinator}/scripts/dev/{bootstrap_module}.py" '
                 f'--package "$PACKAGE_ROOT" --entry {action} "$@"\n'
             )
         entry.write_text(text, encoding="utf-8")
@@ -195,7 +226,13 @@ def create_package(
         *portable_files,
     ]
     manifest = {
-        "schema": _PORTABLE_SCHEMA if wheel_cache is not None else SCHEMA,
+        "schema": (
+            _SHARED_SCHEMA
+            if shared_python is not None
+            else _PORTABLE_SCHEMA
+            if wheel_cache is not None
+            else SCHEMA
+        ),
         "coordinator": coordinator,
         "sources": sorted(sources),
         "files": {
@@ -216,6 +253,7 @@ def verify_package(package: Path) -> dict:
         SCHEMA,
         _PREVIOUS_SCHEMA,
         _PORTABLE_SCHEMA,
+        _SHARED_SCHEMA,
     } or manifest.get("coordinator") not in manifest.get("sources", []):
         raise ValueError("Invalid experiment package manifest")
     for relative, expected in manifest["files"].items():
@@ -231,7 +269,7 @@ def verify_package(package: Path) -> dict:
     }
     # Historical packages remain readable; their frozen entry never gains new
     # capabilities. Newly sealed packages also bind the offline compare entry.
-    if manifest["schema"] in {SCHEMA, _PORTABLE_SCHEMA}:
+    if manifest["schema"] in {SCHEMA, _PORTABLE_SCHEMA, _SHARED_SCHEMA}:
         required.add("compare.sh")
     if manifest["schema"] == _PORTABLE_SCHEMA:
         from scripts.dev.assistant_experiment_portable import validate_layout
@@ -240,6 +278,8 @@ def verify_package(package: Path) -> dict:
             {"environment/portable.json", "environment/requirements.txt", "README.md"}
         )
         validate_layout(package)
+    if manifest["schema"] == _SHARED_SCHEMA:
+        required.update({"environment/shared.json", "README.md"})
     for head in manifest["sources"]:
         source = (package / "sources" / head).resolve(strict=True)
         if (
@@ -276,6 +316,14 @@ def verify_package(package: Path) -> dict:
         or any(model["model_cache"] != "../models" for model in config["models"])
     ):
         raise ValueError("Portable resources must remain inside the package")
+    if manifest["schema"] == _SHARED_SCHEMA and not all(
+        Path(value).is_absolute()
+        for value in [
+            config["embedding_cache"],
+            *(m["model_cache"] for m in config["models"]),
+        ]
+    ):
+        raise ValueError("Shared resources must use explicit absolute bindings")
     return manifest
 
 
@@ -316,7 +364,7 @@ def launch_package(
         raise ValueError("Replacement requires resume; select only one run action")
     package = package.resolve(strict=True)
     manifest = verify_package(package)
-    if manifest["schema"] == _PORTABLE_SCHEMA:
+    if manifest["schema"] in {_PORTABLE_SCHEMA, _SHARED_SCHEMA}:
         _portable_output_root(package, "runs")
         retained = resume or report_only or audit
         if retained is not None:
@@ -324,7 +372,14 @@ def launch_package(
             for path in run.rglob("*"):
                 if path.is_symlink() and not (
                     path.relative_to(run).as_posix() == "raw/rag/models"
-                    and path.resolve() == (package / "models").resolve()
+                    and path.resolve()
+                    == (
+                        (package / "models").resolve()
+                        if manifest["schema"] == _PORTABLE_SCHEMA
+                        else Path(
+                            _json(package / "inputs/config.json")["embedding_cache"]
+                        )
+                    )
                 ):
                     raise ValueError(
                         "Portable retained outputs must not redirect writes through links"
@@ -377,9 +432,9 @@ def compare_package(
     """Use the frozen offline reader; runs may belong to different round packages."""
     package = package.resolve(strict=True)
     manifest = verify_package(package)
-    if manifest["schema"] not in {SCHEMA, _PORTABLE_SCHEMA}:
+    if manifest["schema"] not in {SCHEMA, _PORTABLE_SCHEMA, _SHARED_SCHEMA}:
         raise ValueError("Historical package has no sealed comparison entry")
-    if manifest["schema"] == _PORTABLE_SCHEMA:
+    if manifest["schema"] in {_PORTABLE_SCHEMA, _SHARED_SCHEMA}:
         comparison_root = _portable_output_root(package, "comparisons")
         if output is not None and not output.resolve().is_relative_to(comparison_root):
             raise ValueError(
@@ -407,6 +462,14 @@ def main(argv=None) -> int:
         type=Path,
         help="Seal a portable offline Linux bundle using exact installed-version wheels",
     )
+    create.add_argument(
+        "--shared-python",
+        type=Path,
+        help="Bind an existing fixed read-only Python environment; do not copy models",
+    )
+    create.add_argument(
+        "--notes", type=Path, help="Freeze model adjustment notes in README"
+    )
     launch = actions.add_parser("launch", help="Internal run.sh adapter")
     launch.add_argument("--package", type=Path, required=True)
     selection = launch.add_mutually_exclusive_group()
@@ -425,7 +488,12 @@ def main(argv=None) -> int:
     if args.action == "create":
         print(
             create_package(
-                args.bank, args.config, args.output, wheel_cache=args.wheel_cache
+                args.bank,
+                args.config,
+                args.output,
+                wheel_cache=args.wheel_cache,
+                shared_python=args.shared_python,
+                notes=args.notes,
             )
         )
         return 0

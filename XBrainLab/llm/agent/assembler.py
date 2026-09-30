@@ -386,7 +386,7 @@ Each parameters schema describes the complete arguments needed to execute an act
 
         prompt = self._ACTION_SYSTEM_PROMPT
         prompt += f"\nCurrent backend workflow stage: {workflow_stage}\n"
-        prompt += "\n" + STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions()
+        prompt += "\n" + self._decision_instructions()
         prompt += self._TOOL_BLOCK_TEMPLATE.format(
             tools_str=tools_str,
             availability_note=(
@@ -397,6 +397,10 @@ Each parameters schema describes the complete arguments needed to execute an act
         )
 
         return prompt
+
+    def _decision_instructions(self) -> str:
+        """Presentation seam; product policy remains the default unchanged."""
+        return STRICT_TOOL_RESPONSE_PROMPT_POLICY.decision_instructions()
 
     @staticmethod
     def _state_card_payload(
