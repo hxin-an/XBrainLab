@@ -47,6 +47,7 @@ class ExperimentBatchTests(unittest.TestCase):
         scripts = self.source / "scripts/dev"
         for name in (
             "assistant_experiment_batch.py",
+            "assistant_experiment_progress.py",
             "assistant_experiment_shared.py",
             "assistant_experiment_portable.py",
             "assistant_experiment_compare.py",

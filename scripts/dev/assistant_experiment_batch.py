@@ -15,6 +15,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -23,6 +24,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.dev import assistant_experiment_package as package_api
+from scripts.dev.assistant_experiment_progress import display as display_progress
 from scripts.dev.assistant_experiment_shared import (
     check_environment,
     environment_binding,
@@ -372,7 +374,9 @@ def _outputs(root: Path, name: str) -> Path:
     return directory
 
 
-def _invoke(argv: list[str], environment: dict, cwd: Path) -> int:
+def _invoke(
+    argv: list[str], environment: dict, cwd: Path, *, progress_root: Path | None = None
+) -> int:
     interrupted, process = 0, None
 
     def forward(number, _frame):
@@ -386,10 +390,22 @@ def _invoke(argv: list[str], environment: dict, cwd: Path) -> int:
         for number in (signal.SIGINT, signal.SIGTERM)
     }
     try:
+        started = time.monotonic()
         process = subprocess.Popen(argv, env=environment, cwd=cwd)
         if interrupted:
             process.send_signal(interrupted)
-        result = process.wait()
+        while True:
+            if progress_root is not None:
+                display_progress(progress_root, time.monotonic() - started)
+            try:
+                result = process.wait(timeout=5 if progress_root is not None else None)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        if progress_root is not None:
+            display_progress(
+                progress_root, time.monotonic() - started, exit_code=result
+            )
         return (
             128 + interrupted
             if interrupted
@@ -417,6 +433,9 @@ def _command(python: Path, module: str, arguments: list[str]) -> list[str]:
 
 
 def run_scope(root: Path, scope: str, *, check_environment: bool = False) -> int:
+    print(
+        "[progress] Checking experiment snapshot and shared environment...", flush=True
+    )
     manifest = verify_experiment(root)
     root = root.resolve(strict=True)
     leaves = select_scopes(manifest, scope)
@@ -458,6 +477,7 @@ def run_scope(root: Path, scope: str, *, check_environment: bool = False) -> int
                 ),
                 environment,
                 root / "snapshot/sources" / manifest["coordinator"],
+                progress_root=destination,
             )
             if result == 0 and not (destination / "prepared-manifest.json").is_file():
                 result = 2
