@@ -2,7 +2,7 @@
 
 最後更新：`2026-09-30`
 
-## Active — 可讀的重跑比較報告
+## 已完成 — 可讀的重跑比較報告
 
 使用者確認中文報告樣式：結論→比較表→數字解釋→版本差異，明示不新增cases.md，直接開既有檔案。
 Outcome：compare.sh產生可讀comparison.md，連到比較JSON與兩次既有報告；本次結果重產並下載Windows。
@@ -14,7 +14,14 @@ UI：報告文案/排列已確認；無桌面UI變動。Owner無增加，產品0
 Next：先保護一致率/正確率與不可比較分母，再實作。
 進度：比較JSON與數值不變，主報告約52行；相同/差異/缺證據測試通過。依最新要求移除cases.md生成。
 獨立review重現未知source metadata會中止呈現，已red→green修復並獨立覆核通過。
-Next：部署新來源快照、用既有兩run重產比較，核對JSON指標與原始證據，再下載可讀副本。
+精簡後比較/封裝40項通過，共用環境10項沿用未改動的前次通過證據；Ruff與獨立覆核通過。
+NAS coordinator為353b53df65a2bd3e70644d5483c7e89959762e6a，無推論check通過、19份設定/run
+manifest未變。真實報告results/comparisons/20260930-103303-62a13c5b僅含comparison.md/json，
+主報告59行，既有證據連結均有效；JSON SHA256與舊比較完全一致，原始證據未变。
+Windows下載/XBrainLab-comparison-readable已放主報告與原JSON並開啟；下載副本連本機JSON，
+NAS原報告路徑另列，避免搬到Windows後留下失效相對連結。沒有cases.md。
+本次含cases.md的未交付草稿已核對JSON一致後刪除；先前正式比較與原run保留。
+Next：進入第1輪結果分析討論；未push/PR/merge，未啟動新推論。
 
 ## 已完成 — 新進度入口重跑與真實結果比對
 
