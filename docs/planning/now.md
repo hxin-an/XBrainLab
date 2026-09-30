@@ -2,7 +2,7 @@
 
 最後更新：`2026-09-30`
 
-## Active — 單一可搬移 experiment 與失敗 Round1 清理
+## 已完成 — 單一可搬移 experiment 與失敗 Round1 清理
 
 2026-09-30最新確認取代下方前版封裝：搬移單位是整個experiment，不是各round；
 頂層README/run.sh/compare.sh、stages/{dev/round-01,val,test}、snapshot/{sources,inputs,
@@ -22,7 +22,16 @@ Stop：上述已授權成果與直接證據閉合；不等待下一次推論完�
 UI：無產品UI變動；目錄與CLI已批准。中央snapshot／scope／結果已實作；88項封裝、
 shared/portable與比較回歸通過，Ruff與MkDocs strict通過，獨立覆核無阻擋項。測試的昂貴
 推論runner以fixture替代，真Git/shell/venv/搬移/訊號/比較器都有跑，不當成1320題重跑。
-Next：封存精確commit並部署137，不推論check／reference自比後刪指定失敗run及過期包。
+部署coordinator為`9ddcfec8f4ea4bb0a39a60480a5b93ae1d8f0c0b`；五模型source仍d9182f19。
+137路徑為`XBrainLab-experiments/reproducibility/experiment`，實際僅兩份source快照。
+round-01及DEV check通過，root/VAL/TEST明示blocked。暫移中文空白路徑後check與真實
+1320題reference自比通過：correctness unavailable=0、無改善/退步，原始證據未變；
+有效final工具/參數1308/1308相同，12筆無有效decision仍如實不可比較，不說模型100%正確。
+新research run為0；成功原run留原位並逐檔核對複製reference，沒有改寫其版本/路徑。
+失敗run已永久刪除（約399MB，NAS開啟鎖檔先阻止rmdir，關檔後空目錄已移除）。
+已核對舊shared-baseline無研究run/batch結果後刪除，部署暫存亦已移除；必要模型/環境保留。
+沒有新推論/PR/push/merge；共享資源權限未改，其他帳號仍需通行權限。
+Next：使用者以文件中的一行指令自行重跑第1輪，完成後比較，再討論下一輪；不自動開跑。
 Complexity：runner仍唯一擁有admission/journal/cleanup/scoring；package仍封存owner，batch
 只作範圍/順序委派。刪除每節點batch-source/遞迴package封存，重用Git snapshot、runtime
 隔離和runner；不新增排程器/評分owner。產品0；脚本預估重寫300–500行，rollback以Git
