@@ -19,6 +19,7 @@ import time
 import unittest
 import venv
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.dev.assistant_experiment_audit import evidence_digest
 from tests.unit.scripts import test_assistant_experiment_compare as compare_tests
@@ -154,6 +155,88 @@ class ExperimentBatchTests(unittest.TestCase):
         self.assertFalse(list((self.study / "stages").rglob(".git")))
         self.assertFalse(list(self.study.rglob("batch-source")))
         self.assertTrue((self.study / "compare.sh").is_file())
+
+    def test_append_round_preserves_existing_files_and_runs_both_candidates(self):
+        self.create()
+        self.assertEqual(self.launch(ROUND).returncode, 0)
+        before = {
+            path.relative_to(self.study): path.read_bytes()
+            for path in self.study.rglob("*")
+            if path.is_file() and path.name != "manifest.json"
+        }
+        (self.source / "candidate-notes.txt").write_text("Second candidate source\n")
+        self.fixture.git(self.source, "add", "candidate-notes.txt")
+        self.fixture.git(self.source, "commit", "-qm", "second candidate")
+        new_head = self.fixture.git(self.source, "rev-parse", "HEAD").strip()
+        self.fixture.values["models"][0]["source"]["head"] = new_head
+        self.api.append_round(
+            self.study, self.selection(2), coordinator_root=self.source
+        )
+        self.assertEqual(len(self.calls()), 1)  # Sealing never starts inference.
+        manifest = self.api.verify_experiment(self.study)
+        self.assertEqual(manifest["coordinator"], new_head)
+        self.assertEqual(set(manifest["sources"]), {self.head, new_head})
+        self.assertEqual(
+            manifest["scopes"][DEV]["children"], [ROUND, f"{DEV}/round-02"]
+        )
+        for relative, original in before.items():
+            self.assertEqual((self.study / relative).read_bytes(), original, relative)
+        for scope in (ROUND, f"{DEV}/round-02"):
+            result = self.launch(scope)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(path.read_text()) for path in self.calls()]
+        self.assertEqual(sorted(row["candidate"] for row in calls), [1, 1, 2])
+        second = next(row for row in calls if row["candidate"] == 2)
+        self.assertEqual(second["config"]["models"][0]["source"]["head"], new_head)
+        self.assertTrue(second["env"]["PYTHONPATH"].endswith(new_head))
+
+    def test_append_refuses_existing_round_and_changed_old_inventory(self):
+        self.create()
+        manifest_path = self.study / "snapshot/manifest.json"
+        original_manifest = manifest_path.read_bytes()
+        with self.assertRaises(ValueError):
+            self.api.append_round(
+                self.study, self.selection(1), coordinator_root=self.source
+            )
+        config = self.study / ROUND / "config.json"
+        original_config = config.read_bytes()
+        config.write_bytes(original_config + b"\n")
+        with self.assertRaisesRegex(ValueError, "Frozen experiment file differs"):
+            self.api.append_round(
+                self.study, self.selection(2), coordinator_root=self.source
+            )
+        self.assertEqual(manifest_path.read_bytes(), original_manifest)
+        self.assertFalse((self.study / DEV / "round-02").exists())
+        config.write_bytes(original_config)
+        self.api.verify_experiment(self.study)
+
+    def test_failed_append_publication_leaves_old_round_usable_and_retryable(self):
+        self.create()
+        old = (self.study / "snapshot/manifest.json").read_bytes()
+        (self.source / "new-source.txt").write_text("Second source\n")
+        self.fixture.git(self.source, "add", "new-source.txt")
+        self.fixture.git(self.source, "commit", "-qm", "second source")
+        self.fixture.values["models"][0]["source"]["head"] = self.fixture.git(
+            self.source, "rev-parse", "HEAD"
+        ).strip()
+        selection = self.selection(2)
+        with (
+            patch.object(self.api.os, "replace", side_effect=OSError("disk error")),
+            self.assertRaisesRegex(OSError, "disk error"),
+        ):
+            self.api.append_round(self.study, selection, coordinator_root=self.source)
+        self.assertEqual((self.study / "snapshot/manifest.json").read_bytes(), old)
+        self.api.verify_experiment(self.study)
+        self.assertFalse((self.study / DEV / "round-02").exists())
+        self.assertEqual(
+            [path.name for path in (self.study / "snapshot/sources").iterdir()],
+            [self.head],
+        )
+        result = self.launch(ROUND)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.api.append_round(self.study, selection, coordinator_root=self.source)
+        result = self.launch(f"{DEV}/round-02")
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_move_chinese_space_path_runs_twice_without_original_source(self):
         self.create()

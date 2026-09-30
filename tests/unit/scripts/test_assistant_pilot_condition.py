@@ -56,6 +56,65 @@ def test_condition_accepts_distinct_cases_with_one_runtime_identity():
     validate_condition_request(condition_request())
 
 
+def test_missing_research_profile_is_rejected_before_runtime_bootstrap(
+    monkeypatch, tmp_path
+):
+    from scripts.dev import assistant_dev_context, assistant_pilot_condition
+    from tests.unit.scripts.test_assistant_pilot_case import experiment_request
+
+    payload = experiment_request(split="DEV", repeat=0)
+    monkeypatch.delitem(assistant_dev_context._MODEL_EMPHASIS, payload["model_id"])
+    monkeypatch.setattr(
+        assistant_pilot_condition,
+        "bootstrap_case_checkout",
+        lambda: pytest.fail("bootstrapped before profile validation"),
+    )
+    with pytest.raises(ValueError, match="DEV prompt model"):
+        PilotConditionSession(payload, tmp_path)
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "model_id",
+    [
+        "ibm-granite/granite-4.0-micro",
+        "ibm-granite/granite-3.3-2b-instruct",
+        "microsoft/Phi-4-mini-instruct",
+        "meta-llama/Llama-3.2-3B-Instruct",
+        "google/gemma-3-4b-it",
+    ],
+)
+def test_experiment_session_wires_exact_model_presentation(
+    qtbot,
+    tmp_path,
+    controlled_condition_runtime,
+    model_id,
+):
+    from scripts.dev.assistant_dev_context import DevContextAssembler
+    from tests.unit.scripts.test_assistant_pilot_case import experiment_request
+
+    payload = experiment_request(split="DEV", repeat=0)
+    payload["model_id"] = model_id
+    payload["rag_cache"] = str(tmp_path / "external-rag")
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    with patch.dict(os.environ):
+        try:
+            session.__init__(payload, tmp_path)
+            assembler = session.manager.agent_controller.assembler
+            assert isinstance(assembler, DevContextAssembler)
+            assert assembler.model_id == model_id
+            messages = assembler.get_generation_request(
+                [
+                    {"role": "user", "content": payload["case"]["input"]},
+                ]
+            ).to_model_messages()
+            assert "Available choices (guidance, not output):" in messages[0]["content"]
+            assert assembler._decision_instructions() in messages[0]["content"]
+            assert controlled_condition_runtime["engines"][0].load_calls == 1
+        finally:
+            assert session.close()
+
+
 @pytest.fixture
 def controlled_condition_runtime(monkeypatch):
     import transformers

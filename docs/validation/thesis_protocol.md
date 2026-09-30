@@ -1,6 +1,6 @@
 # XBrainLab Assistant 研究與實驗規格
 
-最後更新：`2026-09-29`
+最後更新：`2026-09-30`
 
 ## 文件狀態與接續方式
 
@@ -23,8 +23,13 @@
 2026-09-29使用者另批准合併工具PR後啟動正式第1輪：137、五模型各264題、candidate1、
 seed0／repeat0、RAG on、最多一次格式修復、14400秒active執行預算。確認啟動與最初
 有效案例正常後即交回，不持續監控整輪；不自行開始第2輪或因錯答調參／重跑。
-先前137固定20題工程smoke保持獨立，不再追加。不得執行正式VALID、讀取／執行TEST
+上述第1輪的137固定20題工程smoke保持獨立，不再追加該輪額度。不得執行正式VALID、讀取／執行TEST
 或重新下載模型；不擴張本輪矩陣、不把舊d0的結果作為本次第一輪。
+2026-09-30使用者另授權第2輪：共同文字工具呈現與五模型短提示，固定candidate2，
+先做新的固定20筆工程smoke，再啟動1,320筆正式DEV；開跑前多位獨立reviewer核對
+程式與輸入／研究契約。20筆為五模型各四題（A01-01、A08-01、C01-01、N01-01之V0），
+工程budget3600秒，不依其分數調提示或追加候選。正式預算與第1輪相同；初始量測正常
+即交回，不持續監控至完成。不授權VALID／TEST或下一輪。
 舊 B0/B1/B2 搜尋安排、最多 30 條件 VALID、TEST 加跑同模型 B0、P95 10 秒門檻
 已被新版設計取代，不再派工；歷史決策留 Git，舊 B0 封存／分數／入口不追改。
 
@@ -217,7 +222,10 @@ run及comparison輸出不允許導向副本外。檢查模式不證明CUDA／模
 root、`stages/dev`、各round、`stages/val`、`stages/test`各有`run.sh`，全部引用中央snapshot；
 `snapshot/manifest.json`固定scope、順序及檔案指紋。不掃目錄、不新增另一套case journal、
 評分或resume政策。只允許實體子目錄、禁止重複選擇；全樹封存核對及所選scope的完整
-ready／環境預檢在第一次推論前完成。歷史封存不原地升級或更改manifest。
+ready／環境預檢在第一次推論前完成。歷史source／round配置／run證據不原地升級。
+新增DEV輪次使用`assistant_experiment_batch.append_round`：先驗既有封存，再暫存新
+source／輸入／round，驗證組合後原子發佈更新manifest。根manifest及coordinator因新增
+輪次而有新身分；既有round檔案與結果保持原內容。部署時不得有並行寫入者或執行中批次。
 任一stage有blocked_reason就整個所選範圍拒絕執行，不跳過後宣稱完整研究完成。
 只有DEV第1輪固定時，可建立清楚標示只含round-01的DEV批次；root若包含尚未ready的
 VALID／TEST必須保持blocked。將來完整五輪／VALID／TEST全固定後才可建立整研究重跑包。
@@ -236,6 +244,14 @@ repeat後不回頭調參；TEST在選定完整系統與三項消融及工程驗�
 現有config仍只接受DEV／VALID；TEST和消融的實際執行尚未實作，不因分層入口而解禁。
 同版本重現另建run，不占另一改善輪，也不能用重跑湊五套候選；正式計分run須記錄。
 工程修正版新包須區分封裝coordinator與各模型source，不回寫舊run的版本／指紋。
+
+DEV第2輪沿用共同程式，由精確model_id選定短提示；未知模型在載入前拒絕。
+研究用`DevContextAssembler`將真實工具schema呈現為文字，保留required／選填、型別、
+enum及額外欄位限制；各模型提示與共同程式一併按source封存，不依題號／答案選提示。
+產品預設提示、Host／工具契約、scorer、RAG與一次格式修復不變。candidate_index只記錄
+候選輪次，不決定執行時提示。五模型各264筆；本輪固定20筆工程驗證不作挑提示的搜尋集，
+答錯與工程執行失敗分開記錄。無推論preflight涵蓋全部DEV fixture及五模型完整輸入，
+另以保存的RAG輸入與精確tokenizer核對預算；這些不代表模型準確率改善。
 
 #### 相容工作站的可搬移副本
 

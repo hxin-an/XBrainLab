@@ -15,6 +15,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from datetime import UTC, datetime
@@ -230,6 +231,96 @@ def create_experiment(
     return output
 
 
+def append_round(root: Path, selection: dict, *, coordinator_root: Path = ROOT) -> Path:
+    """Append one frozen DEV round without rewriting earlier evidence or inputs.
+
+    New artifacts are prepared and validated privately. Existing entries remain
+    byte-identical: they already resolve the runner from the manifest coordinator.
+    The atomic manifest replacement is the only publication point. Call this
+    deployment operation with no concurrent writers to the experiment tree.
+    """
+    manifest = verify_experiment(root)
+    root = root.resolve(strict=True)
+    manifest_path = root / "snapshot/manifest.json"
+    original = manifest_path.read_bytes()
+    key = selection["path"]
+    parent = "stages/dev"
+    if (
+        not re.fullmatch(r"stages/dev/round-[0-9]{2}", key)
+        or key in manifest["scopes"]
+        or set(manifest["scopes"].get(parent, {})) != {"children"}
+        or _physical(root, key).exists()
+    ):
+        raise ValueError("Append requires a new round under the existing DEV scope")
+    config = package_api._json(Path(selection["config"]))
+    if config.get("split") != "DEV":
+        raise ValueError("Only a DEV configuration can be appended as a DEV round")
+    binding = package_api._json(root / "snapshot/environment/shared.json")
+    added: list[Path] = []
+    # A sibling keeps moves on the same filesystem; no model/results are copied.
+    with tempfile.TemporaryDirectory(
+        prefix=".experiment-append-", dir=root.parent
+    ) as temporary:
+        staged = Path(temporary) / "tree"
+        create_experiment(
+            staged,
+            [selection],
+            {".": {"children": [key]}},
+            coordinator_root=coordinator_root,
+            shared_python=Path(binding["python"]),
+        )
+        incoming = verify_experiment(staged)
+        if package_api._json(staged / "snapshot/environment/shared.json") != binding:
+            raise ValueError("Shared environment differs from the frozen identity")
+        incoming_files = {
+            name: digest
+            for name, digest in incoming["files"].items()
+            if name.startswith((f"{key}/", "snapshot/inputs/", "snapshot/environment/"))
+        }
+        moves = [key]
+        moves.extend(
+            f"snapshot/sources/{head}"
+            for head in incoming["sources"]
+            if head not in manifest["sources"]
+        )
+        for name, digest in incoming_files.items():
+            if name in manifest["files"]:
+                if manifest["files"][name] != digest:
+                    raise ValueError(f"Append would change a frozen file: {name}")
+            elif not name.startswith(f"{key}/"):
+                moves.append(name)
+        for name in moves:
+            if _physical(root, name).exists():
+                raise FileExistsError(f"Append destination already exists: {name}")
+        manifest["coordinator"] = incoming["coordinator"]
+        manifest["sources"] = sorted(
+            set(manifest["sources"]) | set(incoming["sources"])
+        )
+        manifest["files"].update(incoming_files)
+        manifest["scopes"][key] = incoming["scopes"][key]
+        manifest["scopes"][parent]["children"].append(key)
+        try:
+            for name in moves:
+                destination = _physical(root, name)
+                (staged / name).rename(destination)
+                added.append(destination)
+            _verify_manifest(root, manifest)
+            if manifest_path.read_bytes() != original:
+                raise ValueError("Experiment manifest changed during append")  # noqa: TRY301 - rollback owns added artifacts.
+            pending = Path(temporary) / "manifest.json"
+            package_api._write(pending, manifest)
+            os.replace(pending, manifest_path)
+        except BaseException:
+            # Only newly moved paths belong to this invocation; never old evidence.
+            for path in reversed(added):
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
+            raise
+    return root / key
+
+
 def _copy_reference(output: Path, reference: Path, manifest: dict) -> None:
     source = reference.resolve(strict=True)
     target = output / "results/reference" / source.name
@@ -274,6 +365,10 @@ def verify_experiment(root: Path) -> dict:
         raise ValueError("Experiment root must be physical")
     root = root.resolve(strict=True)
     manifest = package_api._json(_physical(root, "snapshot/manifest.json"))
+    return _verify_manifest(root, manifest)
+
+
+def _verify_manifest(root: Path, manifest: dict) -> dict:
     if manifest.get("schema") != SCHEMA or manifest.get(
         "coordinator"
     ) not in manifest.get("sources", []):
