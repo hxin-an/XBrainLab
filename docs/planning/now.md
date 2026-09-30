@@ -2,7 +2,7 @@
 
 最後更新：`2026-09-30`
 
-## Active — 實驗終端進度顯示
+## 已完成 — 實驗終端進度顯示
 
 問題：137正在執行的Round1逐題結果已寫入，但child stdout/stderr只存log，終端只有輸出路徑。
 Outcome：既有./run.sh顯示準備、目前模型/題數、總題數、耗時與最後exit；不把已處理誤稱答對。
@@ -14,7 +14,11 @@ Scope：封裝入口唯讀觀察既有manifest與condition結果，5秒更新；
 Complexity：重用既有批次程序與condition identity；純renderer不是owner，產品0，腳本預計約100行。
 Stop：新入口進度與真程序回歸通過、NAS可用且結果不變；本次不等1320題跑完。
 進度：52項直接回歸通過，含真5秒更新、讀取中間態、broken stdout、失敗與取消；Ruff通過。
-獨立review無阻擋項，另驗6項進度與3項SIGINT/SIGTERM/後續阻擋整合；Next為NAS新快照部署。
+獨立review無阻擋項，另驗6項進度與3項SIGINT/SIGTERM/後續阻擋整合。
+NAS coordinator已更新為a08d7f382cd9f5af63abf7127a30d3a1a5dfc675；新入口無推論check通過，
+18份設定/run manifest hash未變，模型source仍d9182f19。真實現行run唯讀顯示473/1320，
+沒有停止/重啟原程序。既有run不熱更新；下一次./run.sh自動顯示。外部文件已同步。
+Next：使用者原run繼續，無需為顯示重跑；未push/PR/merge，亦未啟動新推論。
 
 ## 已完成 — NAS 根目錄直接採用約定結構
 
