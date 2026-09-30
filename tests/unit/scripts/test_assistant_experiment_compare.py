@@ -509,7 +509,7 @@ class CompareTests(unittest.TestCase):
             "same_config_reproduction", (output / "comparison.md").read_text()
         )
 
-    def test_readable_report_separates_agreement_correctness_and_appendix(self):
+    def test_readable_report_separates_agreement_and_links_existing_evidence(self):
         run = fixture(self.root / "a", [[("resample", {}, False)]])
         output = self.root / "comparison"
         before = evidence_digest(run)
@@ -521,7 +521,9 @@ class CompareTests(unittest.TestCase):
         self.assertIn("一致率不是答對率", text)
         self.assertNotIn("```json", text)
         self.assertNotIn("DEV-A01-00-V0", text)
-        self.assertIn("DEV-A01-00-V0", (output / "cases.md").read_text())
+        self.assertFalse((output / "cases.md").exists())
+        self.assertIn("](../a/reports/20260929/report.json)", text)
+        self.assertIn("[完整比較資料與原始輸入／輸出](comparison.json)", text)
         self.assertEqual(evidence_digest(run), before)
         self.assertEqual(
             json.loads((output / "comparison.json").read_text()),
@@ -557,7 +559,7 @@ class CompareTests(unittest.TestCase):
                 self.api.write_comparison(a, b, output)
                 text = (output / "comparison.md").read_text()
                 self.assertIn("未提供有效版本", text)
-                self.assertTrue((output / "cases.md").is_file())
+                self.assertFalse((output / "cases.md").exists())
                 self.assertEqual(evidence_digest(a), before)
 
 

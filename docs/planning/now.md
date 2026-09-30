@@ -4,15 +4,15 @@
 
 ## Active — 可讀的重跑比較報告
 
-使用者確認中文報告樣式：結論→比較表→數字解釋→版本差異，技術JSON與逐題明細作附錄。
-Outcome：compare.sh之後直接產生可讀comparison.md與cases.md；本次真實結果重產並下載Windows。
+使用者確認中文報告樣式：結論→比較表→數字解釋→版本差異，明示不新增cases.md，直接開既有檔案。
+Outcome：compare.sh產生可讀comparison.md，連到比較JSON與兩次既有報告；本次結果重產並下載Windows。
 Scope：既有比較器的純Markdown呈現，不改比較/判分/schema；不推論，不改原run或舊source。
 不因工具一致率100%宣稱答對100%，不因版本不同自動判新候選，也不替差異寫未驗證的原因。
 步驟：相同/不同/不可比的真fixture測試→呈現收斂→focused回歸/review→新快照部署→真結果比對/下載。
 Stop：主報告易讀且結論對資料成立、JSON指標未變、NAS新入口可用、Windows副本完整。
 UI：報告文案/排列已確認；無桌面UI變動。Owner無增加，產品0；只抽純renderer以隔離呈現。
 Next：先保護一致率/正確率與不可比較分母，再實作。
-進度：比較JSON與數值不變，主報告約52行，逐題明細移cases.md；相同/差異/缺證據測試通過。
+進度：比較JSON與數值不變，主報告約52行；相同/差異/缺證據測試通過。依最新要求移除cases.md生成。
 獨立review重現未知source metadata會中止呈現，已red→green修復並獨立覆核通過。
 Next：部署新來源快照、用既有兩run重產比較，核對JSON指標與原始證據，再下載可讀副本。
 

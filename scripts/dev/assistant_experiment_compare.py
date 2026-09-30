@@ -14,11 +14,13 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import re
 import subprocess
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
 from uuid import uuid4
 
 from scripts.dev.assistant_experiment_audit import evidence_digest
@@ -589,7 +591,7 @@ def _seconds_text(value: float | None) -> str:
     return "不可比較" if value is None else f"{value:.3f} 秒"
 
 
-def render_comparison(result: dict) -> tuple[str, str]:
+def render_comparison(result: dict, output: Path) -> str:
     """Present saved metrics without changing comparison or scoring policy."""
     summary, timing = result["summary"], result["timing"]
     changed = any(
@@ -717,7 +719,6 @@ def render_comparison(result: dict) -> tuple[str, str]:
             "",
             "## 附錄與範圍",
             "",
-            "- [逐題明細](cases.md)",
             "- [完整比較資料與原始輸入／輸出](comparison.json)",
             f"- 技術分類：`{result['classification']}`。",
             "",
@@ -726,31 +727,16 @@ def render_comparison(result: dict) -> tuple[str, str]:
             "",
         ]
     )
-    meanings = {
-        "both_right": "兩次都對",
-        "both_wrong": "兩次都錯",
-        "improved": "A錯→B對",
-        "regressed": "A對→B錯",
-        "unavailable": "不可比較",
-    }
-    details = [
-        "# 逐題比較明細",
-        "",
-        "[返回主報告](comparison.md)",
-        "",
-        "工具／參數欄比較最終決策；完整首次／最終決策與原文見 comparison.json。",
-        "",
-        "| 模型 | 題目 | repeat | 首次判分 | 最終判分 | 工具／參數 |",
-        "| --- | --- | ---: | --- | --- | --- |",
-    ]
-    for row in result["cases"]:
-        equal = row["final"]["tool_parameters_equal"]
-        state = "不可比較" if equal is None else "相同" if equal else "不同"
-        details.append(
-            f"| {row['condition']} | {row['case_id']} | {row['repeat']} | "
-            f"{meanings[row['first']['correctness']]} | {meanings[row['final']['correctness']]} | {state} |"
-        )
-    return "\n".join(text), "\n".join([*details, ""])
+    text.extend(["", "## 直接開啟既有實驗檔案", ""])
+    for run, label in zip(result["runs"], ("上一次 A", "本次 B"), strict=True):
+        root = Path(run["run"])
+        target = root / "index.html"
+        if not target.is_file():
+            target = Path(run["report"]) if run["report"] else root
+        link = quote(Path(os.path.relpath(target, output)).as_posix(), safe="/")
+        text.append(f"- [{label}：原始報告與逐題證據]({link})")
+    text.extend(["", "原始報告中的案例入口直接開啟既有檔案，不另外複製逐題清單。", ""])
+    return "\n".join(text)
 
 
 def write_comparison(run_a: Path, run_b: Path, output: Path | None = None) -> dict:
@@ -773,11 +759,9 @@ def write_comparison(run_a: Path, run_b: Path, output: Path | None = None) -> di
     output.mkdir(parents=True, exist_ok=False)
     with (output / "comparison.json").open("x", encoding="utf-8") as stream:
         json.dump(result, stream, ensure_ascii=False, indent=2, allow_nan=False)
-    text, details = render_comparison(result)
+    text = render_comparison(result, output)
     with (output / "comparison.md").open("x", encoding="utf-8") as stream:
         stream.write(text)
-    with (output / "cases.md").open("x", encoding="utf-8") as stream:
-        stream.write(details)
     return {**result, "output": str(output)}
 
 
