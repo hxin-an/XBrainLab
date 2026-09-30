@@ -268,6 +268,13 @@ def test_complete_messages_preserve_backend_rag_retry_and_current_request(model_
         assert "Action: apply_bandpass_filter\n" not in actual[0]["content"]
         assert "- apply_bandpass_filter:" in actual[0]["content"]
         assert '"tool_name"' in actual[0]["content"]
+        policy = " ".join(actual[0]["content"].split())
+        assert "Information or explanation requests and prohibitions" in policy
+        assert "Polite requests to perform an action" in policy
+        assert "even when phrased as questions, are action requests" in policy
+        assert "A question, explanation request or prohibition" not in policy
+        assert "Use it for questions," not in policy
+        assert "For questions, prohibitions," not in policy
         assert (
             research._serialized_utf8_size(actual) <= MAX_CHAT_MODEL_REQUEST_UTF8_BYTES
         )

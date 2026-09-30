@@ -18,8 +18,10 @@ PROJECTION_ID = "dev-state-card-nuisance-v1"
 _SUBJECT_REF = re.compile(r"\[SUBJECT_REF:[0-9a-f]{12}\]")
 
 _DECISION_STEPS = """Choose one response for current_user.text, in this order:
-1. A question, explanation request or prohibition is not permission to act.
-   Choose respond_to_user to answer or acknowledge it, without an action.
+1. Information or explanation requests and prohibitions are not permission to
+   act. Choose respond_to_user to answer or acknowledge them. Polite requests
+   to perform an action, even when phrased as questions, are action requests:
+   continue with steps 2-4.
 2. For a requested action, check the callable list. If absent or unavailable,
    choose respond_to_user and explain why. Do not invent a tool, substitute
    another action, or perform prerequisite actions instead.
@@ -55,7 +57,8 @@ _MODEL_EMPHASIS = {
         "one from a reference. When every required value is supplied, use the tool."
     ),
     "ibm-granite/granite-3.3-2b-instruct": (
-        "You may choose respond_to_user instead of an action. Use it for questions, "
+        "You may choose respond_to_user instead of an action. Use it for "
+        "information or explanation requests, "
         "prohibitions, unavailable actions and missing values; never guess values "
         "or do prerequisites. Put any explanation only in its message string. "
         "Output one JSON object, with no introduction, trailing prose or // comments."
@@ -68,8 +71,8 @@ _MODEL_EMPHASIS = {
     ),
     "meta-llama/Llama-3.2-3B-Instruct": (
         "Decide whether an action is appropriate before filling parameters. "
-        "For questions, prohibitions, unavailable actions or missing required "
-        "values, use respond_to_user. Do not invent tools or fill missing values "
+        "For information or explanation requests, prohibitions, unavailable actions "
+        "or missing required values, use respond_to_user. Do not invent tools or fill missing values "
         "with null. Zero-parameter tools take {} without method, view_mode or message."
     ),
     "google/gemma-3-4b-it": (
