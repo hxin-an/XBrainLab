@@ -1,177 +1,79 @@
-"""Frozen hierarchical scope, real Git snapshots and shell; no model inference."""
+"""Single experiment snapshot: real Git, shell, copies and offline comparison.
 
-# ruff: noqa: S603, S607 -- fixed local fixture shell/Git processes.
+Only expensive model execution is substituted. The frozen runner fixture records
+its real arguments/environment and provides deterministic failure/cancellation.
+"""
+
+# ruff: noqa: S603 -- fixed disposable shell/Git/venv fixture processes.
 
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import shutil
 import signal
 import subprocess
-import sys
 import tempfile
 import time
 import unittest
 import venv
 from pathlib import Path
 
+from scripts.dev.assistant_experiment_audit import evidence_digest
+from tests.unit.scripts import test_assistant_experiment_compare as compare_tests
 from tests.unit.scripts import test_assistant_experiment_package as package_tests
 
 ROOT = Path(__file__).resolve().parents[3]
+DEV = "stages/dev"
+ROUND = f"{DEV}/round-01"
 
 
-@unittest.skipUnless(os.name == "posix", "Linux package shell/Git integration")
+@unittest.skipUnless(os.name == "posix", "Linux shared experiment integration")
 class ExperimentBatchTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.environment = tempfile.TemporaryDirectory(prefix="central-shared-env-")
+        cls.addClassCleanup(cls.environment.cleanup)
+        venv.EnvBuilder(with_pip=False).create(cls.environment.name)
+        cls.python = Path(cls.environment.name) / "bin/python"
+
     def setUp(self):
         self.api = importlib.import_module("scripts.dev.assistant_experiment_batch")
         self.fixture = package_tests.ExperimentPackageTests()
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.root, self.source = self.fixture.root, self.fixture.source
-        shutil.copyfile(
-            ROOT / "scripts/dev/assistant_experiment_batch.py",
-            self.source / "scripts/dev/assistant_experiment_batch.py",
-        )
-        self.fixture.git(self.source, "add", ".")
-        self.fixture.git(self.source, "commit", "-qm", "batch dispatcher")
-        self.head = self.fixture.git(self.source, "rev-parse", "HEAD").strip()
-        self.fixture.values["models"][0]["source"]["head"] = self.head
-        self.fixture.save_config()
-        self.study = self.root / "研究 study"
-
-    def round(self, relative):
-        output = self.study / relative
-        self.fixture.api.create_package(
-            self.fixture.bank,
-            self.fixture.config,
-            output,
-            coordinator_root=self.source,
-        )
-        return output
-
-    def batch(self, output, children, **kwargs):
-        return self.api.create_batch(
-            output, children, coordinator_root=self.source, **kwargs
-        )
-
-    def launch(self, batch, *arguments):
-        return subprocess.run(
-            ["sh", str(batch / "run.sh"), *arguments],
-            cwd=self.root,
-            env=dict(os.environ, XBL_PYTHON=sys.executable),
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-
-    def test_hierarchy_freezes_order_and_ignores_unselected_directories(self):
-        first, second = (
-            self.round("development/round01"),
-            self.round("development/round02"),
-        )
-        self.round("development/not-selected")
-        development = self.batch(self.study / "development", [second, first])
-        self.batch(self.study, [development])
-        self.assertEqual(self.api.verify_batch(self.study), [second, first])
-        self.assertFalse((self.study / "batches").exists())
-
-    def test_blocked_test_prevents_any_development_run(self):
-        first = self.round("development/round01")
-        development = self.batch(self.study / "development", [first])
-        test = self.batch(self.study / "test", [], blocked_reason="TEST remains sealed")
-        self.batch(self.study, [development, test])
-        result = self.launch(self.study)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("TEST remains sealed", result.stderr)
-        self.assertFalse((first / "runs").exists())
-        self.assertFalse((self.study / "batches").exists())
-
-    def test_missing_or_changed_child_fails_before_any_run(self):
-        first, second = self.round("round01"), self.round("round02")
-        self.batch(self.study, [first, second])
-        for damage in ("missing", "changed"):
-            with self.subTest(damage=damage):
-                manifest = second / "manifest.json"
-                original = manifest.read_bytes()
-                if damage == "missing":
-                    manifest.unlink()
-                else:
-                    manifest.write_bytes(original + b"\n")
-                result = self.launch(self.study)
-                manifest.write_bytes(original)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertFalse((first / "runs").exists())
-
-    def test_duplicate_escape_and_symlink_selection_are_rejected(self):
-        first = self.round("round01")
-        for children in ([first, first], [self.root]):
-            with self.subTest(children=children), self.assertRaises(ValueError):
-                self.batch(self.study, children)
-        link = self.study / "linked"
-        link.symlink_to(first, target_is_directory=True)
-        with self.assertRaises(ValueError):
-            self.batch(self.study, [link])
-        self.assertFalse((self.study / "batch.json").exists())
-
-    def test_recursive_duplicate_selection_is_rejected(self):
-        first = self.round("development/round01")
-        development = self.batch(self.study / "development", [first])
-        with self.assertRaises(ValueError):
-            self.batch(self.study, [development, first])
-        self.assertFalse((self.study / "batch.json").exists())
-
-    def test_help_and_moved_frozen_source_do_not_write_runtime(self):
-        first = self.round("round01")
-        self.batch(self.study, [first])
-        moved = self.root / "搬移 new study"
-        self.study.rename(moved)
-        self.source.rename(self.root / "source-unavailable")
-        result = self.launch(moved, "--help")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("--check-environment", result.stdout)
-        self.assertFalse((moved / "batches").exists())
-        self.assertFalse((moved / "round01/runs").exists())
-        self.assertEqual(self.api.verify_batch(moved), [moved / "round01"])
-
-    def test_old_leaf_without_safe_environment_entry_is_rejected(self):
-        first = ExperimentBatchTests.round(self, "round01")
-        self.batch(self.study, [first])
-        result = self.launch(self.study)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("v4", result.stderr)
-        self.assertFalse((first / "runs").exists())
-
-
-@unittest.skipUnless(os.name == "posix", "Linux shared batch integration")
-class RunnableBatchTests(ExperimentBatchTests):
-    @classmethod
-    def setUpClass(cls):
-        cls.environment = tempfile.TemporaryDirectory(prefix="batch-shared-env-")
-        cls.addClassCleanup(cls.environment.cleanup)
-        venv.EnvBuilder(with_pip=False).create(cls.environment.name)
-        cls.python = Path(cls.environment.name) / "bin/python"
-
-    def setUp(self):
-        super().setUp()
         scripts = self.source / "scripts/dev"
         for name in (
+            "assistant_experiment_batch.py",
             "assistant_experiment_shared.py",
             "assistant_experiment_portable.py",
+            "assistant_experiment_compare.py",
+            "assistant_experiment_audit.py",
+            "assistant_pilot_presentation.py",
         ):
             shutil.copyfile(ROOT / "scripts/dev" / name, scripts / name)
+        shutil.copytree(
+            ROOT / "scripts/dev/assistant_report_assets",
+            scripts / "assistant_report_assets",
+        )
         (scripts / "run_assistant_dev.py").write_text(
             "import json, os, pathlib, signal, sys, time\n"
             "args = sys.argv[1:]\n"
             "out = pathlib.Path(args[args.index('--output') + 1])\n"
-            "name = out.parent.parent.name\n"
-            "if name == 'round-empty': sys.exit(0)\n"
+            "config_path = pathlib.Path(args[args.index('--config') + 1])\n"
+            "config = json.loads(config_path.read_text())\n"
+            "candidate = config['models'][0]['candidate_index']\n"
+            "mode = os.environ.get('XBL_FIXTURE_CANDIDATE_' + str(candidate), '')\n"
+            "if mode == 'empty': sys.exit(0)\n"
             "out.mkdir(parents=True, exist_ok=False)\n"
-            "(out / 'called.json').write_text(json.dumps({'pid': os.getpid()}))\n"
-            "if name == 'round-multiple': out.with_name(out.name + '-other').mkdir()\n"
-            "if name == 'round-failed': sys.exit(7)\n"
-            "if name == 'round-wait':\n"
+            "called = {'candidate': candidate, 'args': args, 'config': config, 'pid': os.getpid(),\n"
+            " 'started_ns': time.time_ns(), 'prefix': sys.prefix, 'env': dict(os.environ)}\n"
+            "(out / 'called.json').write_text(json.dumps(called))\n"
+            "(out / 'prepared-manifest.json').write_text(json.dumps({'config': config}))\n"
+            "if mode == 'fail': sys.exit(7)\n"
+            "if mode == 'wait':\n"
             " def stop(number, frame):\n"
             "  (out / 'terminated').write_text(str(number))\n"
             "  sys.exit(128 + number)\n"
@@ -182,140 +84,374 @@ class RunnableBatchTests(ExperimentBatchTests):
             encoding="utf-8",
         )
         self.fixture.git(self.source, "add", ".")
-        self.fixture.git(self.source, "commit", "-qm", "shared batch fixture")
+        self.fixture.git(self.source, "commit", "-qm", "central experiment fixture")
         self.head = self.fixture.git(self.source, "rev-parse", "HEAD").strip()
         self.fixture.values["models"][0]["source"]["head"] = self.head
-        self.fixture.save_config()
         for relative in ("shared/model", "shared/embedding"):
             (self.root / relative).mkdir(parents=True)
+        self.study = self.root / "研究 experiment"
 
-    def round(self, relative):
-        output = self.study / relative
-        self.fixture.api.create_package(
-            self.fixture.bank,
-            self.fixture.config,
-            output,
+    def selection(self, candidate=1, *, path=None, model=None):
+        values = json.loads(json.dumps(self.fixture.values))
+        values["models"][0]["candidate_index"] = candidate
+        if model is not None:
+            values["models"][0]["model_cache"] = str(model)
+        config = self.root / f"candidate-{candidate}.json"
+        config.write_text(json.dumps(values), encoding="utf-8")
+        return {
+            "path": path or f"{DEV}/round-{candidate:02}",
+            "bank": self.fixture.bank,
+            "config": config,
+            "notes": f"Fixture candidate {candidate}; no inference.",
+        }
+
+    def create(self, selections=None, *, references=()):
+        selections = selections or [self.selection()]
+        scopes = {
+            ".": {"children": [DEV, "stages/val", "stages/test"]},
+            DEV: {"children": [item["path"] for item in selections]},
+            "stages/val": {"blocked_reason": "VALID is not frozen"},
+            "stages/test": {"blocked_reason": "TEST remains sealed"},
+        }
+        return self.api.create_experiment(
+            self.study,
+            selections,
+            scopes,
             coordinator_root=self.source,
             shared_python=self.python,
+            references=list(references),
         )
-        return output
 
-    def test_sequential_success_keeps_old_runs_and_indexes_each_new_run(self):
-        first, second = self.round("round01"), self.round("round02")
-        unselected = self.round("unselected")
-        self.batch(self.study, [second, first])
+    def launch(self, scope=DEV, *arguments, entry="run.sh", env=None):
+        return subprocess.run(
+            [str(self.study / scope / entry), *map(str, arguments)],
+            cwd=self.root,
+            env=dict(os.environ, **(env or {})),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+
+    def calls(self):
+        return sorted((self.study / "results/runs").glob("*/called.json"))
+
+    def scope_index(self):
+        files = list((self.study / "results/runs").glob("*-scope.json"))
+        self.assertEqual(len(files), 1)
+        return files[0].read_text()
+
+    def test_central_source_dedup_and_stage_entries_share_one_snapshot(self):
+        self.create([self.selection(1), self.selection(2)])
+        manifest = self.api.verify_experiment(self.study)
+        self.assertEqual(manifest["sources"], [self.head])
+        sources = self.study / "snapshot/sources"
+        self.assertEqual([path.name for path in sources.iterdir()], [self.head])
+        self.assertEqual(len(list((self.study / "snapshot/inputs").glob("*.xlsx"))), 1)
+        for scope in (".", DEV, ROUND, "stages/val", "stages/test"):
+            self.assertTrue((self.study / scope / "run.sh").is_file())
+        self.assertFalse(list((self.study / "stages").rglob(".git")))
+        self.assertFalse(list(self.study.rglob("batch-source")))
+        self.assertTrue((self.study / "compare.sh").is_file())
+
+    def test_move_chinese_space_path_runs_twice_without_original_source(self):
+        self.create()
+        original = self.study
+        self.study = self.root / "接收者 space" / "整包 experiment"
+        self.study.parent.mkdir()
+        shutil.copytree(original, self.study)
+        self.source.rename(self.root / "source-unavailable")
+        self.fixture.bank.rename(self.root / "bank-unavailable")
+        poison = dict.fromkeys(
+            (
+                "PYTHONHOME",
+                "PYTHONPATH",
+                "VIRTUAL_ENV",
+                "XBL_PYTHON",
+                "XBRAINLAB_CONFIG_DIR",
+                "XBRAINLAB_CACHE_DIR",
+                "HF_HOME",
+            ),
+            "/must/not/be/used",
+        )
         for _ in range(2):
-            result = self.launch(self.study)
+            result = self.launch(ROUND, env=poison)
             self.assertEqual(result.returncode, 0, result.stderr)
-        indexes = list((self.study / "batches").glob("*/index.md"))
-        self.assertEqual(len(indexes), 2)
-        for index in indexes:
-            text = index.read_text()
-            self.assertLess(text.index("round02`"), text.index("round01`"))
-            self.assertEqual(text.count("completed"), 2)
-            self.assertEqual(text.count("/runs/"), 2)
-        for leaf in (first, second):
-            self.assertEqual(len(list((leaf / "runs").glob("*/called.json"))), 2)
-        self.assertFalse((unselected / "runs").exists())
+        self.assertEqual(len(self.calls()), 2)
+        for call in self.calls():
+            saved = json.loads(call.read_text())
+            self.assertEqual(saved["prefix"], self.environment.name)
+            for name in (
+                "XBRAINLAB_CACHE_DIR",
+                "XBRAINLAB_LOG_DIR",
+                "HF_HOME",
+                "TMPDIR",
+            ):
+                self.assertTrue(Path(saved["env"][name]).is_relative_to(self.study))
+            args = saved["args"]
+            self.assertEqual(
+                Path(args[args.index("--output") + 1]).parent,
+                self.study / "results/runs",
+            )
+            config = Path(args[args.index("--config") + 1])
+            source = saved["config"]["models"][0]["source"]["root"]
+            self.assertEqual(
+                (config.parent / source).resolve(),
+                self.study / "snapshot/sources" / self.head,
+            )
+        self.assertFalse(list((original / "results/runs").glob("*")))
+        self.api.verify_experiment(self.study)
 
-    def test_preflight_checks_every_environment_before_any_inference(self):
-        first = self.round("round01")
-        missing = self.root / "different-model"
-        missing.mkdir()
-        self.fixture.values["models"][0]["model_cache"] = str(missing)
-        self.fixture.save_config()
-        second = self.round("round02")
-        self.batch(self.study, [first, second])
-        missing.rmdir()
-        result = self.launch(self.study)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertFalse((first / "runs").exists())
-        self.assertFalse((second / "runs").exists())
-
-    def test_environment_check_does_not_create_results(self):
-        first = self.round("round01")
-        self.batch(self.study, [first])
-        result = self.launch(self.study, "--check-environment")
+    def test_root_and_unready_scopes_refuse_before_development_run(self):
+        self.create()
+        for scope in (".", "stages/val", "stages/test"):
+            with self.subTest(scope=scope):
+                result = self.launch(scope)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(
+                    "frozen" if scope != "stages/test" else "sealed", result.stderr
+                )
+                self.assertEqual(self.calls(), [])
+        result = self.launch(DEV)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertFalse((first / "runs").exists())
-        self.assertFalse((self.study / "batches").exists())
+        self.assertEqual(len(self.calls()), 1)
 
-    def test_unwritable_later_runs_directory_stops_before_first_leaf(self):
-        first, second = self.round("round01"), self.round("round02")
-        self.batch(self.study, [first, second])
-        outputs = second / "runs"
-        outputs.mkdir(mode=0o500)
-        try:
-            result = self.launch(self.study)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertFalse((first / "runs").exists())
-        finally:
-            outputs.chmod(0o700)
+    def test_explicit_selection_order_ignores_unlisted_stage_directory(self):
+        self.create([self.selection(2), self.selection(1)])
+        extra = self.study / "stages/dev/unselected"
+        extra.mkdir()
+        (extra / "run.sh").write_text("#!/bin/sh\nexit 99\n")
+        manifest = self.api.verify_experiment(self.study)
+        self.assertEqual(
+            self.api.select_scopes(manifest, DEV), [f"{DEV}/round-02", ROUND]
+        )
+        result = self.launch(DEV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = sorted(
+            (json.loads(path.read_text()) for path in self.calls()),
+            key=lambda row: row["started_ns"],
+        )
+        self.assertEqual([row["candidate"] for row in calls], [2, 1])
 
-    def test_failure_stops_later_leaf_and_retains_failed_run_index(self):
-        failed, untouched = self.round("round-failed"), self.round("round02")
-        self.batch(self.study, [failed, untouched])
-        result = self.launch(self.study)
+    def test_duplicate_missing_cycle_and_escape_scopes_are_rejected(self):
+        self.create()
+        manifest = self.api.verify_experiment(self.study)
+        for children in ([ROUND, ROUND], ["stages/dev/missing"], [DEV], ["../escape"]):
+            with self.subTest(children=children):
+                changed = json.loads(json.dumps(manifest))
+                changed["scopes"][DEV]["children"] = children
+                with self.assertRaises(ValueError):
+                    self.api.select_scopes(changed, DEV)
+        self.assertEqual(self.calls(), [])
+
+    def test_changed_or_missing_later_config_prevents_first_inference(self):
+        self.create([self.selection(1), self.selection(2)])
+        config = self.study / f"{DEV}/round-02/config.json"
+        original = config.read_bytes()
+        for damage in ("changed", "missing"):
+            with self.subTest(damage=damage):
+                if damage == "changed":
+                    config.write_bytes(original + b"\n")
+                else:
+                    config.unlink()
+                try:
+                    result = self.launch(DEV)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(self.calls(), [])
+                finally:
+                    config.write_bytes(original)
+
+    def test_help_writes_nothing_and_preflight_creates_no_results(self):
+        self.create()
+        before = sorted(path.relative_to(self.study) for path in self.study.rglob("*"))
+        result = self.launch(".", "--help")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--check-environment", result.stdout)
+        self.assertEqual(
+            sorted(path.relative_to(self.study) for path in self.study.rglob("*")),
+            before,
+        )
+        result = self.launch(DEV, "--check-environment")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(list((self.study / "results/runs").glob("*")), [])
+
+    def test_missing_later_shared_model_prevents_first_inference(self):
+        model = self.root / "other-model"
+        model.mkdir()
+        self.create([self.selection(1), self.selection(2, model=model)])
+        model.rmdir()
+        result = self.launch(DEV)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.calls(), [])
+
+    def test_missing_shared_python_is_rejected(self):
+        local = self.root / "private-shared-env"
+        venv.EnvBuilder(with_pip=False).create(local)
+        self.python = local / "bin/python"
+        self.create()
+        local.rename(self.root / "environment-unavailable")
+        result = self.launch(DEV, "--check-environment")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.calls(), [])
+
+    def test_changed_shared_environment_is_rejected(self):
+        local = self.root / "private-shared-env"
+        venv.EnvBuilder(with_pip=False).create(local)
+        self.python = local / "bin/python"
+        self.create()
+        site = next((local / "lib").glob("python*/site-packages"))
+        distribution = site / "unexpected-1.0.dist-info"
+        distribution.mkdir()
+        (distribution / "METADATA").write_text("Name: unexpected\nVersion: 1.0\n")
+        result = self.launch(DEV)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("environment", result.stderr.lower())
+        self.assertEqual(self.calls(), [])
+
+    def test_symlinked_outputs_cannot_write_to_external_directory(self):
+        self.create()
+        external = self.root / "other-results"
+        external.mkdir()
+        outputs = self.study / "results/runs"
+        outputs.parent.mkdir(exist_ok=True)
+        if outputs.exists():
+            outputs.rmdir()
+        outputs.symlink_to(external, target_is_directory=True)
+        result = self.launch(DEV)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(list(external.iterdir()), [])
+
+    def test_nested_cache_symlink_is_rejected_before_run(self):
+        self.create()
+        result = self.launch(DEV, "--check-environment")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        external = self.root / "other-cache"
+        external.mkdir()
+        (self.study / ".runtime/cache/injected").symlink_to(
+            external, target_is_directory=True
+        )
+        result = self.launch(DEV)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.calls(), [])
+        self.assertEqual(list(external.iterdir()), [])
+
+    def test_symlinked_results_parent_cannot_write_to_external_directory(self):
+        self.create()
+        external = self.root / "other-results-parent"
+        external.mkdir()
+        outputs = self.study / "results"
+        outputs.rename(self.study / "original-results")
+        outputs.symlink_to(external, target_is_directory=True)
+        result = self.launch(DEV)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(list(external.iterdir()), [])
+
+    def test_failure_preserves_run_and_stops_later_selection(self):
+        self.create([self.selection(1), self.selection(2)])
+        result = self.launch(DEV, env={"XBL_FIXTURE_CANDIDATE_1": "fail"})
         self.assertEqual(result.returncode, 7, result.stderr)
-        index = next((self.study / "batches").glob("*/index.md")).read_text()
-        self.assertIn("failed (exit 7)", index)
-        self.assertIn("round02`: unattempted", index)
-        self.assertIn("round-failed/runs/", index)
-        self.assertFalse((untouched / "runs").exists())
+        self.assertEqual(len(self.calls()), 1)
+        self.assertEqual(json.loads(self.calls()[0].read_text())["candidate"], 1)
+        index = self.scope_index()
+        self.assertIn("failed", index)
+        self.assertIn("unattempted", index)
 
     def test_zero_exit_without_actual_run_is_failure(self):
-        empty = self.round("round-empty")
-        self.batch(self.study, [empty])
-        result = self.launch(self.study)
-        self.assertEqual(result.returncode, 2, result.stderr)
-        index = next((self.study / "batches").glob("*/index.md")).read_text()
-        self.assertIn("failed (exit 2)", index)
-        self.assertNotIn("completed", index)
-
-    def test_multiple_new_outputs_are_ambiguous_and_stop_next_leaf(self):
-        ambiguous, untouched = self.round("round-multiple"), self.round("round02")
-        self.batch(self.study, [ambiguous, untouched])
-        result = self.launch(self.study)
-        self.assertEqual(result.returncode, 2, result.stderr)
-        index = next((self.study / "batches").glob("*/index.md")).read_text()
-        self.assertIn("ambiguous new outputs, attribution unknown", index)
-        self.assertNotIn("completed", index)
-        self.assertFalse((untouched / "runs").exists())
+        self.create()
+        result = self.launch(ROUND, env={"XBL_FIXTURE_CANDIDATE_1": "empty"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.calls(), [])
 
     def _assert_parent_signal(self, number):
-        waiting, untouched = self.round("round-wait"), self.round("round02")
-        self.batch(self.study, [waiting, untouched])
+        self.create([self.selection(1), self.selection(2)])
         process = subprocess.Popen(
-            [str(self.study / "run.sh")],
+            [str(self.study / DEV / "run.sh")],
             cwd=self.root,
+            env=dict(os.environ, XBL_FIXTURE_CANDIDATE_1="wait"),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
         try:
             deadline = time.monotonic() + 15
-            while not list((waiting / "runs").glob("*/waiting")):
+            while not list((self.study / "results/runs").glob("*/waiting")):
                 if process.poll() is not None or time.monotonic() >= deadline:
-                    self.fail("Frozen expensive-runner fixture did not start")
+                    self.fail("Frozen runner fixture did not start")
                 time.sleep(0.05)
             process.send_signal(number)
             _, error = process.communicate(timeout=10)
             self.assertEqual(process.returncode, 128 + number, error)
-            self.assertEqual(len(list((waiting / "runs").glob("*/terminated"))), 1)
-            self.assertFalse((untouched / "runs").exists())
-            index = next((self.study / "batches").glob("*/index.md")).read_text()
-            self.assertIn(f"failed (exit {128 + number})", index)
-            self.assertIn("round02`: unattempted", index)
+            self.assertEqual(
+                len(list((self.study / "results/runs").glob("*/terminated"))), 1
+            )
+            self.assertEqual(len(self.calls()), 1)
+            self.assertIn("unattempted", self.scope_index())
         finally:
             if process.poll() is None:
                 process.terminate()
                 process.communicate(timeout=10)
 
-    def test_parent_only_termination_reaches_child_and_stops_next_leaf(self):
+    def test_parent_termination_reaches_child_and_stops_next_selection(self):
         self._assert_parent_signal(signal.SIGTERM)
 
-    def test_parent_only_interrupt_reaches_child_and_stops_next_leaf(self):
+    def test_parent_interrupt_reaches_child_and_stops_next_selection(self):
         self._assert_parent_signal(signal.SIGINT)
+
+    def test_reference_copy_preserves_original_bytes_and_comparison_uses_central_output(
+        self,
+    ):
+        reference = compare_tests.fixture(
+            self.root / "original-successful-run",
+            [[("resample", {"sfreq": 64}, True)]],
+        )
+        linked_cache = reference / "raw/rag/models"
+        linked_cache.parent.mkdir()
+        linked_cache.symlink_to(self.root / "shared/model", target_is_directory=True)
+        before = evidence_digest(reference)
+        self.create(references=[reference])
+        copied = self.study / "results/reference" / reference.name
+        self.assertEqual(evidence_digest(copied), before)
+        self.assertTrue((copied / "raw/rag/models").is_symlink())
+        self.assertEqual(
+            os.readlink(copied / "raw/rag/models"), os.readlink(linked_cache)
+        )
+        self.assertEqual(
+            (copied / "raw/manifest.json").read_bytes(),
+            (reference / "raw/manifest.json").read_bytes(),
+        )
+        result = self.launch(".", copied, copied, entry="compare.sh")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        comparisons = list(
+            (self.study / "results/comparisons").glob("*/comparison.json")
+        )
+        self.assertEqual(len(comparisons), 1)
+        comparison = json.loads(comparisons[0].read_text())
+        self.assertEqual(comparison["classification"], "same_config_reproduction")
+        self.assertTrue(comparison["original_evidence_unchanged"])
+        self.assertEqual(evidence_digest(reference), before)
+        self.assertEqual(evidence_digest(copied), before)
+        self.assertEqual(self.calls(), [])
+
+    def test_changed_reference_copy_is_rejected_without_altering_original(self):
+        reference = compare_tests.fixture(
+            self.root / "original-successful-run",
+            [[("resample", {"sfreq": 64}, True)]],
+        )
+        before = evidence_digest(reference)
+        self.create(references=[reference])
+        copied = self.study / "results/reference" / reference.name
+        manifest = copied / "raw/manifest.json"
+        changed = manifest.read_bytes() + b"\n"
+        manifest.write_bytes(changed)
+        result = self.launch(".", copied, copied, entry="compare.sh")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Reference evidence differs", result.stderr)
+        self.assertEqual(
+            list((self.study / "results/comparisons").glob("*/comparison.json")), []
+        )
+        self.assertEqual(manifest.read_bytes(), changed)
+        self.assertEqual(evidence_digest(reference), before)
+        self.assertEqual(self.calls(), [])
 
 
 if __name__ == "__main__":

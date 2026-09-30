@@ -66,7 +66,7 @@ def _probe(python: Path, environment: dict[str, str]) -> dict:
     return json.loads(result)
 
 
-def prepare_binding(package: Path, python: Path, *, notes: str = "") -> Path:
+def environment_binding(python: Path) -> dict:
     # Do not resolve bin/python to the base executable: pyvenv.cfg selects the venv.
     python = python.absolute()
     if not python.is_file() or not os.access(python, os.X_OK):
@@ -74,11 +74,15 @@ def prepare_binding(package: Path, python: Path, *, notes: str = "") -> Path:
     environment = dict(os.environ)
     for name in ("PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV"):
         environment.pop(name, None)
-    value = {
+    return {
         "schema": SCHEMA,
         "python": str(python),
         "identity": _probe(python, environment),
     }
+
+
+def prepare_binding(package: Path, python: Path, *, notes: str = "") -> Path:
+    value = environment_binding(python)
     path = package / "environment/shared.json"
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
     config = json.loads((package / "inputs/config.json").read_text())
@@ -100,14 +104,12 @@ def prepare_binding(package: Path, python: Path, *, notes: str = "") -> Path:
     return path
 
 
-def bootstrap(package: Path, entry: str, arguments: list[str]) -> int:
-    from scripts.dev.assistant_experiment_package import verify_package
-
-    package = package.resolve(strict=True)
-    manifest = verify_package(package)
-    value = json.loads((package / "environment/shared.json").read_text())
-    if value.get("schema") != SCHEMA or entry not in {"launch", "compare"}:
-        raise ValueError("Invalid shared environment binding or entry")
+def check_environment(
+    package: Path, value: dict, configs: list[dict]
+) -> tuple[Path, dict]:
+    """Validate fixed shared resources; writable state is confined to this copy."""
+    if value.get("schema") != SCHEMA:
+        raise ValueError("Invalid shared environment binding")
     python = Path(value["python"])
     if (
         not python.is_absolute()
@@ -118,16 +120,34 @@ def bootstrap(package: Path, entry: str, arguments: list[str]) -> int:
     environment = runtime_environment(package)
     if _probe(python, environment) != value["identity"]:
         raise ValueError("Shared environment differs from the frozen identity")
-    config = json.loads((package / "inputs/config.json").read_text())
     for root in {
-        config["embedding_cache"],
-        *(m["model_cache"] for m in config["models"]),
+        root
+        for config in configs
+        for root in [
+            config["embedding_cache"],
+            *(m["model_cache"] for m in config["models"]),
+        ]
     }:
         if not Path(root).is_dir() or not os.access(root, os.R_OK | os.X_OK):
             raise ValueError(f"Shared resource directory is not readable: {root}")
     limiter = shutil.which("prlimit")
     if limiter is None or shutil.which("timeout") is None:
         raise ValueError("prlimit and timeout are required for bounded execution")
+    return python, environment
+
+
+def bootstrap(package: Path, entry: str, arguments: list[str]) -> int:
+    from scripts.dev.assistant_experiment_package import verify_package
+
+    package = package.resolve(strict=True)
+    manifest = verify_package(package)
+    if entry not in {"launch", "compare"}:
+        raise ValueError("Invalid shared environment entry")
+    python, environment = check_environment(
+        package,
+        json.loads((package / "environment/shared.json").read_text()),
+        [json.loads((package / "inputs/config.json").read_text())],
+    )
     if entry == "launch" and arguments == ["--check-environment"]:
         print(
             f"Shared environment ready: {python}\nNo inference or experiment run was started."
@@ -140,9 +160,9 @@ def bootstrap(package: Path, entry: str, arguments: list[str]) -> int:
         / "scripts/dev/assistant_experiment_package.py"
     )
     os.execve(  # noqa: S606 -- replace adapter with bounded, frozen runner; no shell.
-        limiter,
+        shutil.which("prlimit"),
         [
-            limiter,
+            shutil.which("prlimit"),
             "--core=0",
             "timeout",
             "--signal=TERM",

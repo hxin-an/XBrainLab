@@ -199,12 +199,14 @@ v1歷史封存仍可讀取，但不往舊包加新入口或更改manifest；如�
 這不是任意機器的獨立可攜包；原資源不可刪除／原地升級，未通過權限檢查不能宣稱
 另一帳號可用。工具不自動chmod／開放私人目錄，也不處理跨帳號GPU排程。
 
-`assistant_experiment_package.py create --shared-python /fixed/venv/bin/python ...`
-產生v4包，與下節v3離線自足包分開；不可同時選`--wheel-cache`。
-`environment/shared.json`固定實際Python位置、平台及安裝套件版本；不是所有已安裝二進位
-內容的逐檔hash。模型內容仍由既有runner於推論前核對。`--notes FILE`可將本輪調整
-理由／目標模型／共同影響封存在README；README自動列出模型、candidate及source對應，
-machine authority仍是`inputs/config.json`。不能靠改README切換實際執行配置。
+搬移單位是完整`experiment/`，不是各個round；固定頂層為README、run.sh、compare.sh、
+`stages/`、`snapshot/`、`results/`，另有執行時隱藏`.runtime/`。透過
+`assistant_experiment_batch.create_experiment`封存一次完整樹，取代前版逐層batch-source。
+`snapshot/sources/<commit>/`每個不同commit只存一份完整獨立Git快照，跨模型／round／stage
+共用；`snapshot/inputs/`按內容封存題庫及資源指紋，TEST未授權時不讀取或加入。
+`snapshot/environment/shared.json`固定Python位置、平台及套件版本，不是已安裝二進位的
+逐檔hash。模型內容仍由既有runner於推論前核對。各round的`config.json`對應模型、
+candidate及source；README記調整理由／目標模型／共同影響，不能覆蓋機器設定。
 
 在自己的副本執行`./run.sh --check-environment`核對封存、環境版本、資源目錄存取及
 執行限制工具，不推論、不新建run；`./run.sh`自動清理衝突Python環境變數、設定offline／
@@ -212,23 +214,24 @@ offscreen及本地cache，委派既有runner。保留core=0及18000秒外層wall
 由原config擁有。所有cache/log/temp位於副本`.runtime/cache/`，拒絕cache樹既有符號連結；
 run及comparison輸出不允許導向副本外。檢查模式不證明CUDA／模型準確率或逐位元重現。
 
-分層封存使用`assistant_experiment_batch.create_batch(output, children, ...)`建立薄入口：
-root、development各有`run.sh`，round葉節點仍是原封存包；VALID／TEST可以是直接葉節點
-或明示阻擋原因的階段入口。`batch.json`固定子路徑、manifest指紋與順序，`batch-source/`
-保留獨立dispatcher程式快照；不掃目錄、不新增另一套case journal、評分或resume政策。
-只允許實體子目錄、禁止重複選擇；全樹封存／ready檢查及所有葉節點環境預檢在第一次
-推論前完成。目前可執行批次葉節點為v4；歷史v1/v2/v3不原地升級或更改manifest。
+root、`stages/dev`、各round、`stages/val`、`stages/test`各有`run.sh`，全部引用中央snapshot；
+`snapshot/manifest.json`固定scope、順序及檔案指紋。不掃目錄、不新增另一套case journal、
+評分或resume政策。只允許實體子目錄、禁止重複選擇；全樹封存核對及所選scope的完整
+ready／環境預檢在第一次推論前完成。歷史封存不原地升級或更改manifest。
 任一stage有blocked_reason就整個所選範圍拒絕執行，不跳過後宣稱完整研究完成。
 只有DEV第1輪固定時，可建立清楚標示只含round-01的DEV批次；root若包含尚未ready的
 VALID／TEST必須保持blocked。將來完整五輪／VALID／TEST全固定後才可建立整研究重跑包。
 
-批次按固定順序委派葉節點，失敗／取消即停止後續；各葉節點仍自己產生新`runs/<id>/`。
-上層只在`batches/<id>/index.md`列出此次範圍、實際新run及完成／失敗／未嘗試，不另計分。
-輸出歸屬有歧義時拒絕宣稱成功；不允許從多次執行挑最高分。GPU仍需使用者協調，
+批次按固定順序委派runner，失敗／取消即停止後續；每次產生新的`results/runs/<id>/`。
+`results/runs/<id>-scope.json`只列選擇及已指定的輸出位置、完成／失敗／未嘗試，不另計分。
+成功原始參考結果逐檔核對複製到`results/reference/<original-id>/`，原始manifest／source
+身分及歷史絕對路徑不改寫。比較器从包內raw及中央snapshot讀取；reference只供比較，
+不承諾搬移後resume部分舊run。`compare.sh`不推論／重評分，另存`results/comparisons/`。
+不允許從多次執行挑最高分。GPU仍需使用者協調，
 同一副本不應同時啟動多批，入口不是常駐服務或安全沙箱。
 
 階段封存：DEV每輪保存五模型各自候選、完整程式／prompt／RAG／scorer及差異理由，
-相同source僅存一次；VALID包獨立保存DEV入選的五套系統及來源round/run對應，固定三次
+相同source僅存一次；VALID階段固定DEV入選的五套系統及來源round/run對應，固定三次
 repeat後不回頭調參；TEST在選定完整系統與三項消融及工程驗證固定後才取得封存TEST。
 現有config仍只接受DEV／VALID；TEST和消融的實際執行尚未實作，不因分層入口而解禁。
 同版本重現另建run，不占另一改善輪，也不能用重跑湊五套候選；正式計分run須記錄。

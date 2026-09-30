@@ -2,14 +2,40 @@
 
 最後更新：`2026-09-30`
 
-## 目前交接 — 實驗結構與工作站操作文件
+## Active — 單一可搬移 experiment 與失敗 Round1 清理
+
+2026-09-30最新確認取代下方前版封裝：搬移單位是整個experiment，不是各round；
+頂層README/run.sh/compare.sh、stages/{dev/round-01,val,test}、snapshot/{sources,inputs,
+environment,manifest.json}、results/{reference,runs}與隱藏.runtime。每個distinct commit只
+存一份完整source；各層run.sh引用同一封存程式，不再各存batch-source或各round一套source。
+Outcome：137的Round1可用一行重跑、結果分開保存、可離線比較原成功1320題結果；整包搬移
+含中文空白路徑可檢查。DEV固定僅round-01；root含未準備VAL/TEST，整體先拒絕不部分偷跑。
+Scope：既有封裝/批次入口收斂、直接回歸與獨立覆核、部署及本機結構/指令文件；
+使用者明確授權刪除失敗run 20260929-115803-8477ba6c，先核對精確manifest與無使用中。
+保留成功run 20260929-152153-64a2c9c8、仍共用的模型/Python；不開推論、不改題庫/判分/
+產品UI、不調權限、不merge。前版本agent產生且無研究結果的多重batch-source樹於新包
+驗證後清除；不清其他歷史資料。成功reference原始manifest不改写，不冒充新環境新實驗。
+假設：同Linux/NAS且共用固定環境/模型可讀；跨帳號權限未驗證，不作本次阻擋或暗自chmod。
+步驟：核對配置/比較器路徑→真Git/shell搬移/去重回歸→替換舊批次封裝→獨立review→
+137無推論check及reference自比→精確清理失敗run/本次過期中間包→同步文件/重跑指令。
+Stop：上述已授權成果與直接證據閉合；不等待下一次推論完成、不宣稱新DEV已重跑。
+UI：無產品UI變動；目錄與CLI已批准。中央snapshot／scope／結果已實作；88項封裝、
+shared/portable與比較回歸通過，Ruff與MkDocs strict通過，獨立覆核無阻擋項。測試的昂貴
+推論runner以fixture替代，真Git/shell/venv/搬移/訊號/比較器都有跑，不當成1320題重跑。
+Next：封存精確commit並部署137，不推論check／reference自比後刪指定失敗run及過期包。
+Complexity：runner仍唯一擁有admission/journal/cleanup/scoring；package仍封存owner，batch
+只作範圍/順序委派。刪除每節點batch-source/遞迴package封存，重用Git snapshot、runtime
+隔離和runner；不新增排程器/評分owner。產品0；脚本預估重寫300–500行，rollback以Git
+小commit為單位，不改原成功封存。保留v1-v3因有真實歷史包；未使用的新批次格式不加相容層。
+
+## 前版交接 — 實驗結構與工作站操作文件（已由頁首取代）
 
 使用者確認只需結構與既有重跑指令，不新增Windows啟動器。文件位於
 `D:\workspace_v2\projects\lab\碩論準備\實驗\README.md` 與 `重跑指令.md`。
 環境準備與既有 `run.sh`／`compare.sh` 分開說明；本機題庫編輯稿不替換封存輸入。
 未啟動新run、未修改遠端封存包／環境；未授權下一輪改善。下一步依使用者討論決定。
 
-## Active — 共用唯讀資源與分層實驗入口
+## 前版 — 共用唯讀資源與分層實驗入口（不再作施工目標）
 
 2026-09-30使用者連續確認方案並同意施工：同工作站／NAS，完整程式與題庫／設定隨每輪
 封存，模型與Python共用唯讀；root／DEV／round／VALID／TEST各層相同`./run.sh`，
@@ -32,8 +58,13 @@ UI確認：無產品UI改動；CLI分層入口已獲確認。Next：先寫可觀
 Ruff通過。獨立覆核重現cache巢狀symlink可回寫外部，已red→green修復並獨立覆核通過；
 批次後續leaf不可寫亦已先重現再修復。這些測試替代昂貴模型runner，沒有推論證據。
 137權限只讀核對：`XBrainLab-experiments`及舊工程包`.runtime`的group/other均無通行，
-且沒有ACL例外；不自行chmod。Next：固定本次程式commit，建立新工程封存樹並只跑check；
-更新D槽結構／指令，交回其他帳號存取的明確權限決策。暫不建立PR或啟動研究量測。
+且沒有ACL例外；不自行chmod。程式固定於`22b60ac0`，新獨立封存樹位於
+`/mnt/home/2025/hxin/XBrainLab-experiments/reproducibility/shared-baseline-22b60ac0`。
+137葉節點及DEV的check-environment通過；VALID／TEST／root明示blocked，舊run清單不變，
+新樹沒有研究run或batch結果。MkDocs strict通過。D槽結構／指令／三階段封存文件已同步。
+仍未scope-complete的跨帳號使用：需指定接收帳號／群組並核准最小通行及唯讀資源權限；
+目前不能宣稱接收者可執行。Next：使用者決定ACL對象／範圍後完成真正接收者check。
+沒有建立PR、push／merge或啟動研究量測；新封裝工程檢查不冒稱1320題重跑或CI通過。
 
 Complexity review：現有run_assistant_dev／case runner繼續擁有admission、journal、cleanup、
 scoring；新共用資源適配不擁有實驗狀態，批次入口只選範圍順序與傳回exit，不另建resume
@@ -52,7 +83,8 @@ PR #152 已合併；新 run `20260929-152153-64a2c9c8` 完成五模型共1320題
 建立新封存source/run後在137啟動。五模型各264題、共1320題，仍是candidate1／DEV
 第1輪工程修復重跑；seed0／repeat0、RAG on、一次格式修復、14400秒active預算及
 18000秒外層wall guard不變。不調參、不改題庫／scorer、不開第2輪／VALID／TEST。
-原run `20260929-115803-8477ba6c`與894題及失敗證據保留，不拼接、不覆寫。
+原run `20260929-115803-8477ba6c`曾保留894題及失敗證據，不拼接、不覆寫；
+2026-09-30使用者另行授權刪除此失敗run，清理以頁首範圍為準。
 重用137現有權重與Python環境，建立新source封存包，不重新複製38GB資源。
 Stop：精確修復head所有適用CI通過、合併後新run最初有效案例正常落盤，即交回run/log
 位置，不持續監控到全部結束。此次UI未改；不宣稱使用者新增手測證據。

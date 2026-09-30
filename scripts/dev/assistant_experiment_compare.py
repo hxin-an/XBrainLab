@@ -66,6 +66,11 @@ def _scoring_source(run: Path, job: dict, manifest: dict) -> dict:
     ):
         return {"head": None, "dependency_tree": None}
     roots = [run.parent.parent / "sources" / head]
+    # Whole-package relocation preserves recorded absolute source paths. Locate
+    # its shared snapshot by the fixed results/{reference,runs}/<id> layout;
+    # inspect the recorded commit's Git objects, never the current working tree.
+    if run.parent.name in {"reference", "runs"} and run.parent.parent.name == "results":
+        roots.insert(0, run.parent.parent.parent / "snapshot" / "sources" / head)
     if job.get("source_root"):
         roots.append(Path(job["source_root"]))
     paths = [

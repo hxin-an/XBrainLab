@@ -5,6 +5,7 @@
 
 import hashlib
 import json
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -464,6 +465,37 @@ class CompareTests(unittest.TestCase):
         )
         result = self.api.compare_runs(a, c)
         self.assertEqual(result["summary"]["final"]["correctness"]["unavailable"], 1)
+
+        # A whole-package copy retains historical absolute paths verbatim. Its
+        # local Git objects must still establish scorer equivalence after move.
+        package = self.root / "experiment"
+        for head in (first, second, third):
+            destination = package / "snapshot/sources" / head
+            shutil.copytree(source, destination)
+            subprocess.check_call(
+                ["git", "-C", str(destination), "checkout", "-q", "--detach", head],
+                timeout=15,
+            )
+        original = [evidence_digest(run) for run in (a, b, c)]
+        locations = (
+            "results/reference/baseline",
+            "results/runs/new",
+            "results/runs/changed",
+        )
+        for run, relative in zip((a, b, c), locations, strict=True):
+            shutil.copytree(run, package / relative)
+        moved = self.root / "搬移 experiment with spaces"
+        package.rename(moved)
+        source.rename(self.root / "original-source-unavailable")
+        relocated = [moved / relative for relative in locations]
+        self.assertEqual([evidence_digest(run) for run in relocated], original)
+        result = self.api.compare_runs(*relocated[:2])
+        self.assertEqual(result["summary"]["final"]["correctness"]["improved"], 1)
+        self.assertTrue(result["cases"][0]["a"]["scoring_source"]["dependency_tree"])
+        result = self.api.compare_runs(relocated[0], relocated[2])
+        self.assertEqual(result["summary"]["final"]["correctness"]["unavailable"], 1)
+        self.assertEqual([evidence_digest(run) for run in relocated], original)
+        self.assertEqual([evidence_digest(run) for run in (a, b, c)], original)
 
     def test_output_never_overwrites_or_nests_inside_original(self):
         a = fixture(self.root / "a", [[("resample", {}, False)]])
