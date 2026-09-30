@@ -2,6 +2,43 @@
 
 最後更新：`2026-09-30`
 
+## Active — 可讀的重跑比較報告
+
+使用者確認中文報告樣式：結論→比較表→數字解釋→版本差異，技術JSON與逐題明細作附錄。
+Outcome：compare.sh之後直接產生可讀comparison.md與cases.md；本次真實結果重產並下載Windows。
+Scope：既有比較器的純Markdown呈現，不改比較/判分/schema；不推論，不改原run或舊source。
+不因工具一致率100%宣稱答對100%，不因版本不同自動判新候選，也不替差異寫未驗證的原因。
+步驟：相同/不同/不可比的真fixture測試→呈現收斂→focused回歸/review→新快照部署→真結果比對/下載。
+Stop：主報告易讀且結論對資料成立、JSON指標未變、NAS新入口可用、Windows副本完整。
+UI：報告文案/排列已確認；無桌面UI變動。Owner無增加，產品0；只抽純renderer以隔離呈現。
+Next：先保護一致率/正確率與不可比較分母，再實作。
+進度：比較JSON與數值不變，主報告約52行，逐題明細移cases.md；相同/差異/缺證據測試通過。
+獨立review重現未知source metadata會中止呈現，已red→green修復並獨立覆核通過。
+Next：部署新來源快照、用既有兩run重產比較，核對JSON指標與原始證據，再下載可讀副本。
+
+## 已完成 — 新進度入口重跑與真實結果比對
+
+使用者要求上一輪完成後用新脚本再跑並測比對；唯讀確認舊run
+20260930-070700-24d44eac五模型各264題、runner/launch exit0，且使用者已啟動新版run
+20260930-075129-46512761，coordinator a08d7f38，1320題同配置，仍執行中。
+Outcome：沿用正在執行的新版run；先用compare.sh實測基準→上一輪，完成後自動比上一輪→新版。
+Scope：只執行既有比較入口、寫獨立comparison結果及本次背景操作log；保留舊證據，不開重複推論。
+驗證：原run退出/cleanup/排程完整、逐題可比較性、原始證據不變、差異/不可比較如實列出。
+背景等待只觀察這個run與既有PID，完成/失敗後結束；不介入實驗程序。不改產品/scorer/題庫。
+Stop：當前基準比較可用，背景後續比對已安排且新版仍有進度後交回；不持續監控整輪。
+UI：無改動；此為第1輪重現核對，不新增candidate/DEV輪次。
+2026-09-30核對：基準→上一輪compare.sh exit0，報告results/comparisons/20260930-075707-7ed27438。
+1320題first/final正誤均無改善/退步、unavailable0；final工具/參數1308/1308一致，12無有效
+decision如實不可比較，原始證據未變。classification為candidate_comparison，列出的差異
+含coordinator版本及搬移後config/models/environment路徑，不改寫原證據或強稱配置逐位元相同。
+新run已完成granite4 264題、進入granite33，無需另啟重複推論。tmux背景工作
+xbl-compare-20260930-075129觀察精確runner PID606707；成功退出後執行上一輪→新run比較，
+失敗/無唯一end紀錄/逾6小時則明示停止，不比較不完整量測。log：
+.runtime/logs/compare-after-20260930-075129-46512761.log。已確認session存在且log記錄等待。
+新版run五模型各264題、exit0；自動比較exit0，報告20260930-082651-56dff1cc。
+1320題first/final正誤一致，final工具/參數1308/1308一致、12不可比；原證據未變。
+Next：可進入第一輪結果分析；不主動開下一candidate。未push/PR/merge。
+
 ## 已完成 — 實驗終端進度顯示
 
 問題：137正在執行的Round1逐題結果已寫入，但child stdout/stderr只存log，終端只有輸出路徑。
