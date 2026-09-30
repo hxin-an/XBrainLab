@@ -2,7 +2,42 @@
 
 最後更新：`2026-09-30`
 
-## 已完成 — 單一可搬移 experiment 與失敗 Round1 清理
+## 已完成 — NAS 根目錄直接採用約定結構
+
+使用者糾正上一輪層級並明確要求「直接把舊目錄改成這個結構 NAS上的」。
+唯一根目錄是`/mnt/home/2025/hxin/XBrainLab-experiments`，不是其reproducibility/experiment子包。
+Outcome：根目錄直接呈現README/run.sh/compare.sh、stages、snapshot、results、.runtime。
+Scope：先盤點舊目錄全部頂層與實際引用，將仍需保留的source/inputs/成功結果歸位；共用
+模型/Python須保留並有明確固定位置，搬移後驗環境/入口。刪除只限已確認重複或本次施工
+副產物；唯一舊研究證據保留，不把整個舊目錄藏進legacy/archive。原始結果manifest不改寫。
+不推論、不開新輪、不改產品/題庫/scorer、不調ACL、不merge；D槽仅同步文件與指令。
+步驟：引用/內容清單→確定各舊目錄去向→安全搬移及必要資源重綁→同root直接check與
+離線證據核對→清掉已確認重複/空目錄→更新操作文件。新權限/不明獨有資料另報不擅刪。
+Stop：NAS根目錄實際符合約定，直接入口可用且成功結果/共用依賴完整；不以子包通過冒充。
+UI：無變動。產品owner/production LOC均0；重用既有封裝器，不新增控制層。
+盤點：現有9個頂層；無推論程序，兩個shell停在根目錄，既有http.server 577755指向舊
+成功run，不關閉。需使用者以新路徑重啟報告服務。active venv為system Python copies，
+無外部symlink或私有路徑pth依賴；獨立封装review同意只改當前binding，不重建環境身分。
+精確歸位：當前子包升到根；各歷史Git快照按SHA去重；原inputs/contracts/specs歸snapshot，
+五個歷史工程run歸results/reference並標明非新DEV候選，獨有診斷歸results/engineering。
+模型/Python/安裝資源移至同層XBrainLab-resources，active為models及python/experiment；
+其他cache/wheels/舊環境只分類保留，本次不擅刪獨有資源。舊成功run僅在完整樹hash/link
+與reference一致後刪重複；保留同ID但報告不同的工程搬移證據。只清已識別純code傳輸
+壓縮檔與pytest快取，不把整個engineering改名藏起來。
+進度：實際根目錄已只剩README/run.sh/compare.sh、stages/snapshot/results/.runtime；
+10個獨立來源版本各一份、6份reference（5工程＋1正式），舊8個資料夾已移除/分類歸位。
+根目錄round-01及DEV check通過，root/VAL/TEST拒絕如預期。現行env保持原154套件身分，
+只重綁路径並修正venv產生的啟動文字；無套件升級。原成功run全樹hash/link一致後去重。
+安全覆核要求的忽略檔檢查真的擋下兩份.test-tmp，未刪，均另移資源cache；1300項內容
+匹配的workstation傳輸包刪除，未證明相同的smoke傳輸包保留snapshot/inputs/transfer-archives。
+新位置的PyTorch/MNE/transformers匯入、offscreen QApplication及runner --help均通過；
+真實1320題reference自比為same_config_reproduction，原始證據未變，正誤全部可比較且
+沒有改善/退步；有效final工具/參數1308筆一致，12筆無有效decision如實不可比較。
+獨立SSH實物覆核通過，無阻擋項；results/runs仍空，未啟動新推論。D槽文件已同步。
+Next：使用者登入137後在stages/dev/round-01執行./run.sh；舊報告服務需自行停止後依
+新根目錄重啟。VAL/TEST尚未準備，不宣稱整個研究已可執行；未push/PR/merge。
+
+## 前版部署 — 單一可搬移 experiment（路徑已由頁首取代）
 
 2026-09-30最新確認取代下方前版封裝：搬移單位是整個experiment，不是各round；
 頂層README/run.sh/compare.sh、stages/{dev/round-01,val,test}、snapshot/{sources,inputs,
