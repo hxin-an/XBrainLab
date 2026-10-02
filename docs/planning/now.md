@@ -49,6 +49,21 @@ controller/執行adapter與Command→service→runtime→manager→Trainer是必
 changed-file Basedpyright零error/warning及Ruff通過；Mypy另有3項既存錯誤，不宣稱全案Mypy乾淨。
 Next：提交精確source，等same-head CI，同時137無推論66-state preflight與封存核對；
 通過才啟動repair-02完整1320，追到完成並audit／比對，未授權merge。
+Checkpoint：c29a3c09已提交，137精確source29項native整合、66-state/1320-context preflight及
+封存／環境檢查通過，獨立artifact review通過；正式推論尚未啟動。
+CI macOS lifecycle失敗：既有reset-preprocess確認重放測試期待generation不變，實際7→8；
+log顯示duplicate被忽略且只有一次command。先定位是否前一次操作的延遲publication導致
+測試時序假設錯誤，不盲目rerun、不刪安全斷言換綠燈。Windows CI仍在跑；此gate阻擋正式啟動。
+已定位：Windows單次instrumented重現7→8僅montage_preparation pending→not_applicable、
+electrode_layout pending→not_configured；stack是第一次reset觸發的BIDS montage worker
+完成publication，非重複執行。macOS剛好在此正常完成前擷取after_approval。
+只修該test：以真publication等待第一次montage工作終態，再建立duplicate基準；保留
+generation/revision不變、一次command、資料與原始檔等所有斷言，不加固定sleep或放寬timeout。
+此為阻擋同版本驗證的直接測試缺陷；不新增產品修改。保留c29a3c09失敗CI及已封未跑repair-02，
+測試修理提交後以新source／新獨立封存執行正式1320，不改舊package。
+測試修理實際+7/-0，產品0；Windows帶publication診斷重跑通過，所有舊斷言保留。
+最終封存入口使用`stages/dev/round-04/repair-03`；repair-02只保留未啟動的候選及CI失敗，
+不是另一場正式實驗。新head CI及此測試的137直接驗證通過後才開跑。
 
 ## 已交回 — DEV第4輪退出修理與全量重跑已啟動
 
