@@ -51,14 +51,8 @@ Markdown or comments outside it. Only respond_to_user uses a message parameter.
 # Versioned with the full source. Model identity alone selects the emphasis;
 # no case, oracle, score, candidate index or environment-dependent selection.
 _MODEL_EMPHASIS = {
-    "ibm-granite/granite-4.0-micro": (
-        "Check each required value against the current request. A partly supplied "
-        "operation is still incomplete: ask for the missing value, without borrowing "
-        "one from a reference. When every required value is supplied, use the tool. "
-        "Choose either the action OR respond_to_user, never both. Return one "
-        "complete JSON object and stop. Do not follow an action with an "
-        "acknowledgement, explanation or second JSON object."
-    ),
+    # R2 presentation; required-value guidance now lives beside action fields.
+    "ibm-granite/granite-4.0-micro": "",
     "ibm-granite/granite-3.3-2b-instruct": (
         "Action parameters contain only that action's listed arguments. They "
         "never contain message, a description or the user's request. An action "
@@ -75,13 +69,7 @@ _MODEL_EMPHASIS = {
         "The catalog's name identifies a tool; your output field is tool_name, "
         "never name. Output a complete JSON object, not a tool name alone. "
         "This also applies to respond_to_user: include parameters with message. "
-        "Do not copy schema fields such as description, type or properties. "
-        "Dialog-opening tools take no parameters: always use {}, even when form "
-        "choices are mentioned. Those choices are made in the dialog. A question belongs in a reply, "
-        "never in an action parameter. For a direct operation, use only values "
-        "supplied in current_user.text; missing required values need a reply, "
-        "not values from a reference example. If the requested operation has no "
-        "callable tool, reply instead of inventing a tool or choosing a similar one."
+        "Do not copy schema fields such as description, type or properties."
     ),
     "meta-llama/Llama-3.2-3B-Instruct": (
         "Decide whether an action is appropriate before filling parameters. "
@@ -89,24 +77,19 @@ _MODEL_EMPHASIS = {
         "or missing required values, use respond_to_user. Do not invent tools or fill missing values "
         "with null. Every response has tool_name and parameters. For an action "
         'with no arguments, write the field "parameters": {}. The empty object '
-        "is that field's value, not a quoted string or a standalone response. "
-        "For a requested action, check its required fields against current_user.text "
-        "before using reference examples. If all required values are supplied, "
-        "use those values and do not ask for them again. If any are missing, "
-        "choose respond_to_user. Reference examples teach tool usage, not the "
-        "values of the current request; never replace or complete the user's "
-        "values with theirs."
+        "is that field's value, not a quoted string or a standalone response."
     ),
     "google/gemma-3-4b-it": (
-        "Select one decision, not a conversational promise. If the user requests "
-        "one available action and supplies its required values, output that "
-        "action's JSON object. Do not ask again for values already supplied. "
-        "Dialog-opening tools always take empty parameters, even when form "
-        "choices are mentioned; those choices are made in the dialog. A reply promising "
-        "to open it does not execute it. For information or explanation requests, "
-        "prohibitions, unavailable actions or missing required values, output "
-        "respond_to_user with your reply in parameters.message instead. "
-        "Return only the single complete JSON object, not a bare message."
+        "Identify the one operation requested in current_user.text. Check only "
+        "that operation's callable contract and required parameters. A blocker "
+        "for another operation does not block this one. A callable zero-parameter "
+        "tool is complete: use {} without asking for dialog form values. Optional "
+        "parameters may be omitted. For required parameters, use values supplied in this request; "
+        "another request's missing values or examples do not change completeness. "
+        "Use the requested action when complete, not a promise or a second "
+        "confirmation. Information, prohibitions, unavailable actions and missing "
+        "required values still need respond_to_user with parameters.message. "
+        "Return one complete JSON object, not a bare message."
     ),
 }
 DEV_PROMPT_MODEL_IDS = tuple(_MODEL_EMPHASIS)
@@ -119,6 +102,9 @@ _ILLUSTRATED_MODELS = frozenset(
         "meta-llama/Llama-3.2-3B-Instruct",
         "ibm-granite/granite-3.3-2b-instruct",
     }
+)
+_ROUND3_EMPHASIS_MODELS = frozenset(
+    {"microsoft/Phi-4-mini-instruct", "meta-llama/Llama-3.2-3B-Instruct"}
 )
 
 # These units are backend semantics, not fields claimed to exist in the schema:
@@ -137,7 +123,9 @@ def validate_dev_prompt_model(model_id: str) -> None:
         raise ValueError(f"Unsupported DEV prompt model: {model_id!r}")
 
 
-def _parameter_lines(tool_name: str, schema: dict) -> list[str]:
+def _parameter_lines(
+    tool_name: str, schema: dict, *, mark_required_source: bool = False
+) -> list[str]:
     """Render the current schemas losslessly; new constraints require review."""
     unknown = set(schema) - {"type", "properties", "required", "additionalProperties"}
     if unknown:
@@ -174,6 +162,11 @@ def _parameter_lines(tool_name: str, schema: dict) -> list[str]:
             line += "; must contain a non-whitespace character"
         if "description" in definition:
             line += ". " + definition["description"]
+        if mark_required_source and name in required:
+            line += (
+                "; value must be specified in current_user.text. "
+                "A purpose or desired effect is not a selected value."
+            )
         lines.append(line)
     return lines
 
@@ -195,11 +188,14 @@ class DevContextAssembler(ContextAssembler):
         )
 
     def _decision_instructions(self) -> str:
-        return (
+        baseline = (
             _DECISION_STEPS
             if self.model_id in _ROUND2_PRESENTATION_MODELS
             else super()._decision_instructions()
         )
+        if self.model_id in _ROUND3_EMPHASIS_MODELS:
+            return baseline + "\nRemember: " + _MODEL_EMPHASIS[self.model_id] + "\n"
+        return baseline
 
     def _format_tools(self, allowed_names, *, unavailable_actions=None) -> str:
         formatter = (
@@ -210,10 +206,13 @@ class DevContextAssembler(ContextAssembler):
         catalog = formatter(allowed_names, unavailable_actions=unavailable_actions)
         if self.model_id in _ILLUSTRATED_MODELS:
             catalog += "\n\n" + self._output_illustrations(allowed_names)
-        return catalog + "\n\nOutput decision:\n" + _MODEL_EMPHASIS[self.model_id]
+        emphasis = _MODEL_EMPHASIS[self.model_id]
+        if emphasis and self.model_id not in _ROUND3_EMPHASIS_MODELS:
+            catalog += "\n\nOutput decision:\n" + emphasis
+        return catalog
 
     def _output_illustrations(self, allowed_names) -> str:
-        """Illustrate wire shapes from callable contracts, never case answers."""
+        """Contract-authored contrasts; no bank, oracle or request inspection."""
         lines = [
             "Complete output illustrations:",
             "These show format and effect, not values or permission for this request. "
@@ -222,11 +221,93 @@ class DevContextAssembler(ContextAssembler):
         active_tools = [
             tool for tool in self.registry.get_all_tools() if tool.name in allowed_names
         ]
+        is_phi = self.model_id == "microsoft/Phi-4-mini-instruct"
+        is_llama = self.model_id == "meta-llama/Llama-3.2-3B-Instruct"
+        is_granite33 = self.model_id == "ibm-granite/granite-3.3-2b-instruct"
+
+        def example(kind, request, tool_name, parameters):
+            lines.extend(
+                (
+                    f"Example input ({kind}): {request}",
+                    json.dumps({"tool_name": tool_name, "parameters": parameters}),
+                )
+            )
+
+        # A single contract supplies both sides; numbers are independently authored,
+        # never selected from the current request, DEV cases or retrieved examples.
+        bandpass = next(
+            (tool for tool in active_tools if tool.name == "apply_bandpass_filter"),
+            None,
+        )
+        if bandpass is not None and (is_phi or is_granite33):
+            example(
+                "complete action",
+                "Use a passband whose two endpoints are 11 Hz and 43 Hz.",
+                bandpass.name,
+                {"low_freq": 11, "high_freq": 43},
+            )
+            if is_granite33:
+                example(
+                    "prohibition",
+                    "Do not use a passband whose endpoints are 11 Hz and 43 Hz.",
+                    "respond_to_user",
+                    {"message": "I will leave the bandpass unchanged."},
+                )
+                example(
+                    "information only",
+                    "What would a passband with endpoints at 11 Hz and 43 Hz retain?",
+                    "respond_to_user",
+                    {"message": "It retains frequencies between the two endpoints."},
+                )
+            example(
+                "missing required value",
+                "Use a passband starting at 11 Hz; the other endpoint is undecided.",
+                "respond_to_user",
+                {
+                    "message": "What upper cutoff should I use? Please send the bandpass request with both endpoints."
+                },
+            )
+            if is_granite33:
+                return "\n".join(lines)
+
         zero_argument = next(
             (tool for tool in active_tools if not tool.parameters.get("properties")),
             None,
         )
-        if zero_argument is not None:
+        dialog = next(
+            (
+                tool
+                for tool in active_tools
+                if tool_contract_for_llm(tool)["taxonomy"] == "GUI Completion"
+                and not tool.parameters.get("properties")
+            ),
+            None,
+        )
+        contrast_tool = dialog if is_llama else zero_argument
+        if (is_llama or is_granite33) and contrast_tool is not None:
+            description = tool_contract_for_llm(contrast_tool)["description"]
+            example(
+                "open dialog" if is_llama else "complete action",
+                description,
+                contrast_tool.name,
+                {},
+            )
+            if is_granite33:
+                example(
+                    "prohibition",
+                    "Do not perform this operation: " + description,
+                    "respond_to_user",
+                    {"message": "I will not perform that operation."},
+                )
+            example(
+                "information only",
+                "Explain this feature without using it: " + description,
+                "respond_to_user",
+                {"message": "Its documented function is: " + description},
+            )
+            if is_granite33:
+                return "\n".join(lines)
+        elif zero_argument is not None:
             lines.extend(
                 (
                     "Action with no arguments: requests the named action, not a text reply.",
@@ -236,7 +317,7 @@ class DevContextAssembler(ContextAssembler):
         panel_tool = next(
             (tool for tool in active_tools if tool.name == "switch_panel"), None
         )
-        if panel_tool is not None:
+        if panel_tool is not None and not is_phi and not is_granite33:
             panel = panel_tool.parameters["properties"]["panel_name"]["enum"][0]
             lines.extend(
                 (
@@ -249,6 +330,18 @@ class DevContextAssembler(ContextAssembler):
                     ),
                 )
             )
+        if is_llama and dialog is not None:
+            return "\n".join(lines)
+        if is_granite33 or is_llama:
+            example(
+                "information only",
+                "In general, what are EEG recordings?",
+                "respond_to_user",
+                {
+                    "message": "EEG recordings measure electrical activity using scalp electrodes."
+                },
+            )
+            return "\n".join(lines)
         lines.extend(
             (
                 "Reply: displays an answer or question; executes no action.",
@@ -286,7 +379,13 @@ class DevContextAssembler(ContextAssembler):
                     [
                         f"Action: {contract['name']}",
                         f"Category: {contract['taxonomy']}. {contract['description']}",
-                        *_parameter_lines(tool.name, contract["parameters"]),
+                        *_parameter_lines(
+                            tool.name,
+                            contract["parameters"],
+                            mark_required_source=(
+                                self.model_id == "ibm-granite/granite-4.0-micro"
+                            ),
+                        ),
                     ]
                 )
             )

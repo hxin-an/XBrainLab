@@ -212,13 +212,25 @@ def test_round1_models_reuse_original_policy_and_lossless_json_catalog(model_id)
 @pytest.mark.parametrize("model_id", DEV_PROMPT_MODEL_IDS)
 @pytest.mark.parametrize(
     "names",
-    [[], ["import_eeg_data"], ["switch_panel"], ["start_training", "switch_panel"]],
+    [
+        [],
+        ["import_eeg_data"],
+        ["switch_panel"],
+        ["start_training", "switch_panel"],
+        ["apply_bandpass_filter"],
+        ["apply_bandpass_filter", "select_channels", "switch_panel"],
+        ["create_epochs", "switch_panel"],
+        ["compute_saliency"],
+        None,  # Every registered contract; exercises all argument examples.
+    ],
 )
 def test_output_illustrations_are_complete_legal_and_only_callable(model_id, names):
     from XBrainLab.llm.agent.parser import CommandParser
     from XBrainLab.llm.agent.verifier import ToolSchemaValidator
 
     registry = real_registry()
+    if names is None:
+        names = [tool.name for tool in registry.get_all_tools()]
     assembler = DevContextAssembler(registry, None, model_id=model_id)
     catalog = assembler._format_tools(names)
     if model_id not in ILLUSTRATED_MODELS:
@@ -229,9 +241,8 @@ def test_output_illustrations_are_complete_legal_and_only_callable(model_id, nam
     proposals = [
         json.loads(line) for line in examples.splitlines() if line.startswith("{")
     ]
-    assert len(proposals) == 1 + bool(set(names) - {"switch_panel"}) + (
-        "switch_panel" in names
-    )
+    assert 1 <= len(proposals) <= 5
+    assert any(proposal["tool_name"] == "respond_to_user" for proposal in proposals)
     validator = ToolSchemaValidator(
         {tool.name: tool.parameters for tool in registry.get_all_tools()}
     )
@@ -252,7 +263,7 @@ def test_output_illustrations_are_complete_legal_and_only_callable(model_id, nam
 
 
 @pytest.mark.parametrize("model_id", DEV_PROMPT_MODEL_IDS)
-def test_model_emphasis_is_one_terminal_block_after_catalog_and_examples(model_id):
+def test_model_emphasis_uses_selected_round_baseline_without_duplication(model_id):
     from scripts.dev.assistant_dev_context import _MODEL_EMPHASIS
 
     assembler = DevContextAssembler(real_registry(), None, model_id=model_id)
@@ -261,10 +272,23 @@ def test_model_emphasis_is_one_terminal_block_after_catalog_and_examples(model_i
     )
     system = messages[0]["content"]
     emphasis = _MODEL_EMPHASIS[model_id]
-    assert emphasis not in assembler._decision_instructions()
-    assert system.count(emphasis) == 1
     catalog = assembler._format_tools(assembler.latest_tool_publication.tool_names)
-    assert catalog.rstrip().endswith("Output decision:\n" + emphasis)
+    if model_id == "ibm-granite/granite-4.0-micro":
+        assert "Remember:" not in system
+        assert "Output decision:" not in catalog
+    elif model_id in (
+        "microsoft/Phi-4-mini-instruct",
+        "meta-llama/Llama-3.2-3B-Instruct",
+    ):
+        assert system.count(emphasis) == 1
+        assert assembler._decision_instructions().endswith(
+            "Remember: " + emphasis + "\n"
+        )
+        assert emphasis not in catalog
+    else:
+        assert emphasis not in assembler._decision_instructions()
+        assert system.count(emphasis) == 1
+        assert catalog.rstrip().endswith("Output decision:\n" + emphasis)
     assert catalog in system
     assert "DEV-" not in system and "candidate4" not in system
 
@@ -296,6 +320,113 @@ def test_new_schema_constraints_cannot_silently_disappear_from_readable_catalog(
     )
     with pytest.raises(ValueError, match=r"Unsupported.*minimum"):
         assembler._format_tools(["resample_data"])
+
+
+def test_granite4_marks_only_required_action_values_as_user_supplied():
+    registry = real_registry()
+    schemas = {
+        tool.name: json.dumps(tool.parameters, sort_keys=True)
+        for tool in registry.get_all_tools()
+    }
+    assembler = DevContextAssembler(
+        registry, None, model_id="ibm-granite/granite-4.0-micro"
+    )
+    catalog = assembler._format_tools(["apply_bandpass_filter", "switch_panel"])
+    source_note = "value must be specified in current_user.text"
+    marked = [line for line in catalog.splitlines() if source_note in line]
+    assert len(marked) == 3
+    assert all(
+        any(
+            line.startswith(f"- {name}:")
+            for name in ("low_freq", "high_freq", "panel_name")
+        )
+        for line in marked
+    )
+    assert "A purpose or desired effect is not a selected value" in catalog
+    assert "Output decision:" not in catalog
+    assert "Remember:" not in assembler._decision_instructions()
+    assert schemas == {
+        tool.name: json.dumps(tool.parameters, sort_keys=True)
+        for tool in registry.get_all_tools()
+    }
+
+
+def test_gemma_requested_operation_focus_preserves_nonaction_boundary():
+    assembler = DevContextAssembler(
+        real_registry(), None, model_id="google/gemma-3-4b-it"
+    )
+    catalog = assembler._format_tools(
+        ["import_eeg_data"], unavailable_actions={"start_training": "No dataset"}
+    )
+    emphasis = catalog.split("Output decision:\n")[1]
+    assert "Check only that operation's callable contract" in emphasis
+    assert "A blocker for another operation does not block this one" in emphasis
+    assert (
+        "Information, prohibitions, unavailable actions and missing required values"
+        in emphasis
+    )
+    assert "No dataset" in catalog
+
+
+def test_phi_direct_examples_contrast_complete_and_missing_values():
+    assembler = DevContextAssembler(
+        real_registry(), None, model_id="microsoft/Phi-4-mini-instruct"
+    )
+    examples = assembler._output_illustrations(
+        ["apply_bandpass_filter", "switch_panel", "select_channels"]
+    )
+    assert "Example input (complete action):" in examples
+    assert "Example input (missing required value):" in examples
+    proposals = [
+        json.loads(line) for line in examples.splitlines() if line.startswith("{")
+    ]
+    assert any(p["tool_name"] == "apply_bandpass_filter" for p in proposals)
+    assert not any(p["tool_name"] == "switch_panel" for p in proposals)
+    assert "apply_bandpass_filter" not in assembler._output_illustrations(
+        ["switch_panel"]
+    )
+
+
+def test_llama_examples_distinguish_opening_from_explaining_a_real_dialog():
+    assembler = DevContextAssembler(
+        real_registry(), None, model_id="meta-llama/Llama-3.2-3B-Instruct"
+    )
+    examples = assembler._output_illustrations(["create_epochs", "switch_panel"])
+    assert "Example input (open dialog):" in examples
+    assert "Example input (information only):" in examples
+    assert "Which operation would you like help with?" not in examples
+    proposals = [
+        json.loads(line) for line in examples.splitlines() if line.startswith("{")
+    ]
+    assert {"tool_name": "create_epochs", "parameters": {}} in proposals
+    assert any(p["tool_name"] == "respond_to_user" for p in proposals)
+    assert "open dialog" not in assembler._output_illustrations(["start_training"])
+    assert "open dialog" not in assembler._output_illustrations(["compute_saliency"])
+
+
+def test_granite33_examples_include_action_prohibition_information_and_missing():
+    assembler = DevContextAssembler(
+        real_registry(), None, model_id="ibm-granite/granite-3.3-2b-instruct"
+    )
+    examples = assembler._output_illustrations(["apply_bandpass_filter"])
+    for kind in (
+        "complete action",
+        "prohibition",
+        "information only",
+        "missing required value",
+    ):
+        assert f"Example input ({kind}):" in examples
+    proposals = [
+        json.loads(line) for line in examples.splitlines() if line.startswith("{")
+    ]
+    assert len(proposals) == 4
+    assert [p["tool_name"] for p in proposals] == [
+        "apply_bandpass_filter",
+        "respond_to_user",
+        "respond_to_user",
+        "respond_to_user",
+    ]
+    assert "apply_bandpass_filter" not in assembler._output_illustrations([])
 
 
 @pytest.mark.parametrize("model_id", DEV_PROMPT_MODEL_IDS)

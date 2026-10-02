@@ -122,7 +122,14 @@ def test_experiment_session_wires_exact_model_presentation(
             assert (
                 "Complete output illustrations:" in messages[0]["content"]
             ) is has_illustrations
-            assert "Output decision:" in messages[0]["content"]
+            assert ("Output decision:" in messages[0]["content"]) is (
+                model_id
+                in {"google/gemma-3-4b-it", "ibm-granite/granite-3.3-2b-instruct"}
+            )
+            assert ("Remember:" in messages[0]["content"]) is (
+                model_id
+                in {"microsoft/Phi-4-mini-instruct", "meta-llama/Llama-3.2-3B-Instruct"}
+            )
             assert assembler._decision_instructions() in messages[0]["content"]
             assert controlled_condition_runtime["engines"][0].load_calls == 1
         finally:
