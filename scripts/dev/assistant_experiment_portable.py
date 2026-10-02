@@ -382,18 +382,8 @@ def _verify_installed(python: Path, metadata: dict, environment: dict) -> None:
         )
 
 
-def bootstrap(package: Path, entry: str, arguments: list[str]) -> int:
-    from scripts.dev.assistant_experiment_package import verify_package
-
-    package = package.resolve(strict=True)
-    manifest = verify_package(package)
-    metadata = validate_layout(package)
-    if _platform() != metadata["platform"]:
-        raise ValueError(
-            "Use the bundle's exact system Python/platform on workstation 137"
-        )
-    if entry not in {"launch", "compare"}:
-        raise ValueError("Unknown portable entry")
+def runtime_environment(package: Path) -> dict[str, str]:
+    """Keep every runtime/cache write in the executing user's physical copy."""
     runtime = _runtime_directory(package)
     cache = runtime / "cache"
     if cache.is_symlink():
@@ -440,6 +430,28 @@ def bootstrap(package: Path, entry: str, arguments: list[str]) -> int:
         if child.is_symlink():
             raise ValueError("Portable cache children must not be symlinks")
         child.mkdir(exist_ok=True)
+    # A copied cache may contain nested links from its previous location. Do not
+    # let ordinary library writes follow them back into the original user's files.
+    for path in cache.rglob("*"):
+        if path.is_symlink():
+            raise ValueError(f"Runtime cache must not contain symlinks: {path}")
+    return environment
+
+
+def bootstrap(package: Path, entry: str, arguments: list[str]) -> int:
+    from scripts.dev.assistant_experiment_package import verify_package
+
+    package = package.resolve(strict=True)
+    manifest = verify_package(package)
+    metadata = validate_layout(package)
+    if _platform() != metadata["platform"]:
+        raise ValueError(
+            "Use the bundle's exact system Python/platform on workstation 137"
+        )
+    if entry not in {"launch", "compare"}:
+        raise ValueError("Unknown portable entry")
+    environment = runtime_environment(package)
+    runtime = package / ".runtime"
     python = _environment(package, metadata, runtime, environment)
     if entry == "launch" and arguments == ["--check-environment"]:
         print(

@@ -6,7 +6,7 @@ failure, never an invitation to rebuild scores with today's implementation.
 """
 
 # Read-only fixed Git commands and explicit malformed-artifact aggregation.
-# ruff: noqa: S607, TRY301
+# ruff: noqa: S607, TRY301, RUF001 -- report uses intentional Chinese punctuation.
 
 from __future__ import annotations
 
@@ -14,11 +14,13 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import re
 import subprocess
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
 from uuid import uuid4
 
 from scripts.dev.assistant_experiment_audit import evidence_digest
@@ -66,6 +68,11 @@ def _scoring_source(run: Path, job: dict, manifest: dict) -> dict:
     ):
         return {"head": None, "dependency_tree": None}
     roots = [run.parent.parent / "sources" / head]
+    # Whole-package relocation preserves recorded absolute source paths. Locate
+    # its shared snapshot by the fixed results/{reference,runs}/<id> layout;
+    # inspect the recorded commit's Git objects, never the current working tree.
+    if run.parent.name in {"reference", "runs"} and run.parent.parent.name == "results":
+        roots.insert(0, run.parent.parent.parent / "snapshot" / "sources" / head)
     if job.get("source_root"):
         roots.append(Path(job["source_root"]))
     paths = [
@@ -570,6 +577,168 @@ def compare_runs(run_a: Path, run_b: Path) -> dict:
     }
 
 
+def _agreement_text(value: dict) -> str:
+    denominator = value["denominator"]
+    if not denominator:
+        return f"無可比較資料（排除 {value['unavailable']}）"
+    return (
+        f"{value['numerator']}/{denominator}（{value['rate']:.1%}）；"
+        f"排除 {value['unavailable']}"
+    )
+
+
+def _seconds_text(value: float | None) -> str:
+    return "不可比較" if value is None else f"{value:.3f} 秒"
+
+
+def render_comparison(result: dict, output: Path) -> str:
+    """Present saved metrics without changing comparison or scoring policy."""
+    summary, timing = result["summary"], result["timing"]
+    changed = any(
+        values["correctness"]["improved"]
+        or values["correctness"]["regressed"]
+        or any(
+            values[key]["numerator"] != values[key]["denominator"]
+            for key in ("tool_equal", "tool_parameters_equal")
+        )
+        for values in summary.values()
+    )
+    if result["classification"] == "incompatible_or_unknown":
+        conclusion = "證據不完整或比較條件不相容，不能確認完整重跑一致。"
+    elif changed:
+        conclusion = "兩次執行存在逐題決策或判分差異，請檢視比較表與逐題明細。"
+    else:
+        conclusion = "逐題正誤判定一致；工具與參數的一致性及排除數見下表。"
+    text = [
+        "# 重跑一致性報告",
+        "",
+        f"**{conclusion}**",
+        "",
+        f"本次按模型、題目 ID 與 repeat 配對，共 {result['planned_union']:,} 個案例。",
+        f"A（上一次）：`{Path(result['runs'][0]['run']).name}`；"
+        f"B（本次）：`{Path(result['runs'][1]['run']).name}`。",
+        "",
+        "## 兩次結果",
+        "",
+        "| 比較項目 | 上一次 A | 本次 B |",
+        "| --- | ---: | ---: |",
+    ]
+    valid = [
+        sum(bool(row[side] and row[side]["valid"]) for row in result["cases"])
+        for side in ("a", "b")
+    ]
+    text.append(f"| 有效量測 | {valid[0]} | {valid[1]} |")
+    for phase, label in (("first", "首次"), ("final", "最終")):
+        counts = summary[phase]["correctness"]
+        text.append(
+            f"| {label}正確（可比案例） | "
+            f"{counts['both_right'] + counts['regressed']} | "
+            f"{counts['both_right'] + counts['improved']} |"
+        )
+    for key, label in (("p50", "決策時間中位數"), ("p95", "決策時間 P95")):
+        text.append(
+            f"| {label} | {_seconds_text(timing['a'][key])} | {_seconds_text(timing['b'][key])} |"
+        )
+    text.extend(
+        [
+            "",
+            "## 逐題一致性",
+            "",
+            "| 比較項目 | 首次決策 | 最終決策 |",
+            "| --- | ---: | ---: |",
+        ]
+    )
+    for key, label in (
+        ("tool_equal", "工具相同"),
+        ("tool_parameters_equal", "工具與參數相同"),
+    ):
+        text.append(
+            f"| {label} | {_agreement_text(summary['first'][key])} | {_agreement_text(summary['final'][key])} |"
+        )
+    for key, label in (
+        ("both_right", "兩次都正確"),
+        ("both_wrong", "兩次都錯誤"),
+        ("improved", "A 錯 → B 對"),
+        ("regressed", "A 對 → B 錯"),
+        ("unavailable", "正誤不可比較"),
+    ):
+        text.append(
+            f"| {label} | {summary['first']['correctness'][key]} | {summary['final']['correctness'][key]} |"
+        )
+    text.extend(
+        [
+            "",
+            "## 如何理解數字",
+            "",
+            "- 首次是模型第一次決策；最終包含配置允許的格式修復，沒有修復時沿用首次決策。",
+            "- 一致率不是答對率：共同答錯仍可能完全一致；正確題數只計入可比較的配對案例。",
+            "- 工具一致率以兩次都有有效決策的案例為分母；參數一致率另要求兩次參數都可取得。排除不算相同。",
+            f"- 耗時：A 有 {timing['a']['n']} 筆、排除 {timing['a']['excluded']}；"
+            f"B 有 {timing['b']['n']} 筆、排除 {timing['b']['excluded']}。P95 是 95% 分位數，不是最慢值。",
+            f"- 逐題耗時差 B−A 的中位數：{_seconds_text(timing['paired_delta_b_minus_a']['p50'])}"
+            f"（{timing['paired_delta_b_minus_a']['n']} 筆配對）；不等同兩個中位數相減。",
+            "",
+            "## 版本與比較條件",
+            "",
+        ]
+    )
+    labels = {
+        "source": "程式封存版本",
+        "config": "實驗配置",
+        "models": "模型配置",
+        "bank_sha256": "題庫",
+        "environment": "執行環境",
+        "experiment": "實驗協定",
+        "corpus_sha256": "RAG 語料",
+        "embedding_sha256": "Embedding",
+        "resource_inventory_sha256": "資源清單",
+        "oracle_or_scorer": "預期答案或判分證據",
+    }
+    for item in result["differences"]:
+        label = labels.get(item["field"], item["field"])
+        if item["field"] == "source" and item["status"] == "different":
+            versions = []
+            for side in ("a", "b"):
+                source = item[side]
+                head = source.get("head") if isinstance(source, dict) else None
+                versions.append(
+                    f"`{head}`"
+                    if isinstance(head, str) and re.fullmatch(r"[a-f0-9]{40}", head)
+                    else "未提供有效版本"
+                )
+            text.append(f"- {label}不同：A {versions[0]}；B {versions[1]}。")
+        else:
+            text.append(f"- {label}：`{item['status']}`；完整差異見 comparison.json。")
+    if not result["differences"]:
+        text.append("未偵測到封存配置差異。")
+    text.extend(
+        [
+            "",
+            "版本或設定差異本身不代表增設 DEV 候選；原因須查核實際改動，逐題可比較性由保存證據判定。",
+            f"原始證據未變：{'是' if result['original_evidence_unchanged'] else '否'}。",
+            "",
+            "## 附錄與範圍",
+            "",
+            "- [完整比較資料與原始輸入／輸出](comparison.json)",
+            f"- 技術分類：`{result['classification']}`。",
+            "",
+            "本報告讀取已保存判分，不重新推論或重評分；回答文字措辭不列入工具／參數比較。",
+            "這是本次固定條件下的重跑比較，不是跨環境保證或正式模型排名。",
+            "",
+        ]
+    )
+    text.extend(["", "## 直接開啟既有實驗檔案", ""])
+    for run, label in zip(result["runs"], ("上一次 A", "本次 B"), strict=True):
+        root = Path(run["run"])
+        target = root / "index.html"
+        if not target.is_file():
+            target = Path(run["report"]) if run["report"] else root
+        link = quote(Path(os.path.relpath(target, output)).as_posix(), safe="/")
+        text.append(f"- [{label}：原始報告與逐題證據]({link})")
+    text.extend(["", "原始報告中的案例入口直接開啟既有檔案，不另外複製逐題清單。", ""])
+    return "\n".join(text)
+
+
 def write_comparison(run_a: Path, run_b: Path, output: Path | None = None) -> dict:
     """Publish into a fresh external directory; never overwrite either run."""
     roots = [Path(path).resolve(strict=True) for path in (run_a, run_b)]
@@ -590,43 +759,9 @@ def write_comparison(run_a: Path, run_b: Path, output: Path | None = None) -> di
     output.mkdir(parents=True, exist_ok=False)
     with (output / "comparison.json").open("x", encoding="utf-8") as stream:
         json.dump(result, stream, ensure_ascii=False, indent=2, allow_nan=False)
-    text = [
-        "# Saved experiment comparison",
-        "",
-        result["classification"],
-        "",
-        "## Source and comparability differences",
-        "",
-        "```json",
-        json.dumps(result["differences"], indent=2, ensure_ascii=False),
-        "```",
-        "",
-        "## Paired decisions",
-        "",
-        f"Planned union: {result['planned_union']}. Missing/invalid observations remain unavailable.",
-        "",
-        "```json",
-        json.dumps(result["summary"], indent=2),
-        "```",
-        "",
-        "## Decision timing (seconds)",
-        "",
-        "```json",
-        json.dumps(result["timing"], indent=2),
-        "```",
-        "",
-        "## Per-case evidence",
-        "",
-        "[Full comparison, actual inputs and raw outputs](comparison.json)",
-        "",
-    ]
-    for row in result["cases"]:
-        text.append(
-            f"- {row['condition']} / {row['case_id']} / repeat {row['repeat']}: first {row['first']['correctness']}; final {row['final']['correctness']}; {row['correctness_reason']}"
-        )
-    text.extend(["", *result["limitations"], ""])
+    text = render_comparison(result, output)
     with (output / "comparison.md").open("x", encoding="utf-8") as stream:
-        stream.write("\n".join(text))
+        stream.write(text)
     return {**result, "output": str(output)}
 
 

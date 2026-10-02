@@ -1,10 +1,11 @@
 """Saved manifest/journal/report/capture integration; no model or scorer execution."""
 
 # Fixed Git commands operate only on the disposable test fixture repository.
-# ruff: noqa: S603, S607
+# ruff: noqa: S603, S607, RUF001 -- assertions include Chinese report punctuation.
 
 import hashlib
 import json
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -465,6 +466,37 @@ class CompareTests(unittest.TestCase):
         result = self.api.compare_runs(a, c)
         self.assertEqual(result["summary"]["final"]["correctness"]["unavailable"], 1)
 
+        # A whole-package copy retains historical absolute paths verbatim. Its
+        # local Git objects must still establish scorer equivalence after move.
+        package = self.root / "experiment"
+        for head in (first, second, third):
+            destination = package / "snapshot/sources" / head
+            shutil.copytree(source, destination)
+            subprocess.check_call(
+                ["git", "-C", str(destination), "checkout", "-q", "--detach", head],
+                timeout=15,
+            )
+        original = [evidence_digest(run) for run in (a, b, c)]
+        locations = (
+            "results/reference/baseline",
+            "results/runs/new",
+            "results/runs/changed",
+        )
+        for run, relative in zip((a, b, c), locations, strict=True):
+            shutil.copytree(run, package / relative)
+        moved = self.root / "搬移 experiment with spaces"
+        package.rename(moved)
+        source.rename(self.root / "original-source-unavailable")
+        relocated = [moved / relative for relative in locations]
+        self.assertEqual([evidence_digest(run) for run in relocated], original)
+        result = self.api.compare_runs(*relocated[:2])
+        self.assertEqual(result["summary"]["final"]["correctness"]["improved"], 1)
+        self.assertTrue(result["cases"][0]["a"]["scoring_source"]["dependency_tree"])
+        result = self.api.compare_runs(relocated[0], relocated[2])
+        self.assertEqual(result["summary"]["final"]["correctness"]["unavailable"], 1)
+        self.assertEqual([evidence_digest(run) for run in relocated], original)
+        self.assertEqual([evidence_digest(run) for run in (a, b, c)], original)
+
     def test_output_never_overwrites_or_nests_inside_original(self):
         a = fixture(self.root / "a", [[("resample", {}, False)]])
         for output in (a, a / "new", self.root):
@@ -476,6 +508,59 @@ class CompareTests(unittest.TestCase):
         self.assertIn(
             "same_config_reproduction", (output / "comparison.md").read_text()
         )
+
+    def test_readable_report_separates_agreement_and_links_existing_evidence(self):
+        run = fixture(self.root / "a", [[("resample", {}, False)]])
+        output = self.root / "comparison"
+        before = evidence_digest(run)
+        result = self.api.write_comparison(run, run, output)
+        text = (output / "comparison.md").read_text()
+        self.assertIn("逐題正誤判定一致", text)
+        self.assertIn("| 最終正確（可比案例） | 0 | 0 |", text)
+        self.assertIn("1/1（100.0%）", text)
+        self.assertIn("一致率不是答對率", text)
+        self.assertNotIn("```json", text)
+        self.assertNotIn("DEV-A01-00-V0", text)
+        self.assertFalse((output / "cases.md").exists())
+        self.assertIn("](../a/reports/20260929/report.json)", text)
+        self.assertIn("[完整比較資料與原始輸入／輸出](comparison.json)", text)
+        self.assertEqual(evidence_digest(run), before)
+        self.assertEqual(
+            json.loads((output / "comparison.json").read_text()),
+            {k: v for k, v in result.items() if k != "output"},
+        )
+
+    def test_readable_report_flags_changed_parameters_even_if_both_wrong(self):
+        a = fixture(self.root / "a", [[("resample", {"sfreq": 32}, False)]])
+        b = fixture(self.root / "b", [[("resample", {"sfreq": 16}, False)]])
+        output = self.root / "comparison"
+        self.api.write_comparison(a, b, output)
+        text = (output / "comparison.md").read_text()
+        self.assertIn("存在逐題決策或判分差異", text)
+        self.assertIn("0/1（0.0%）", text)
+
+    def test_readable_report_does_not_certify_missing_evidence(self):
+        a = fixture(self.root / "a", [[("resample", {}, False)], None])
+        output = self.root / "comparison"
+        self.api.write_comparison(a, a, output)
+        text = (output / "comparison.md").read_text()
+        self.assertIn("不能確認完整重跑一致", text)
+        self.assertIn("不可比較", text)
+        self.assertIn("排除 1", text)
+
+    def test_readable_report_handles_unknown_source_metadata(self):
+        b = fixture(self.root / "b", [[("resample", {}, False)]])
+        for index, source in enumerate(({}, "malformed")):
+            with self.subTest(source=source):
+                a = fixture(self.root / f"a-{index}", [[("resample", {}, False)]])
+                amend(a, manifest_change=lambda m, value=source: m.update(source=value))
+                output = self.root / f"comparison-{index}"
+                before = evidence_digest(a)
+                self.api.write_comparison(a, b, output)
+                text = (output / "comparison.md").read_text()
+                self.assertIn("未提供有效版本", text)
+                self.assertFalse((output / "cases.md").exists())
+                self.assertEqual(evidence_digest(a), before)
 
 
 if __name__ == "__main__":

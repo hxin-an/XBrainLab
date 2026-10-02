@@ -125,6 +125,10 @@ class PilotConditionSession:
         self.manager = self.runtime = self.window = self.driver = None
         self.service = None
         validate_case_request(payload)
+        if payload.get("experiment") is not None:
+            from scripts.dev.assistant_dev_context import validate_dev_prompt_model
+
+            validate_dev_prompt_model(payload.get("model_id"))
         self.root = root.absolute()
         self.prompt_root = self.root / "prompts"
         for name, suffix in (
@@ -204,6 +208,7 @@ class PilotConditionSession:
                     controller.assembler = DevContextAssembler(
                         original.registry,
                         original.study_state,
+                        model_id=payload["model_id"],
                         application_runtime=original.application_runtime,
                     )
                 self.driver.attach(controller)
