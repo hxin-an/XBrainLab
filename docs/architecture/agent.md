@@ -552,7 +552,12 @@ admission。若 state publication 不可靠，prompt stage 固定為 `unavailabl
 模型輸出採前述兩欄response，不回填 `workflow_stage`。Stage 在 required
 `application_state`／backend publication 中，system 亦保留同一 publication 的簡短 stage
 事實；Host 以保存的 generation 驗證 proposal、confirmation 及 execution，不從模型 JSON
-取得 state。舊五欄／三欄提案不被產品parser接受，沒有雙格式相容路徑。
+取得 state。停止確認依核准例外綁定原publication的`TrainingRunIdentity`，同場running進度
+更新不失效；既有確認DTO同步投影此身分供失效提示使用。批准後由可信執行adapter寫入
+`StopTrainingCommand.expected_run`，manager／Trainer在既有鎖內核對相同run仍為RUNNING
+才提交interrupt；換run／terminal／stopping拒絕，等待worker在manager鎖外。
+GUI無綁定的即時停止仍沿用既有控制路徑；不新增模型參數、確認重試或全域generation例外。
+舊五欄／三欄提案不被產品parser接受，沒有雙格式相容路徑。
 
 RAG操作示範都受同一條18-tool與stage publication邊界約束；非執行回答示範以
 `respond_to_user`分類，不能授予執行權限。

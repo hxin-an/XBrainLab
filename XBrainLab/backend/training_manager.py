@@ -611,8 +611,26 @@ class TrainingManager:
             )
         return stopped
 
-    def stop_training_if_present(self, wait_timeout: float | None = None) -> bool:
+    def stop_training_if_present(
+        self,
+        wait_timeout: float | None = None,
+        *,
+        expected_run: TrainingRunIdentity | None = None,
+    ) -> bool | None:
         """Atomically capture and stop the current trainer, if one exists."""
+        if expected_run is not None:
+            with self._training_pipeline_lock:
+                trainer = self.trainer
+                if trainer is None or self._training_start_admission is not None:
+                    return None
+                stopped = trainer.stop(expected_run=expected_run)
+            if stopped is not False or wait_timeout is None:
+                return stopped
+            # Join only the captured trainer, outside manager admission locks.
+            return trainer.wait_for_completion(
+                timeout=max(0.0, float(wait_timeout)),
+                expected_run=expected_run,
+            )
         stopped = self._stop_training_if_present(wait_timeout=wait_timeout)
         return bool(stopped)
 

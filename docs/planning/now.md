@@ -2,12 +2,60 @@
 
 最後更新：`2026-10-02`
 
-## Active — 修復DEV子程序退出崩潰，再完整重跑第4輪
+## Active — 關閉確認／量測缺口後完整重跑並追到結束
+
+使用者要求先修到沒有已知阻擋，再全部重跑。本次stop改為完整1320有效量測、正常退出、
+證據audit與共同案例一致性比對完成，不沿用上一輪「初始10筆即交回」。不承諾零缺陷。
+證據：repair-01 run `20261002-035756-8b73ad40`前四模型各264正常exit0；Gemma104筆recorded，
+第105題DEV-A14-01-V0正確選stop_training，確認卡generation677在約19ms後確認時被Host
+stale_confirmation拒絕。trace保存interaction_resolved=blocked及turn_terminal=blocked，
+outcome卻分類product_execution_observation_missing，parent exit1。退出SIGSEGV本輪未重現。
+第1/2輪同題曾有command result；第3輪模型答錯未走確認路徑。不可把過去整輪完成當成此邊界證據。
+Outcome：定位確認失效的實際publication變更，修正可重現defect；完整拒絕事件正確量測，
+缺失／不相符證據仍fail closed；用可追溯工程source全量重跑並完成比對。
+Scope：直接相關確認／publication／觀察／生命週期及回歸、封存、必要有界工程驗證。
+Non-goals：不調prompt/model/RAG/題庫/raw tool-call oracle、生成與格式重試，不追分、不做第5輪、
+VALID/TEST或merge；不覆寫任何舊run／凍結source，不隱藏產品blocked或換成成功。
+若產品可見確認契約須改，依target先取得明確决策；只修已批准契約的不正確實作不新增UI。
+步驟：追實際generation更新與相鄰案例→真state transition red→最小coherent repair→
+直接／相鄰測試與不依模型猜測的受控跨時序驗證→獨立source/研究覆核與same-head CI→
+新完整source封存repair-02（candidate4不變）→全量1320→追完成／failure→audit與共同案例比對。
+重跑前直接驗證：確認期間正常進度更新、真正換run／終態失效、確認拒絕／取消／執行／缺事件，
+以及退出清理；測試真產品路徑，外部模型可隔離。必要真模型工程驗證單獨標記，不混正式分母。
+若研究呈現分類修正使舊比較器拒絕等價，保留其限制，不偷偷放寬scorer hash契約。
+假設：137資源與既有環境可用，推論前檢查；settings.json使用者dirty保持不動。
+使用者已核准stop_training確認例外（見target/agent）：同一running trainer/run的進度更新
+不使批准失效，換run／terminal／stopping仍拒絕；backend執行边界再次核對，不重試。
+量測修正：6177份既有case離線重播，僅本次Gemma拒絕由invalid改為blocked，無其他差異；
+raw scores與舊檔hash皆不變。真Qt批准／拒絕／取消三路及17項runtime evidence測試通過。
+Next：完成run-bound停止確認的red/green及獨立TOCTOU覆核，再新source封存與全量重跑。
+UI layout不改；停止確認有效期、相應失效提示及拒絕原因是本次已核准的行為變更。
+Complexity review：重用pending decision持有的原context、既有TrainingRunIdentity與Trainer
+state lock；不新增owner、receipt或state machine。預計7–8個產品檔約+100–180/-10–30行：
+controller/執行adapter與Command→service→runtime→manager→Trainer是必要的同一身分傳递鏈。
+不以放寬全域generation或controller單次檢查替代執行邊界原子核對；移除候選是stop專用的
+過度廣泛generation比較，其他命令保留。若實際超出此範圍先重審；修理與量測可分commit，
+封存版本一次包含兩者。無新抽象拆分需求，現有owner數不變。
+補充complexity審查：既有確認卡另有generation-based stale提示，若不改會在同場進度更新時
+誤報失效。允許同一run身分進入既有confirmation DTO／builder與presentation predicate；
+預計增加3個直接接線檔（總約11），無新控制層、無layout／文案修改。此為已核准確認有效期
+的必要呈現一致性，独立review另驗身分必須來自原publication，不能信模型或新run。
+實作收斂為10產品檔：run parser留在既有confirmation模組，不需修改tool schema/surface。
+真Qt3路已green；443項直接／相鄰回歸與18項原停止control/runtime保護通過。
+獨立review發現成功stop後若新run立即開始，diagnostics會誤拿新run身分；先補red修正，
+保留原target且不把新run終態套給舊run，再完成封存。此處不削弱量測identity guard。
+上述ack競態已先red後修正；9項execution測試與16項最終confirmation/UI測試green，獨立
+覆核無剩餘blocking findings。產品最終+215/-22/net+193，10個既有檔，owner不變。
+changed-file Basedpyright零error/warning及Ruff通過；Mypy另有3項既存錯誤，不宣稱全案Mypy乾淨。
+Next：提交精確source，等same-head CI，同時137無推論66-state preflight與封存核對；
+通過才啟動repair-02完整1320，追到完成並audit／比對，未授權merge。
+
+## 已交回 — DEV第4輪退出修理與全量重跑已啟動
 
 使用者已授權修好後續跑，並明確改為全部重跑以檢查可重現性；不僅續跑Gemma。
 證據：run `20261002-024229-8b91f51c`完成1056/1320，Llama264題與condition結果寫完後
 子程序returncode=-11(SIGSEGV)，hard_timeout=false、cleanup_ok=true；runner按fail-closed
-停止，Gemma未啟動。無Python traceback/native stack，尚未定位到確切解構元件；不假稱根因已知。
+停止，Gemma未啟動。原失敗log無Python traceback/native stack；後續有界probe已取得定位證據，見下。
 Outcome：有證據的退出修理及直接／原生驗證；完整1320新run啟動、初始紀錄正常後交回。
 Scope：退出生命週期、直接回歸與必要crash診斷／研究封存；保留失敗run及既有1056筆。
 Non-goals：不改提示、模型／revision、生成、RAG、題庫、scorer、Host決策或重試；不啟動第5輪、
@@ -25,12 +73,32 @@ Stop：修理證據與同版本驗證閉合、全量重跑有效啟動後交回�
 以accepted close的WA_DeleteOnClose完成原生銷毀，成功才標closed；不跳過MainWindow關閉政策。
 首次修理原生三次正常exit0且window_destroyed=true；非永久穩定保證。獨立覆核另找到延後銷毀
 後再次close存取已刪Qt timer，已補red與刪除感知的重試；最終59項Windows直接測試、
-changed-file Ruff/format通過，獨立source覆核解除阻擋。精確版本原生退出與CI仍待執行。
+changed-file Ruff/format通過，獨立source覆核解除阻擋。精確版本原生退出與CI結果見下。
 封存使用既有create_package建立`stages/dev/round-04/repair-01`，保留candidate4與舊父入口；
 新完整source/manifest/run獨立，不偷偷重指舊版，不計第5輪，不自動納入父DEV aggregate。
-Next：最終直接測試／獨立覆核→同head CI與原生exit→封存及全量新run初始驗收。UI無改動。
+最終source `ac6f02553de5b11008694003bbdb513036c2a473`，PR #155，未merge。
+同head CI全completed：22success／5 scope skips；137精確source三次Llama原生退出均0，
+window_destroyed=true。獨立reviewer直接核對stack／logs／乾淨source與腳本hash，無阻擋。
+封存與環境check通過，175舊封存檔／11舊run身分／失敗run10625證據項目保持不變；
+獨立覆核新package hash、五模型candidate4共1320唯一DEV jobs及固定因素等價。
+新run `20261002-035756-8b73ad40`，位於`stages/dev/round-04/repair-01/runs/`；
+tmux `xbl-dev-round04-repair01-ac6f0255`，log `.runtime/logs/dev-round04-repair01-ac6f0255.log`。
+GPU空閒後單次啟動，觀察61→120/1320；最初10筆真capture／system／RAG／hash／cleanup通過。
+只支撐有效啟動，不代表整輪完成或五模型結果已重現；完成後共同1056筆方可做一致性比對。
+獨立package沿用原leaf adapter，沒有父batch每5秒的進度列；不以空log判停滯，可用既有
+`assistant_experiment_progress.describe`讀同一run的condition summaries。沒有改動正在跑的版本。
+工程證據另在`results/engineering/round4-repair01-ac6f0255/`；外部論文文件與一行指令已同步。
+Next：依約停止啟動監控，待使用者要求查結果／比對；不自動重跑第二批或調整候選。UI無改動。
+本頁是凍結後交回記錄，remote sealed source仍乾淨；本機settings.json仍為使用者修改。
 
-## 已交回 — DEV 第4輪正式量測已啟動
+修理commit相對dd2a5e75（新增／刪除／淨）：產品0/0/0、測試92/0/+92、腳本26/10/+16、
+文件51/2/+49、設定/其他0，合計169/12/+157，二進位0；文件含開工前未提交交回記錄。
+分支相對main72548c累積：產品5/1/+4、測試1482/3/+1479、腳本1567/83/+1484、
+文件451/6/+445、設定/其他0，合計3505/93/+3412，二進位0；不混為本次修理。
+以上限封存repo差異，不含本頁凍結後補記、外部三份論文文件與臨時工程probe。
+測試／腳本經focused、native與CI及獨立覆核；文件CI通過，外部入口另核對；產品／設定本次未改。
+
+## 歷史 — DEV第4輪首次量測（後續1056/1320退出失敗）
 
 使用者已讀完並批准`碩論準備/實驗/DEV階段紀錄/DEV第3輪總結與第4輪改善計畫.md`
 第五節，要求修改後正式開跑。R3完整1320筆：Granite4多物件、Gemma操作變文字承諾、

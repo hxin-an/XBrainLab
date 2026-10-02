@@ -378,8 +378,13 @@ stage candidate，但split、model或training settings未齊時由同一publicat
 unavailable reference精確說明缺項，不能部分執行；全部ready後才成為callable。
 
 Stage、setup flags、running state與completed runs都從同一份 immutable ApplicationService
-publication產生。若 publication generation 在生成、repair、confirmation或GUI handoff期間改變，
-舊 proposal／resolution一律視為 stale。
+publication產生。若 publication generation 在生成、repair或GUI handoff期間改變，
+舊 proposal／resolution視為 stale；confirmation原則上沿用同一檢查。
+
+2026-10-02核准的停止確認例外：`stop_training`確認綁定當時的trainer/run身分；
+同一場仍在running的訓練，只有進度更新不使批准失效。換run、已結束或已在停止中仍拒絕，
+且必須在backend實際執行邊界再次核對，不能自動重試、略過確認或改停另一場訓練。
+全域publication generation與其他命令的freshness契約保持不變。
 
 ## Strict model output contract
 

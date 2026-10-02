@@ -10,6 +10,7 @@ from XBrainLab.backend.training.record import RecordKey, TrainRecord, TrainRecor
 from XBrainLab.backend.training.state_tracker import TrainingStateTracker
 from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
+    TrainingRunIdentity,
     TrainingStateToken,
     read_training_terminal_outcome,
 )
@@ -708,6 +709,77 @@ def test_stop_after_terminal_completion_preserves_completed_truth(
     assert stopped is True
     assert trainer.get_terminal_outcome() == completed
     assert trainer.get_progress_text() == "Pending"
+
+
+def test_run_bound_stop_accepts_progress_but_rejects_a_second_stop(
+    training_plan_holders,
+):
+    trainer = Trainer(training_plan_holders)
+    started = threading.Event()
+    release = threading.Event()
+
+    def train():
+        started.set()
+        assert release.wait(timeout=5)
+
+    training_plan_holders[0].train = train
+    trainer.run(interact=True)
+    try:
+        assert started.wait(timeout=2)
+        reviewed = trainer.get_terminal_outcome()
+        with trainer._state_tracker.mutation():
+            training_plan_holders[0].train_record_list[0].epoch = 1
+        assert trainer.stop(expected_run=reviewed.run) is False
+        assert (
+            trainer.get_terminal_outcome().state is TrainingOutcomeState.STOP_REQUESTED
+        )
+        assert trainer.stop(expected_run=reviewed.run) is None
+    finally:
+        trainer.stop()
+        release.set()
+        assert trainer.wait_for_completion(timeout=3)
+
+
+@pytest.mark.parametrize("replacement", [False, True])
+def test_run_bound_stop_cannot_interrupt_a_different_running_run(
+    training_plan_holders, replacement
+):
+    trainer = Trainer(training_plan_holders)
+    started = threading.Event()
+    release = threading.Event()
+
+    def train():
+        started.set()
+        assert release.wait(timeout=5)
+
+    training_plan_holders[0].train = train
+    trainer.run(interact=True)
+    try:
+        assert started.wait(timeout=2)
+        current = trainer.get_terminal_outcome()
+        wrong_run = TrainingRunIdentity(
+            trainer_id="replaced-trainer" if replacement else current.run.trainer_id,
+            run_id=current.run.run_id if replacement else current.run.run_id + 1,
+        )
+        assert trainer.stop(expected_run=wrong_run) is None
+        assert trainer.get_terminal_outcome() == current
+        assert not trainer.interrupt
+        assert not training_plan_holders[0].interrupt
+    finally:
+        trainer.stop()
+        release.set()
+        assert trainer.wait_for_completion(timeout=3)
+
+
+def test_run_bound_stop_rejects_a_completed_run(training_plan_holders):
+    trainer = Trainer(training_plan_holders)
+    for holder in training_plan_holders:
+        holder.train = MagicMock()
+    trainer.run(interact=False)
+    completed = trainer.get_terminal_outcome()
+    assert trainer.stop(expected_run=completed.run) is None
+    assert trainer.get_terminal_outcome() == completed
+    assert not trainer.interrupt
 
 
 def test_trainer_force_clean_joins_running_job(training_plan_holders):

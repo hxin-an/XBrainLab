@@ -18,6 +18,7 @@ from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
     TrainingPipelineMutationBoundary,
     TrainingReadBoundary,
+    TrainingRunIdentity,
     TrainingTerminalOutcome,
 )
 
@@ -85,7 +86,12 @@ class TrainingCommandRuntimePort(Protocol):
 
     def resource_context(self) -> TrainingRuntimeContext: ...
 
-    def stop_training(self, *, wait_timeout: float | None = None) -> bool: ...
+    def stop_training(
+        self,
+        *,
+        wait_timeout: float | None = None,
+        expected_run: TrainingRunIdentity | None = None,
+    ) -> bool | None: ...
 
     def wait_for_training_completion(
         self,
@@ -196,7 +202,9 @@ class _TrainingManagerRuntimePort(Protocol):
     def stop_training_if_present(
         self,
         wait_timeout: float | None = None,
-    ) -> bool: ...
+        *,
+        expected_run: TrainingRunIdentity | None = None,
+    ) -> bool | None: ...
 
     def wait_for_training_completion(
         self,
@@ -320,8 +328,18 @@ class StudyTrainingRuntime:
     def capture_read_boundary(self) -> TrainingReadBoundary:
         return self._manager.capture_training_read_boundary()
 
-    def stop_training(self, *, wait_timeout: float | None = None) -> bool:
+    def stop_training(
+        self,
+        *,
+        wait_timeout: float | None = None,
+        expected_run: TrainingRunIdentity | None = None,
+    ) -> bool | None:
         """Stop the active trainer, returning False when no trainer exists."""
+        if expected_run is not None:
+            return self._manager.stop_training_if_present(
+                wait_timeout=wait_timeout,
+                expected_run=expected_run,
+            )
         return bool(
             self._manager.stop_training_if_present(wait_timeout=wait_timeout),
         )

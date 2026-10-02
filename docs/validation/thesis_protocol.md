@@ -125,7 +125,9 @@ Runner 原樣複製題庫，不做刪欄或特殊指紋轉換；新實驗重新 
 新 DEV 的研究專用投影只控制非任務資訊：模型 state card 不含 backend generation 數字；
 training progress 的匿名 subject reference 按出現順序改成穩定別名。真實 stage、進度數值、
 工具與任務資訊保留。Host 仍用原 publication generation 作 freshness/admission，
-不固定真 counter、不略過 stale checks；原 publication 與實際模型輸入分別保留。
+不固定真 counter；停止確認依[核准的run-bound例外](../target/agent.md#backend-owned-stage-contract)
+在執行邊界核對原trainer/run仍在running，不因同場進度更新失效，其餘stale checks不變。
+原 publication 與實際模型輸入分別保留。
 這是新 DEV 配置，不回套舊 B0，也不宣稱兩者輸入相同。
 
 ## 4. 評分、計時與量測完整性
@@ -149,6 +151,8 @@ training progress 的匿名 subject reference 按出現順序改成穩定別名�
   少類別、缺題或未知終態不能宣稱完整矩陣完成。
 
 決策、admission、使用者確認及實際 Command／GUI outcome 分層記錄。
+完整且同turn/request的確認拒絕／取消事件是有效量測的`blocked`／`cancelled`，不是
+執行成功，也不是「缺少執行觀察」。缺事件、重複或矛盾執行事件、身分不符仍判量測無效。
 Scorer 正反例保護參數、格式、錯誤工具、正常不操作與有效失敗，並獨立覆核可達的錯判。
 正式實驗若發現 scorer 缺陷，一致重評受影響資料，不只修抽到的個案。
 

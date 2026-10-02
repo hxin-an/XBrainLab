@@ -11,7 +11,10 @@ from XBrainLab.llm.agent.assistant_activity import (
     AssistantTurnActivity,
     AssistantTurnActivityPhase,
 )
-from XBrainLab.llm.agent.confirmation import AgentConfirmationRequest
+from XBrainLab.llm.agent.confirmation import (
+    AgentConfirmationRequest,
+    running_training_identity,
+)
 from XBrainLab.llm.agent.response_presentation import AssistantResponseKind
 from XBrainLab.ui.product_language import tool_action_label
 
@@ -121,6 +124,13 @@ class AgentPresentationService:
     ) -> bool:
         """Report a stale request only against a reliable current publication."""
         request_generation = request.publication_generation
+        if request.command_name == "stop_training":
+            return (
+                request.expected_training_run is None
+                or not getattr(publication, "usable", False)
+                or running_training_identity(publication.state.to_dict())
+                != request.expected_training_run
+            )
         if not getattr(publication, "usable", False) or not getattr(
             publication.state, "state_reliable", False
         ):

@@ -449,14 +449,24 @@ class Trainer:
             self._run_admitted = False
             self._worker_started = False
 
-    def stop(self, wait_timeout: float | None = None) -> bool:
+    def stop(
+        self,
+        wait_timeout: float | None = None,
+        *,
+        expected_run: TrainingRunIdentity | None = None,
+    ) -> bool | None:
         """Request interruption and optionally wait for the training thread.
 
         Returns:
-            ``True`` when no background training thread remains alive.
+            ``True`` when no background training thread remains alive; ``None``
+            when an exact-run request no longer names a running, unstopped run.
 
         """
-        thread, thread_alive, requested = self._set_interrupt_state(require_active=True)
+        thread, thread_alive, requested = self._set_interrupt_state(
+            require_active=True, expected_run=expected_run
+        )
+        if requested is None:
+            return None
         if not requested or thread is None or not thread_alive:
             return True
         if wait_timeout is not None and thread is not threading.current_thread():
@@ -472,9 +482,16 @@ class Trainer:
             thread_alive = thread.is_alive()
         return not thread_alive
 
-    def wait_for_completion(self, timeout: float | None = None) -> bool:
+    def wait_for_completion(
+        self,
+        timeout: float | None = None,
+        *,
+        expected_run: TrainingRunIdentity | None = None,
+    ) -> bool:
         """Wait for the admitted background worker without holding manager locks."""
         with self._state_lock:
+            if expected_run is not None and self._active_run != expected_run:
+                return True
             thread = self.job_thread
         if thread is None or thread is threading.current_thread():
             return True
@@ -589,7 +606,8 @@ class Trainer:
         self,
         *,
         require_active: bool,
-    ) -> tuple[threading.Thread | None, bool, bool]:
+        expected_run: TrainingRunIdentity | None = None,
+    ) -> tuple[threading.Thread | None, bool, bool | None]:
         """Commit one stop request and return the captured worker liveness."""
         with self._state_tracker.mutation(), self._state_lock:
             thread = self.job_thread
@@ -597,6 +615,13 @@ class Trainer:
                 thread is not None and thread.is_alive() if require_active else False
             )
             active = self._run_admitted or self._worker_started or thread_alive
+            if expected_run is not None and (
+                not active
+                or self._active_run != expected_run
+                or self._terminal_outcome.state is not TrainingOutcomeState.RUNNING
+                or self._interrupt.is_set()
+            ):
+                return thread, thread_alive, None
             if require_active and not active:
                 return thread, thread_alive, False
             self._interrupt.set()

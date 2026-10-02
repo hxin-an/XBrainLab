@@ -1725,17 +1725,47 @@ class ApplicationService(Observable):
             # The emergency control path must remain cold-start safe: resolving
             # the lazy TrainingCommandService imports torch and can take seconds
             # before a stop intent reaches the active worker.
-            stopped = self.training_runtime.stop_training(
-                wait_timeout=command.wait_timeout,
-            )
+            if command.expected_run is None:
+                stopped = self.training_runtime.stop_training(
+                    wait_timeout=command.wait_timeout
+                )
+            else:
+                stopped = self.training_runtime.stop_training(
+                    wait_timeout=command.wait_timeout,
+                    expected_run=command.expected_run,
+                )
+                if stopped is None:
+                    return CommandResult.failure_result(
+                        command_name=CommandName.STOP_TRAINING.value,
+                        message=(
+                            "The confirmed training run is no longer running "
+                            "or already has a stop request."
+                        ),
+                        state=before,
+                        changed_state=ChangedState(),
+                        error_type=ErrorType.PRECONDITION,
+                        recoverable=True,
+                        diagnostics={
+                            "stale_confirmation": True,
+                            "expected_training_run": command.expected_run.to_dict(),
+                            "control_path": "lock_independent",
+                            "state_preserved": True,
+                        },
+                    )
             outcome = self.training_runtime.terminal_outcome()
+            acknowledged_run = command.expected_run or outcome.run
+            terminal_state = (
+                outcome.state
+                if outcome.run == acknowledged_run
+                else TrainingOutcomeState.UNKNOWN
+            )
             message = "Training stopped." if stopped else "Training stop requested."
             diagnostics = {
                 "stopped": bool(stopped),
                 "wait_timeout": command.wait_timeout,
-                "terminal_outcome": outcome.state.value,
+                "terminal_outcome": terminal_state.value,
                 "training_run": (
-                    outcome.run.to_dict() if outcome.run is not None else None
+                    acknowledged_run.to_dict() if acknowledged_run is not None else None
                 ),
             }
         except Exception as exc:
