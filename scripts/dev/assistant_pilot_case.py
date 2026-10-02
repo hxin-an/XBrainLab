@@ -21,7 +21,10 @@ from typing import Any
 
 
 def validate_case_request(payload: dict) -> None:
-    from scripts.dev.assistant_experiment_config import is_experiment_protocol
+    from scripts.dev.assistant_experiment_config import (
+        ablation_policy,
+        is_experiment_protocol,
+    )
     from scripts.dev.assistant_pilot_bank import DEV_EXPERIMENT
     from scripts.dev.assistant_pilot_models import research_model_spec
 
@@ -37,9 +40,29 @@ def validate_case_request(payload: dict) -> None:
         or not 1 <= payload["candidate_index"] <= 5
         or not isinstance(payload.get("source_head"), str)
         or not re.fullmatch(r"[0-9a-f]{40}", payload["source_head"])
-        or payload.get("rag_enabled") is not True
+        or (split != "TEST" and payload.get("rag_enabled") is not True)
     ):
         raise ValueError("Invalid frozen experiment candidate identity")
+    if current and split == "TEST":
+        factors = ablation_policy(payload.get("ablation"))
+        if (
+            payload.get("model_id") != "microsoft/Phi-4-mini-instruct"
+            or payload["candidate_index"] != 5
+            or any(
+                type(payload.get(key)) is not type(value) or payload[key] != value
+                for key, value in factors.items()
+            )
+        ):
+            raise ValueError("Invalid frozen TEST ablation identity")
+    elif any(
+        key in payload
+        for key in (
+            "ablation",
+            "tool_filter_enabled",
+            "max_format_recovery_attempts",
+        )
+    ):
+        raise ValueError("Ablation factors require a frozen TEST experiment")
     if (
         case.get("split") != split
         or not str(case.get("case_id", "")).startswith(split + "-")
@@ -65,7 +88,7 @@ def experiment_result_identity(payload: dict) -> dict:
 
     if not is_experiment_protocol(payload.get("experiment")):
         return {}
-    return {
+    identity = {
         key: payload[key]
         for key in (
             "experiment",
@@ -76,6 +99,19 @@ def experiment_result_identity(payload: dict) -> dict:
             "source_head",
         )
     }
+    if payload["split"] == "TEST":
+        identity.update(
+            {
+                key: payload[key]
+                for key in (
+                    "ablation",
+                    "rag_enabled",
+                    "tool_filter_enabled",
+                    "max_format_recovery_attempts",
+                )
+            }
+        )
+    return identity
 
 
 def verify_prompt_captures(

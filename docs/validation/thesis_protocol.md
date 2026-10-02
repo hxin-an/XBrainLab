@@ -65,6 +65,57 @@ DEV完全同分同P50取較早candidate（本次未用）；VALID按三次平均
 舊 B0/B1/B2 搜尋安排、最多 30 條件 VALID、TEST 加跑同模型 B0、P95 10 秒門檻
 已被新版設計取代，不再派工；歷史決策留 Git，舊 B0 封存／分數／入口不追改。
 
+### 2026-10-02 TEST執行凍結
+
+使用者批准TEST施工、完整執行、資料稽核及本機回存。VALID成功run為
+`20261002-124746-8263faf9`（7c4ac807，1485筆）；依事前平均macro再平均P50選定
+Phi-4 Mini R5（macro 0.7654320988），不因TEST結果換模型或提示。
+正式矩陣為以下四條件各132題、repeat 0/1/2，共1584次案例執行；修復生成另計。
+
+| 條件 | RAG | 狀態式工具目錄篩選 | 最多格式重試 |
+| --- | --- | --- | ---: |
+| full | on | on | 1 |
+| rag-off | off | on | 1 |
+| tool-filter-off | on | off | 1 |
+| retry-off | on | on | 0 |
+
+目錄消融僅擴大提供模型的工具schema；state、blocked原因、RAG候選資格／結果、
+固定提示示意及Host admission／confirmation維持full。可看見不代表可執行；Host攔截
+不將錯誤模型提案變成正確。另兩項各只停用自己的機制。Full完整輸入須於既有DEV/VALID
+情境與入選版本逐字相同；各消融完整輸入／runtime政策差異在讀TEST前用無推論證據確認。
+沿用精確Phi模型／生成設定、137及共用環境，不增加模型、DEV候選、B0或smoke推論。
+
+排程先repeat後條件：repeat0為上述表格順序；repeat1左移一格，repeat2左移兩格。
+每condition/repeat独立載入與既定warmup，案例依case_id遞增且逐題reset。
+這是減少時間順序偏差的固定輪換，不宣稱四條件完全平衡。預算仍受14400秒active上限
+約束，不因有效錯答加跑。完整題庫僅在此研究配置固定及無推論消融檢查通過後解封；
+其來源hash、fixture/input/token預檢與最後工程source SHA在執行前封存。
+
+主分數仍為各repeat三類macro後平均；P50/P95各repeat先算再平均，不混池。
+呈現三類分數及always-respond參照macro 66.67%（Action 0、其餘100%），不將兩類
+合法回答率解讀成回答品質。分開記錄原始模型、Host admission及實際執行結果。
+補充full對各off的配對差、修復觸發／救回／時間成本，不以變好才宣稱完成。
+
+不確定性：依Action／Clarification／No-call分層，分別以36／12／18個family為抽樣
+單位有放回重抽10000次（analysis seed0）；每family的2改寫×3repeat及四條件成套
+保留。由每family六次平均正確率算各層均值，再三層等權計macro；同一次抽樣索引用於
+full/off配對差，取2.5及97.5百分位數。此分析不再生成模型輸出，不把repeat當獨立題庫。
+區間是題庫涵蓋任務／family抽樣假設下的條件式不確定性，不代表所有真實使用者，
+不把三個個別95%區間稱為同時95%或事後用顯著性重選系統。模板相關性列限制。
+
+題庫／RAG重合稽核依使用者`碩論準備/資料集驗證/README.md`，於正式TEST啟動後
+進行，不因此再調提示、題目、oracle或分母。標準答案建立及scorer證據如實交代；
+既有使用者審題與工程驗證不冒稱第二位獨立人工標註。不新增強制真人研究。
+工程fixture修正需新source及重驗；正式source改變不得混批。未知缺證據／cleanup失敗
+仍fail closed。正常錯答照實保存；新oracle／研究決策問題交使用者，不自行修答案。
+
+NAS TEST沿用stage內一個完整封存包、12條件在同一run；全部成功VALID/TEST結果
+複製至`D:\workspace_v2\projects\lab\碩論準備\實驗\result/<STAGE>/<run-id>`，
+保留index、reports、raw證據、inputs、launches、audits（如有）、prepared manifest。
+逐檔hash及離線HTML links核對後才稱回存完成。不帶權重／環境／暫存EEG，NAS原件不改。
+使用者要求節制監控：啟動核對後依預估時程低頻讀摘要／終態；不逐題輪詢或反覆拉全log。
+本輪終點為完整TEST、稽核與本機副本交付，不以啟動即宣稱完成，不自動merge。
+
 ## 1. 研究定位與限制
 
 第一主線是可靠、好用且介面清楚的 EEG 軟體；本規格只處理第二主線：

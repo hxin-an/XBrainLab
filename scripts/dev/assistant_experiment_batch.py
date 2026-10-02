@@ -233,18 +233,25 @@ def create_experiment(
 
 def append_round(root: Path, selection: dict, *, coordinator_root: Path = ROOT) -> Path:
     """Append one frozen DEV round without rewriting earlier evidence or inputs."""
-    return _publish_selection(root, selection, coordinator_root, activate_valid=False)
+    return _publish_selection(root, selection, coordinator_root, activate_stage=None)
 
 
 def activate_valid_stage(
     root: Path, selection: dict, *, coordinator_root: Path = ROOT
 ) -> Path:
     """Prepare the blocked VALID scope once, preserving its sealed shell entry."""
-    return _publish_selection(root, selection, coordinator_root, activate_valid=True)
+    return _publish_selection(root, selection, coordinator_root, activate_stage="VALID")
+
+
+def activate_test_stage(
+    root: Path, selection: dict, *, coordinator_root: Path = ROOT
+) -> Path:
+    """Prepare the blocked TEST scope once without rewriting prior experiments."""
+    return _publish_selection(root, selection, coordinator_root, activate_stage="TEST")
 
 
 def _publish_selection(
-    root: Path, selection: dict, coordinator_root: Path, *, activate_valid: bool
+    root: Path, selection: dict, coordinator_root: Path, *, activate_stage: str | None
 ) -> Path:
     """Publish one new selection, keeping all previously sealed files unchanged.
 
@@ -259,11 +266,14 @@ def _publish_selection(
     original = manifest_path.read_bytes()
     key = selection["path"]
     parent = "stages/dev"
-    if activate_valid:
-        if key != "stages/val" or set(manifest["scopes"].get(key, {})) != {
+    if activate_stage is not None:
+        stage_path = {"VALID": "stages/val", "TEST": "stages/test"}[activate_stage]
+        if key != stage_path or set(manifest["scopes"].get(key, {})) != {
             "blocked_reason"
         }:
-            raise ValueError("Activation requires the existing blocked VALID scope")
+            raise ValueError(
+                f"Activation requires the existing blocked {activate_stage} scope"
+            )
     elif (
         not re.fullmatch(r"stages/dev/round-[0-9]{2}", key)
         or key in manifest["scopes"]
@@ -272,7 +282,7 @@ def _publish_selection(
     ):
         raise ValueError("Append requires a new round under the existing DEV scope")
     config = package_api._json(Path(selection["config"]))
-    split = "VALID" if activate_valid else "DEV"
+    split = activate_stage or "DEV"
     if config.get("split") != split:
         raise ValueError(f"Only a {split} configuration can be published here")
     binding = package_api._json(root / "snapshot/environment/shared.json")
@@ -297,11 +307,11 @@ def _publish_selection(
             for name, digest in incoming["files"].items()
             if name.startswith((f"{key}/", "snapshot/inputs/", "snapshot/environment/"))
         }
-        if activate_valid:
+        if activate_stage is not None:
             # Its bootstrap already reads the manifest coordinator. Do not replace
             # a frozen entry simply because the staged coordinator has a new SHA.
             del incoming_files[f"{key}/run.sh"]
-        moves = [] if activate_valid else [key]
+        moves = [] if activate_stage is not None else [key]
         moves.extend(
             f"snapshot/sources/{head}"
             for head in incoming["sources"]
@@ -311,7 +321,7 @@ def _publish_selection(
             if name in manifest["files"]:
                 if manifest["files"][name] != digest:
                     raise ValueError(f"Append would change a frozen file: {name}")
-            elif activate_valid or not name.startswith(f"{key}/"):
+            elif activate_stage is not None or not name.startswith(f"{key}/"):
                 moves.append(name)
         for name in moves:
             if _physical(root, name).exists():
@@ -322,7 +332,7 @@ def _publish_selection(
         )
         manifest["files"].update(incoming_files)
         manifest["scopes"][key] = incoming["scopes"][key]
-        if not activate_valid:
+        if activate_stage is None:
             manifest["scopes"][parent]["children"].append(key)
         try:
             for name in moves:

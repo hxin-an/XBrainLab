@@ -140,6 +140,137 @@ def test_experiment_session_wires_exact_model_presentation(
             assert session.close()
 
 
+@pytest.mark.parametrize(
+    "ablation", ["full", "rag-off", "tool-filter-off", "retry-off"]
+)
+def test_test_session_applies_only_frozen_runtime_factor(
+    qtbot,
+    tmp_path,
+    controlled_condition_runtime,
+    ablation,
+):
+    from scripts.dev.assistant_experiment_config import ablation_policy
+    from tests.unit.scripts.test_assistant_pilot_case import ablation_request
+    from XBrainLab.llm.agent.parser import CommandParser
+    from XBrainLab.llm.agent.strict_envelope_recovery import (
+        StrictEnvelopeRecoveryAction,
+        StrictEnvelopeRecoveryRequest,
+    )
+
+    payload = ablation_request(ablation)
+    payload["rag_cache"] = str(tmp_path / "external-rag")
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    with patch.dict(os.environ):
+        try:
+            session.__init__(payload, tmp_path)
+            controller = session.manager.agent_controller
+            factors = ablation_policy(ablation)
+            assert (
+                controller.assembler.tool_filter_enabled
+                is factors["tool_filter_enabled"]
+            )
+            assert (session.condition_evidence["rag_warmup"] is not None) is factors[
+                "rag_enabled"
+            ]
+            recovery = controller._strict_envelope_recovery_policy.decide(
+                StrictEnvelopeRecoveryRequest(
+                    CommandParser.parse_product("not valid JSON"), 0
+                )
+            )
+            assert recovery.action is (
+                StrictEnvelopeRecoveryAction.EXHAUSTED
+                if ablation == "retry-off"
+                else StrictEnvelopeRecoveryAction.RETRY_FORMAT
+            )
+            for name, value in factors.items():
+                assert session.identity[name] == value
+                assert session.condition_evidence["ablation_factors"][name] == value
+        finally:
+            assert session.close()
+
+
+@pytest.mark.parametrize("ablation", ["full", "retry-off", "tool-filter-off"])
+def test_ablation_real_turn_preserves_host_block_and_retry_budget(
+    qtbot,
+    tmp_path,
+    monkeypatch,
+    controlled_condition_runtime,
+    ablation,
+):
+    import json
+
+    from tests.unit.llm.core.test_runtime_prompt_capture import _Streamer, _Tokenizer
+    from tests.unit.scripts.test_assistant_pilot_case import ablation_request
+    from tests.unit.scripts.test_assistant_pilot_fixture import _fixture
+
+    payload = ablation_request(ablation)
+    payload["rag_cache"] = str(tmp_path / "external-rag")
+    payload["fixture"] = _fixture("empty")
+    payload["case"].update(
+        decision="No-call",
+        expected_tool="respond_to_user",
+        expected_parameters=None,
+        input="Keep the current data unchanged.",
+        fixture_id=payload["fixture"]["metadata"]["fixture_id"],
+    )
+    blocked_call = json.dumps(
+        {
+            "tool_name": "apply_bandpass_filter",
+            "parameters": {"low_freq": 1, "high_freq": 40},
+        }
+    )
+    reply = json.dumps(
+        {"tool_name": "respond_to_user", "parameters": {"message": "Unchanged."}}
+    )
+    outputs = iter(
+        ["READY", blocked_call]
+        if ablation == "tool-filter-off"
+        else ["READY", "broken JSON", reply]
+    )
+    monkeypatch.setattr(_Streamer, "__iter__", lambda _self: iter([next(outputs)]))
+    template = _Tokenizer.apply_chat_template
+
+    def synthetic_tokens(self, messages, *, tokenize, add_generation_prompt):
+        value = template(
+            self,
+            messages,
+            tokenize=tokenize,
+            add_generation_prompt=add_generation_prompt,
+        )
+        return value[::4] if tokenize else value
+
+    # Transport double counts characters as tokens; no claim about model context fit.
+    monkeypatch.setattr(_Tokenizer, "apply_chat_template", synthetic_tokens)
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    with patch.dict(os.environ):
+        try:
+            session.__init__(payload, tmp_path)
+            result = session.run_case(payload, tmp_path / "case")
+            assert result["status"] == "recorded", result.get("issues", result)
+            assert result["cleanup_ok"] is True
+            assert result["scores"]["first_decision_correct"] is False
+            assert result["scores"]["final_decision_correct"] is (ablation == "full")
+            assert len(result["trace"]["generations"]) == (
+                2 if ablation == "full" else 1
+            )
+            assert result["scores"]["max_format_recovery_attempts"] == (
+                0 if ablation == "retry-off" else 1
+            )
+            assert result["ablation"] == ablation
+            assert result["after_state"]["pipeline_stage"] == "empty"
+            if ablation == "tool-filter-off":
+                assert not any(
+                    event["kind"] == "command_started"
+                    for event in result["trace"]["events"]
+                )
+                system = dict(
+                    result["trace"]["generations"][0]["request"]["messages"][0]
+                )["content"]
+                assert '"name": "apply_bandpass_filter"' in system
+        finally:
+            assert session.close()
+
+
 @pytest.fixture
 def controlled_condition_runtime(monkeypatch):
     import transformers
@@ -563,6 +694,35 @@ def test_condition_cannot_mix_candidates_even_with_the_same_model_and_repeat():
     second = copy.deepcopy(first)
     second["candidate_index"] = 3
     payload["jobs"].append({"id": "second", "payload": second})
+    with pytest.raises(ValueError, match="identit"):
+        validate_condition_request(payload)
+
+
+@pytest.mark.parametrize(
+    "ablation", ["full", "rag-off", "tool-filter-off", "retry-off"]
+)
+def test_condition_binds_exact_test_factors_to_every_case(ablation):
+    from scripts.dev.assistant_pilot_case import experiment_result_identity
+    from tests.unit.scripts.test_assistant_pilot_case import ablation_request
+
+    case = ablation_request(ablation)
+    payload = {
+        "schema": SCHEMA,
+        "condition": "phi4-" + ablation,
+        "case_start_budget_seconds": 1000,
+        **experiment_result_identity(case),
+        "jobs": [{"id": "first", "payload": case}],
+    }
+    validate_condition_request(payload)
+    for field in ("rag_enabled", "tool_filter_enabled", "max_format_recovery_attempts"):
+        altered = copy.deepcopy(payload)
+        altered[field] = (
+            int(case[field]) if type(case[field]) is bool else bool(case[field])
+        )
+        with pytest.raises(ValueError, match="identity"):
+            validate_condition_request(altered)
+    other = ablation_request("rag-off" if ablation != "rag-off" else "full")
+    payload["jobs"].append({"id": "second", "payload": other})
     with pytest.raises(ValueError, match="identit"):
         validate_condition_request(payload)
 

@@ -177,12 +177,27 @@ class DevContextAssembler(ContextAssembler):
     _TOOL_BLOCK_TEMPLATE = "\nAvailable choices (guidance, not output):\n{tools_str}\n{availability_note}\n"
 
     def __init__(
-        self, tool_registry, study_state, *, model_id: str, application_runtime=None
+        self,
+        tool_registry,
+        study_state,
+        *,
+        model_id: str,
+        application_runtime=None,
+        tool_filter_enabled: bool = True,
     ):
         validate_dev_prompt_model(model_id)
+        if type(tool_filter_enabled) is not bool:
+            raise ValueError("Tool catalog filter must be boolean")
         self.model_id = model_id
+        self.tool_filter_enabled = tool_filter_enabled
         if model_id not in _ROUND2_PRESENTATION_MODELS:
             self._TOOL_BLOCK_TEMPLATE = ContextAssembler._TOOL_BLOCK_TEMPLATE
+        if not tool_filter_enabled:
+            self._TOOL_BLOCK_TEMPLATE = self._TOOL_BLOCK_TEMPLATE.replace(
+                "{availability_note}",
+                "Catalog definitions do not grant availability. Unavailable Action "
+                "Reference and backend state still determine whether an action is enabled.",
+            )
         super().__init__(
             tool_registry, study_state, application_runtime=application_runtime
         )
@@ -203,7 +218,20 @@ class DevContextAssembler(ContextAssembler):
             if self.model_id in _ROUND2_PRESENTATION_MODELS
             else super()._format_tools
         )
-        catalog = formatter(allowed_names, unavailable_actions=unavailable_actions)
+        catalog_names = allowed_names
+        if not self.tool_filter_enabled:
+            from XBrainLab.llm.tools.application_surface import AGENT_ACTION_CONTRACTS
+
+            catalog_names = sorted(AGENT_ACTION_CONTRACTS.model_tool_names())
+        catalog = formatter(catalog_names, unavailable_actions=unavailable_actions)
+        if not self.tool_filter_enabled:
+            catalog = catalog.replace(
+                "Callable action contract:", "Action contract definition:"
+            )
+            catalog = catalog.replace(
+                "These entries are informational status, not callable action contracts.",
+                "These actions remain unavailable even when their definitions appear above.",
+            )
         if self.model_id in _ILLUSTRATED_MODELS:
             catalog += "\n\n" + self._output_illustrations(allowed_names)
         emphasis = _MODEL_EMPHASIS[self.model_id]

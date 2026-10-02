@@ -220,7 +220,7 @@ def test_macro_equal_weights_categories_and_first_final_are_separate(tmp_path):
     assert actual["active_budget"]["charged_seconds"] == 100
 
 
-def _experiment_run(tmp_path):
+def _experiment_run(tmp_path, *, split="VALID"):
     from scripts.dev import assistant_experiment_config as contract
 
     template = _run(tmp_path, [("Action", True, True, "completed")], dev=True)
@@ -228,9 +228,9 @@ def _experiment_run(tmp_path):
     (root / "cases").mkdir(parents=True)
     cases = [
         {
-            "case_id": f"VALID-{prefix}{group:02}-{family:02}-V{variant}",
-            "family_id": f"VALID-{prefix}{group:02}-{family:02}",
-            "split": "VALID",
+            "case_id": f"{split}-{prefix}{group:02}-{family:02}-V{variant}",
+            "family_id": f"{split}-{prefix}{group:02}-{family:02}",
+            "split": split,
             "decision": category,
         }
         for prefix, category, groups, families in (
@@ -239,12 +239,12 @@ def _experiment_run(tmp_path):
             ("N", "No-call", 3, 3),
         )
         for group in range(1, groups + 1)
-        for family in range(1, families + 1)
-        for variant in range(3)
+        for family in range(1, families * (2 if split == "TEST" else 1) + 1)
+        for variant in range(2 if split == "TEST" else 3)
     ]
     config = {
         "schema": contract.CONFIG_SCHEMA,
-        "split": "VALID",
+        "split": split,
         "purpose": "research",
         "embedding_cache": ".",
         "resource_inventory": "resources.json",
@@ -252,7 +252,7 @@ def _experiment_run(tmp_path):
         "models": [
             {
                 "alias": "phi4",
-                "candidate_index": 2,
+                "candidate_index": 5 if split == "TEST" else 2,
                 "source": {"head": "a" * 40, "root": str(tmp_path)},
                 "model_cache": ".",
             }
@@ -278,13 +278,17 @@ def _experiment_run(tmp_path):
         condition = contract.job_condition_identity(job)
         if not (root / "conditions" / condition).exists():
             shutil.copytree(
-                template / "conditions" / job["condition"],
+                template / "conditions" / "phi4-rag-on",
                 root / "conditions" / condition,
             )
         identity = {
             key: job[key]
             for key in ("candidate_index", "split", "repeat", "source_head")
         }
+        if split == "TEST":
+            identity.update(
+                ablation=job["ablation"], **contract.ablation_policy(job["ablation"])
+            )
         case = {**source_request["case"], **indexed[job["case_id"]]}
         request = {**source_request, **identity, "experiment": experiment, "case": case}
         result = json.loads(json.dumps(source_result))
@@ -293,11 +297,17 @@ def _experiment_run(tmp_path):
         )
         result["scores"].update(
             scorer_schema="xbrainlab.assistant_decision_scores.v3",
-            max_format_recovery_attempts=1,
+            max_format_recovery_attempts=identity.get(
+                "max_format_recovery_attempts", 1
+            ),
             first_decision_correct=job["repeat"] == 0,
             final_decision_correct=job["repeat"] != 1,
         )
         result["condition_evidence"]["artifact_id"] = condition
+        if split == "TEST":
+            result["condition_evidence"]["ablation_factors"] = contract.ablation_policy(
+                job["ablation"]
+            )
         decision_seconds = [1, 10, 100][job["repeat"]]
         result.update(
             decision_seconds=decision_seconds,
@@ -358,6 +368,81 @@ def _experiment_run(tmp_path):
         "".join(json.dumps(row) + "\n" for row in journal)
     )
     return root
+
+
+def test_test_report_keeps_four_ablations_and_three_repeats(tmp_path):
+    root = _experiment_run(tmp_path, split="TEST")
+    result = report.build_report(root)
+    assert result["complete_selected_schedule"] is True
+    assert len(result["cases"]) == 1584
+    assert len(result["conditions"]) == 12
+    assert len(result["repeat_summary"]) == 4
+    assert all(row["family_id"] for row in result["cases"])
+    assert all(
+        value["overall"]["final"]["denominator"] == 132
+        for value in result["conditions"].values()
+    )
+    assert all(value["complete"] for value in result["repeat_summary"].values())
+    assert (
+        result["paired_family_analysis"]["full_minus_ablation"]["retry-off"]["estimate"]
+        == 0
+    )
+
+
+def test_test_report_requires_observed_runtime_factors(tmp_path):
+    root = _experiment_run(tmp_path, split="TEST")
+    manifest = json.loads((root / "manifest.json").read_text())
+    job = manifest["jobs"][0]
+    records = [
+        json.loads(line) for line in (root / "journal.jsonl").read_text().splitlines()
+    ]
+    start, end = records[0], records[1]
+    path = root / "cases" / job["id"] / "result.json"
+    original = json.loads(path.read_text())
+    for observed in (
+        None,
+        {
+            "rag_enabled": 1,
+            "tool_filter_enabled": True,
+            "max_format_recovery_attempts": 1,
+        },
+    ):
+        result = json.loads(json.dumps(original))
+        result["condition_evidence"]["ablation_factors"] = observed
+        end["result_sha256"] = _write(path, result)
+        row = report._case(root, job, start, end, manifest["experiment"])
+        assert row["evidence_status"] == "invalid_evidence"
+        assert not row["decision_valid"]
+
+
+def test_test_report_labels_one_model_four_conditions_and_repeats():
+    from scripts.dev.assistant_experiment_config import _policy
+    from scripts.dev.assistant_pilot_presentation import (
+        _condition_label,
+        experiment_conditions,
+    )
+
+    value = {
+        "experiment": _policy("TEST", "research"),
+        "cases": [
+            {"condition": "phi4-" + name, "case_id": "TEST-A01-01-V0"}
+            for name in ("full", "rag-off", "tool-filter-off", "retry-off")
+        ],
+    }
+    assert "1 model" in experiment_conditions(value, dev=True)
+    assert "4 conditions" in experiment_conditions(value, dev=True)
+    assert "RAG on" not in experiment_conditions(value, dev=True)
+    assert "repeat 3" in _condition_label(
+        "unused",
+        {
+            "identity": {
+                "condition": "phi4-retry-off",
+                "candidate_index": 5,
+                "split": "TEST",
+                "repeat": 2,
+            }
+        },
+    )
 
 
 def test_experiment_report_keeps_repeat_and_candidate_denominators_separate(tmp_path):

@@ -2,7 +2,90 @@
 
 最後更新：`2026-10-02`
 
-## Active — VALID錯誤工具路徑的量測可靠性修理
+## 目前 — TEST封存、三次完整量測與本機結果交付
+
+2026-10-02使用者批准完整TEST施工計畫及結果回存，要求節省額度、避免頻繁監控。
+基準head為7c4ac807；settings.json為使用者設定，不更動。VALID已完成並依既定規則
+選定Phi-4 Mini R5；現有runner/config尚未接通TEST及指定三項消融，不能直接開跑。
+Outcome：Full、RAG off、tool-catalog filter off、format retry off各132題×3 repeats，
+共1584筆有效案例（修復生成另計），完成報告、離線核對、題庫稽核及本機完整結果副本。
+Scope：沿用封存／runner／scorer／report owners，補TEST配置與單因素消融、必要fixture、
+無LLM預檢、獨立風險覆核、同head CI、137正式執行及NAS→本機完整VALID/TEST回存。
+Non-goals：不改UI、產品工具／Host契約、入選提示／RAG／生成／判分，不追加DEV、模型、
+B0或新環境，不merge，不依TEST錯答調整或重跑。失敗source與原始證據保留。
+研究因素先凍結再讀TEST；catalog off只擴大呈現目錄，原RAG eligibility、固定示意、
+state、backend admission與confirmation保持不變。RAG off與retry off各只關自身因素。
+固定greedy seed0、既有137環境／Phi snapshot；三repeat按四條件循環輪換排程，
+各condition獨立session、逐題reset及既有warmup。不以Host阻擋把錯誤提案計正確。
+分析保持三類macro及每repeat P50/P95再平均；呈現各類、always-respond 66.67%參照、
+配對變化、retry救回／成本與模型／Host／執行分層。補三類分層family配對bootstrap，
+10000 draws、analysis seed0，所有變體／repeat／condition一同取樣；區間僅對題庫涵蓋
+的任務作條件式推論，不當成三個repeat的新樣本或多重檢定整體顯著性。
+步驟：固化協定→DEV/VALID paired-input與配置red-green→精確source／CI與獨立覆核
+→解封TEST及無LLM完整fixture/input/token預檢→新封存→137單次正式啟動→完成核對。
+TEST正式啟動後做下列題庫／示例稽核，不拿TEST回饋調提示。若真fixture缺口需修，
+只修工程接線並重新封存／驗證；實質oracle或研究決策缺口另交使用者，不暗改。
+Focused validation：單因素完整輸入差異、blocked工具仍受Host拒絕、off條件證據正確、
+12 conditions×132唯一jobs、三repeat、封存防覆寫與新run、cleanup／退出／原scorer重播。
+交付：NAS stages/test完整source/config/run；本機碩論準備/實驗/result/VALID及TEST
+完整成功run（index/reports/raw/inputs/launches/audits/manifest），核對逐檔hash與離線links；
+不複製權重、環境或暫存EEG，不覆寫舊批次。UI無改動，不新增產品手測門檻。
+監控：啟動確認一次，之後按預估時程低頻讀取摘要或終態；不連續讀log／逐題輪詢。
+等待期間做已授權離線分析／回存，無工作則使用等待機制；異常才深入診斷。
+Stop：1584筆／12完整conditions、正常退出與cleanup、報告／稽核／回存驗證完成，
+或需要使用者提供的TEST來源／新決策等真實blocker。不因compact、CI pending或啟動就停。
+Checkpoint：TEST排程／reader／runtime已接通，產品0修改；173runtime、61reader/preflight、
+79配置相鄰、30parent、51封存及23統計focused checks通過，非真模型分數。
+獨立覆核發現報告漏驗actual runtime factors，先red後補嚴格核對；完整1584報告及2負例
+共3项green。離線重評9項通過；比較工具22項在UTF-8通過（初次cp950有5讀檔失敗，
+未改分數或產品）。完整報告其餘回歸已通過，新的exact head CI仍待執行。
+VALID已回存result/VALID/20261002-124746-8263faf9：10143原檔402369543bytes、10523
+離線links有效、逐檔hash讀回一致；排除1485個synthetic fixture及1共享模型link。
+TEST沿用既有NAS樹的stages/test入口、snapshot/sources及results/runs；不為外觀重複
+封存一份程式。local TEST仍按run-id集中。此為沿用現有封存owner的具體位置。
+完整題庫已定位附錄/題型_已審完整版.xlsx，尚未讀內容。Next：最終source/CI，137先
+跑99VALID×4條件真fixture/RAG/tokenizer等價性，再解封TEST並做66fixture預檢；不推論調參。
+
+## 已完成 — VALID量測與TEST前討論
+
+VALID run `20261002-124746-8263faf9`已核對1485/1485、15 conditions各99筆、
+cleanup通過、runner/launch exit0及非partial報告；啟動時的交回記錄保留於下方。
+上述TEST施工已另獲批准；本節保留VALID完成證據。
+
+### 待辦 — TEST正式啟動後執行題庫與示例重合稽核
+
+另經授權完成TEST配置凍結並正式啟動後執行，不另設為開跑前阻擋。
+詳細待辦及後續產出集中於使用者指定的 `D:\workspace_v2\projects\lab\碩論準備\資料集驗證`，
+以該資料夾 `README.md` 為本項稽核範圍／判準的唯一明細，不在此重複維護。
+不重跑受測模型、不改凍結配置或主分母；TEST內容不得回流調整。實質問題另議，不自行重跑。
+
+## 歷史交回 — VALID修理完成，三次完整重跑已啟動
+
+封存source `7c4ac807288aac80d7f0826dedd75fc42fa08149`／PR157未合併。
+同head CI全部completed：24成功／3 scope skip；獨立source、相鄰UI風險及封存證據覆核通過。
+137修理runtime真Qt66項通過；最終test-only head另5項原生保護通過，runtime未再更動。
+33/33真fixtures及495組完整模型messages與原5ceb逐字相同，1485排程／研究因素不變。
+原失敗run與原封存保持原樣；repair-01封存未跑，正式使用獨立repair-02。
+NAS根`/mnt/home/2025/hxin/XBrainLab-experiments`；入口`stages/val/repair-02/run.sh`。
+run `20261002-124746-8263faf9`，結果在`stages/val/repair-02/runs/`；
+tmux `xbl-valid-repair02-7c4ac807`，log `.runtime/logs/valid-repair02-7c4ac807.log`。
+初始10筆actual system／RAG／prompt與raw hash／capture／cleanup全部通過；
+進度320→347/1485，session仍運行。證據`results/engineering/valid-repair-7c4ac807/initial-live-check.json`。
+這是正常啟動，不是實驗完成或正確率保證；依終點交回，不持續監控、不再追加推論。
+未知modal／證據缺失／清理失敗仍fail closed；不調VALID提示、不讀TEST、不merge。
+使用者本機研究文件六份已更新正確修理入口；result/VALID明示尚無完整結果。
+Next：使用者查結果時核對三次完整性，再整理正式指標；不要把舊部分結果混入。
+本頁為封存後交回記錄dirty，settings.json是使用者設定；遠端sealed source仍clean。
+
+本修理封存對5ceb（新增/刪除/淨）：產品0；測試327/12/+315；腳本1/1/0；
+文件74/1/+73；設定/其他0；合計402/14/+388，二進位0，含新增測試檔。
+分支對main72548c：產品220/23/+197；測試3028/24/+3004；腳本1763/91/+1672；
+文件721/10/+711；設定/其他0；合計5732/148/+5584，二進位0。
+以上不含封存後本頁及六份外部研究文件；外部文件是路徑／狀態同步，未改題庫或結果。
+本修理產品未改、設定未動；測試／scripts有真路由red-green與同head CI／獨立覆核；
+文件隨真實證據更新，不將工程預檢視為模型準確率。
+
+## 歷史 — VALID錯誤工具路徑的量測可靠性修理
 
 使用者授權修好並預先檢查同類問題，再恢復跑分。失敗run
 `20261002-105305-344823d1`正常recorded394/1485，G4三遍完成，G33第一遍

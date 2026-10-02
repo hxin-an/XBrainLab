@@ -324,14 +324,16 @@ def test_dev_resume_cannot_run_while_same_output_is_locked(run_inputs):
         runner.execute(manifest, bank, output, resume=True)
 
 
-def test_configured_valid_runs_real_children_per_repeat_and_never_resends_wrong_valid(
-    run_inputs, tmp_path, monkeypatch
+@pytest.mark.parametrize("split", ["VALID", "TEST"])
+def test_configured_research_runs_real_children_and_never_resends_wrong_valid(
+    run_inputs, tmp_path, monkeypatch, split
 ):
     from tests.unit.scripts.test_assistant_pilot_bank import _workbook
+    from tests.unit.scripts.test_assistant_test_schedule import test_bank
     from tests.unit.scripts.test_run_assistant_dev import experiment_config, valid_rows
 
     manifest, bank, output = run_inputs
-    config = experiment_config(tmp_path)
+    config = experiment_config(tmp_path, split)
     config["models"] = [config["models"][1]]
     manifest["config"] = config
     manifest["runtime_config"] = {
@@ -339,7 +341,11 @@ def test_configured_valid_runs_real_children_per_repeat_and_never_resends_wrong_
         "embedding_cache": str(tmp_path),
         "sources": {"phi4": config["models"][0]["source"]},
     }
-    bank = runner.load_bank(_workbook(tmp_path, valid_rows()))
+    bank = (
+        test_bank()
+        if split == "TEST"
+        else runner.load_bank(_workbook(tmp_path, valid_rows()))
+    )
     manifest["experiment"] = runner.experiment_config.experiment_identity(config)
     selection = runner.experiment_config.build_selection(bank, config)
     manifest["selection"] = selection
@@ -377,6 +383,19 @@ def test_configured_valid_runs_real_children_per_repeat_and_never_resends_wrong_
         changed["budget_seconds"] = 14400
         with pytest.raises(ValueError, match="derived"):
             runner.execute(changed, bank, output)
+        if split == "TEST":
+            for field, value in (
+                ("ablation", "rag-off"),
+                ("rag_enabled", False),
+                ("tool_filter_enabled", False),
+                ("max_format_recovery_attempts", 0),
+                ("rag_enabled", 1),
+                ("max_format_recovery_attempts", True),
+            ):
+                changed = deepcopy(manifest)
+                changed["jobs"][0][field] = value
+                with pytest.raises(ValueError, match="derived"):
+                    runner.execute(changed, bank, output)
     _child_result(
         tmp_path,
         monkeypatch,
@@ -384,13 +403,31 @@ def test_configured_valid_runs_real_children_per_repeat_and_never_resends_wrong_
     )
     assert runner.execute(manifest, bank, output) == 0
     requests = sorted((output / "conditions").glob("*.request.json"))
-    assert len(requests) == 3
+    assert len(requests) == (12 if split == "TEST" else 3)
     assert {runner._json(path)["repeat"] for path in requests} == {0, 1, 2}
     for path in requests:
         payload = runner._json(path)
         assert payload["candidate_index"] == 5
         assert payload["source_head"] == "5" * 40
         assert payload["jobs"][0]["payload"]["repeat"] == payload["repeat"]
+        if split == "TEST":
+            expected = runner.experiment_config.ablation_policy(payload["ablation"])
+            assert {key: payload[key] for key in expected} == expected
+            assert len(payload["jobs"]) == 132
+            for item in payload["jobs"]:
+                request = item["payload"]
+                assert request["ablation"] == payload["ablation"]
+                assert {key: request[key] for key in expected} == expected
+                assert (request["rag_cache"] is not None) == expected["rag_enabled"]
+    if split == "TEST":
+        starts = [
+            item
+            for item in runner.read_journal(output)
+            if item["event"] == "condition_start"
+        ]
+        assert [item["condition"] for item in starts] == [
+            batch["condition"] for batch in runner.condition_batches(manifest["jobs"])
+        ]
     original = {str(path): path.read_bytes() for path in output.rglob("result.json")}
     monkeypatch.setattr(
         runner,

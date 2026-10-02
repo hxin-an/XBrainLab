@@ -194,6 +194,77 @@ def test_unavailable_publication_stays_unavailable():
     ) == {"workflow_stage": "unavailable", "state_reliable": False}
 
 
+def test_catalog_ablation_preserves_rag_state_publication_and_illustrations():
+    """More definitions must never publish more executable actions."""
+    study = Study()
+    service = get_application_service(study)
+    try:
+        assemblers = [
+            DevContextAssembler(
+                real_registry(),
+                study,
+                model_id="microsoft/Phi-4-mini-instruct",
+                application_runtime=service,
+                tool_filter_enabled=enabled,
+            )
+            for enabled in (True, False)
+        ]
+        request = [{"role": "user", "content": "Open Import EEG Data."}]
+        baseline, expanded = [item.get_messages(request) for item in assemblers]
+        assert baseline[1:] == expanded[1:]
+        assert (
+            assemblers[0].latest_tool_publication
+            == assemblers[1].latest_tool_publication
+        )
+        assert (
+            assemblers[0].rag_allowed_tool_names()
+            == assemblers[1].rag_allowed_tool_names()
+        )
+        assert (
+            "apply_bandpass_filter"
+            not in assemblers[1].latest_tool_publication.tool_names
+        )
+        assert assemblers[1].latest_tool_publication.blocked_reason(
+            "apply_bandpass_filter"
+        )
+        assert '"name": "apply_bandpass_filter"' not in baseline[0]["content"]
+        assert '"name": "apply_bandpass_filter"' in expanded[0]["content"]
+        assert (
+            baseline[0]["content"]
+            .split("Complete output illustrations:")[1]
+            .split("Only the listed workflow actions")[0]
+            == expanded[0]["content"]
+            .split("Complete output illustrations:")[1]
+            .split("Catalog definitions do not grant")[0]
+        )
+        assert "Callable action contract:" not in expanded[0]["content"]
+        assert "Only the listed workflow actions" not in expanded[0]["content"]
+        assert (
+            assemblers[0]._decision_instructions()
+            == assemblers[1]._decision_instructions()
+        )
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("names", [[], ["apply_bandpass_filter"], ["compute_saliency"]])
+def test_catalog_ablation_keeps_state_selected_illustrations(names):
+    baseline = DevContextAssembler(
+        real_registry(), None, model_id="microsoft/Phi-4-mini-instruct"
+    )
+    expanded = DevContextAssembler(
+        real_registry(),
+        None,
+        model_id="microsoft/Phi-4-mini-instruct",
+        tool_filter_enabled=False,
+    )
+    marker = "Complete output illustrations:"
+    assert (
+        baseline._format_tools(names).split(marker)[1]
+        == expanded._format_tools(names).split(marker)[1]
+    )
+
+
 def real_registry():
     from XBrainLab.llm.tools import get_all_tools
 

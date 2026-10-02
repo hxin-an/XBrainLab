@@ -246,6 +246,51 @@ class ExperimentBatchTests(unittest.TestCase):
         selection["config"].write_text(json.dumps(config))
         return selection
 
+    def test_activate_test_preserves_prior_scopes_and_frozen_shell(self):
+        self.create()
+        original = {
+            path.relative_to(self.study): path.read_bytes()
+            for path in self.study.rglob("*")
+            if path.is_file() and path.name != "manifest.json"
+        }
+        selection = self.selection(5, path="stages/test")
+        config = json.loads(selection["config"].read_text())
+        config.update(split="TEST", purpose="research")
+        del config["case_ids"]
+        config["models"][0]["alias"] = "phi4"
+        selection["config"].write_text(json.dumps(config))
+        self.api.activate_test_stage(
+            self.study, selection, coordinator_root=self.source
+        )
+        manifest = self.api.verify_experiment(self.study)
+        self.assertEqual(
+            self.api.select_scopes(manifest, "stages/test"), ["stages/test"]
+        )
+        self.assertIn("blocked_reason", manifest["scopes"]["stages/val"])
+        for path, content in original.items():
+            self.assertEqual((self.study / path).read_bytes(), content, path)
+        result = self.launch("stages/test")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        called = json.loads(self.calls()[0].read_text())
+        self.assertEqual(called["config"]["split"], "TEST")
+        self.assertEqual(called["config"]["models"][0]["candidate_index"], 5)
+        with self.assertRaisesRegex(ValueError, "blocked TEST"):
+            self.api.activate_test_stage(
+                self.study, selection, coordinator_root=self.source
+            )
+
+    def test_test_activation_rejects_wrong_split_and_preserves_blocked_stage(self):
+        self.create()
+        original = (self.study / "snapshot/manifest.json").read_bytes()
+        selection = self.valid_selection()
+        selection["path"] = "stages/test"
+        with self.assertRaisesRegex(ValueError, "TEST configuration"):
+            self.api.activate_test_stage(
+                self.study, selection, coordinator_root=self.source
+            )
+        self.assertEqual((self.study / "snapshot/manifest.json").read_bytes(), original)
+        self.assertFalse((self.study / "stages/test/config.json").exists())
+
     def test_activate_valid_preserves_old_files_and_launches_frozen_selection(self):
         self.create()
         before = {

@@ -180,7 +180,7 @@ def _load(run: Path) -> dict:
         raw = run / "raw"
         manifest = state["manifest"] = _json(run, raw / "manifest.json")
         jobs = manifest["jobs"]
-        if not isinstance(jobs, list) or not jobs or len(jobs) > 1485:
+        if not isinstance(jobs, list) or not jobs or len(jobs) > 1584:
             raise ValueError("Invalid or unbounded job inventory")
         for job in jobs:
             if not isinstance(job, dict) or any(

@@ -16,6 +16,18 @@ MODELS = {
     "llama32": "meta-llama/Llama-3.2-3B-Instruct",
     "gemma3": "google/gemma-3-4b-it",
 }
+TEST_ABLATIONS = ("full", "rag-off", "tool-filter-off", "retry-off")
+
+
+def ablation_policy(ablation: str) -> dict:
+    """Return the three fixed single-factor settings; no editable overrides."""
+    if ablation not in TEST_ABLATIONS:
+        raise ValueError("Unknown TEST ablation")
+    return {
+        "rag_enabled": ablation != "rag-off",
+        "tool_filter_enabled": ablation != "tool-filter-off",
+        "max_format_recovery_attempts": 0 if ablation == "retry-off" else 1,
+    }
 
 
 def experiment_identity(config: dict) -> dict:
@@ -38,7 +50,7 @@ def experiment_identity(config: dict) -> dict:
     split, purpose = config["split"], config["purpose"]
     if (
         config["schema"] != CONFIG_SCHEMA
-        or split not in {"DEV", "VALID"}
+        or split not in {"DEV", "VALID", "TEST"}
         or purpose not in {"research", "engineering-smoke"}
     ):
         raise ValueError("Unsupported experiment schema, split or purpose")
@@ -109,6 +121,12 @@ def experiment_identity(config: dict) -> dict:
             for value in (source["root"], model["model_cache"])
         ):
             raise ValueError("Candidate source/cache paths must be explicit")
+    if split == "TEST" and (
+        len(models) != 1
+        or models[0]["alias"] != "phi4"
+        or models[0]["candidate_index"] != 5
+    ):
+        raise ValueError("TEST requires the frozen VALID winner Phi-4 Mini candidate 5")
     return _policy(split, purpose)
 
 
@@ -116,14 +134,15 @@ def _policy(split: str, purpose: str) -> dict:
     if (split, purpose) not in {
         ("DEV", "research"),
         ("VALID", "research"),
+        ("TEST", "research"),
         ("DEV", "engineering-smoke"),
     }:
         raise ValueError("Unsupported experiment stage/purpose")
-    return {
+    policy = {
         "protocol": PROTOCOL,
         "stage": split,
         "purpose": purpose,
-        "repeats": [0, 1, 2] if split == "VALID" else [0],
+        "repeats": [0, 1, 2] if split in {"VALID", "TEST"} else [0],
         "seed": 0,
         "rag_enabled": True,
         "max_candidates": 5,
@@ -132,6 +151,12 @@ def _policy(split: str, purpose: str) -> dict:
         "max_format_recovery_attempts": 1,
         "max_invalid_replacements": 1,
     }
+    if split == "TEST":
+        del policy["rag_enabled"]
+        del policy["max_format_recovery_attempts"]
+        policy["ablations"] = list(TEST_ABLATIONS)
+        policy["schedule_order"] = "repeat-major-left-rotation-v1"
+    return policy
 
 
 def is_experiment_protocol(experiment: object) -> bool:
@@ -158,16 +183,16 @@ def build_selection(bank: dict, config: dict) -> dict:
     identifiers = sorted(requested)
     counts = dict(Counter(indexed[item]["decision"] for item in identifiers))
     if config["purpose"] == "research":
-        expected = (
-            {"Action": 144, "Clarification": 48, "No-call": 72}
-            if config["split"] == "DEV"
-            else {"Action": 54, "Clarification": 18, "No-call": 27}
-        )
+        expected, family_count, variants = {
+            "DEV": ({"Action": 144, "Clarification": 48, "No-call": 72}, 66, 4),
+            "VALID": ({"Action": 54, "Clarification": 18, "No-call": 27}, 33, 3),
+            "TEST": ({"Action": 72, "Clarification": 24, "No-call": 36}, 66, 2),
+        }[config["split"]]
         families = Counter(indexed[item]["family_id"] for item in identifiers)
         if (
             counts != expected
-            or len(families) != (66 if config["split"] == "DEV" else 33)
-            or set(families.values()) != ({4} if config["split"] == "DEV" else {3})
+            or len(families) != family_count
+            or set(families.values()) != {variants}
         ):
             raise ValueError(
                 "Research population does not match the frozen split denominator"
@@ -199,21 +224,29 @@ def build_jobs(selection: dict, config: dict) -> list[dict]:
         config["models"], key=lambda item: list(MODELS).index(item["alias"])
     ):
         for repeat in experiment["repeats"]:
-            identity = {
-                "condition": model["alias"] + "-rag-on",
-                "candidate_index": model["candidate_index"],
-                "split": config["split"],
-                "repeat": repeat,
-                "source_head": model["source"]["head"],
-                "source_root": model["source"]["root"],
-            }
-            for case_id in selection["case_ids"]:
-                jobs.append(
-                    {
-                        **identity,
-                        "id": job_condition_identity(identity) + "__" + case_id,
-                        "case_id": case_id,
-                        "phase": 1,
-                    }
-                )
+            ablations = (
+                TEST_ABLATIONS[repeat:] + TEST_ABLATIONS[:repeat]
+                if config["split"] == "TEST"
+                else (None,)
+            )
+            for ablation in ablations:
+                identity = {
+                    "condition": model["alias"] + "-" + (ablation or "rag-on"),
+                    "candidate_index": model["candidate_index"],
+                    "split": config["split"],
+                    "repeat": repeat,
+                    "source_head": model["source"]["head"],
+                    "source_root": model["source"]["root"],
+                }
+                if ablation is not None:
+                    identity.update(ablation=ablation, **ablation_policy(ablation))
+                for case_id in selection["case_ids"]:
+                    jobs.append(
+                        {
+                            **identity,
+                            "id": job_condition_identity(identity) + "__" + case_id,
+                            "case_id": case_id,
+                            "phase": 1,
+                        }
+                    )
     return jobs

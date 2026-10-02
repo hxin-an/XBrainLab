@@ -15,7 +15,7 @@ import math
 import os
 import threading
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -79,14 +79,25 @@ def validate_condition_request(payload: dict) -> None:
         if not dev_initial and "experiment" in job["payload"]:
             raise ValueError("DEV case identity requires an approved DEV condition")
         if dev_initial and (
-            job["payload"]["rag_enabled"] is not True
-            or job["payload"].get("experiment") != payload.get("experiment")
+            job["payload"].get("experiment") != payload.get("experiment")
+            or (not current and job["payload"]["rag_enabled"] is not True)
         ):
             raise ValueError("Initial DEV requires its exact experiment and RAG on")
     first = jobs[0]["payload"]
+    condition_keys = ["candidate_index", "split", "repeat", "source_head"]
+    if current and first.get("split") == "TEST":
+        condition_keys.extend(
+            (
+                "ablation",
+                "rag_enabled",
+                "tool_filter_enabled",
+                "max_format_recovery_attempts",
+            )
+        )
     if current and any(
-        payload.get(key) != first.get(key)
-        for key in ("candidate_index", "split", "repeat", "source_head")
+        type(payload.get(key)) is not type(first.get(key))
+        or payload.get(key) != first.get(key)
+        for key in condition_keys
     ):
         raise ValueError("Condition and case experiment identity differ")
     if current and any(
@@ -210,7 +221,15 @@ class PilotConditionSession:
                         original.study_state,
                         model_id=payload["model_id"],
                         application_runtime=original.application_runtime,
+                        tool_filter_enabled=payload.get("tool_filter_enabled", True),
                     )
+                    if payload.get("split") == "TEST":
+                        controller._strict_envelope_recovery_policy = replace(
+                            controller._strict_envelope_recovery_policy,
+                            max_recovery_attempts=payload[
+                                "max_format_recovery_attempts"
+                            ],
+                        )
                 self.driver.attach(controller)
                 return controller
 
@@ -301,6 +320,12 @@ class PilotConditionSession:
             "rag_warmup": rag_warmup,
             "runtime": asdict(self.runtime.current),
         }
+        if payload.get("split") == "TEST":
+            self.condition_evidence["ablation_factors"] = {
+                "rag_enabled": self.manager.agent_controller._rag_enabled,
+                "tool_filter_enabled": self.manager.agent_controller.assembler.tool_filter_enabled,
+                "max_format_recovery_attempts": self.manager.agent_controller._strict_envelope_recovery_policy.max_recovery_attempts,
+            }
 
     def wait_until(self, predicate, seconds: float) -> None:
         deadline = time.perf_counter() + seconds
@@ -591,8 +616,9 @@ class PilotConditionSession:
                 case,
                 result["trace"],
                 decision_timed_out=result["decision_timed_out"],
-                max_format_recovery_attempts=payload.get("experiment", {}).get(
-                    "max_format_recovery_attempts"
+                max_format_recovery_attempts=payload.get(
+                    "max_format_recovery_attempts",
+                    payload.get("experiment", {}).get("max_format_recovery_attempts"),
                 ),
             )
             result["input_audit"] = audit_initial_input(

@@ -65,8 +65,115 @@ def test_configured_preflight_selects_only_full_valid_without_repeating_contexts
         selected_cases(bank, path)
     config["split"] = "TEST"
     path.write_text(json.dumps(config))
-    with pytest.raises(ValueError, match="Unsupported"):
+    with pytest.raises(ValueError, match="selected cases"):
         selected_cases(bank, path)
+
+
+def _test_config():
+    from scripts.dev.assistant_experiment_config import CONFIG_SCHEMA
+
+    return {
+        "schema": CONFIG_SCHEMA,
+        "split": "TEST",
+        "purpose": "research",
+        "embedding_cache": ".",
+        "resource_inventory": "resources.json",
+        "budget_seconds": 1000,
+        "models": [
+            {
+                "alias": "phi4",
+                "candidate_index": 5,
+                "source": {"head": "a" * 40, "root": "."},
+                "model_cache": ".",
+            }
+        ],
+    }
+
+
+def test_configured_test_preflight_selects_one_population_not_repeats_or_ablations():
+    from scripts.dev.assistant_dev_preflight import selected_cases
+
+    cases = [
+        {
+            "case_id": f"TEST-{kind}{family:02}-V{variant}",
+            "family_id": f"TEST-{kind}{family:02}",
+            "split": "TEST",
+            "decision": decision,
+        }
+        for kind, decision, families in (
+            ("A", "Action", 36),
+            ("C", "Clarification", 12),
+            ("N", "No-call", 18),
+        )
+        for family in range(families)
+        for variant in range(2)
+    ]
+    bank = {
+        "source": {"sha256": "bank"},
+        "cases": [*cases, {"case_id": "DEV-not-selected", "split": "DEV"}],
+    }
+    selection, actual = selected_cases(bank, _test_config())
+    assert selection["split"] == "TEST"
+    assert len(actual) == 132
+    assert actual == cases
+
+
+def test_test_preflight_captures_four_conditions_only_with_identical_admission():
+    from scripts.dev.assistant_dev_context import DevContextAssembler
+
+    study = Study()
+    service = get_application_service(study)
+    registry = ToolRegistry()
+    for tool in get_all_tools():
+        registry.register(tool)
+    cases = [{"case_id": "synthetic-preflight", "input": "Open import."}]
+    try:
+        contexts = model_contexts(registry, study, cases, config=_test_config())
+        assert set(contexts) == {
+            "phi4-full",
+            "phi4-rag-off",
+            "phi4-tool-filter-off",
+            "phi4-retry-off",
+        }
+        captures = {name: records[0] for name, records in contexts.items()}
+        baseline = captures["phi4-full"]
+        legacy = DevContextAssembler(registry, study, model_id=MODELS["phi4"])
+        assert baseline["messages"] == legacy.get_messages(
+            [{"role": "user", "content": cases[0]["input"]}]
+        )
+        assert captures["phi4-rag-off"]["messages"] == baseline["messages"]
+        assert captures["phi4-retry-off"]["messages"] == baseline["messages"]
+        assert captures["phi4-tool-filter-off"]["messages"] != baseline["messages"]
+        assert baseline["condition_policy"] == {
+            "rag_enabled": True,
+            "tool_filter_enabled": True,
+            "max_format_recovery_attempts": 1,
+        }
+        assert captures["phi4-rag-off"]["condition_policy"]["rag_enabled"] is False
+        assert (
+            captures["phi4-retry-off"]["condition_policy"][
+                "max_format_recovery_attempts"
+            ]
+            == 0
+        )
+        assert (
+            captures["phi4-tool-filter-off"]["condition_policy"]["tool_filter_enabled"]
+            is False
+        )
+        for capture in captures.values():
+            assert capture["model_id"] == MODELS["phi4"]
+            assert capture["case_id"] == cases[0]["case_id"]
+            assert (
+                capture["actual_host_generation"]
+                == service.get_view_publication().generation
+            )
+            assert capture["tool_names"] == baseline["tool_names"]
+            assert capture["blocked_reasons"] == baseline["blocked_reasons"]
+            assert (
+                capture["rag_allowed_tool_names"] == baseline["rag_allowed_tool_names"]
+            )
+    finally:
+        service.close()
 
 
 def test_preflight_captures_all_profiles_with_current_request_and_real_publication():

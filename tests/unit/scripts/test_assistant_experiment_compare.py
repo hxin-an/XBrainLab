@@ -26,6 +26,24 @@ def save(path, value):
     return hashlib.sha256(content).hexdigest()
 
 
+def test_test_full_schedule_reaches_report_validation_not_old_valid_limit(tmp_path):
+    from scripts.dev.assistant_experiment_compare import _load
+
+    jobs = [
+        {
+            "id": f"job-{i}",
+            "condition": "phi4-full",
+            "case_id": f"TEST-{i}",
+            "repeat": 0,
+        }
+        for i in range(1584)
+    ]
+    save(tmp_path / "raw/manifest.json", {"jobs": jobs})
+    (tmp_path / "raw/journal.jsonl").write_text("")
+    result = _load(tmp_path)
+    assert any("No saved report" in str(issue) for issue in result["issues"])
+
+
 def fixture(
     root,
     observations,

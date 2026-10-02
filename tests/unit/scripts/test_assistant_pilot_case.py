@@ -80,6 +80,80 @@ def test_frozen_experiment_accepts_valid_repeat_without_weakening_legacy_gate():
     assert experiment_result_identity(request()) == {}
 
 
+def ablation_request(ablation="full"):
+    """Synthetic input only; never read the sealed TEST question bank."""
+    from scripts.dev.assistant_experiment_config import (
+        ablation_policy,
+        experiment_identity,
+    )
+
+    payload = request()
+    payload.update(
+        experiment=experiment_identity(
+            {
+                "schema": "xbrainlab.assistant_experiment_config.v1",
+                "split": "TEST",
+                "purpose": "research",
+                "embedding_cache": ".",
+                "resource_inventory": "resources.json",
+                "budget_seconds": 10,
+                "models": [
+                    {
+                        "alias": "phi4",
+                        "candidate_index": 5,
+                        "source": {"head": "a" * 40, "root": "."},
+                        "model_cache": ".",
+                    }
+                ],
+            }
+        ),
+        model_id="microsoft/Phi-4-mini-instruct",
+        candidate_index=5,
+        source_head="a" * 40,
+        split="TEST",
+        ablation=ablation,
+        **ablation_policy(ablation),
+    )
+    payload["case"].update(split="TEST", case_id="TEST-A01-01-V0")
+    return payload
+
+
+@pytest.mark.parametrize(
+    "ablation", ["full", "rag-off", "tool-filter-off", "retry-off"]
+)
+def test_single_factor_test_identity_is_admitted_and_preserved(ablation):
+    from scripts.dev.assistant_experiment_config import ablation_policy
+    from scripts.dev.assistant_pilot_case import experiment_result_identity
+
+    payload = ablation_request(ablation)
+    validate_case_request(payload)
+    identity = experiment_result_identity(payload)
+    assert identity["ablation"] == ablation
+    for name, value in ablation_policy(ablation).items():
+        assert type(identity[name]) is type(value)
+        assert identity[name] == value
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("ablation", "unknown"),
+        ("rag_enabled", False),
+        ("tool_filter_enabled", False),
+        ("max_format_recovery_attempts", 0),
+        ("max_format_recovery_attempts", True),
+        ("tool_filter_enabled", 1),
+        ("model_id", "google/gemma-3-4b-it"),
+        ("candidate_index", 4),
+    ],
+)
+def test_test_runtime_rejects_factor_and_selected_system_drift(field, value):
+    payload = ablation_request()
+    payload[field] = value
+    with pytest.raises(ValueError):
+        validate_case_request(payload)
+
+
 def test_standalone_rejects_configured_experiment_before_side_effects(
     tmp_path, monkeypatch
 ):

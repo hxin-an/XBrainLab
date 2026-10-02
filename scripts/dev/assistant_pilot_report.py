@@ -18,6 +18,7 @@ from scripts.dev.run_assistant_pilot import (
     DEV_EXPERIMENT,
     SCHEMA,
     build_jobs,
+    condition_spec,
     consumed_seconds,
     read_journal,
     valid_measurement,
@@ -318,9 +319,26 @@ def _case(
             result_sha256=result_sha,
             measurement_status=result.get("status"),
         )
-        model, rag = CONDITIONS[job["condition"]]
+        model, rag = condition_spec(job["condition"])
         case = request["case"]
         current = experiment_config.is_experiment_protocol(experiment)
+        factors = (
+            experiment_config.ablation_policy(job["ablation"])
+            if current and experiment["stage"] == "TEST"
+            else {}
+        )
+        if factors and any(
+            type(actual.get(key)) is not type(expected) or actual.get(key) != expected
+            for actual in (request, result)
+            for key, expected in {"ablation": job["ablation"], **factors}.items()
+        ):
+            raise ValueError("TEST ablation factor identity mismatch")  # noqa: TRY301
+        if factors:
+            observed = result.get("condition_evidence", {}).get("ablation_factors")
+            if json.dumps(observed, sort_keys=True, allow_nan=False) != json.dumps(
+                factors, sort_keys=True, allow_nan=False
+            ):
+                raise ValueError("TEST observed runtime factors missing or mismatched")  # noqa: TRY301
         if current and (
             request.get("experiment") != experiment
             or result.get("experiment") != experiment
@@ -332,7 +350,7 @@ def _case(
             or result.get("scores", {}).get("scorer_schema")
             not in {"xbrainlab.assistant_decision_scores.v3", *_PROPOSAL_SCORERS}
             or result.get("scores", {}).get("max_format_recovery_attempts")
-            != experiment["max_format_recovery_attempts"]
+            != (factors or experiment)["max_format_recovery_attempts"]
         ):
             raise ValueError("Frozen experiment result identity mismatch")  # noqa: TRY301 - preserve a per-case invalid-evidence row
         if (
@@ -388,6 +406,7 @@ def _case(
         ui_latencies, ui_timing_issues = _ui_latencies(result)
         product = result.get("product_outcome")
         row.update(
+            family_id=case.get("family_id"),
             evidence_status="verified",
             scorer_schema=scores.get("scorer_schema"),
             decision_valid=valid,
@@ -616,13 +635,15 @@ def _validate_experiment_inventory(manifest: dict) -> None:
     expected = experiment_config.build_jobs(selection, config)
     for job in expected:
         source = manifest["runtime_config"]["sources"][
-            job["condition"].removesuffix("-rag-on")
+            job["condition"].split("-", 1)[0]
         ]
         if source["head"] != job["source_head"]:
             raise ValueError("Frozen candidate source identity mismatch")
         job["source_root"] = source["root"]
     actual = [{key: job[key] for key in expected[0]} for job in manifest["jobs"]]
-    if actual != expected:
+    if json.dumps(actual, sort_keys=True, allow_nan=False) != json.dumps(
+        expected, sort_keys=True, allow_nan=False
+    ):
         raise ValueError("Frozen experiment job inventory differs from configuration")
     decisions = {}
     for job in manifest["jobs"]:
@@ -636,6 +657,8 @@ def _validate_experiment_inventory(manifest: dict) -> None:
         {"Action": 144, "Clarification": 48, "No-call": 72}
         if config["split"] == "DEV"
         else {"Action": 54, "Clarification": 18, "No-call": 27}
+        if config["split"] == "VALID"
+        else {"Action": 72, "Clarification": 24, "No-call": 36}
     ):
         raise ValueError("Frozen research population is incomplete")
 
@@ -739,15 +762,22 @@ def build_report(run: Path) -> dict:
     if (
         manifest.get("schema") != SCHEMA
         or not isinstance(jobs, list)
-        or not 0 < len(jobs) <= (1485 if current else 1320 if dev else 300)
+        or not 0 < len(jobs) <= (1584 if current else 1320 if dev else 300)
         or len({job["id"] for job in jobs}) != len(jobs)
         or any(
             not re.fullmatch(r"[A-Za-z0-9_-]+", job["id"])
-            or job.get("condition") not in CONDITIONS
+            or (
+                job.get("condition") not in CONDITIONS
+                and not (current and experiment["stage"] == "TEST")
+            )
             or job.get("decision") not in CATEGORIES
             or job["id"]
             != f"{experiment_config.job_condition_identity(job) if current else job['condition']}__{job['case_id']}"
-            or (dev and not CONDITIONS[job["condition"]][1])
+            or (
+                dev
+                and not (current and experiment["stage"] == "TEST")
+                and not CONDITIONS[job["condition"]][1]
+            )
             for job in jobs
         )
     ):
@@ -978,7 +1008,13 @@ def build_report(run: Path) -> dict:
             "Journal changed during report; retain artifacts and read a stable snapshot"
         )
     report_kind = "experiment" if current else "dev" if dev else "pilot"
+    analysis = {}
+    if current and experiment["stage"] == "TEST" and complete:
+        from scripts.dev.assistant_experiment_statistics import paired_family_analysis
+
+        analysis["paired_family_analysis"] = paired_family_analysis(rows)
     return {
+        **analysis,
         "schema": f"xbrainlab.assistant_{report_kind}_report.v{report_version}",
         "experiment": experiment,
         "latency_protocol": {
