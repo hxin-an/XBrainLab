@@ -15,6 +15,7 @@ from XBrainLab.backend.application.resource_preflight import (
     ResourceConfirmationChallenge,
 )
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.training_state_contract import TrainingRunIdentity
 from XBrainLab.llm.agent.assembler import ContextAssembler, PromptToolPublication
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantAttentionKind,
@@ -3899,6 +3900,101 @@ class TestOnUserConfirmed:
         assert outcome.status is AgentInteractionStatus.BLOCKED
         assert outcome.request_id == request.request_id
         assert ctrl.pending_interactions.confirmation is None
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            "progress",
+            "run",
+            "trainer",
+            "terminal",
+            "stopping",
+            "unreliable",
+            "missing",
+            "missing_original",
+            "missing_request",
+            "malformed",
+            "unreliable_liveness",
+        ],
+    )
+    def test_stop_confirmation_is_bound_to_original_running_identity(
+        self, ctrl, change
+    ):
+        state = {
+            "state_reliable": True,
+            "training_liveness_reliable": True,
+            "training": {
+                "is_running": True,
+                "terminal_outcome": {
+                    "state": "running",
+                    "run": {"trainer_id": "trainer-a", "run_id": 1},
+                },
+            },
+        }
+        original = replace(
+            _enabled_tool_context("stop_training", generation=53), state=state
+        )
+        current_state = json.loads(json.dumps(state))
+        if change == "run":
+            current_state["training"]["terminal_outcome"]["run"]["run_id"] = 2
+        elif change == "trainer":
+            current_state["training"]["terminal_outcome"]["run"]["trainer_id"] = (
+                "trainer-b"
+            )
+        elif change == "terminal":
+            current_state["training"]["terminal_outcome"]["state"] = "completed"
+        elif change == "stopping":
+            current_state["training"]["terminal_outcome"]["state"] = "stop_requested"
+        elif change == "unreliable":
+            current_state["state_reliable"] = False
+        elif change == "missing":
+            current_state["training"]["terminal_outcome"]["run"] = None
+        elif change == "missing_original":
+            state["training"]["terminal_outcome"]["run"] = None
+        elif change == "malformed":
+            current_state["training"]["terminal_outcome"]["run"]["run_id"] = True
+        elif change == "unreliable_liveness":
+            current_state["training_liveness_reliable"] = False
+        current = replace(
+            original, generation=54 if change == "progress" else 53, state=current_state
+        )
+        pending = _pending_decision("stop_training", {}, context=original)
+        request = AgentConfirmationRequest.for_action(
+            command_name="stop_training",
+            params={},
+            action_label="Stop training",
+            description="Stop training",
+            destructive=False,
+            publication_generation=53,
+            expected_training_run=(
+                None
+                if change == "missing_request"
+                else TrainingRunIdentity("trainer-a", 1)
+            ),
+        )
+        _begin_confirmation(ctrl, pending, request)
+        _set_context_reader(ctrl, return_value=current)
+        ctrl._execute_tool_attempt = MagicMock()
+        ctrl._handle_tool_attempt_blocked = MagicMock()
+        ctrl.on_user_confirmation_resolved(
+            AgentConfirmationResolution.for_request(
+                request,
+                status=AgentConfirmationResolutionStatus.APPROVED,
+            )
+        )
+        if change == "progress":
+            ctrl._execute_tool_attempt.assert_called_once()
+            assert (
+                ctrl._execute_tool_attempt.call_args.kwargs["execution_context"]
+                is original
+            )
+            ctrl._handle_tool_attempt_blocked.assert_not_called()
+        else:
+            ctrl._execute_tool_attempt.assert_not_called()
+            assert (
+                ctrl._handle_tool_attempt_blocked.call_args.args[1].error_type
+                == "stale_confirmation"
+            )
 
     def test_duplicate_confirmation_cannot_execute_twice(self, ctrl):
         context = _enabled_tool_context("reset_preprocess", generation=55)

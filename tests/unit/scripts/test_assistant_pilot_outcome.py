@@ -1,6 +1,7 @@
 """Product evidence must not turn Host protection or driver work into model credit."""
 
 import json
+from copy import deepcopy
 
 import pytest
 
@@ -80,6 +81,127 @@ def test_host_rescue_and_fixture_cancel_never_credit_stop():
     assert score["decision_correct"] and score["measurement_valid"]
     assert score["execution"] == "not_started"
     assert score["outcome"] == "blocked"
+
+
+def confirmation_nonexecution(status="blocked", *, correct=True):
+    case, result = evidence("stop_training", correct=correct)
+    correlation = {"generation": 6, "turn_id": 6}
+    request = {
+        "command_name": "stop_training",
+        "request_id": "stop-confirmation",
+        "params_fingerprint": "stop-params",
+        "publication_generation": 677,
+    }
+    event(result, "submission", correlation=correlation, text="Stop training.")
+    admitted(result, "stop_training", "confirmation_required")
+    event(result, "confirmation_requested", **request)
+    event(
+        result,
+        "confirmation_submitted",
+        **request,
+        status="approved" if status == "blocked" else "cancelled",
+    )
+    event(
+        result,
+        "interaction_resolved",
+        command_name="stop_training",
+        request_id=request["request_id"],
+        status=status,
+    )
+    result["trace"]["turn_terminal"] = {
+        "correlation": correlation,
+        "outcome": status,
+    }
+    event(result, "turn_terminal", **result["trace"]["turn_terminal"])
+    for sequence, recorded in enumerate(result["trace"]["events"], 1):
+        recorded.update(sequence=sequence, observed_turn=dict(correlation))
+    return case, result
+
+
+@pytest.mark.parametrize("status", ["blocked", "cancelled"])
+def test_correlated_confirmation_nonexecution_is_measured_product_outcome(status):
+    case, result = confirmation_nonexecution(status)
+    original_scores = deepcopy(result["scores"])
+    score = score_product_outcome(case, result)
+    assert score["measurement_valid"] and score["issues"] == []
+    assert score["outcome"] == status
+    assert score["execution"] == score["observed_execution"] == "not_started"
+    assert score["observed_actions"] == []
+    assert score["decision_correct"] is True
+    assert result["scores"] == original_scores
+
+
+@pytest.mark.parametrize("status", ["blocked", "cancelled"])
+def test_confirmation_nonexecution_does_not_rescue_wrong_raw_decision(status):
+    case, result = confirmation_nonexecution(status, correct=False)
+    original_scores = deepcopy(result["scores"])
+    score = score_product_outcome(case, result)
+    assert score["measurement_valid"]
+    assert score["decision_correct"] is False
+    assert score["outcome"] == "decision_incorrect"
+    assert score["execution"] == "not_started"
+    assert result["scores"] == original_scores
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "host_decision",
+        "confirmation_requested",
+        "confirmation_submitted",
+        "interaction_resolved",
+        "turn_terminal",
+    ],
+)
+@pytest.mark.parametrize("damage", ["missing", "foreign_turn", "duplicate"])
+def test_confirmation_nonexecution_requires_unambiguous_same_turn_chain(kind, damage):
+    case, result = confirmation_nonexecution()
+    events = result["trace"]["events"]
+    recorded = next(item for item in events if item["kind"] == kind)
+    if damage == "missing":
+        events.remove(recorded)
+    elif damage == "foreign_turn":
+        recorded["observed_turn"]["turn_id"] = 99
+    else:
+        events.insert(events.index(recorded), deepcopy(recorded))
+    score = score_product_outcome(case, result)
+    assert score["measurement_valid"] is False
+    assert score["outcome"] == "invalid_measurement"
+
+
+@pytest.mark.parametrize(
+    "kind,field,value",
+    [
+        ("host_decision", "command_name", "start_training"),
+        ("host_decision", "action", "execute"),
+        ("confirmation_requested", "command_name", "start_training"),
+        ("confirmation_submitted", "command_name", "start_training"),
+        ("interaction_resolved", "command_name", "start_training"),
+        ("confirmation_submitted", "request_id", "other-request"),
+        ("interaction_resolved", "request_id", "other-request"),
+        ("confirmation_submitted", "params_fingerprint", "other-params"),
+        ("confirmation_submitted", "publication_generation", 678),
+        ("confirmation_submitted", "status", "cancelled"),
+        ("interaction_resolved", "status", "confirmed"),
+        ("turn_terminal", "outcome", "completed"),
+        ("turn_terminal", "correlation", {"generation": 6, "turn_id": 99}),
+    ],
+)
+def test_confirmation_nonexecution_cannot_use_mismatched_evidence(kind, field, value):
+    case, result = confirmation_nonexecution()
+    recorded = next(item for item in result["trace"]["events"] if item["kind"] == kind)
+    recorded["payload"][field] = value
+    score = score_product_outcome(case, result)
+    assert score["measurement_valid"] is False
+    assert score["outcome"] == "invalid_measurement"
+
+
+def test_blocked_confirmation_cannot_cover_started_execution_without_result():
+    case, result = confirmation_nonexecution()
+    event(result, "command_started", tool_name="stop_training")
+    score = score_product_outcome(case, result)
+    assert score["measurement_valid"] is False
+    assert "product_execution_observation_missing" in score["issues"]
 
 
 def test_dialog_driver_cancel_is_successful_handoff_not_complete_import():

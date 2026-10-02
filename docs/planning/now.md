@@ -1,14 +1,486 @@
 # XBrainLab Now
 
-最後更新：`2026-09-29`
+最後更新：`2026-10-02`
 
-## Active — 合併收尾修復，重跑 DEV 第1輪五模型
+## Active — DEV第5輪已批准，實作並啟動
+
+使用者批准外部`DEV第4輪總結與第5輪改善計畫.md`第四節，要求改好跑下一輪。
+證據與假設：R4完整1320筆仍有必要值／操作與回覆判斷錯誤；只測一套逐模型候選，
+不預先宣稱提升。Granite4取R2提示、Phi／Llama取R3、Gemma／Granite3.3取R4；
+共用source保留78110571的停止確認與退出修理，不回退產品。
+Scope：G4必填欄位局部來源提示；Phi完整／缺值對照；Gemma只核對所請求工具；
+Llama開窗／資訊對照；G33操作／禁止／資訊／缺值對照，替換既有示例或提示。
+Non-goals：不改UI、模型、生成、RAG、schema、Host、scorer、一次格式重試或題庫；
+不碰VALID／TEST、不merge、不追加smoke或第六輪。示例只依公開契約，不抄DEV題目。
+步驟：實際assembler保護與實作→focused／lint→獨立source與完整輸入覆核
+→同head適用CI→66真fixture及1320上下文／精確tokenizer檢查→封存完整source/config
+→137確認GPU空閒後單次啟動五模型各264題，驗最初真capture與正常進度。
+Complexity：沿用研究assembler及append_round；產品與owner不增加，不新增控制層。
+Stop：精確封存版本有效開跑且初始紀錄／cleanup／進度正常即交回，不監控整輪。
+UI無改動；settings.json保留。五模型呈現已實作，4項新保護先red，72項直接測試green；
+獨立source覆核通過。相鄰session檢查找出3項沿用R4強調位置的舊斷言，改為核對本輪
+明定的R2／R3／R4位置；其餘28項通過，不改產品接線。
+Next：精確source封存／CI與137無推論完整輸入檢查，覆核通過後才正式啟動。
+Checkpoint：d1d2ff3d的66-state／1320-context與精確tokenizer及獨立完整輸入覆核通過。
+CI阻擋：既有saliency queue handoff測試忽略release_shutdown_fence的bool，背景retry仍握有
+同generation reservation時可合法返回False，隨後query仍可成功，測試卻立即要求pending清空。
+先用有界交錯probe確認；只修直接阻擋驗證的測試同步、保留終態／一次通知断言，不改產品／
+提示或研究條件。若證據成立，新test-only source重新CI與封存檢查後才開跑；保留原CI失敗。
+受控原生probe已重現原失敗：真retry握有reservation時release=False／fenced=True／pending=True；
+放行後真交接完成、release=True／fenced=False／pending=False。測試改沿用既有有界release重試，
+不增加watchdog，不刪終態／一次通知断言；正常focused green，產品及提示不變。
+
+## 已完成 — 第4輪分析與DEV研究文件精簡
+
+`碩論準備/實驗/DEV階段紀錄`全數整理，移除工程除錯／CI／行數／重複進度，保留研究結果、
+代表錯題與各輪已採用決策；新增`DEV第4輪總結與第5輪改善計畫.md`，第五輪仍待批准。
+核對四輪保存分數與代表完整輸入輸出，獨立覆核數字、歷史決策與候選邊界，無阻擋。
+同目錄由三份939行變為四份402行；README與操作指令同步精簡、連結核對通過。
+未改產品／測試／腳本／設定，未重評分、推論或使用VALID／TEST；封存與失敗原始證據不動。
+Next：第五輪已獲批准，以上方Active為準；未授權merge。
+
+## 已完成 — DEV第4輪修理／完整重跑與證據覆核
+
+使用者要求修正停止確認後全量重跑，追到1320筆、正常退出、audit及共同案例比對；
+不沿用初始10筆即交回。UI layout不改；同run停止確認契約已獲批准並記入target/agent。
+不改模型／提示／RAG／題庫／raw oracle／一次格式重試，不啟動第5輪、VALID／TEST或merge。
+
+已完成修理：同一running trainer/run的進度publication不再使停止確認失效；
+換run／terminal／stopping仍拒絕，原run由Host一路傳至Trainer鎖內原子核對，不信模型參數。
+成功stop後新run立即啟動的ack競態亦保留原target，不拿新run終態回報。
+量測以完整相關trace辨識blocked／cancelled，不再把合法拒絕誤當缺失；缺事件仍fail closed。
+6177份歷史case離線重播只改一筆分類，舊raw scores與檔案保持不變。
+重用原pending context、TrainingRunIdentity與既有locks；10個既有產品檔、owner數不變。
+
+精確封存source：`7811057170307b4f93e33e6248750cb1b6e51beb`，PR #155未merge。
+此前c29a3c09的macOS測試失败已定位為第一次reset的montage publication延後7→8，
+非duplicate執行；只補7行等待真終態，全部安全斷言保留。已封未跑repair-02及失敗證據保留。
+最終head CI全completed：24成功／3 scope skip，含Windows／macOS lifecycle。
+直接／相鄰443項及真Qt3路、ack競態、確認提示、舊stop control均有通過證據；
+137精確source 30項native、66-state／1320-context preflight與獨立source/artifact覆核通過。
+Ruff與changed-file Basedpyright通過；Mypy有3項既存錯誤，不宣稱全案零缺陷。
+
+NAS根：`/mnt/home/2025/hxin/XBrainLab-experiments`。
+封存入口：`stages/dev/round-04/repair-03`；run `20261002-060225-32f033ab`。
+單次全量1320/1320完成、五模型各264；runner及五child均exit0、cleanup全部通過，
+complete_selected_schedule=true、partial=false。所有實驗程序已結束，GPU已釋放。
+Gemma DEV-A14-01-V0實際走批准→停止原run→completed，不只是模型選對工具。
+報告：上述入口下`runs/20261002-060225-32f033ab/index.html`。
+同run audit `audits/20261002-063642-db52d3dc.json`：1320重播、零issues，12812項原證據不變。
+最終正確1016/1320，仍有模型錯答與既定harness取消；不是所有產品操作成功。
+
+兩份compare均完成、原始證據不變（均位於repair-03/comparisons）：
+
+- 原版dd2：`20261002-063734-f1b61ec5`，首次1010/1010、最終1052/1052工具與參數相同。
+- repair-01：`20261002-063635-6ebeddef`，首次1115/1115、最終1157/1157相同。
+- 分母只含雙方都有有效可讀決策，排除不算一致；後者1161份有效raw決策含舊105題，
+  不等於1160筆recorded產品量測。兩份均因舊批次不完整／scorer依賴樹改變保留
+  incompatible_or_unknown，不宣稱同source五模型全量重現，也不修改guard或舊scores。
+
+独立最終覆核已直接核對五child／runner退出、完整分母、Gemma真停止、audit及比較語意，
+無阻擋。此授權scope-complete；交回完整結果，下一轮需另討論，不追加推論或merge。
+本機settings.json仍為使用者修改；封存後本頁及外部三份論文文件補記不改sealed source。
+外部結果、修理原因、完整指令與限制已寫入`碩論準備/實驗/DEV階段紀錄/DEV第3輪總結與第4輪改善計畫.md`。
+
+封存修理ac6→781新增/刪除/淨：產品215/22/+193、測試783/1/+782、腳本57/0/+57、
+文件107/10/+97、設定/其他0，合計1162/33/+1129，二進位0。
+分支對main72548c累積：產品220/23/+197、測試2265/4/+2261、腳本1624/83/+1541、
+文件552/10/+542、設定/其他0，合計4661/120/+4541；含先前多輪，不混為本次。
+測試／腳本經focused、native、CI與獨立覆核；文件CI及外部入口核對，設定未改。
+以上不含封存後文件與臨時診斷；完整結果不代表永久無缺陷、跨環境重現或整個DEV完成。
+
+## 已交回 — DEV第4輪退出修理與全量重跑已啟動
+
+使用者已授權修好後續跑，並明確改為全部重跑以檢查可重現性；不僅續跑Gemma。
+證據：run `20261002-024229-8b91f51c`完成1056/1320，Llama264題與condition結果寫完後
+子程序returncode=-11(SIGSEGV)，hard_timeout=false、cleanup_ok=true；runner按fail-closed
+停止，Gemma未啟動。原失敗log無Python traceback/native stack；後續有界probe已取得定位證據，見下。
+Outcome：有證據的退出修理及直接／原生驗證；完整1320新run啟動、初始紀錄正常後交回。
+Scope：退出生命週期、直接回歸與必要crash診斷／研究封存；保留失敗run及既有1056筆。
+Non-goals：不改提示、模型／revision、生成、RAG、題庫、scorer、Host決策或重試；不啟動第5輪、
+VALID／TEST，不改可見UI或merge。不忽略SIGSEGV或用強制exit假裝成功。
+先以最小有界原生probe定位，診斷推論若不可避免另標工程證據，不混正式分母、不依分數調候選。
+步驟：追退出／捕捉stack→可重現保護與修理→focused與原生exit驗證→獨立覆核／適用CI
+→以可追溯修理source封存同一提示候選（不覆寫旧快照）→全量新run→驗初始capture與進度。
+假設：137資源仍可用；禁止修改凍結source／舊manifest來蒙混身分；先核對封存對應方式。
+可重現性：新run完成後與失敗run共同1056筆比對；Gemma缺舊結果，不能稱五模型全量已重現。
+Stop：修理證據與同版本驗證閉合、全量重跑有效啟動後交回，不持續監控整輪；不自行加跑第二整批。
+已定位：137原版load/READY/close最小probe三次中第三次SIGSEGV；gdb另一次重現
+`sip_api_get_address → cleanup_qobject → cleanup_on_exit → Py_FinalizeEx`，位於PyQt退出清理。
+首次診斷probe缺spawn main guard而逾時，屬probe錯誤，保留但不算產品重現；修正後才取得上述證據。
+兩項Windows回歸先red：close只隱藏視窗、第一次失敗後錯誤鎖定closed。修理重用Qt drain，
+以accepted close的WA_DeleteOnClose完成原生銷毀，成功才標closed；不跳過MainWindow關閉政策。
+首次修理原生三次正常exit0且window_destroyed=true；非永久穩定保證。獨立覆核另找到延後銷毀
+後再次close存取已刪Qt timer，已補red與刪除感知的重試；最終59項Windows直接測試、
+changed-file Ruff/format通過，獨立source覆核解除阻擋。精確版本原生退出與CI結果見下。
+封存使用既有create_package建立`stages/dev/round-04/repair-01`，保留candidate4與舊父入口；
+新完整source/manifest/run獨立，不偷偷重指舊版，不計第5輪，不自動納入父DEV aggregate。
+最終source `ac6f02553de5b11008694003bbdb513036c2a473`，PR #155，未merge。
+同head CI全completed：22success／5 scope skips；137精確source三次Llama原生退出均0，
+window_destroyed=true。獨立reviewer直接核對stack／logs／乾淨source與腳本hash，無阻擋。
+封存與環境check通過，175舊封存檔／11舊run身分／失敗run10625證據項目保持不變；
+獨立覆核新package hash、五模型candidate4共1320唯一DEV jobs及固定因素等價。
+新run `20261002-035756-8b73ad40`，位於`stages/dev/round-04/repair-01/runs/`；
+tmux `xbl-dev-round04-repair01-ac6f0255`，log `.runtime/logs/dev-round04-repair01-ac6f0255.log`。
+GPU空閒後單次啟動，觀察61→120/1320；最初10筆真capture／system／RAG／hash／cleanup通過。
+只支撐有效啟動，不代表整輪完成或五模型結果已重現；完成後共同1056筆方可做一致性比對。
+獨立package沿用原leaf adapter，沒有父batch每5秒的進度列；不以空log判停滯，可用既有
+`assistant_experiment_progress.describe`讀同一run的condition summaries。沒有改動正在跑的版本。
+工程證據另在`results/engineering/round4-repair01-ac6f0255/`；外部論文文件與一行指令已同步。
+Next：依約停止啟動監控，待使用者要求查結果／比對；不自動重跑第二批或調整候選。UI無改動。
+本頁是凍結後交回記錄，remote sealed source仍乾淨；本機settings.json仍為使用者修改。
+
+修理commit相對dd2a5e75（新增／刪除／淨）：產品0/0/0、測試92/0/+92、腳本26/10/+16、
+文件51/2/+49、設定/其他0，合計169/12/+157，二進位0；文件含開工前未提交交回記錄。
+分支相對main72548c累積：產品5/1/+4、測試1482/3/+1479、腳本1567/83/+1484、
+文件451/6/+445、設定/其他0，合計3505/93/+3412，二進位0；不混為本次修理。
+以上限封存repo差異，不含本頁凍結後補記、外部三份論文文件與臨時工程probe。
+測試／腳本經focused、native與CI及獨立覆核；文件CI通過，外部入口另核對；產品／設定本次未改。
+
+## 歷史 — DEV第4輪首次量測（後續1056/1320退出失敗）
+
+使用者已讀完並批准`碩論準備/實驗/DEV階段紀錄/DEV第3輪總結與第4輪改善計畫.md`
+第五節，要求修改後正式開跑。R3完整1320筆：Granite4多物件、Gemma操作變文字承諾、
+Phi／Llama當前參數與參考值混淆、Granite3.3依賴格式重試；既存錯答及原始證據全部保留。
+Outcome：五模型各固定candidate4，完整source/config封存；正式1320筆初始紀錄與進度正常。
+Scope：研究提示及直接相關測試／文件／封存接線；Granite4以R2、Gemma以R1提示起步，
+Phi／Llama／Granite3.3以R3起步。共用runner與產品不回退，不改模型／生成／RAG／題庫／
+scorer／Host／parser／一次重試，不碰VALID／TEST；不改UI、不merge、不自動開第5輪。
+假設：137共享環境與模型仍可用，推論前確認GPU空閒；settings.json保持原樣。
+步驟：提示保護與實作→focused驗證→完整輸入與五模型精確tokenizer→獨立source／輸入覆核
+→同head適用CI→追加round-04並驗旧封存不變→正式啟動與初始capture／進度驗收。
+驗證：profile只依model_id選擇；schema／membership／blocker／state／RAG／current_user
+不變；移除示意只影響Granite4／Gemma；第1–3輪檔案／配置／run身分不變。
+Complexity：重用研究assembler和append_round，產品LOC與owner不增加；不新增控制層。
+不額外推論smoke、不按分數反覆改候選；本次授權正式五模型各264筆、seed0／repeat0。
+Stop：同版本驗證、獨立覆核與封存完成，run產出有效初始量測及正常進度後交回；不監控到結束。
+進度：13項預期red後42項提示保護及27項session接線均通過；Ruff通過，產品程式未改。
+獨立source覆核找到開窗參數條件句歧義，已改為即使提到窗內設定也固定{}，覆核解除阻擋。
+修改後69項與Ruff重驗通過；UI無變更。
+已凍結source `dd2a5e75cc2db782a33590e40399b861371398d8`，PR #155未合併，承接#154/#153。
+137暫存source為`.runtime/round4-stage-dd2a5e75/source`，完整來源clean；工程證據在
+NAS根`results/engineering/round4-dd2a5e75/`，prepare／append及正式啟動已完成。
+66真fixture／1320輸入及五模型精確tokenizer初次/潛在retry全過，最高2953/7680，RAG未裁切。
+兩位獨立reviewer完成source／實際輸入／配置artifact覆核：五模型七stage及另選六個缺值／
+不操作要求，無阻擋；固定因素不變。輸入為既存capture重播，不冒稱fresh retrieval或準確率。
+同head CI全completed：22成功、5 scope skip；GPU空閒後追加round-04並單次啟動。
+169個舊封存檔／10份run身分不變，第1–4輪環境check通過；未覆寫歷史source或結果。
+正式run `20261002-024229-8b91f51c`，log `.runtime/logs/dev-round04-dd2a5e75.log`，
+tmux `xbl-dev-round04-dd2a5e75`。已觀察8→17/1320，初始10筆recorded／cleanup／live system
+及capture hash／RAG核對通過。只證明初始量測正常，不稱整輪完成或準確率提高。
+Next：依約停止監控，待使用者要求查結果／討論第5輪；不重複啟動，不自行調提示或開始第5輪。
+重跑入口：NAS根`stages/dev/round-04/./run.sh`；外部實驗README／計畫與指令已同步。
+只留本頁凍結後記錄dirty，settings.json仍為使用者修改，未merge。
+
+封存diff相對R3 e6d10a9f（新增/刪除/淨）：產品0/0/0、測試38/4/+34、腳本44/13/+31、
+文件62/3/+59、設定/其他0/0/0，合計144/20/+124；二進位0。文件含未提交R3交回／分析，
+非全為本次新寫；本頁凍結後及外部文件另計，不混入候選source。
+分支對main72548c累積：產品5/1/+4、測試1390/3/+1387、腳本1541/73/+1468、文件402/6/+396，
+設定/其他0，合計3338/83/+3255；包含之前封裝/R2/R3。產品本輪未改，測試/腳本經focused、
+同headCI與獨立覆核；文件MkDocs通過、外部連結核對，設定未動。不評回答品質，未做VALID/TEST。
+
+## 已完成 — DEV 第3輪結果分析
+
+第3輪run `20261002-011825-eeb4bce1`已完整1320筆，exit 0、非partial、cleanup通過。
+source為`e6d10a9f11221d3dd0ba320088bb191c65b709ac`；未merge、未啟動第4輪。
+依使用者「跟上次一樣」只分析既有證據並整理外部論文文件，未改候選或新增推論。
+文件：`碩論準備/實驗/DEV階段紀錄/DEV第3輪總結與第4輪改善計畫.md`；實驗README已有入口。
+首次正確847→684→927、最終894→808→979；分清工具／參數／封裝及重試救回，
+不將Clarification／No-call分數稱為回答品質。核對saved scores與代表完整輸入／原始生成，
+獨立分析另驗Gemma／Granite3.3三輪1584份request/result配對hash；未重新判分或讀VALID／TEST。
+候選草稿：Granite4以R2、Gemma以R1提示起步，其餘以R3；只選各模型主要弱點，
+不更動RAG、Host、parser、scorer或重試政策。後續批准與施工狀態以本頁active section為準。
+本次僅文件更新；產品、測試／fixtures、腳本、設定與二進位均無修改，settings.json保留。
+
+## 歷史交回 — DEV 第3輪逐模型提示呈現與正式啟動
+
+使用者已批准第2輪總結所列五模型改善方案，要求移除草稿／待確認狀態、實作並正式開跑。
+證據：第2輪1320筆完整結束，首次正確847→684、最終894→808；完整封裝與操作／回覆混淆
+因模型而異，不能將共同文字呈現視為各模型最佳起點。外部詳細計畫位於
+`碩論準備/實驗/DEV階段紀錄/DEV第2輪總結與第3輪改善計畫.md`。
+Outcome：每模型固定一套candidate3；Granite4／Llama以R2提示起步，Phi／Gemma／Granite3.3
+以R1提示呈現起步，明示完整JSON輸出及操作／回覆邊界。共用runner與產品修復不回退。
+Scope：研究提示呈現、直接測試與封存／文件；不改模型／生成／RAG／題庫／scorer／Host／
+一次格式重試，不讀VALID／TEST，不改UI、不merge、不新增推論或通用控制層。
+授權正式五模型各264筆（共1320）；本輪不額外跑20題工程smoke、不暗中搜尋或重跑候選。
+假設：137既有環境／模型／GPU仍可用，部署前核對；settings.json保持原狀。
+步驟：提示與baseline保護→focused tests→五模型完整輸入及tokenizer預算→獨立程式／
+研究契約與實際輸入覆核→同head適用CI→封存完整source/config並追加round-03→正式開跑。
+驗證：工具schema／membership／blocker／RAG／當前請求不變，完整輸出例合法，模型選擇
+不依case/oracle，舊round1/2及證據不變；五模型candidate3與完整source身分可追溯。
+Complexity：產品owner與預計production LOC均不增加，重用assembler純呈現hook與append_round。
+Stop：正式run已產生有效初始紀錄與進度，交付run/log/一行重跑入口即停止監控，不等跑完。
+進度：已實作逐模型baseline與公開契約完整JSON示意；產品程式與固定研究因素未改。
+提示保護先重現26項預期失敗再通過37項；獨立source／契約覆核無阻擋，仍待實際輸入覆核。
+相鄰接線三項舊測試已同步已批准的逐模型目錄；159項直接測試均已有green證據，Ruff通過。
+凍結source `e6d10a9f11221d3dd0ba320088bb191c65b709ac`，PR #154未合併，承接PR #153。
+同head CI 22成功／5 scope skip，全completed；兩位獨立reviewer均完成實際輸入覆核、無阻擋。
+66真fixture／1320輸入通過；五模型精確tokenizer重播全部初次及可能retry，最高2993/7680，
+RAG未裁切。重播採原capture，不冒稱新檢索；正式初始10筆另驗live RAG／system／原始檔hash。
+NAS已追加round-03；163舊封存檔及9份歷史run身分不變，round1/2/3環境check皆通過。
+正式run `20261002-011825-eeb4bce1`；已觀察9→39/1320且初始10筆recorded／cleanup通過。
+初始驗收probe曾誤將trace鍵值對序列當dict；修正唯讀解碼後相同內容核對通過，原probe保留，
+未改候選、未追加／重跑模型。這不是完整量測或準確率改善宣稱。
+NAS根`/mnt/home/2025/hxin/XBrainLab-experiments`；log `.runtime/logs/dev-round03-e6d10a9f.log`，
+工程證據`results/engineering/round3-e6d10a9f`；重跑入口`stages/dev/round-03/./run.sh`。
+當時依授權停止監控；後續第3輪完整結果及下一步以本頁頂端為準，不自動跑第4輪。
+完整研究快照乾淨；本頁交回記錄在凍結後補記，非候選程式改動。settings.json保持原使用者修改。
+
+封存diff相對第2輪d2e679c2（新增/刪除/淨）：產品0/0/0、測試91/15/+76、腳本91/17/+74、
+文件63/8/+55、設定/其他0/0/0，合計245/40/+205，二進位0；文件包含開工前未提交的R2交回
+記錄，不冒稱全部本輪新寫。本頁凍結後記錄及外部論文文件另計，不混入研究candidate。
+分支相對main72548c累積：產品5/1/+4、測試1356/3/+1353、腳本1510/73/+1437、
+文件343/6/+337、設定/其他0/0/0，合計3214/83/+3131；含先前封装、報告、R2，不是本輪淨增。
+產品本輪未改；測試／腳本經focused、同head CI及独立覆核，文件MkDocs通過，設定未動。
+當時限制：啟動驗收不是完整run驗收；後續已完成結果分析，仍不評回答品質、未做VALID／TEST或merge。
+
+
+## 已交回 — DEV 第2輪正式量測已啟動
+
+使用者認同共同調整→逐模型重點，要求覆核並提出做到137正常開跑即交回的實作計畫。
+唯一施工順序由本頁追蹤；詳細候選/步驟見`碩論準備/實驗/DEV階段紀錄/DEV第1輪問題討論.md`
+第五/六節。已核對研究規格及實際接線，獨立覆核指出schema資訊保留、精確model_id注入、
+preflight五模型覆蓋及RAG預算需驗；計畫已納入。現有封裝入口缺新增輪次操作，列直接依賴。
+Outcome：共同文字呈現＋五模型短提示，固定candidate2/source；經驗證封存部署137，
+新增本輪固定20筆工程驗證後啟動完整1,320筆，確認進度/有效初始case落盤即交回。
+版本方式已獲使用者確認：共用程式，依精確model_id選固定提示；五套提示各自演進，
+每模型每輪綁定完整source/提示/配置，不走五條長期分岔的產品分支，也不只封存提示。
+Scope：提示呈現與直接必要的研究接線/封存/測試/文件，不改模型、生成、RAG、
+scorer、題庫、Host政策與一次格式修復；不讀VALID/TEST，不調UI。
+假設：共用資源仍可用、137GPU可用；實際部署前重查。第五節防退步是分析項，不是重跑門檻。
+驗證：schema/工具membership/blocked reasons/上下文/五模型profile/預算等價，source與
+oracle/scorer可比較、舊round1完整性、focused tests及適用CI、獨立輸入/程式覆核。
+Stop：正式run初始有效量測與進度正常，提供run/log/重跑入口後停止監控，不等整輪結束。
+使用者已授權本計畫施工、固定20筆工程驗證及正式開跑；要求開跑前多位獨立reviewer
+核對實際程式/研究契約/完整模型輸入。已按本輪授權執行，不援引R1舊review代替本輪。
+Next：等待使用者下一次要求查結果／分析；不持續監控，不追加推論或啟動第3輪。
+UI不變；settings.json保留不動。未授權合併，不將啟動成功誤報為整輪完成或準確率改善。
+進度：139項Windows focused回歸通過；Linux封裝22＋package/shared33項通過，Ruff全庫通過。
+新增round獨立review通過，另做第二次move故障注入，舊round仍可執行且可重試追加。
+最終source `d2e679c2269c2edcd56698a0cdf30b5b332237b5`，PR #153未合併。
+同head CI：22成功、5 scope skip，全completed。66真fixture／1320份完整輸入通過；
+五個精確tokenizer重播全部初次與可能retry，RAG/state/request原文不裁切；最大retry2157
+tokens < 7680。所有scorer/frozen依賴未改。三個獨立審查面向均通過；輸入review抓到
+禮貌問句與資訊問題的歧義，已在推論前修正並重新產生全部capture，沒有用分數調提示。
+NAS已追加round-02；157舊封存檔、8歷史run身分保持不變，round1/2 check均通過。
+固定20工程案例完整，exit0；23份prompt/raw captures及五模型CUDA/cleanup由獨立review
+核對。模型錯答保留為有效量測，不拿工程成功宣稱全答對。沒有額外smoke或候選搜尋。
+正式run `20260930-132737-274c0afd`，只跑round-02五模型candidate2共1320題。
+已確認進度30→56/1320，直接核對前10筆recorded、trace與cleanup；不是整輪完成宣稱。
+NAS根`/mnt/home/2025/hxin/XBrainLab-experiments`；log為
+`.runtime/logs/dev-round02-d2e679c2.log`，工程證據為`results/engineering/round2-d2e679c2`。
+手動重跑入口`stages/dev/round-02/./run.sh`；目前正在跑，勿重複啟動。外部實驗文件已同步。
+Complexity：產品僅原樣預設呈現hook（+5/-1），沒有新增owner；研究呈現與追加輪次重用
+原assembler/packager/runner，沒有新state、scheduler或評分機制。原始證據不覆寫。
+
+封存候選LOC（新增/刪除/淨；不含settings；二進位0）：相對da137366，產品5/1/+4、
+測試353/2/+351、腳本330/14/+316、文件57/3/+54、設定/其他0，合計745/20/+725。
+此基準含開工前已討論但未提交的計畫文件，不冒稱全為本次新寫；本交回記錄另計。
+分支對main72548c累積：產品5/1/+4、測試1280/3/+1277、腳本1436/73/+1363、
+文件288/6/+282、設定/其他0，合計3009/83/+2926；含先前封裝/進度/比較報告工作。
+產品/測試/腳本由focused與同head CI覆蓋，文件MkDocs通過，設定無改動；實際模型準確率
+與全輪完成仍未知，未做VALID/TEST、未評回答文字品質。外部文件不混入repo LOC。
+
+## 已完成 — DEV 第1輪唯讀交叉分析與討論筆記
+
+依使用者要求，問題整理於`碩論準備/實驗/DEV階段紀錄/DEV第1輪問題討論.md`，README有入口。
+以run B `20260930-075129-46512761`保存證據核對1,320筆判分，按題組讀錯誤輸出及
+代表上下文/修復；區分已確認現象、因果假設及未批准改法。五模型分型/平衡率、錯誤
+分類、92次修復與47筆救回、案例ID及連結已直接核對。不宣稱人工逐讀所有重複prompt。
+僅寫討論文件，無產品/UI、題庫、scorer、RAG或原證據變更，未讀VALID/TEST、未推論。
+第五節已補共同調整→五模型個別重點/防退步項，皆為待討論候選，不代表施工批准。
+沿用使用者搬移後位置並修相關連結；五模型數值、Phi修復、文件連結與固定因素已核對。
+Next：共同討論第2輪的工具資訊/提示呈現；尚未批准候選、實作或開跑。不另產分析報告。
+
+## 已完成 — 可讀的重跑比較報告
+
+使用者確認中文報告樣式：結論→比較表→數字解釋→版本差異，明示不新增cases.md，直接開既有檔案。
+Outcome：compare.sh產生可讀comparison.md，連到比較JSON與兩次既有報告；本次結果重產並下載Windows。
+Scope：既有比較器的純Markdown呈現，不改比較/判分/schema；不推論，不改原run或舊source。
+不因工具一致率100%宣稱答對100%，不因版本不同自動判新候選，也不替差異寫未驗證的原因。
+步驟：相同/不同/不可比的真fixture測試→呈現收斂→focused回歸/review→新快照部署→真結果比對/下載。
+Stop：主報告易讀且結論對資料成立、JSON指標未變、NAS新入口可用、Windows副本完整。
+UI：報告文案/排列已確認；無桌面UI變動。Owner無增加，產品0；只抽純renderer以隔離呈現。
+Next：先保護一致率/正確率與不可比較分母，再實作。
+進度：比較JSON與數值不變，主報告約52行；相同/差異/缺證據測試通過。依最新要求移除cases.md生成。
+獨立review重現未知source metadata會中止呈現，已red→green修復並獨立覆核通過。
+精簡後比較/封裝40項通過，共用環境10項沿用未改動的前次通過證據；Ruff與獨立覆核通過。
+NAS coordinator為353b53df65a2bd3e70644d5483c7e89959762e6a，無推論check通過、19份設定/run
+manifest未變。真實報告results/comparisons/20260930-103303-62a13c5b僅含comparison.md/json，
+主報告59行，既有證據連結均有效；JSON SHA256與舊比較完全一致，原始證據未变。
+Windows下載/XBrainLab-comparison-readable已放主報告與原JSON並開啟；下載副本連本機JSON，
+NAS原報告路徑另列，避免搬到Windows後留下失效相對連結。沒有cases.md。
+本次含cases.md的未交付草稿已核對JSON一致後刪除；先前正式比較與原run保留。
+Next：進入第1輪結果分析討論；未push/PR/merge，未啟動新推論。
+
+## 已完成 — 新進度入口重跑與真實結果比對
+
+使用者要求上一輪完成後用新脚本再跑並測比對；唯讀確認舊run
+20260930-070700-24d44eac五模型各264題、runner/launch exit0，且使用者已啟動新版run
+20260930-075129-46512761，coordinator a08d7f38，1320題同配置，仍執行中。
+Outcome：沿用正在執行的新版run；先用compare.sh實測基準→上一輪，完成後自動比上一輪→新版。
+Scope：只執行既有比較入口、寫獨立comparison結果及本次背景操作log；保留舊證據，不開重複推論。
+驗證：原run退出/cleanup/排程完整、逐題可比較性、原始證據不變、差異/不可比較如實列出。
+背景等待只觀察這個run與既有PID，完成/失敗後結束；不介入實驗程序。不改產品/scorer/題庫。
+Stop：當前基準比較可用，背景後續比對已安排且新版仍有進度後交回；不持續監控整輪。
+UI：無改動；此為第1輪重現核對，不新增candidate/DEV輪次。
+2026-09-30核對：基準→上一輪compare.sh exit0，報告results/comparisons/20260930-075707-7ed27438。
+1320題first/final正誤均無改善/退步、unavailable0；final工具/參數1308/1308一致，12無有效
+decision如實不可比較，原始證據未變。classification為candidate_comparison，列出的差異
+含coordinator版本及搬移後config/models/environment路徑，不改寫原證據或強稱配置逐位元相同。
+新run已完成granite4 264題、進入granite33，無需另啟重複推論。tmux背景工作
+xbl-compare-20260930-075129觀察精確runner PID606707；成功退出後執行上一輪→新run比較，
+失敗/無唯一end紀錄/逾6小時則明示停止，不比較不完整量測。log：
+.runtime/logs/compare-after-20260930-075129-46512761.log。已確認session存在且log記錄等待。
+新版run五模型各264題、exit0；自動比較exit0，報告20260930-082651-56dff1cc。
+1320題first/final正誤一致，final工具/參數1308/1308一致、12不可比；原證據未變。
+Next：可進入第一輪結果分析；不主動開下一candidate。未push/PR/merge。
+
+## 已完成 — 實驗終端進度顯示
+
+問題：137正在執行的Round1逐題結果已寫入，但child stdout/stderr只存log，終端只有輸出路徑。
+Outcome：既有./run.sh顯示準備、目前模型/題數、總題數、耗時與最後exit；不把已處理誤稱答對。
+Scope：封裝入口唯讀觀察既有manifest與condition結果，5秒更新；不改runner/題庫/推論/計分，
+不新增進度state owner，不中斷或重新啟動使用者實驗，不覆寫舊source或run manifest。
+步驟：真檔案/子程序進度red測試→薄顯示器→入口及取消/失敗回歸→獨立review→NAS新快照部署。
+驗證：啟動/跨模型/失敗/部分寫入/產報告/取消，確認讀取不改原始結果；用既有實驗唯讀核對。
+顯示故障不得終止研究程序；不掃模型或逐題大型檔案，不猜ETA。UI：CLI顯示已獲使用者同意。
+Complexity：重用既有批次程序與condition identity；純renderer不是owner，產品0，腳本預計約100行。
+Stop：新入口進度與真程序回歸通過、NAS可用且結果不變；本次不等1320題跑完。
+進度：52項直接回歸通過，含真5秒更新、讀取中間態、broken stdout、失敗與取消；Ruff通過。
+獨立review無阻擋項，另驗6項進度與3項SIGINT/SIGTERM/後續阻擋整合。
+NAS coordinator已更新為a08d7f382cd9f5af63abf7127a30d3a1a5dfc675；新入口無推論check通過，
+18份設定/run manifest hash未變，模型source仍d9182f19。真實現行run唯讀顯示473/1320，
+沒有停止/重啟原程序。既有run不熱更新；下一次./run.sh自動顯示。外部文件已同步。
+Next：使用者原run繼續，無需為顯示重跑；未push/PR/merge，亦未啟動新推論。
+
+## 已完成 — NAS 根目錄直接採用約定結構
+
+使用者糾正上一輪層級並明確要求「直接把舊目錄改成這個結構 NAS上的」。
+唯一根目錄是`/mnt/home/2025/hxin/XBrainLab-experiments`，不是其reproducibility/experiment子包。
+Outcome：根目錄直接呈現README/run.sh/compare.sh、stages、snapshot、results、.runtime。
+Scope：先盤點舊目錄全部頂層與實際引用，將仍需保留的source/inputs/成功結果歸位；共用
+模型/Python須保留並有明確固定位置，搬移後驗環境/入口。刪除只限已確認重複或本次施工
+副產物；唯一舊研究證據保留，不把整個舊目錄藏進legacy/archive。原始結果manifest不改寫。
+不推論、不開新輪、不改產品/題庫/scorer、不調ACL、不merge；D槽仅同步文件與指令。
+步驟：引用/內容清單→確定各舊目錄去向→安全搬移及必要資源重綁→同root直接check與
+離線證據核對→清掉已確認重複/空目錄→更新操作文件。新權限/不明獨有資料另報不擅刪。
+Stop：NAS根目錄實際符合約定，直接入口可用且成功結果/共用依賴完整；不以子包通過冒充。
+UI：無變動。產品owner/production LOC均0；重用既有封裝器，不新增控制層。
+盤點：現有9個頂層；無推論程序，兩個shell停在根目錄，既有http.server 577755指向舊
+成功run，不關閉。需使用者以新路徑重啟報告服務。active venv為system Python copies，
+無外部symlink或私有路徑pth依賴；獨立封装review同意只改當前binding，不重建環境身分。
+精確歸位：當前子包升到根；各歷史Git快照按SHA去重；原inputs/contracts/specs歸snapshot，
+五個歷史工程run歸results/reference並標明非新DEV候選，獨有診斷歸results/engineering。
+模型/Python/安裝資源移至同層XBrainLab-resources，active為models及python/experiment；
+其他cache/wheels/舊環境只分類保留，本次不擅刪獨有資源。舊成功run僅在完整樹hash/link
+與reference一致後刪重複；保留同ID但報告不同的工程搬移證據。只清已識別純code傳輸
+壓縮檔與pytest快取，不把整個engineering改名藏起來。
+進度：實際根目錄已只剩README/run.sh/compare.sh、stages/snapshot/results/.runtime；
+10個獨立來源版本各一份、6份reference（5工程＋1正式），舊8個資料夾已移除/分類歸位。
+根目錄round-01及DEV check通過，root/VAL/TEST拒絕如預期。現行env保持原154套件身分，
+只重綁路径並修正venv產生的啟動文字；無套件升級。原成功run全樹hash/link一致後去重。
+安全覆核要求的忽略檔檢查真的擋下兩份.test-tmp，未刪，均另移資源cache；1300項內容
+匹配的workstation傳輸包刪除，未證明相同的smoke傳輸包保留snapshot/inputs/transfer-archives。
+新位置的PyTorch/MNE/transformers匯入、offscreen QApplication及runner --help均通過；
+真實1320題reference自比為same_config_reproduction，原始證據未變，正誤全部可比較且
+沒有改善/退步；有效final工具/參數1308筆一致，12筆無有效decision如實不可比較。
+獨立SSH實物覆核通過，無阻擋項；results/runs仍空，未啟動新推論。D槽文件已同步。
+Next：使用者登入137後在stages/dev/round-01執行./run.sh；舊報告服務需自行停止後依
+新根目錄重啟。VAL/TEST尚未準備，不宣稱整個研究已可執行；未push/PR/merge。
+
+## 前版部署 — 單一可搬移 experiment（路徑已由頁首取代）
+
+2026-09-30最新確認取代下方前版封裝：搬移單位是整個experiment，不是各round；
+頂層README/run.sh/compare.sh、stages/{dev/round-01,val,test}、snapshot/{sources,inputs,
+environment,manifest.json}、results/{reference,runs}與隱藏.runtime。每個distinct commit只
+存一份完整source；各層run.sh引用同一封存程式，不再各存batch-source或各round一套source。
+Outcome：137的Round1可用一行重跑、結果分開保存、可離線比較原成功1320題結果；整包搬移
+含中文空白路徑可檢查。DEV固定僅round-01；root含未準備VAL/TEST，整體先拒絕不部分偷跑。
+Scope：既有封裝/批次入口收斂、直接回歸與獨立覆核、部署及本機結構/指令文件；
+使用者明確授權刪除失敗run 20260929-115803-8477ba6c，先核對精確manifest與無使用中。
+保留成功run 20260929-152153-64a2c9c8、仍共用的模型/Python；不開推論、不改題庫/判分/
+產品UI、不調權限、不merge。前版本agent產生且無研究結果的多重batch-source樹於新包
+驗證後清除；不清其他歷史資料。成功reference原始manifest不改写，不冒充新環境新實驗。
+假設：同Linux/NAS且共用固定環境/模型可讀；跨帳號權限未驗證，不作本次阻擋或暗自chmod。
+步驟：核對配置/比較器路徑→真Git/shell搬移/去重回歸→替換舊批次封裝→獨立review→
+137無推論check及reference自比→精確清理失敗run/本次過期中間包→同步文件/重跑指令。
+Stop：上述已授權成果與直接證據閉合；不等待下一次推論完成、不宣稱新DEV已重跑。
+UI：無產品UI變動；目錄與CLI已批准。中央snapshot／scope／結果已實作；88項封裝、
+shared/portable與比較回歸通過，Ruff與MkDocs strict通過，獨立覆核無阻擋項。測試的昂貴
+推論runner以fixture替代，真Git/shell/venv/搬移/訊號/比較器都有跑，不當成1320題重跑。
+部署coordinator為`9ddcfec8f4ea4bb0a39a60480a5b93ae1d8f0c0b`；五模型source仍d9182f19。
+137路徑為`XBrainLab-experiments/reproducibility/experiment`，實際僅兩份source快照。
+round-01及DEV check通過，root/VAL/TEST明示blocked。暫移中文空白路徑後check與真實
+1320題reference自比通過：correctness unavailable=0、無改善/退步，原始證據未變；
+有效final工具/參數1308/1308相同，12筆無有效decision仍如實不可比較，不說模型100%正確。
+新research run為0；成功原run留原位並逐檔核對複製reference，沒有改寫其版本/路徑。
+失敗run已永久刪除（約399MB，NAS開啟鎖檔先阻止rmdir，關檔後空目錄已移除）。
+已核對舊shared-baseline無研究run/batch結果後刪除，部署暫存亦已移除；必要模型/環境保留。
+沒有新推論/PR/push/merge；共享資源權限未改，其他帳號仍需通行權限。
+Next：使用者以文件中的一行指令自行重跑第1輪，完成後比較，再討論下一輪；不自動開跑。
+Complexity：runner仍唯一擁有admission/journal/cleanup/scoring；package仍封存owner，batch
+只作範圍/順序委派。刪除每節點batch-source/遞迴package封存，重用Git snapshot、runtime
+隔離和runner；不新增排程器/評分owner。產品0；脚本預估重寫300–500行，rollback以Git
+小commit為單位，不改原成功封存。保留v1-v3因有真實歷史包；未使用的新批次格式不加相容層。
+
+## 前版交接 — 實驗結構與工作站操作文件（已由頁首取代）
+
+使用者確認只需結構與既有重跑指令，不新增Windows啟動器。文件位於
+`D:\workspace_v2\projects\lab\碩論準備\實驗\README.md` 與 `重跑指令.md`。
+環境準備與既有 `run.sh`／`compare.sh` 分開說明；本機題庫編輯稿不替換封存輸入。
+未啟動新run、未修改遠端封存包／環境；未授權下一輪改善。下一步依使用者討論決定。
+
+## 前版 — 共用唯讀資源與分層實驗入口（不再作施工目標）
+
+2026-09-30使用者連續確認方案並同意施工：同工作站／NAS，完整程式與題庫／設定隨每輪
+封存，模型與Python共用唯讀；root／DEV／round／VALID／TEST各層相同`./run.sh`，
+上層只按明確固定清單呼叫下層，不掃目錄猜範圍、不自動調參／選版／解封TEST。
+目前問題：v2須手貼環境變數且綁定原帳號可寫位置；v3每副本重建環境並複製模型，
+不符合本次共用資源需求；尚無固定範圍的分層入口。TEST實際執行協定仍未實作。
+Outcome：固定共用環境的可複製封存包、自動環境／cache隔離、明確範圍的薄批次入口、
+新run不覆寫及可追查索引；文件含DEV五輪／VALID三次／TEST消融的封存與實際能力界線。
+Scope：既有packager/bootstrap及直接測試、封存／本機文件；不改產品UI／Agent／scorer／
+題庫／模型、不覆寫舊包或原結果、不啟動正式推論、不變更他人權限／建立帳號。
+TEST與未封存輪次以阻擋理由拒絕；目前整體範圍不能冒稱完整研究已備妥。
+假設：共享資源對接收者可讀／執行，輸出在接收者自己的可寫副本；實際跨帳號權限需
+讀取檢查，無帳號／權限時不能冒稱跨帳號驗證通過。Python／模型不原地升級。
+步驟：固定文件與complexity review → 真Git／shell／檔案的red測試 → 共用環境與薄批次
+入口 → focused regression與獨立覆核 → 137唯讀資源及無推論check → 本機文件交付。
+Stop：授權入口／文件與直接驗證閉合；部署需要新權限時明示，不把待決權限藏在操作文件。
+UI確認：無產品UI改動；CLI分層入口已獲確認。Next：先寫可觀察的封裝／批次回歸。
+
+進度：v4共用環境與固定批次入口已實作；75項真Git／shell／venv與既有v2/v3回歸通過，
+Ruff通過。獨立覆核重現cache巢狀symlink可回寫外部，已red→green修復並獨立覆核通過；
+批次後續leaf不可寫亦已先重現再修復。這些測試替代昂貴模型runner，沒有推論證據。
+137權限只讀核對：`XBrainLab-experiments`及舊工程包`.runtime`的group/other均無通行，
+且沒有ACL例外；不自行chmod。程式固定於`22b60ac0`，新獨立封存樹位於
+`/mnt/home/2025/hxin/XBrainLab-experiments/reproducibility/shared-baseline-22b60ac0`。
+137葉節點及DEV的check-environment通過；VALID／TEST／root明示blocked，舊run清單不變，
+新樹沒有研究run或batch結果。MkDocs strict通過。D槽結構／指令／三階段封存文件已同步。
+仍未scope-complete的跨帳號使用：需指定接收帳號／群組並核准最小通行及唯讀資源權限；
+目前不能宣稱接收者可執行。Next：使用者決定ACL對象／範圍後完成真正接收者check。
+沒有建立PR、push／merge或啟動研究量測；新封裝工程檢查不冒稱1320題重跑或CI通過。
+
+Complexity review：現有run_assistant_dev／case runner繼續擁有admission、journal、cleanup、
+scoring；新共用資源適配不擁有實驗狀態，批次入口只選範圍順序與傳回exit，不另建resume
+或評分政策。刪除候選：重複runtime環境組裝、手貼環境文档；不保留誤加Windows捷徑。
+預估新增腳本約300–500行（共用資源與批次兩個可分離責任），產品0；不增產品owner。
+必要性：共享環境核對與批次委派是兩個不同外部seam，不塞入既有大型packager；不新增
+通用排程／服務／中央ledger。實際LOC與owner delta完工再核對，超出界線先重新review。
+
+## 已完成 — 合併收尾修復，重跑 DEV 第1輪五模型
+
+PR #152 已合併；新 run `20260929-152153-64a2c9c8` 完成五模型共1320題，退出碼0。
+封存source為 `d9182f1922b9e80bc4fee647ef0d3657b274f915`；完成量測不代表全部答對。
+下方保留該次修復與授權紀錄，不再作為待啟動工作。
 
 最新授權：使用者選擇修正版全部重跑並說「跑吧」，依已說明順序完成必要CI、合併、
 建立新封存source/run後在137啟動。五模型各264題、共1320題，仍是candidate1／DEV
 第1輪工程修復重跑；seed0／repeat0、RAG on、一次格式修復、14400秒active預算及
 18000秒外層wall guard不變。不調參、不改題庫／scorer、不開第2輪／VALID／TEST。
-原run `20260929-115803-8477ba6c`與894題及失敗證據保留，不拼接、不覆寫。
+原run `20260929-115803-8477ba6c`曾保留894題及失敗證據，不拼接、不覆寫；
+2026-09-30使用者另行授權刪除此失敗run，清理以頁首範圍為準。
 重用137現有權重與Python環境，建立新source封存包，不重新複製38GB資源。
 Stop：精確修復head所有適用CI通過、合併後新run最初有效案例正常落盤，即交回run/log
 位置，不持續監控到全部結束。此次UI未改；不宣稱使用者新增手測證據。
