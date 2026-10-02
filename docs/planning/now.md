@@ -29,6 +29,17 @@ reset後正常；另warmup保護通過。測試double原先逐生成重建captur
 獨立風險審查無剩餘blocking；不忽略unknown modal，不改scorer，不把renderer失敗稱成功。
 Next：直接相鄰condition／outcome／report／runner保護完成後封新head，CI與137相同真路由
 及33fixtures無推論預檢通過才發布repair-01。原父val入口保留歷史source，新入口另明示。
+Checkpoint：b32c27f9的137真Qt66項／33fixtures通過；495模型messages與5ceb逐字相同，
+1485排程相同。獨立source／artifact／package覆核通過，repair-01已封未跑。
+CI23成功／3skip，但Windows lifecycle既有test_training_refreshes_metrics_before_explicit_saliency_click
+在terminal_publications數量0失敗；UI與saliency均已完成，與本輪driver無呼叫關係。
+直接驗證阻擋：有界延後training terminal notification可重現同一行，將確認放行後exact1，
+若成立僅補測試等待真正通知終態、不改產品或放寬一次publication斷言。失敗CI與未跑封存保留。
+新的test-only head仍需CI；不提前啟動、不回寫b32c封存，不更改研究因素。
+有界真background-owner probe已證明UI全部完成時通知仍0，放行後自行exact1，未手動補發。
+僅於測試末尾加6行有界等terminal/analysis通知，保留所有UI及exact1斷言；相同受控probe
+green與3項正常／OOM／相鄰saliency通過。產品／scripts與b32c完全相同。
+Next：test-only head CI、新repair-02封存（repair-01保留未跑）；通過後再正式啟動。
 
 ## 歷史 — VALID三次正式量測已啟動（後續中止，見Active）
 
