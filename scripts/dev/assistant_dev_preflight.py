@@ -10,6 +10,44 @@ import time
 from pathlib import Path
 
 
+def model_contexts(registry, study, cases: list[dict]) -> dict:
+    """Capture the actual research assembly for every model and current request.
+
+    No model is loaded and no retrieval is performed here. Separate replay of
+    saved RAG captures checks reference retention and native tokenizer limits.
+    """
+    from scripts.dev.assistant_dev_context import DevContextAssembler
+    from scripts.dev.assistant_experiment_config import MODELS
+
+    contexts = {}
+    for model_id in MODELS.values():
+        assembler = DevContextAssembler(registry, study, model_id=model_id)
+        captures = []
+        for case in cases:
+            messages = assembler.get_messages(
+                [{"role": "user", "content": case["input"]}]
+            )
+            publication = assembler.latest_tool_publication
+            captures.append(
+                {
+                    "case_id": case["case_id"],
+                    "messages": messages,
+                    "actual_host_generation": publication.backend_generation,
+                    "workflow_stage": publication.workflow_stage,
+                    "tool_names": sorted(publication.tool_names),
+                    "blocked_reasons": dict(publication.blocked_reasons),
+                    "message_utf8_bytes": sum(
+                        len(message["content"].encode("utf-8")) for message in messages
+                    ),
+                    "messages_sha256": hashlib.sha256(
+                        json.dumps(messages, sort_keys=True).encode()
+                    ).hexdigest(),
+                }
+            )
+        contexts[model_id] = captures
+    return contexts
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bank", required=True, type=Path)
@@ -33,7 +71,7 @@ def main(argv=None) -> int:
     import torch
     from PyQt6.QtWidgets import QApplication
 
-    from scripts.dev.assistant_dev_context import PROJECTION_ID, DevContextAssembler
+    from scripts.dev.assistant_dev_context import PROJECTION_ID
     from scripts.dev.assistant_pilot_bank import build_dev_selection, load_bank
     from scripts.dev.assistant_pilot_fixture import prepare_fixture
     from scripts.dev.assistant_pilot_scoring import score_decision
@@ -58,12 +96,12 @@ def main(argv=None) -> int:
     for tool in get_all_tools():
         registry.register(tool)
     report = {
-        "schema": "xbrainlab.assistant_dev_fixture_preflight.v1",
+        "schema": "xbrainlab.assistant_dev_fixture_preflight.v2",
         "bank_sha256": bank["source"]["sha256"],
         "source": source_identity(),
         "selection": selection,
         "projection": PROJECTION_ID,
-        "scope": "66 real initial states / 264 oracle schemas; no model accuracy evidence",
+        "scope": "66 real states / 264 oracles / five prompt profiles; no inference or retrieval",
         "fixtures": [],
         "complete": False,
     }
@@ -80,16 +118,14 @@ def main(argv=None) -> int:
                 output / fid,
                 running_training_epochs=10_000,
             )
-            assembler = DevContextAssembler(registry, study)
-            messages = assembler.get_messages([])
             entry.update(
                 ok=True,
                 evidence=evidence,
-                actual_host_generation=assembler.latest_tool_publication.backend_generation,
-                model_state_messages=messages,
-                model_state_sha256=hashlib.sha256(
-                    json.dumps(messages, sort_keys=True).encode()
-                ).hexdigest(),
+                model_contexts=model_contexts(
+                    registry,
+                    study,
+                    [case for case in cases if case["fixture_id"] == fid],
+                ),
             )
         except Exception as exc:  # Preserve each actual failed initial state.
             entry["error"] = f"{type(exc).__name__}: {exc}"

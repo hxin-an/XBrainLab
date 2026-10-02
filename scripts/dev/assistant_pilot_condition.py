@@ -125,6 +125,10 @@ class PilotConditionSession:
         self.manager = self.runtime = self.window = self.driver = None
         self.service = None
         validate_case_request(payload)
+        if payload.get("experiment") is not None:
+            from scripts.dev.assistant_dev_context import validate_dev_prompt_model
+
+            validate_dev_prompt_model(payload.get("model_id"))
         self.root = root.absolute()
         self.prompt_root = self.root / "prompts"
         for name, suffix in (
@@ -204,6 +208,7 @@ class PilotConditionSession:
                     controller.assembler = DevContextAssembler(
                         original.registry,
                         original.study_state,
+                        model_id=payload["model_id"],
                         application_runtime=original.application_runtime,
                     )
                 self.driver.attach(controller)
@@ -646,10 +651,12 @@ class PilotConditionSession:
     def close(self) -> bool:
         if getattr(self, "closed", False):
             return True
-        self.closed = True
-        from XBrainLab.backend.application.owned_work import OwnedWorkKind
+        from PyQt6 import sip
+        from PyQt6.QtCore import Qt
 
-        clean = True
+        from XBrainLab.backend.application.owned_work import OwnedWorkKind
+        from XBrainLab.ui.qt_runtime import drain_qt_runtime_after_event_loop
+
         try:
             service = getattr(self, "service", None)
             if service is not None:
@@ -661,18 +668,32 @@ class PilotConditionSession:
                     ),
                     10,
                 )
-            if self.driver is not None:
-                self.driver.close()
-            if self.manager is not None:
-                self.wait_until(self.manager.close, 20)
-            if self.window is not None:
+            # A deferred close can finish after an earlier wait timed out.
+            # Its driver timer and manager widgets then no longer exist.
+            if self.window is None or not sip.isdeleted(self.window):
+                if self.driver is not None:
+                    self.driver.close()
+                if self.manager is not None:
+                    self.wait_until(self.manager.close, 20)
+            if self.window is not None and not sip.isdeleted(self.window):
+                # Only an accepted MainWindow close may destroy its native tree.
+                # Hiding alone leaves Qt wrappers for unsafe interpreter teardown.
+                self.window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
                 self.window.close()
-                self.wait_until(lambda: not self.window.isVisible(), 15)
+
+                def window_destroyed():
+                    drain_qt_runtime_after_event_loop(self.app, cycles=1)
+                    return sip.isdeleted(self.window)
+
+                self.wait_until(window_destroyed, 15)
             if service is not None:
                 service.close()
+            if getattr(self, "app", None) is not None:
+                drain_qt_runtime_after_event_loop(self.app)
         except Exception:
-            clean = False
-        return clean
+            return False
+        self.closed = True
+        return True
 
 
 def run_condition(payload: dict, cases_root: Path, output: Path) -> dict:

@@ -1,6 +1,6 @@
 # XBrainLab Assistant 研究與實驗規格
 
-最後更新：`2026-09-29`
+最後更新：`2026-10-02`
 
 ## 文件狀態與接續方式
 
@@ -23,8 +23,26 @@
 2026-09-29使用者另批准合併工具PR後啟動正式第1輪：137、五模型各264題、candidate1、
 seed0／repeat0、RAG on、最多一次格式修復、14400秒active執行預算。確認啟動與最初
 有效案例正常後即交回，不持續監控整輪；不自行開始第2輪或因錯答調參／重跑。
-先前137固定20題工程smoke保持獨立，不再追加。不得執行正式VALID、讀取／執行TEST
+上述第1輪的137固定20題工程smoke保持獨立，不再追加該輪額度。不得執行正式VALID、讀取／執行TEST
 或重新下載模型；不擴張本輪矩陣、不把舊d0的結果作為本次第一輪。
+2026-09-30使用者另授權第2輪：共同文字工具呈現與五模型短提示，固定candidate2，
+先做新的固定20筆工程smoke，再啟動1,320筆正式DEV；開跑前多位獨立reviewer核對
+程式與輸入／研究契約。20筆為五模型各四題（A01-01、A08-01、C01-01、N01-01之V0），
+工程budget3600秒，不依其分數調提示或追加候選。正式預算與第1輪相同；初始量測正常
+即交回，不持續監控至完成。不授權VALID／TEST或下一輪。
+2026-10-02使用者另批准第3輪：Granite4／Llama沿用第2輪規則與文字目錄作起點，
+Phi／Gemma／Granite3.3沿用第1輪規則與JSON目錄作起點，再加入各自的完整輸出形狀／
+操作與回覆區分。這是研究提示起點，不回退共用runner或產品修復。精確model_id選固定
+profile；完整source在推論前封存。每模型candidate3各264題，共1320筆，固定因素及正式
+預算不變；本輪不追加20題smoke。離線驗證與獨立覆核後開跑，初始有效量測正常即交回。
+不因有效錯答改提示／重跑，不授權第4輪、VALID／TEST或merge。
+2026-10-02使用者閱讀第3輪總結後另批准第4輪：Granite4從R2提示移除泛用輸出示意，
+明示單一操作／回覆互斥；Gemma從R1提示明示執行決策而非文字承諾，不帶泛用示意；
+Phi／Llama／Granite3.3保留R3基礎，分別釐清工具／參數來源、當前請求與參考值、首次
+JSON封裝及不操作邊界。逐模型短提示置於目錄／保留示意之後，不新增推理階段或Host政策。
+只改研究提示呈現；固定因素、一次格式重試及預算不變，candidate4五模型各264題。
+不追加smoke推論；完整輸入／精確tokenizer與獨立覆核、同head適用CI通過再封存開跑。
+初始有效量測及進度正常即交回；不授權第5輪、VALID／TEST或merge。
 舊 B0/B1/B2 搜尋安排、最多 30 條件 VALID、TEST 加跑同模型 B0、P95 10 秒門檻
 已被新版設計取代，不再派工；歷史決策留 Git，舊 B0 封存／分數／入口不追改。
 
@@ -107,7 +125,9 @@ Runner 原樣複製題庫，不做刪欄或特殊指紋轉換；新實驗重新 
 新 DEV 的研究專用投影只控制非任務資訊：模型 state card 不含 backend generation 數字；
 training progress 的匿名 subject reference 按出現順序改成穩定別名。真實 stage、進度數值、
 工具與任務資訊保留。Host 仍用原 publication generation 作 freshness/admission，
-不固定真 counter、不略過 stale checks；原 publication 與實際模型輸入分別保留。
+不固定真 counter；停止確認依[核准的run-bound例外](../target/agent.md#backend-owned-stage-contract)
+在執行邊界核對原trainer/run仍在running，不因同場進度更新失效，其餘stale checks不變。
+原 publication 與實際模型輸入分別保留。
 這是新 DEV 配置，不回套舊 B0，也不宣稱兩者輸入相同。
 
 ## 4. 評分、計時與量測完整性
@@ -131,6 +151,8 @@ training progress 的匿名 subject reference 按出現順序改成穩定別名�
   少類別、缺題或未知終態不能宣稱完整矩陣完成。
 
 決策、admission、使用者確認及實際 Command／GUI outcome 分層記錄。
+完整且同turn/request的確認拒絕／取消事件是有效量測的`blocked`／`cancelled`，不是
+執行成功，也不是「缺少執行觀察」。缺事件、重複或矛盾執行事件、身分不符仍判量測無效。
 Scorer 正反例保護參數、格式、錯誤工具、正常不操作與有效失敗，並獨立覆核可達的錯判。
 正式實驗若發現 scorer 缺陷，一致重評受影響資料，不只修抽到的個案。
 
@@ -190,6 +212,68 @@ JSON排版／key順序不構成參數差異；不評非操作回覆的文字品�
 v1歷史封存仍可讀取，但不往舊包加新入口或更改manifest；如需比較，由新包讀取兩份結果。
 
 ### 可封存 DEV／VALID 協定
+
+#### 同工作站／NAS：共用唯讀資源與分層入口（2026-09-30）
+
+使用者選定本次使用方式：完整程式與評分器、題庫、設定隨實驗版本封存；接收者複製
+到自己的可寫資料夾。Python環境與模型／embedding可繼續使用NAS上同一份固定資源，
+只需接收者讀取／進入／執行權限，不要求每個副本重建venv或複製模型。
+這不是任意機器的獨立可攜包；原資源不可刪除／原地升級，未通過權限檢查不能宣稱
+另一帳號可用。工具不自動chmod／開放私人目錄，也不處理跨帳號GPU排程。
+
+搬移單位是完整`experiment/`，不是各個round；固定頂層為README、run.sh、compare.sh、
+`stages/`、`snapshot/`、`results/`，另有執行時隱藏`.runtime/`。透過
+`assistant_experiment_batch.create_experiment`封存一次完整樹，取代前版逐層batch-source。
+`snapshot/sources/<commit>/`每個不同commit只存一份完整獨立Git快照，跨模型／round／stage
+共用；`snapshot/inputs/`按內容封存題庫及資源指紋，TEST未授權時不讀取或加入。
+`snapshot/environment/shared.json`固定Python位置、平台及套件版本，不是已安裝二進位的
+逐檔hash。模型內容仍由既有runner於推論前核對。各round的`config.json`對應模型、
+candidate及source；README記調整理由／目標模型／共同影響，不能覆蓋機器設定。
+
+在自己的副本執行`./run.sh --check-environment`核對封存、環境版本、資源目錄存取及
+執行限制工具，不推論、不新建run；`./run.sh`自動清理衝突Python環境變數、設定offline／
+offscreen及本地cache，委派既有runner。保留core=0及18000秒外層wall guard，active預算
+由原config擁有。所有cache/log/temp位於副本`.runtime/cache/`，拒絕cache樹既有符號連結；
+run及comparison輸出不允許導向副本外。檢查模式不證明CUDA／模型準確率或逐位元重現。
+
+root、`stages/dev`、各round、`stages/val`、`stages/test`各有`run.sh`，全部引用中央snapshot；
+`snapshot/manifest.json`固定scope、順序及檔案指紋。不掃目錄、不新增另一套case journal、
+評分或resume政策。只允許實體子目錄、禁止重複選擇；全樹封存核對及所選scope的完整
+ready／環境預檢在第一次推論前完成。歷史source／round配置／run證據不原地升級。
+新增DEV輪次使用`assistant_experiment_batch.append_round`：先驗既有封存，再暫存新
+source／輸入／round，驗證組合後原子發佈更新manifest。根manifest及coordinator因新增
+輪次而有新身分；既有round檔案與結果保持原內容。部署時不得有並行寫入者或執行中批次。
+任一stage有blocked_reason就整個所選範圍拒絕執行，不跳過後宣稱完整研究完成。
+只有DEV第1輪固定時，可建立清楚標示只含round-01的DEV批次；root若包含尚未ready的
+VALID／TEST必須保持blocked。將來完整五輪／VALID／TEST全固定後才可建立整研究重跑包。
+
+批次按固定順序委派runner，失敗／取消即停止後續；每次產生新的`results/runs/<id>/`。
+`results/runs/<id>-scope.json`只列選擇及已指定的輸出位置、完成／失敗／未嘗試，不另計分。
+成功原始參考結果逐檔核對複製到`results/reference/<original-id>/`，原始manifest／source
+身分及歷史絕對路徑不改寫。比較器从包內raw及中央snapshot讀取；reference只供比較，
+不承諾搬移後resume部分舊run。`compare.sh`不推論／重評分，另存`results/comparisons/`。
+不允許從多次執行挑最高分。GPU仍需使用者協調，
+同一副本不應同時啟動多批，入口不是常駐服務或安全沙箱。
+
+階段封存：DEV每輪保存五模型各自候選、完整程式／prompt／RAG／scorer及差異理由，
+相同source僅存一次；VALID階段固定DEV入選的五套系統及來源round/run對應，固定三次
+repeat後不回頭調參；TEST在選定完整系統與三項消融及工程驗證固定後才取得封存TEST。
+現有config仍只接受DEV／VALID；TEST和消融的實際執行尚未實作，不因分層入口而解禁。
+同版本重現另建run，不占另一改善輪，也不能用重跑湊五套候選；正式計分run須記錄。
+工程修正版新包須區分封裝coordinator與各模型source，不回寫舊run的版本／指紋。
+
+DEV第2輪沿用共同程式，由精確model_id選定短提示；未知模型在載入前拒絕。
+研究用`DevContextAssembler`將真實工具schema呈現為文字，保留required／選填、型別、
+enum及額外欄位限制；各模型提示與共同程式一併按source封存，不依題號／答案選提示。
+產品預設提示、Host／工具契約、scorer、RAG與一次格式修復不變。candidate_index只記錄
+候選輪次，不決定執行時提示。五模型各264筆；本輪固定20筆工程驗證不作挑提示的搜尋集，
+答錯與工程執行失敗分開記錄。無推論preflight涵蓋全部DEV fixture及五模型完整輸入，
+另以保存的RAG輸入與精確tokenizer核對預算；這些不代表模型準確率改善。
+
+第3輪按上述逐模型起點保留JSON或文字目錄，重用同一產品schema／publication；
+完整輸出示意只從當前可用的公開工具契約產生，不讀case ID或oracle，不提供當題授權／值。
+五套profile連同共同程式封存；候選來源決定呈現，不由candidate_index或觀測分數切換。
+第2輪工程20題為歷史證據，第3輪不沿用為同source驗證，也不追加新smoke推論。
 
 #### 相容工作站的可搬移副本
 

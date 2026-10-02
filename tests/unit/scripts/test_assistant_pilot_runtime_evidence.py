@@ -146,6 +146,119 @@ def test_real_command_boundary_excludes_operation_and_late_poll_time(
             harness.controller.generation_event.disconnect(generation_progress)
 
 
+@pytest.mark.parametrize("expected_outcome", ["completed", "blocked", "cancelled"])
+def test_real_confirmation_trace_preserves_product_outcome(
+    qtbot, monkeypatch, tmp_path, expected_outcome
+):
+    from PyQt6.QtCore import Qt
+
+    from scripts.dev.assistant_pilot_observation import PilotCaseTrace
+    from scripts.dev.assistant_pilot_outcome import score_product_outcome
+    from scripts.dev.assistant_pilot_scoring import score_case_decisions
+    from tests.integration.agent.test_long_session_product_flow import (
+        _prepare_preprocessed_confirmation_state,
+    )
+    from tests.integration.assistant_runtime.test_lifecycle import (
+        WATCHDOG_MS,
+        _release_initial_load,
+        _runtime_harness,
+        _send_request,
+        _wait_for_event,
+    )
+    from XBrainLab.backend.application import (
+        PreprocessCommand,
+        PreprocessOperation,
+        get_application_service,
+    )
+
+    with _runtime_harness(
+        qtbot, monkeypatch, use_real_workflow_router=True, use_real_main_window=True
+    ) as harness:
+        _release_initial_load(qtbot, harness)
+        service = get_application_service(harness.study)
+        source = tmp_path / "confirmation-source_raw.fif"
+        source_bytes, loaded_raw = _prepare_preprocessed_confirmation_state(
+            service, source
+        )
+        before_state = service.get_state().to_dict()
+        case = {
+            "case_id": "real-confirmation-outcome",
+            "decision": "Action",
+            "expected_tool": "reset_preprocessing",
+            "expected_parameters": {},
+            "expected_workflow_stage": before_state["pipeline_stage"],
+        }
+        harness.engine.generation_output = (
+            '{"tool_name":"reset_preprocessing","parameters":{}}'
+        )
+        recorder = PilotCaseTrace(case["case_id"])
+        recorder.attach(harness.controller, harness.runtime)
+        try:
+            _send_request(harness, "Reset preprocessing")
+            _wait_for_event(qtbot, harness.engine.generation_started)
+            harness.engine.generation_release.set()
+            card = harness.panel.confirmation_card_widget
+            qtbot.waitUntil(
+                lambda: card.isVisibleTo(harness.panel), timeout=WATCHDOG_MS
+            )
+            pending_publication = service.get_view_publication()
+            if expected_outcome == "blocked":
+                assert service.execute(
+                    PreprocessCommand(operation=PreprocessOperation.RESAMPLE, rate=64)
+                ).success
+                assert (
+                    service.get_view_publication().generation
+                    > pending_publication.generation
+                )
+            button = (
+                card.secondary_button
+                if expected_outcome == "cancelled"
+                else card.primary_button
+            )
+            qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
+            qtbot.waitUntil(
+                lambda: recorder.snapshot()["turn_terminal"] is not None,
+                timeout=WATCHDOG_MS,
+            )
+            snapshot = recorder.snapshot()
+            assert snapshot["measurement_issues"] == []
+            assert snapshot["turn_terminal"]["outcome"] == expected_outcome
+            scores = score_case_decisions(case, snapshot)
+            assert scores["measurement_valid"] and scores["final_decision_correct"]
+            result = {
+                "case_id": case["case_id"],
+                "issues": [],
+                "trace": snapshot,
+                "scores": scores,
+                "before_state": before_state,
+                "after_state": service.get_state().to_dict(),
+                "ui": {"events": [], "issues": []},
+                "runtime_evidence": collect_runtime_evidence(
+                    service, snapshot, {"state": before_state}, harness.main_window
+                ),
+            }
+            outcome = score_product_outcome(case, result)
+            assert outcome["measurement_valid"], outcome["issues"]
+            assert outcome["outcome"] == expected_outcome
+            assert outcome["decision_correct"] is True
+            assert outcome["execution"] == (
+                "completed" if expected_outcome == "completed" else "not_started"
+            )
+            commands = [
+                item for item in snapshot["events"] if item["kind"] == "command_result"
+            ]
+            assert len(commands) == int(expected_outcome == "completed")
+            expected_rate = {"completed": 256, "blocked": 64, "cancelled": 128}
+            assert (
+                harness.study.preprocessed_data_list[0].get_sfreq()
+                == expected_rate[expected_outcome]
+            )
+            assert harness.study.loaded_data_list[0] is loaded_raw
+            assert source.read_bytes() == source_bytes
+        finally:
+            recorder.detach()
+
+
 def service(outcome):
     registry = OwnedWorkRegistry()
     return SimpleNamespace(
