@@ -163,6 +163,12 @@ def controlled_condition_runtime(monkeypatch):
     control = {"engines": engines, "load_error": False}
 
     class CapturingEngine(_ControlledEngine):
+        def __init__(self, config):
+            super().__init__(config)
+            # Keep one capture session and monotonic sequence, like the actual
+            # condition runtime; recreating it per generation randomizes ordering.
+            self.capture_backend = _backend()
+
         def load_model(self):
             if control["load_error"]:
                 self.load_started.set()
@@ -173,7 +179,7 @@ def controlled_condition_runtime(monkeypatch):
         def generate_stream(self, messages, *, profile):
             self.generated_messages.append(messages)
             self.generated_profiles.append(profile)
-            yield from _backend().generate_stream(
+            yield from self.capture_backend.generate_stream(
                 messages,
                 options=ResolvedGenerationOptions(max_new_tokens=128, do_sample=False),
             )
@@ -247,6 +253,97 @@ def test_condition_warmup_uses_owned_engine_and_isolates_real_capture(
         finally:
             assert session.close()
     assert engines[0].close_called.is_set()
+
+
+@pytest.mark.parametrize("decision", ["No-call", "Clarification"])
+def test_wrong_3d_call_records_error_and_continues_clean_next_case(
+    qtbot,
+    tmp_path,
+    monkeypatch,
+    controlled_condition_runtime,
+    allow_real_modals,
+    decision,
+):
+    import json
+
+    from PyQt6.QtWidgets import QApplication
+
+    from tests.unit.llm.core.test_runtime_prompt_capture import _Streamer, _Tokenizer
+    from tests.unit.scripts.test_assistant_pilot_fixture import _fixture
+    from XBrainLab.ui.qt_settings import application_settings
+
+    payload = request()
+    payload["fixture"] = _fixture("trained")
+    payload["case"].update(
+        input="Export the topographic map as an animated video.",
+        decision=decision,
+        expected_tool="respond_to_user",
+        expected_parameters=None,
+        expected_workflow_stage="trained",
+        fixture_id=payload["fixture"]["metadata"]["fixture_id"],
+    )
+    response = {
+        "tool_name": "switch_panel",
+        "parameters": {"panel_name": "visualization", "view_mode": "3d_plot"},
+    }
+    monkeypatch.setattr(
+        _Streamer, "__iter__", lambda _self: iter([json.dumps(response)])
+    )
+    template = _Tokenizer.apply_chat_template
+
+    def synthetic_tokens(self, messages, *, tokenize, add_generation_prompt):
+        value = template(
+            self,
+            messages,
+            tokenize=tokenize,
+            add_generation_prompt=add_generation_prompt,
+        )
+        # The capture double counts characters as tokens. This is a transport/
+        # Host test, not tokenizer fit evidence; keep the full captured text.
+        return value[::4] if tokenize else value
+
+    monkeypatch.setattr(_Tokenizer, "apply_chat_template", synthetic_tokens)
+    settings = application_settings()
+    settings.remove("warnings/suppress_local_assistant_3d")
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    with patch.dict(os.environ):
+        try:
+            session.__init__(payload, tmp_path)
+            result = session.run_case(payload, tmp_path / "wrong")
+            assert result["status"] == "recorded", result.get("issues", result)
+            assert result["cleanup_ok"] is True
+            assert result["scores"]["first_decision_correct"] is False
+            assert result["scores"]["final_decision_correct"] is False
+            outcome = result["product_outcome"]
+            assert outcome["measurement_valid"] is True
+            assert outcome["outcome"] == "decision_incorrect"
+            assert outcome["unexpected_action"] is True
+            assert any(e["kind"] == "product_notice" for e in result["ui"]["events"])
+            assert result["ui"]["pending_count"] == 0
+            assert QApplication.activeModalWidget() is None
+            assert not settings.value(
+                "warnings/suppress_local_assistant_3d", False, type=bool
+            )
+
+            response = {
+                "tool_name": "respond_to_user",
+                "parameters": {"message": "Not supported."},
+            }
+            next_payload = copy.deepcopy(payload)
+            next_payload["case"]["case_id"] = "DEV-A01-01-V1"
+            following = session.run_case(next_payload, tmp_path / "next")
+            assert following["status"] == "recorded", following.get("issues", following)
+            assert following["cleanup_ok"] is True
+            assert following["scores"]["final_decision_correct"] is True
+            assert following["product_outcome"]["outcome"] == "correct_nonexecution"
+            boundary = following["case_boundary"]
+            assert boundary["runtime_reused"] is True
+            assert boundary["pipeline_stage"] == "empty"
+            assert boundary["conversation_messages"] == 0
+            assert boundary["pending_interactions"] == 0
+            assert following["ui"]["events"] == []
+        finally:
+            assert session.close()
 
 
 def test_condition_close_destroys_native_window_before_certifying_cleanup(

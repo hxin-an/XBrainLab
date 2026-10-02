@@ -2,7 +2,35 @@
 
 最後更新：`2026-10-02`
 
-## Active — DEV選版與VALID三次正式量測
+## Active — VALID錯誤工具路徑的量測可靠性修理
+
+使用者授權修好並預先檢查同類問題，再恢復跑分。失敗run
+`20261002-105305-344823d1`正常recorded394/1485，G4三遍完成，G33第一遍
+`VALID-N03-03-V1`誤選3D導航，真實GPU Memory Usage提醒被driver判為unexpected_dialog；
+原始決策已正確判錯，但產品量測失效導致整批exit1。既有測試手工造舊VRAM Warning文案，
+未走實際產品提示，因而漏檢。
+Outcome：錯誤工具選擇可被如實量測、隔離清理並繼續下一題；真正缺證據／未知對話框／
+observer故障／清理失敗仍fail closed。不能保證未知缺陷永不發生。
+Scope：研究UI driver及直接相鄰路由、真Qt回歸／固定回應重播、獨立審查、封存及VALID修理重跑。
+Non-goals：不改產品UI／工具契約、模型、提示、RAG、題庫、raw scorer、一次格式重試；不讀TEST、
+不依VALID分數改候選、不merge。舊source／run／分數／失敗證據及settings.json保留。
+假設：既有137環境可用。先無LLM驗實際警告、各導航／開窗、確認與取消、逾時、下一題隔離；
+不以更多正式推論代替工程預檢，不把未知視窗一概當成功。
+步驟：最小真產品路徑red→重用driver窄修理→同類路徑matrix與舊raw重播→獨立source／
+證據覆核及適用同head CI→新修理source封存，保持入選五套研究因素→三次VALID重跑。
+驗證：原錯題決策仍false；警告被記錄／關閉，無殘留pending／modal；下一題正常，
+未知或不相關視窗仍失效；真產品路由不用手工複製文案充當測試。UI無變更，無需新手測。
+Stop：修理與預檢／獨立覆核通過、新封存1485排程正常啟動並驗初始capture；不無限監控。
+已完成最小修理：driver辨识當前GPU Memory Usage，未知／確認型／不相關／foreign modal仍拒絕。
+真checker與真3D有／無saliency均先red；修理後34真Qt路由通過。No-call／Clarification
+兩種固定錯誤回應經真session→Host→UI→scorer均仍計錯、recorded、cleanup通過，下一題
+reset後正常；另warmup保護通過。測試double原先逐生成重建capture backend導致排序失真，
+改同condition重用，tokenizer double的字元計數限制也明確隔離；不是產品或模型問題。
+獨立風險審查無剩餘blocking；不忽略unknown modal，不改scorer，不把renderer失敗稱成功。
+Next：直接相鄰condition／outcome／report／runner保護完成後封新head，CI與137相同真路由
+及33fixtures無推論預檢通過才發布repair-01。原父val入口保留歷史source，新入口另明示。
+
+## 歷史 — VALID三次正式量測已啟動（後續中止，見Active）
 
 使用者已明確授權開始VALID，做到整批三次排程有效啟動後交回；不持續監控到跑完。
 證據：R5 run `20261002-083918-9b247d6a`完整1320筆、exit0、非partial、cleanup通過；
@@ -41,6 +69,34 @@ Checkpoint：f86441fd已封存／PR157 CI中；尚未推論、未發布VALIDstag
 新source需新CI及33fixture完整預檢；失敗f864證據保留、不覆寫、不計模型改善輪次。
 平均參照修理先2red／5green，再直接7green與完整fixture42green；独立數值與
 publication／原始資料／EOG保護通過，獨立diff覆核無阻擋。只改研究fixture，產品0。
+最終head `5ceb00cdb513539868793eaead9e80361320cad3`／PR157；stage
+`.runtime/valid-stage-5ceb00cd/source`，證據`results/engineering/valid-5ceb00cd`。
+137無生成預檢exit0：33/33真fixtures，495正常＋495retry完整輸入等同歷史入選renderer；
+fresh RAG每模型74/99題有例，max retry1903/3081/2700/2096/2910 <7680，無裁切。
+獨立實際artifact覆核PASS（含65完整輸入samples、15conditions各99、三repeat身分及綁定hash）。
+本機result已完成R1–R5離線副本：34325原檔逐檔SHA讀回一致、47470HTML links有效；
+含provenance/README共34331檔1552657945bytes，無暫存／archive殘留，未複製權重／環境／EEG。
+五輪report SHA主agent另核對；外部研究文件5份的links/fences檢查通過。
+Next：等待同head CI全完成成功後，以工程helper publish啟用stages/val，確認GPU仍空閒，
+單次tmux啟動15conditions/1485jobs，驗最初10筆actualcapture與進度即交回；尚未推論。
+最終同head CI已全completed：24成功／3scope skip。已原子啟用stages/val，
+root manifest `544ac80680537a9f2d10710eebde400e39a645b78aa16a5fcc209d454a67849c`。
+181舊sealed檔／14run身分／3repair seals保持不變，shared environment check通過。
+GPU空閒後單次啟動run `20261002-105305-344823d1`，根目錄`results/runs/`；
+tmux `xbl-valid-5ceb00cd`、log `.runtime/logs/valid-5ceb00cd.log`。
+最初10筆actualcapture／system／RAG／prompt/raw hash／cleanup通過，15conditions各99題，
+repeat0/1/2及1485唯一jobs核對通過；進度觀察13→47/1485。證據initial-live-check.json。
+此為有效啟動，不代表三次完成或答題正確。依授權終點停止監控，不追加推論／TEST／merge。
+外部文件與本機result/VALID入口已寫實際run；DEV五輪副本已全部驗證並交付。
+Next：待使用者查結果，再核對三次完整性與保存指標；不要自行重跑或依VALID調提示。
+本頁是封存後交回記錄dirty，settings.json仍屬使用者；remote sealed source保持clean。
+
+本輪封存對51dd709b（新增/刪除/淨）：產品0；測試321/39/+282；腳本105/73/+32；
+文件66/1/+65；設定/其他0；合計492/113/+379，二進位0。
+分支對main72548c：產品220/23/+197；測試2701/12/+2689；腳本1762/90/+1672；
+文件648/10/+638；設定/其他0；合計5331/135/+5196，二進位0。不混為本次新增產品。
+不含封存後本頁／外部論文文件及報告副本（資料搬移非新增source）；測試/scripts直接與
+同headCI及独立覆核通過、文件build/link檢查通過，產品本切片未改，設定未動。
 
 ## 歷史 — DEV第5輪已完成
 
