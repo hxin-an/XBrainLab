@@ -45,6 +45,7 @@ _STAGES = {
     "trained",
 }
 _CHANNELS = ["C3", "C4", "Cz", "Fz", "REF"]
+_PRIOR_CHANNEL_SELECTION = "channel selection applied; retain C3/C4/Cz"
 
 
 def _configuration(fixture: dict) -> tuple[dict, dict, float, list[str], list[str]]:
@@ -112,7 +113,13 @@ def _configuration(fixture: dict) -> tuple[dict, dict, float, list[str], list[st
         not in (
             {"notch": 60},
             {"bandpass": {"low_freq": 1, "high_freq": 40}},
+            {"bandpass": {"low_freq": 1, "high_freq": 100}},
             {"reference": "average"},
+            _PRIOR_CHANNEL_SELECTION,
+        )
+        or (
+            prior == _PRIOR_CHANNEL_SELECTION
+            and (channels != _CHANNELS[:3] or auxiliary)
         )
     ):
         raise ValueError("Unsupported reviewed prior preprocessing fixture")
@@ -202,7 +209,14 @@ def _prepare_fixture(
 
     if stage != "empty":
         path = destination / "fixture_raw.fif"
-        _write_source(path, sfreq, channels, conditions.get("auxiliary_channels"))
+        source_channels = (
+            _CHANNELS
+            if conditions.get("prior_preprocessing") == _PRIOR_CHANNEL_SELECTION
+            else channels
+        )
+        _write_source(
+            path, sfreq, source_channels, conditions.get("auxiliary_channels")
+        )
         source = {
             "path": str(path),
             "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
@@ -227,12 +241,18 @@ def _prepare_fixture(
                     operation=PreprocessOperation.REREFERENCE, method="average"
                 )
             )
+        elif prior == _PRIOR_CHANNEL_SELECTION:
+            execute(
+                PreprocessCommand(
+                    operation=PreprocessOperation.SELECT_CHANNELS, channels=channels
+                )
+            )
         elif prior is not None:
             execute(
                 PreprocessCommand(
                     operation=PreprocessOperation.BANDPASS,
-                    low_freq=1,
-                    high_freq=40,
+                    low_freq=prior["bandpass"]["low_freq"],
+                    high_freq=prior["bandpass"]["high_freq"],
                 )
             )
         else:

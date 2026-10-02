@@ -45,6 +45,15 @@ TEST沿用既有NAS樹的stages/test入口、snapshot/sources及results/runs；�
 封存一份程式。local TEST仍按run-id集中。此為沿用現有封存owner的具體位置。
 完整題庫已定位附錄/題型_已審完整版.xlsx，尚未讀內容。Next：最終source/CI，137先
 跑99VALID×4條件真fixture/RAG/tokenizer等價性，再解封TEST並做66fixture預檢；不推論調參。
+封存f8af513f已完成99VALID×4真fixture／RAG／token預檢，Full對7c逐字一致且無截斷。
+解封TEST後64/66 fixtures通過；FX-TEST-A09-01的已審1–100Hz bandpass，以及
+FX-TEST-A11-02的已審channel selection起始狀態未被fixture支援，cleanup均正常。
+批准計畫內的必要工程修理：真Command建立上述已審狀態，保護波形／channel／publication；
+不改題庫、oracle、prompt、產品或研究因素，不用只修改狀態欄位冒充處理成功。
+保留f8失敗預檢，另封新source與CI，重驗66fixture及396VALID輸入；尚未TEST推論。
+兩fixture先2red，真Command數值／events／來源備份保護15green，完整fixture50green；
+獨立data/implementation覆核無阻擋。只scripts23增3刪、tests76增1刪，產品0。
+f8同head CI24成功／3scope skip已完成但不能代替新修理head；Next新封存與預檢／CI。
 
 ## 已完成 — VALID量測與TEST前討論
 
