@@ -50,6 +50,18 @@ Gemma以R4提示聚焦所請求工具自身條件；Granite3.3以R4格式要求�
 固定candidate5、五模型各264題、既有生成／RAG／判分／一次格式重試不變；無額外smoke。
 同head CI、完整輸入及精確tokenizer／獨立覆核後封存開跑，初始有效紀錄正常即交回。
 這是第五套也是最後一套DEV候選；不自動選版、啟動VALID／TEST、追加候選或merge。
+2026-10-02使用者在五輪完成後明確授權VALID：按既定DEV平衡正確率／P50選五套，
+一次排入全部三次repeat，共1485筆；封存、直接驗證及獨立覆核後開跑，初始有效量測與
+進度正常即交回，不監控整輪、不merge或讀TEST。五輪是事先固定的候選評估預算，
+不是收斂／全域最優宣稱；Granite3.3末輪仍改善的限制保留，不因此追加第六輪。
+DEV入選：Granite4=R2、Llama=R3、Gemma=R4 repair-03、Phi與Granite3.3=R5，無同分。
+早期source有已知Qt退出／停止確認缺陷，VALID使用明記的新工程封存：保留各入選
+prompt完整輸入等價、固定模型／RAG／生成／判分，共用已修理的R5執行基礎。不冒稱原DEV
+SHA直接執行；入選DEV source/run與VALID執行source分別記錄，舊證據不重判、不覆寫。
+開跑前固定順序：沿既有build_jobs模型順序Granite4、Granite3.3、Phi、Llama、Gemma，
+每模型依repeat0、1、2，各repeat按case_id排序且獨立新condition/session；不複製輸出。
+DEV完全同分同P50取較早candidate（本次未用）；VALID按三次平均平衡正確率，再平均P50，
+仍完全相同時按上述既有模型順序選定。不使用VALID結果再改提示或選版規則。
 舊 B0/B1/B2 搜尋安排、最多 30 條件 VALID、TEST 加跑同模型 B0、P95 10 秒門檻
 已被新版設計取代，不再派工；歷史決策留 Git，舊 B0 封存／分數／入口不追改。
 

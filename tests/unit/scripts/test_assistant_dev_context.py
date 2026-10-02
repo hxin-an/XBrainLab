@@ -1,5 +1,6 @@
 """Research-only nuisance control must not replace host publication truth."""
 
+import hashlib
 import json
 from dataclasses import replace
 
@@ -36,6 +37,50 @@ class PublicationRuntime:
 
     def get_view_publication(self):
         return self.publication
+
+
+@pytest.mark.parametrize(
+    ("model_id", "expected_sha256"),
+    [
+        # Full initial-state messages from the selected historical assemblers:
+        # G4 d2e679c2, Llama e6d10a9f, Gemma 78110571, Phi/G33 51dd709b.
+        (
+            "ibm-granite/granite-4.0-micro",
+            "76bcdb364340eaa2c2a2d356d9cf53025c7b45e98bb012f03c169d287e55802f",  # pragma: allowlist secret
+        ),
+        (
+            "meta-llama/Llama-3.2-3B-Instruct",
+            "922287d0361bdf7da107892e45ec3aef97495b5b7d0222854cb8604a4da0cd42",  # pragma: allowlist secret
+        ),
+        (
+            "google/gemma-3-4b-it",
+            "ac431597bda3833572737ca82cab9f53b91d53378dc5f65eaf0e751d61d69ef8",  # pragma: allowlist secret
+        ),
+        (
+            "microsoft/Phi-4-mini-instruct",
+            "d86f23255cee1085963e560928456df8f6ad7101a9633ff0f7f9270abb4784e4",  # pragma: allowlist secret
+        ),
+        (
+            "ibm-granite/granite-3.3-2b-instruct",
+            "8c183a0640eda382c10b12e6bd20e71776accdee3fb7cc72b11d2f2a21092e27",  # pragma: allowlist secret
+        ),
+    ],
+)
+def test_selected_profiles_freeze_historical_complete_input(model_id, expected_sha256):
+    """A profile change requires a new research freeze, not silent retuning."""
+    study = Study()
+    service = get_application_service(study)
+    try:
+        assembler = DevContextAssembler(
+            real_registry(), study, model_id=model_id, application_runtime=service
+        )
+        messages = assembler.get_messages(
+            [{"role": "user", "content": "Open Import EEG Data."}]
+        )
+        serialized = json.dumps(messages, ensure_ascii=False, sort_keys=True).encode()
+        assert hashlib.sha256(serialized).hexdigest() == expected_sha256
+    finally:
+        service.close()
 
 
 def test_nuisance_control_changes_model_card_not_host_freshness():
@@ -273,10 +318,8 @@ def test_model_emphasis_uses_selected_round_baseline_without_duplication(model_i
     system = messages[0]["content"]
     emphasis = _MODEL_EMPHASIS[model_id]
     catalog = assembler._format_tools(assembler.latest_tool_publication.tool_names)
-    if model_id == "ibm-granite/granite-4.0-micro":
-        assert "Remember:" not in system
-        assert "Output decision:" not in catalog
-    elif model_id in (
+    if model_id in (
+        "ibm-granite/granite-4.0-micro",
         "microsoft/Phi-4-mini-instruct",
         "meta-llama/Llama-3.2-3B-Instruct",
     ):
@@ -322,7 +365,7 @@ def test_new_schema_constraints_cannot_silently_disappear_from_readable_catalog(
         assembler._format_tools(["resample_data"])
 
 
-def test_granite4_marks_only_required_action_values_as_user_supplied():
+def test_selected_granite4_preserves_round2_reminder_and_unannotated_fields():
     registry = real_registry()
     schemas = {
         tool.name: json.dumps(tool.parameters, sort_keys=True)
@@ -332,26 +375,23 @@ def test_granite4_marks_only_required_action_values_as_user_supplied():
         registry, None, model_id="ibm-granite/granite-4.0-micro"
     )
     catalog = assembler._format_tools(["apply_bandpass_filter", "switch_panel"])
-    source_note = "value must be specified in current_user.text"
-    marked = [line for line in catalog.splitlines() if source_note in line]
-    assert len(marked) == 3
-    assert all(
-        any(
-            line.startswith(f"- {name}:")
-            for name in ("low_freq", "high_freq", "panel_name")
-        )
-        for line in marked
+    expected = (
+        "Check each required value against the current request. A partly supplied "
+        "operation is still incomplete: ask for the missing value, without borrowing "
+        "one from a reference. When every required value is supplied, use the tool."
     )
-    assert "A purpose or desired effect is not a selected value" in catalog
+    assert assembler._decision_instructions().endswith("Remember: " + expected + "\n")
+    assert "value must be specified in current_user.text" not in catalog
+    assert "A purpose or desired effect is not a selected value" not in catalog
+    assert expected not in catalog
     assert "Output decision:" not in catalog
-    assert "Remember:" not in assembler._decision_instructions()
     assert schemas == {
         tool.name: json.dumps(tool.parameters, sort_keys=True)
         for tool in registry.get_all_tools()
     }
 
 
-def test_gemma_requested_operation_focus_preserves_nonaction_boundary():
+def test_selected_gemma_preserves_exact_round4_emphasis():
     assembler = DevContextAssembler(
         real_registry(), None, model_id="google/gemma-3-4b-it"
     )
@@ -359,11 +399,16 @@ def test_gemma_requested_operation_focus_preserves_nonaction_boundary():
         ["import_eeg_data"], unavailable_actions={"start_training": "No dataset"}
     )
     emphasis = catalog.split("Output decision:\n")[1]
-    assert "Check only that operation's callable contract" in emphasis
-    assert "A blocker for another operation does not block this one" in emphasis
-    assert (
-        "Information, prohibitions, unavailable actions and missing required values"
-        in emphasis
+    assert emphasis == (
+        "Select one decision, not a conversational promise. If the user requests "
+        "one available action and supplies its required values, output that "
+        "action's JSON object. Do not ask again for values already supplied. "
+        "Dialog-opening tools always take empty parameters, even when form "
+        "choices are mentioned; those choices are made in the dialog. A reply promising "
+        "to open it does not execute it. For information or explanation requests, "
+        "prohibitions, unavailable actions or missing required values, output "
+        "respond_to_user with your reply in parameters.message instead. "
+        "Return only the single complete JSON object, not a bare message."
     )
     assert "No dataset" in catalog
 
@@ -387,21 +432,27 @@ def test_phi_direct_examples_contrast_complete_and_missing_values():
     )
 
 
-def test_llama_examples_distinguish_opening_from_explaining_a_real_dialog():
+@pytest.mark.parametrize(
+    "action", ["create_epochs", "start_training", "compute_saliency"]
+)
+def test_selected_llama_preserves_round3_generic_output_examples(action):
     assembler = DevContextAssembler(
         real_registry(), None, model_id="meta-llama/Llama-3.2-3B-Instruct"
     )
-    examples = assembler._output_illustrations(["create_epochs", "switch_panel"])
-    assert "Example input (open dialog):" in examples
-    assert "Example input (information only):" in examples
-    assert "Which operation would you like help with?" not in examples
+    examples = assembler._output_illustrations([action, "switch_panel"])
+    assert "Example input" not in examples
+    assert "Which operation would you like help with?" in examples
     proposals = [
         json.loads(line) for line in examples.splitlines() if line.startswith("{")
     ]
-    assert {"tool_name": "create_epochs", "parameters": {}} in proposals
-    assert any(p["tool_name"] == "respond_to_user" for p in proposals)
-    assert "open dialog" not in assembler._output_illustrations(["start_training"])
-    assert "open dialog" not in assembler._output_illustrations(["compute_saliency"])
+    assert proposals == [
+        {"tool_name": action, "parameters": {}},
+        {"tool_name": "switch_panel", "parameters": {"panel_name": "dataset"}},
+        {
+            "tool_name": "respond_to_user",
+            "parameters": {"message": "Which operation would you like help with?"},
+        },
+    ]
 
 
 def test_granite33_examples_include_action_prohibition_information_and_missing():

@@ -2,7 +2,39 @@
 
 最後更新：`2026-10-02`
 
-## Active — DEV第5輪已批准，實作並啟動
+## Active — DEV選版與VALID三次正式量測
+
+使用者已明確授權開始VALID，做到整批三次排程有效啟動後交回；不持續監控到跑完。
+證據：R5 run `20261002-083918-9b247d6a`完整1320筆、exit0、非partial、cleanup通過；
+五輪候選額度已用完，不追加第六輪。VALID非TEST題庫已封存，尚未固定入選配置。
+Outcome：按既定最終三類平衡正確率／P50選每模型一套，五模型各99題×3 repeats＝1485筆。
+Scope：核對五份正式DEV報告／分母及來源（R4採repair-03）、選版、VALID封存／入口、
+必要工程接線補齊、研究文件及直接測試／獨立覆核、137正式單次啟動。
+Non-goals：不改候選提示、RAG、模型、生成、scorer、題庫、一次格式重試、UI；不讀TEST、
+不merge、不依VALID分數調整／重跑。舊source、報告、失敗證據與settings.json不改。
+假設：137既有資源可用；若早期入選source缺後續退出／停止修理，先審查工程遷移與輸入
+等價性，不能直接以最新提示替換，也不能帶已知native退出缺陷開跑。
+步驟：獨立選版核對→固定選版來源／排程／完全同分規則→重用封存入口補齊VALID
+→focused／適用CI與無推論fixture／完整輸入檢查→獨立artifact覆核→確認GPU可用後啟動。
+驗證：15個condition、每個99題、repeat0/1/2、各模型297筆；獨立實際生成而非複製；
+各repeat分開計算再平均。程式與封存有改動時按tdd補直接保護；產品UI沒有可見變更。
+Stop：同版本相關驗證完成、封存可重跑，三次均在排程中且初始capture／cleanup／進度正常。
+Next：讀取五輪保存分數，確認各模型來源及是否需直接必要的工程相容修理。
+選版獨立覆核：G4 R2、Llama R3、Gemma R4 repair-03、Phi/G33 R5；五份報告及
+manifest/journal hash、完整分母、正常退出、固定研究因素一致。早期候選確有已修理的
+Qt退出／停止確認舊碼；以R5共用engine加原入選提示封新source，舊DEV身份另記不回寫。
+實作：只恢復入選research renderer，VALID blocked stage原子啟用沿用append owner；
+preflight接既有config選VALID99題，不複製三份fixture。新增owner／產品修改均為0。
+Complexity：刪除未入選G4欄位註記／Llama對照分支，重用封存發佈與population契約；
+script預計淨增約21行，無新production module。共享engine/產品/RAG/scorer固定不動。
+直接保護：selected prompt先6項red後79green，370catalog及10完整normal/retry歷史比對相同；
+VALID preflight先missing API red後2green；封存batch/package49green；報告/runner/preflight112green。
+獨立source覆核通過；兩項helper強化（沿用retrieval query界線、綁定audit三份hash）已加入。
+使用者另要求本機`碩論準備/實驗/result`：依R1–R5成功批次匯出離線報告、逐題輸入輸出
+及CSV/JSON，相對links保持有效，不複製環境、模型、暫存EEG或失敗批次；NAS原證據不動。
+Next：最終source CI／137真VALID33fixtures與990normal/retry輸入核對，封存後啟動1485排程。
+
+## 歷史 — DEV第5輪已完成
 
 使用者批准外部`DEV第4輪總結與第5輪改善計畫.md`第四節，要求改好跑下一輪。
 證據與假設：R4完整1320筆仍有必要值／操作與回覆判斷錯誤；只測一套逐模型候選，
@@ -29,6 +61,19 @@ CI阻擋：既有saliency queue handoff測試忽略release_shutdown_fence的bool
 受控原生probe已重現原失敗：真retry握有reservation時release=False／fenced=True／pending=True；
 放行後真交接完成、release=True／fenced=False／pending=False。測試改沿用既有有界release重試，
 不增加watchdog，不刪終態／一次通知断言；正常focused green，產品及提示不變。
+最終source `51dd709bc8f4aefb17f0c625e8135e69bcfe901b`／PR #156，CI24成功／3 scope skip。
+受控交錯green亦通過；失敗CI與red/green probe保存於NAS `results/engineering/round5-d1d2ff3d`。
+新stage `.runtime/round5-stage-51dd709b/source`，證據 `results/engineering/round5-51dd709b`。
+新head66真fixture／1320context及精確tokenizer通過（含retry最高3078/7680），獨立完整輸入
+與封存覆核通過；175舊封存檔、13run身分及3份repair seals不變。未重做舊run全文hashaudit。
+已追加`stages/dev/round-05`，137 GPU空閒後單次啟動run `20261002-083918-9b247d6a`，
+結果在NAS `results/runs/`；tmux `xbl-dev-round05-51dd709b`，log `.runtime/logs/dev-round05-51dd709b.log`。
+最初10筆actual system／prompt及raw hash／RAG／cleanup通過，進度已觀察31→80→176/1320。
+臨時初始核對helper先因key/value-list與dict表示不同誤報，解碼後內容完全相同；v2檢查通過，
+未改sealed source或run。證據`results/engineering/round5-51dd709b/initial-live-check-v2.json`。
+外部研究文件與一行重跑指令已同步；不merge、不追加推論。這只證明啟動正常，不代表整輪
+完成或分數提升。Next：依約停止監控，待使用者要求查結果，再討論五輪選版；不自動VALID／TEST。
+本頁封存後收尾記錄dirty，settings.json仍屬使用者；remote sealed source保持clean。
 
 ## 已完成 — 第4輪分析與DEV研究文件精簡
 

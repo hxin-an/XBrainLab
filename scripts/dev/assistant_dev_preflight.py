@@ -1,4 +1,4 @@
-"""Verify all approved DEV initial states and oracles without model inference."""
+"""Verify the frozen DEV/VALID states and oracles without model inference."""
 
 from __future__ import annotations
 
@@ -8,6 +8,20 @@ import json
 import os
 import time
 from pathlib import Path
+
+
+def selected_cases(bank: dict, config_path: Path | None = None) -> tuple[dict, list]:
+    """Use the runner's population contract; repeats do not duplicate fixtures."""
+    from scripts.dev.assistant_experiment_config import build_selection
+    from scripts.dev.assistant_pilot_bank import build_dev_selection
+
+    selection = (
+        build_dev_selection(bank)
+        if config_path is None
+        else build_selection(bank, json.loads(config_path.read_text(encoding="utf-8")))
+    )
+    identifiers = set(selection["case_ids"])
+    return selection, [case for case in bank["cases"] if case["case_id"] in identifiers]
 
 
 def model_contexts(registry, study, cases: list[dict]) -> dict:
@@ -51,6 +65,9 @@ def model_contexts(registry, study, cases: list[dict]) -> dict:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bank", required=True, type=Path)
+    parser.add_argument(
+        "--config", type=Path, help="Frozen DEV/VALID config; default: full DEV"
+    )
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args(argv)
     output = args.output.absolute()
@@ -72,7 +89,7 @@ def main(argv=None) -> int:
     from PyQt6.QtWidgets import QApplication
 
     from scripts.dev.assistant_dev_context import PROJECTION_ID
-    from scripts.dev.assistant_pilot_bank import build_dev_selection, load_bank
+    from scripts.dev.assistant_pilot_bank import load_bank
     from scripts.dev.assistant_pilot_fixture import prepare_fixture
     from scripts.dev.assistant_pilot_scoring import score_decision
     from scripts.dev.run_assistant_pilot import source_identity
@@ -88,8 +105,8 @@ def main(argv=None) -> int:
     app = QApplication.instance() or QApplication([])
     app.setQuitOnLastWindowClosed(False)
     bank = load_bank(args.bank)
-    selection = build_dev_selection(bank)
-    cases = [case for case in bank["cases"] if case["split"] == "DEV"]
+    selection, cases = selected_cases(bank, args.config)
+    fixture_ids = sorted({case["fixture_id"] for case in cases})
     for case in cases:
         score_decision(case, None)  # Validate oracle; no fabricated model response.
     registry = ToolRegistry()
@@ -101,12 +118,12 @@ def main(argv=None) -> int:
         "source": source_identity(),
         "selection": selection,
         "projection": PROJECTION_ID,
-        "scope": "66 real states / 264 oracles / five prompt profiles; no inference or retrieval",
+        "scope": f"{len(fixture_ids)} real states / {len(cases)} oracles / five prompt profiles; no inference or retrieval",
         "fixtures": [],
         "complete": False,
     }
     _write(output / "preflight.json", report)
-    for fid in sorted({case["fixture_id"] for case in cases}):
+    for fid in fixture_ids:
         study = Study()
         service = get_application_service(study)
         entry = {"fixture_id": fid, "ok": False}
@@ -145,7 +162,7 @@ def main(argv=None) -> int:
             ),
             flush=True,
         )
-    report["complete"] = len(report["fixtures"]) == 66 and all(
+    report["complete"] = len(report["fixtures"]) == len(fixture_ids) and all(
         item["ok"] and item["cleanup_ok"] and item.get("stop_ok", True)
         for item in report["fixtures"]
     )

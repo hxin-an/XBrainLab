@@ -2,12 +2,71 @@
 
 import json
 
+import pytest
+
 from scripts.dev.assistant_dev_preflight import model_contexts
 from scripts.dev.assistant_experiment_config import MODELS
 from XBrainLab.backend.application import get_application_service
 from XBrainLab.backend.study import Study
 from XBrainLab.llm.tools import get_all_tools
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
+
+
+def test_configured_preflight_selects_only_full_valid_without_repeating_contexts(
+    tmp_path,
+):
+    from scripts.dev.assistant_dev_preflight import selected_cases
+    from scripts.dev.assistant_experiment_config import CONFIG_SCHEMA
+
+    cases = [
+        {
+            "case_id": f"VALID-{kind}{family:02}-V{variant}",
+            "family_id": f"VALID-{kind}{family:02}",
+            "split": "VALID",
+            "decision": decision,
+        }
+        for kind, decision, families in (
+            ("A", "Action", 18),
+            ("C", "Clarification", 6),
+            ("N", "No-call", 9),
+        )
+        for family in range(families)
+        for variant in range(3)
+    ]
+    bank = {
+        "source": {"sha256": "bank"},
+        "cases": [*cases, {"case_id": "DEV-not-selected", "split": "DEV"}],
+    }
+    config = {
+        "schema": CONFIG_SCHEMA,
+        "split": "VALID",
+        "purpose": "research",
+        "embedding_cache": ".",
+        "resource_inventory": "resources.json",
+        "budget_seconds": 1000,
+        "models": [
+            {
+                "alias": "phi4",
+                "candidate_index": 5,
+                "source": {"head": "a" * 40, "root": "."},
+                "model_cache": ".",
+            }
+        ],
+    }
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config))
+    selection, actual = selected_cases(bank, path)
+    assert selection["split"] == "VALID"
+    assert len(actual) == 99
+    assert set(selection["case_ids"]) == {case["case_id"] for case in cases}
+    assert actual == cases
+    bank["cases"].pop(0)
+    with pytest.raises(ValueError, match="denominator"):
+        selected_cases(bank, path)
+    config["split"] = "TEST"
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="Unsupported"):
+        selected_cases(bank, path)
 
 
 def test_preflight_captures_all_profiles_with_current_request_and_real_publication():

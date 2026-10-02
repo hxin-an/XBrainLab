@@ -238,6 +238,130 @@ class ExperimentBatchTests(unittest.TestCase):
         result = self.launch(f"{DEV}/round-02")
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def valid_selection(self):
+        selection = self.selection(2, path="stages/val")
+        config = json.loads(selection["config"].read_text())
+        config.update(split="VALID", purpose="research")
+        del config["case_ids"]
+        selection["config"].write_text(json.dumps(config))
+        return selection
+
+    def test_activate_valid_preserves_old_files_and_launches_frozen_selection(self):
+        self.create()
+        before = {
+            path.relative_to(self.study): path.read_bytes()
+            for path in self.study.rglob("*")
+            if path.is_file() and path.name != "manifest.json"
+        }
+        (self.source / "valid-notes.txt").write_text("Selected DEV candidates\n")
+        self.fixture.git(self.source, "add", "valid-notes.txt")
+        self.fixture.git(self.source, "commit", "-qm", "VALID coordinator")
+        new_head = self.fixture.git(self.source, "rev-parse", "HEAD").strip()
+        self.fixture.values["models"][0]["source"]["head"] = new_head
+        selection = self.valid_selection()
+        result = self.api.activate_valid_stage(
+            self.study, selection, coordinator_root=self.source
+        )
+        self.assertEqual(result, self.study / "stages/val")
+        self.assertEqual(self.calls(), [])
+        manifest = self.api.verify_experiment(self.study)
+        self.assertEqual(manifest["coordinator"], new_head)
+        self.assertEqual(self.api.select_scopes(manifest, "stages/val"), ["stages/val"])
+        self.assertEqual(manifest["scopes"][DEV]["children"], [ROUND])
+        for relative, original in before.items():
+            self.assertEqual((self.study / relative).read_bytes(), original, relative)
+        for scope in (ROUND, "stages/val"):
+            result = self.launch(scope)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        saved = next(
+            json.loads(path.read_text())
+            for path in self.calls()
+            if json.loads(path.read_text())["config"]["split"] == "VALID"
+        )
+        self.assertEqual(saved["config"]["models"][0]["candidate_index"], 2)
+        self.assertTrue(saved["env"]["PYTHONPATH"].endswith(new_head))
+        self.assertEqual(
+            self.api.package_api.experiment_identity(saved["config"])["repeats"],
+            [0, 1, 2],
+        )
+        self.assertNotEqual(self.launch("stages/test").returncode, 0)
+        old = (self.study / "snapshot/manifest.json").read_bytes()
+        with self.assertRaisesRegex(ValueError, "blocked VALID"):
+            self.api.activate_valid_stage(
+                self.study, selection, coordinator_root=self.source
+            )
+        self.assertEqual((self.study / "snapshot/manifest.json").read_bytes(), old)
+
+    def test_activate_valid_rejects_other_paths_and_wrong_split_without_publication(
+        self,
+    ):
+        self.create()
+        old = (self.study / "snapshot/manifest.json").read_bytes()
+        selection = self.valid_selection()
+        for key in ("stages/test", "stages/unknown", ROUND, "stages/val/../test"):
+            with self.subTest(path=key), self.assertRaises(ValueError):
+                self.api.activate_valid_stage(
+                    self.study, dict(selection, path=key), coordinator_root=self.source
+                )
+        with self.assertRaisesRegex(ValueError, "VALID configuration"):
+            self.api.activate_valid_stage(
+                self.study,
+                self.selection(3, path="stages/val"),
+                coordinator_root=self.source,
+            )
+        self.assertEqual((self.study / "snapshot/manifest.json").read_bytes(), old)
+        self.assertFalse((self.study / "stages/val/config.json").exists())
+        self.assertEqual(self.calls(), [])
+
+    def test_activate_valid_refuses_existing_unsealed_destination(self):
+        self.create()
+        existing = self.study / "stages/val/README.md"
+        existing.write_text("User notes must survive\n")
+        old = (self.study / "snapshot/manifest.json").read_bytes()
+        with self.assertRaises(FileExistsError):
+            self.api.activate_valid_stage(
+                self.study, self.valid_selection(), coordinator_root=self.source
+            )
+        self.assertEqual(existing.read_text(), "User notes must survive\n")
+        self.assertEqual((self.study / "snapshot/manifest.json").read_bytes(), old)
+        self.assertFalse((self.study / "stages/val/config.json").exists())
+
+    def test_failed_valid_publication_preserves_blocked_stage_and_is_retryable(self):
+        self.create()
+        old = (self.study / "snapshot/manifest.json").read_bytes()
+        entry = (self.study / "stages/val/run.sh").read_bytes()
+        (self.source / "valid-notes.txt").write_text("New VALID coordinator\n")
+        self.fixture.git(self.source, "add", "valid-notes.txt")
+        self.fixture.git(self.source, "commit", "-qm", "VALID coordinator")
+        self.fixture.values["models"][0]["source"]["head"] = self.fixture.git(
+            self.source, "rev-parse", "HEAD"
+        ).strip()
+        selection = self.valid_selection()
+        with (
+            patch.object(self.api.os, "replace", side_effect=OSError("disk error")),
+            self.assertRaisesRegex(OSError, "disk error"),
+        ):
+            self.api.activate_valid_stage(
+                self.study, selection, coordinator_root=self.source
+            )
+        self.assertEqual((self.study / "snapshot/manifest.json").read_bytes(), old)
+        self.assertEqual((self.study / "stages/val/run.sh").read_bytes(), entry)
+        self.assertEqual(
+            sorted(path.name for path in (self.study / "stages/val").iterdir()),
+            ["run.sh"],
+        )
+        self.assertEqual(
+            [path.name for path in (self.study / "snapshot/sources").iterdir()],
+            [self.head],
+        )
+        self.api.verify_experiment(self.study)
+        self.assertNotEqual(self.launch("stages/val").returncode, 0)
+        self.api.activate_valid_stage(
+            self.study, selection, coordinator_root=self.source
+        )
+        result = self.launch("stages/val")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_move_chinese_space_path_runs_twice_without_original_source(self):
         self.create()
         original = self.study

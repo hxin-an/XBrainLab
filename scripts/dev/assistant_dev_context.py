@@ -51,8 +51,12 @@ Markdown or comments outside it. Only respond_to_user uses a message parameter.
 # Versioned with the full source. Model identity alone selects the emphasis;
 # no case, oracle, score, candidate index or environment-dependent selection.
 _MODEL_EMPHASIS = {
-    # R2 presentation; required-value guidance now lives beside action fields.
-    "ibm-granite/granite-4.0-micro": "",
+    # Selected DEV profiles: Granite4 R2, Llama R3, Gemma R4, Phi/Granite3.3 R5.
+    "ibm-granite/granite-4.0-micro": (
+        "Check each required value against the current request. A partly supplied "
+        "operation is still incomplete: ask for the missing value, without borrowing "
+        "one from a reference. When every required value is supplied, use the tool."
+    ),
     "ibm-granite/granite-3.3-2b-instruct": (
         "Action parameters contain only that action's listed arguments. They "
         "never contain message, a description or the user's request. An action "
@@ -80,16 +84,15 @@ _MODEL_EMPHASIS = {
         "is that field's value, not a quoted string or a standalone response."
     ),
     "google/gemma-3-4b-it": (
-        "Identify the one operation requested in current_user.text. Check only "
-        "that operation's callable contract and required parameters. A blocker "
-        "for another operation does not block this one. A callable zero-parameter "
-        "tool is complete: use {} without asking for dialog form values. Optional "
-        "parameters may be omitted. For required parameters, use values supplied in this request; "
-        "another request's missing values or examples do not change completeness. "
-        "Use the requested action when complete, not a promise or a second "
-        "confirmation. Information, prohibitions, unavailable actions and missing "
-        "required values still need respond_to_user with parameters.message. "
-        "Return one complete JSON object, not a bare message."
+        "Select one decision, not a conversational promise. If the user requests "
+        "one available action and supplies its required values, output that "
+        "action's JSON object. Do not ask again for values already supplied. "
+        "Dialog-opening tools always take empty parameters, even when form "
+        "choices are mentioned; those choices are made in the dialog. A reply promising "
+        "to open it does not execute it. For information or explanation requests, "
+        "prohibitions, unavailable actions or missing required values, output "
+        "respond_to_user with your reply in parameters.message instead. "
+        "Return only the single complete JSON object, not a bare message."
     ),
 }
 DEV_PROMPT_MODEL_IDS = tuple(_MODEL_EMPHASIS)
@@ -103,8 +106,12 @@ _ILLUSTRATED_MODELS = frozenset(
         "ibm-granite/granite-3.3-2b-instruct",
     }
 )
-_ROUND3_EMPHASIS_MODELS = frozenset(
-    {"microsoft/Phi-4-mini-instruct", "meta-llama/Llama-3.2-3B-Instruct"}
+_INSTRUCTION_EMPHASIS_MODELS = frozenset(
+    {
+        "ibm-granite/granite-4.0-micro",
+        "microsoft/Phi-4-mini-instruct",
+        "meta-llama/Llama-3.2-3B-Instruct",
+    }
 )
 
 # These units are backend semantics, not fields claimed to exist in the schema:
@@ -123,9 +130,7 @@ def validate_dev_prompt_model(model_id: str) -> None:
         raise ValueError(f"Unsupported DEV prompt model: {model_id!r}")
 
 
-def _parameter_lines(
-    tool_name: str, schema: dict, *, mark_required_source: bool = False
-) -> list[str]:
+def _parameter_lines(tool_name: str, schema: dict) -> list[str]:
     """Render the current schemas losslessly; new constraints require review."""
     unknown = set(schema) - {"type", "properties", "required", "additionalProperties"}
     if unknown:
@@ -162,11 +167,6 @@ def _parameter_lines(
             line += "; must contain a non-whitespace character"
         if "description" in definition:
             line += ". " + definition["description"]
-        if mark_required_source and name in required:
-            line += (
-                "; value must be specified in current_user.text. "
-                "A purpose or desired effect is not a selected value."
-            )
         lines.append(line)
     return lines
 
@@ -193,7 +193,7 @@ class DevContextAssembler(ContextAssembler):
             if self.model_id in _ROUND2_PRESENTATION_MODELS
             else super()._decision_instructions()
         )
-        if self.model_id in _ROUND3_EMPHASIS_MODELS:
+        if self.model_id in _INSTRUCTION_EMPHASIS_MODELS:
             return baseline + "\nRemember: " + _MODEL_EMPHASIS[self.model_id] + "\n"
         return baseline
 
@@ -207,7 +207,7 @@ class DevContextAssembler(ContextAssembler):
         if self.model_id in _ILLUSTRATED_MODELS:
             catalog += "\n\n" + self._output_illustrations(allowed_names)
         emphasis = _MODEL_EMPHASIS[self.model_id]
-        if emphasis and self.model_id not in _ROUND3_EMPHASIS_MODELS:
+        if emphasis and self.model_id not in _INSTRUCTION_EMPHASIS_MODELS:
             catalog += "\n\nOutput decision:\n" + emphasis
         return catalog
 
@@ -222,7 +222,6 @@ class DevContextAssembler(ContextAssembler):
             tool for tool in self.registry.get_all_tools() if tool.name in allowed_names
         ]
         is_phi = self.model_id == "microsoft/Phi-4-mini-instruct"
-        is_llama = self.model_id == "meta-llama/Llama-3.2-3B-Instruct"
         is_granite33 = self.model_id == "ibm-granite/granite-3.3-2b-instruct"
 
         def example(kind, request, tool_name, parameters):
@@ -274,39 +273,27 @@ class DevContextAssembler(ContextAssembler):
             (tool for tool in active_tools if not tool.parameters.get("properties")),
             None,
         )
-        dialog = next(
-            (
-                tool
-                for tool in active_tools
-                if tool_contract_for_llm(tool)["taxonomy"] == "GUI Completion"
-                and not tool.parameters.get("properties")
-            ),
-            None,
-        )
-        contrast_tool = dialog if is_llama else zero_argument
-        if (is_llama or is_granite33) and contrast_tool is not None:
-            description = tool_contract_for_llm(contrast_tool)["description"]
+        if is_granite33 and zero_argument is not None:
+            description = tool_contract_for_llm(zero_argument)["description"]
             example(
-                "open dialog" if is_llama else "complete action",
+                "complete action",
                 description,
-                contrast_tool.name,
+                zero_argument.name,
                 {},
             )
-            if is_granite33:
-                example(
-                    "prohibition",
-                    "Do not perform this operation: " + description,
-                    "respond_to_user",
-                    {"message": "I will not perform that operation."},
-                )
+            example(
+                "prohibition",
+                "Do not perform this operation: " + description,
+                "respond_to_user",
+                {"message": "I will not perform that operation."},
+            )
             example(
                 "information only",
                 "Explain this feature without using it: " + description,
                 "respond_to_user",
                 {"message": "Its documented function is: " + description},
             )
-            if is_granite33:
-                return "\n".join(lines)
+            return "\n".join(lines)
         elif zero_argument is not None:
             lines.extend(
                 (
@@ -330,9 +317,7 @@ class DevContextAssembler(ContextAssembler):
                     ),
                 )
             )
-        if is_llama and dialog is not None:
-            return "\n".join(lines)
-        if is_granite33 or is_llama:
+        if is_granite33:
             example(
                 "information only",
                 "In general, what are EEG recordings?",
@@ -379,13 +364,7 @@ class DevContextAssembler(ContextAssembler):
                     [
                         f"Action: {contract['name']}",
                         f"Category: {contract['taxonomy']}. {contract['description']}",
-                        *_parameter_lines(
-                            tool.name,
-                            contract["parameters"],
-                            mark_required_source=(
-                                self.model_id == "ibm-granite/granite-4.0-micro"
-                            ),
-                        ),
+                        *_parameter_lines(tool.name, contract["parameters"]),
                     ]
                 )
             )

@@ -128,7 +128,11 @@ def test_experiment_session_wires_exact_model_presentation(
             )
             assert ("Remember:" in messages[0]["content"]) is (
                 model_id
-                in {"microsoft/Phi-4-mini-instruct", "meta-llama/Llama-3.2-3B-Instruct"}
+                in {
+                    "ibm-granite/granite-4.0-micro",
+                    "microsoft/Phi-4-mini-instruct",
+                    "meta-llama/Llama-3.2-3B-Instruct",
+                }
             )
             assert assembler._decision_instructions() in messages[0]["content"]
             assert controlled_condition_runtime["engines"][0].load_calls == 1
