@@ -2,7 +2,41 @@
 
 最後更新：`2026-10-02`
 
-## 施工中 — DEV 第3輪逐模型提示呈現
+## Active — DEV 第4輪逐模型提示，做到137正式啟動
+
+使用者已讀完並批准`碩論準備/實驗/DEV階段紀錄/DEV第3輪總結與第4輪改善計畫.md`
+第五節，要求修改後正式開跑。R3完整1320筆：Granite4多物件、Gemma操作變文字承諾、
+Phi／Llama當前參數與參考值混淆、Granite3.3依賴格式重試；既存錯答及原始證據全部保留。
+Outcome：五模型各固定candidate4，完整source/config封存；正式1320筆初始紀錄與進度正常。
+Scope：研究提示及直接相關測試／文件／封存接線；Granite4以R2、Gemma以R1提示起步，
+Phi／Llama／Granite3.3以R3起步。共用runner與產品不回退，不改模型／生成／RAG／題庫／
+scorer／Host／parser／一次重試，不碰VALID／TEST；不改UI、不merge、不自動開第5輪。
+假設：137共享環境與模型仍可用，推論前確認GPU空閒；settings.json保持原樣。
+步驟：提示保護與實作→focused驗證→完整輸入與五模型精確tokenizer→獨立source／輸入覆核
+→同head適用CI→追加round-04並驗旧封存不變→正式啟動與初始capture／進度驗收。
+驗證：profile只依model_id選擇；schema／membership／blocker／state／RAG／current_user
+不變；移除示意只影響Granite4／Gemma；第1–3輪檔案／配置／run身分不變。
+Complexity：重用研究assembler和append_round，產品LOC與owner不增加；不新增控制層。
+不額外推論smoke、不按分數反覆改候選；本次授權正式五模型各264筆、seed0／repeat0。
+Stop：同版本驗證、獨立覆核與封存完成，run產出有效初始量測及正常進度後交回；不監控到結束。
+進度：13項預期red後42項提示保護及27項session接線均通過；Ruff通過，產品程式未改。
+獨立source覆核找到開窗參數條件句歧義，已改為即使提到窗內設定也固定{}，覆核解除阻擋。
+修改後69項與Ruff重驗通過；下一步凍結source、完整輸入/tokenizer及同headCI。UI無變更。
+
+## 已完成 — DEV 第3輪結果分析
+
+第3輪run `20261002-011825-eeb4bce1`已完整1320筆，exit 0、非partial、cleanup通過。
+source為`e6d10a9f11221d3dd0ba320088bb191c65b709ac`；未merge、未啟動第4輪。
+依使用者「跟上次一樣」只分析既有證據並整理外部論文文件，未改候選或新增推論。
+文件：`碩論準備/實驗/DEV階段紀錄/DEV第3輪總結與第4輪改善計畫.md`；實驗README已有入口。
+首次正確847→684→927、最終894→808→979；分清工具／參數／封裝及重試救回，
+不將Clarification／No-call分數稱為回答品質。核對saved scores與代表完整輸入／原始生成，
+獨立分析另驗Gemma／Granite3.3三輪1584份request/result配對hash；未重新判分或讀VALID／TEST。
+候選草稿：Granite4以R2、Gemma以R1提示起步，其餘以R3；只選各模型主要弱點，
+不更動RAG、Host、parser、scorer或重試政策。後續批准與施工狀態以本頁active section為準。
+本次僅文件更新；產品、測試／fixtures、腳本、設定與二進位均無修改，settings.json保留。
+
+## 歷史交回 — DEV 第3輪逐模型提示呈現與正式啟動
 
 使用者已批准第2輪總結所列五模型改善方案，要求移除草稿／待確認狀態、實作並正式開跑。
 證據：第2輪1320筆完整結束，首次正確847→684、最終894→808；完整封裝與操作／回覆混淆
@@ -23,8 +57,26 @@ Stop：正式run已產生有效初始紀錄與進度，交付run/log/一行重�
 進度：已實作逐模型baseline與公開契約完整JSON示意；產品程式與固定研究因素未改。
 提示保護先重現26項預期失敗再通過37項；獨立source／契約覆核無阻擋，仍待實際輸入覆核。
 相鄰接線三項舊測試已同步已批准的逐模型目錄；159項直接測試均已有green證據，Ruff通過。
-Next：固定source，產生真fixture完整輸入並核對tokenizer／RAG，完成独立輸入覆核與同head CI。
-正式推論尚未啟動；準確率改善尚未證實。
+凍結source `e6d10a9f11221d3dd0ba320088bb191c65b709ac`，PR #154未合併，承接PR #153。
+同head CI 22成功／5 scope skip，全completed；兩位獨立reviewer均完成實際輸入覆核、無阻擋。
+66真fixture／1320輸入通過；五模型精確tokenizer重播全部初次及可能retry，最高2993/7680，
+RAG未裁切。重播採原capture，不冒稱新檢索；正式初始10筆另驗live RAG／system／原始檔hash。
+NAS已追加round-03；163舊封存檔及9份歷史run身分不變，round1/2/3環境check皆通過。
+正式run `20261002-011825-eeb4bce1`；已觀察9→39/1320且初始10筆recorded／cleanup通過。
+初始驗收probe曾誤將trace鍵值對序列當dict；修正唯讀解碼後相同內容核對通過，原probe保留，
+未改候選、未追加／重跑模型。這不是完整量測或準確率改善宣稱。
+NAS根`/mnt/home/2025/hxin/XBrainLab-experiments`；log `.runtime/logs/dev-round03-e6d10a9f.log`，
+工程證據`results/engineering/round3-e6d10a9f`；重跑入口`stages/dev/round-03/./run.sh`。
+當時依授權停止監控；後續第3輪完整結果及下一步以本頁頂端為準，不自動跑第4輪。
+完整研究快照乾淨；本頁交回記錄在凍結後補記，非候選程式改動。settings.json保持原使用者修改。
+
+封存diff相對第2輪d2e679c2（新增/刪除/淨）：產品0/0/0、測試91/15/+76、腳本91/17/+74、
+文件63/8/+55、設定/其他0/0/0，合計245/40/+205，二進位0；文件包含開工前未提交的R2交回
+記錄，不冒稱全部本輪新寫。本頁凍結後記錄及外部論文文件另計，不混入研究candidate。
+分支相對main72548c累積：產品5/1/+4、測試1356/3/+1353、腳本1510/73/+1437、
+文件343/6/+337、設定/其他0/0/0，合計3214/83/+3131；含先前封装、報告、R2，不是本輪淨增。
+產品本輪未改；測試／腳本經focused、同head CI及独立覆核，文件MkDocs通過，設定未動。
+當時限制：啟動驗收不是完整run驗收；後續已完成結果分析，仍不評回答品質、未做VALID／TEST或merge。
 
 
 ## 已交回 — DEV 第2輪正式量測已啟動

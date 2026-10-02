@@ -115,7 +115,14 @@ def test_experiment_session_wires_exact_model_presentation(
                 else "Action Contract Catalog (input definitions, never an output array):"
             )
             assert expected_catalog_heading in messages[0]["content"]
-            assert "Complete output illustrations:" in messages[0]["content"]
+            has_illustrations = model_id not in {
+                "ibm-granite/granite-4.0-micro",
+                "google/gemma-3-4b-it",
+            }
+            assert (
+                "Complete output illustrations:" in messages[0]["content"]
+            ) is has_illustrations
+            assert "Output decision:" in messages[0]["content"]
             assert assembler._decision_instructions() in messages[0]["content"]
             assert controlled_condition_runtime["engines"][0].load_calls == 1
         finally:

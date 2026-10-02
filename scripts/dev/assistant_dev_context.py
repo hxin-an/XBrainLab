@@ -55,20 +55,33 @@ _MODEL_EMPHASIS = {
         "Check each required value against the current request. A partly supplied "
         "operation is still incomplete: ask for the missing value, without borrowing "
         "one from a reference. When every required value is supplied, use the tool. "
-        "An enabled dialog needs no form values: return its action, not a reply "
-        "promising to open it."
+        "Choose either the action OR respond_to_user, never both. Return one "
+        "complete JSON object and stop. Do not follow an action with an "
+        "acknowledgement, explanation or second JSON object."
     ),
     "ibm-granite/granite-3.3-2b-instruct": (
         "Action parameters contain only that action's listed arguments. They "
         "never contain message, a description or the user's request. An action "
         "with no arguments has an empty parameters object. A message belongs "
-        "only to respond_to_user, which displays a reply and executes no action."
+        "only to respond_to_user, which displays a reply and executes no action. "
+        "Choose that reply for missing required values, prohibitions, information "
+        "or explanation requests, and unavailable actions. Do not fill missing "
+        "values to make an action possible. Output ONLY one complete JSON object "
+        "with tool_name and parameters. Put any explanation inside the reply's "
+        "message, never before or after the object. No reasoning, headings, "
+        "comments or second object."
     ),
     "microsoft/Phi-4-mini-instruct": (
         "The catalog's name identifies a tool; your output field is tool_name, "
         "never name. Output a complete JSON object, not a tool name alone. "
         "This also applies to respond_to_user: include parameters with message. "
-        "Do not copy schema fields such as description, type or properties."
+        "Do not copy schema fields such as description, type or properties. "
+        "Dialog-opening tools take no parameters: always use {}, even when form "
+        "choices are mentioned. Those choices are made in the dialog. A question belongs in a reply, "
+        "never in an action parameter. For a direct operation, use only values "
+        "supplied in current_user.text; missing required values need a reply, "
+        "not values from a reference example. If the requested operation has no "
+        "callable tool, reply instead of inventing a tool or choosing a similar one."
     ),
     "meta-llama/Llama-3.2-3B-Instruct": (
         "Decide whether an action is appropriate before filling parameters. "
@@ -76,19 +89,36 @@ _MODEL_EMPHASIS = {
         "or missing required values, use respond_to_user. Do not invent tools or fill missing values "
         "with null. Every response has tool_name and parameters. For an action "
         'with no arguments, write the field "parameters": {}. The empty object '
-        "is that field's value, not a quoted string or a standalone response."
+        "is that field's value, not a quoted string or a standalone response. "
+        "For a requested action, check its required fields against current_user.text "
+        "before using reference examples. If all required values are supplied, "
+        "use those values and do not ask for them again. If any are missing, "
+        "choose respond_to_user. Reference examples teach tool usage, not the "
+        "values of the current request; never replace or complete the user's "
+        "values with theirs."
     ),
     "google/gemma-3-4b-it": (
-        "The output illustrations show two different effects: an action object "
-        "requests execution; respond_to_user only displays text. To open an "
-        "enabled dialog, use its action object with empty parameters. A reply "
-        "about opening it does not open it. For information, prohibitions, "
-        "blockers or missing required values, use the complete reply object."
+        "Select one decision, not a conversational promise. If the user requests "
+        "one available action and supplies its required values, output that "
+        "action's JSON object. Do not ask again for values already supplied. "
+        "Dialog-opening tools always take empty parameters, even when form "
+        "choices are mentioned; those choices are made in the dialog. A reply promising "
+        "to open it does not execute it. For information or explanation requests, "
+        "prohibitions, unavailable actions or missing required values, output "
+        "respond_to_user with your reply in parameters.message instead. "
+        "Return only the single complete JSON object, not a bare message."
     ),
 }
 DEV_PROMPT_MODEL_IDS = tuple(_MODEL_EMPHASIS)
 _ROUND2_PRESENTATION_MODELS = frozenset(
     {"ibm-granite/granite-4.0-micro", "meta-llama/Llama-3.2-3B-Instruct"}
+)
+_ILLUSTRATED_MODELS = frozenset(
+    {
+        "microsoft/Phi-4-mini-instruct",
+        "meta-llama/Llama-3.2-3B-Instruct",
+        "ibm-granite/granite-3.3-2b-instruct",
+    }
 )
 
 # These units are backend semantics, not fields claimed to exist in the schema:
@@ -165,12 +195,11 @@ class DevContextAssembler(ContextAssembler):
         )
 
     def _decision_instructions(self) -> str:
-        baseline = (
+        return (
             _DECISION_STEPS
             if self.model_id in _ROUND2_PRESENTATION_MODELS
             else super()._decision_instructions()
         )
-        return baseline + "\nRemember: " + _MODEL_EMPHASIS[self.model_id] + "\n"
 
     def _format_tools(self, allowed_names, *, unavailable_actions=None) -> str:
         formatter = (
@@ -179,7 +208,9 @@ class DevContextAssembler(ContextAssembler):
             else super()._format_tools
         )
         catalog = formatter(allowed_names, unavailable_actions=unavailable_actions)
-        return catalog + "\n\n" + self._output_illustrations(allowed_names)
+        if self.model_id in _ILLUSTRATED_MODELS:
+            catalog += "\n\n" + self._output_illustrations(allowed_names)
+        return catalog + "\n\nOutput decision:\n" + _MODEL_EMPHASIS[self.model_id]
 
     def _output_illustrations(self, allowed_names) -> str:
         """Illustrate wire shapes from callable contracts, never case answers."""

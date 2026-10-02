@@ -23,6 +23,11 @@ ROUND2_MODELS = (
     "ibm-granite/granite-4.0-micro",
     "meta-llama/Llama-3.2-3B-Instruct",
 )
+ILLUSTRATED_MODELS = (
+    "microsoft/Phi-4-mini-instruct",
+    "meta-llama/Llama-3.2-3B-Instruct",
+    "ibm-granite/granite-3.3-2b-instruct",
+)
 
 
 class PublicationRuntime:
@@ -199,9 +204,9 @@ def test_round1_models_reuse_original_policy_and_lossless_json_catalog(model_id)
     )
     assert candidate._TOOL_BLOCK_TEMPLATE == baseline._TOOL_BLOCK_TEMPLATE
     catalog = candidate._format_tools(names, unavailable_actions=blockers)
-    assert catalog.split("\n\nComplete output illustrations:")[0] == (
-        baseline._format_tools(names, unavailable_actions=blockers)
-    )
+    assert catalog.split("\n\nComplete output illustrations:")[0].split(
+        "\n\nOutput decision:\n"
+    )[0] == (baseline._format_tools(names, unavailable_actions=blockers))
 
 
 @pytest.mark.parametrize("model_id", DEV_PROMPT_MODEL_IDS)
@@ -216,6 +221,10 @@ def test_output_illustrations_are_complete_legal_and_only_callable(model_id, nam
     registry = real_registry()
     assembler = DevContextAssembler(registry, None, model_id=model_id)
     catalog = assembler._format_tools(names)
+    if model_id not in ILLUSTRATED_MODELS:
+        assert "Complete output illustrations:" not in catalog
+        assert "Which operation would you like help with?" not in catalog
+        return
     examples = catalog.split("Complete output illustrations:\n", 1)[1]
     proposals = [
         json.loads(line) for line in examples.splitlines() if line.startswith("{")
@@ -240,6 +249,24 @@ def test_output_illustrations_are_complete_legal_and_only_callable(model_id, nam
             ).is_valid
             assert "message" not in proposal["parameters"]
     assert "not values or permission for this request" in examples
+
+
+@pytest.mark.parametrize("model_id", DEV_PROMPT_MODEL_IDS)
+def test_model_emphasis_is_one_terminal_block_after_catalog_and_examples(model_id):
+    from scripts.dev.assistant_dev_context import _MODEL_EMPHASIS
+
+    assembler = DevContextAssembler(real_registry(), None, model_id=model_id)
+    messages = assembler.get_messages(
+        [{"role": "user", "content": "Explain EEG preprocessing."}]
+    )
+    system = messages[0]["content"]
+    emphasis = _MODEL_EMPHASIS[model_id]
+    assert emphasis not in assembler._decision_instructions()
+    assert system.count(emphasis) == 1
+    catalog = assembler._format_tools(assembler.latest_tool_publication.tool_names)
+    assert catalog.rstrip().endswith("Output decision:\n" + emphasis)
+    assert catalog in system
+    assert "DEV-" not in system and "candidate4" not in system
 
 
 @pytest.mark.parametrize("model_id", [None, "granite4", "unknown/model"])
