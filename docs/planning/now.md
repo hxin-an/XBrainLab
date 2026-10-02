@@ -115,7 +115,17 @@ helper及兩review的hash和75組evidence IDs。主分類8任務等價（跨spli
 但任務不同、16模板近似、12完整state等價未決；不稱無洩漏，不改題庫／分母。
 NAS原數值audit保留semantic_review_complete=false歷史欄，另存semantic-adjudication.json
 作本輪覆核結論；此為有界AI輔助稽核，不是第二人類標註。資料分析不需再呼叫受測模型。
-零推論的舊入口失敗log與本次模型原始輸出皆保留；完整TEST／題庫稽核／回存未完成。
+bb36d5d9已封存並通過396 VALID／528 TEST無LLM輸入預檢，Full逐字不變、無截斷；
+CI抓到4個尚未遷移的integration斷言仍要求舊numeric membership拒絕。
+完整CI另有3個舊工程evaluator測試仍預期Host補救／拒絕numeric提案；同步遷移測試，
+保留錯誤raw判錯、合法JSON不語意重試、研究執行邊界抑制等保護；scorer本身不改。
+Next：只遷移兩份integration tests，保留current-turn輸入隔離及仍有效method來源保護，
+不恢復已批准移除的Host數字限制；focused checks與獨立覆核後新exact SHA／CI／封存。
+再完整執行1584題、離線核對及本機回存；舊失敗CI與source保留，不拼接研究資料。
+遷移後兩integration檔17passed、工程evaluator兩檔114passed；保留current-only完整input、
+前輪7Hz不合併到本輪11Hz、真Command／MNE結果及method來源拒絕，raw錯答仍錯。
+本次只改tests／plan，產品與研究runner／scorer／模型輸入保持bb36位元組。
+零推論的舊入口失敗log與本次模型原始輸出皆保留；題庫稽核已完成，完整TEST／回存未完成。
 
 ## 已完成 — VALID量測與TEST前討論
 
