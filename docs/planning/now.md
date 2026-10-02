@@ -2,7 +2,35 @@
 
 最後更新：`2026-10-02`
 
-## Active — DEV 第4輪逐模型提示，做到137正式啟動
+## Active — 修復DEV子程序退出崩潰，再完整重跑第4輪
+
+使用者已授權修好後續跑，並明確改為全部重跑以檢查可重現性；不僅續跑Gemma。
+證據：run `20261002-024229-8b91f51c`完成1056/1320，Llama264題與condition結果寫完後
+子程序returncode=-11(SIGSEGV)，hard_timeout=false、cleanup_ok=true；runner按fail-closed
+停止，Gemma未啟動。無Python traceback/native stack，尚未定位到確切解構元件；不假稱根因已知。
+Outcome：有證據的退出修理及直接／原生驗證；完整1320新run啟動、初始紀錄正常後交回。
+Scope：退出生命週期、直接回歸與必要crash診斷／研究封存；保留失敗run及既有1056筆。
+Non-goals：不改提示、模型／revision、生成、RAG、題庫、scorer、Host決策或重試；不啟動第5輪、
+VALID／TEST，不改可見UI或merge。不忽略SIGSEGV或用強制exit假裝成功。
+先以最小有界原生probe定位，診斷推論若不可避免另標工程證據，不混正式分母、不依分數調候選。
+步驟：追退出／捕捉stack→可重現保護與修理→focused與原生exit驗證→獨立覆核／適用CI
+→以可追溯修理source封存同一提示候選（不覆寫旧快照）→全量新run→驗初始capture與進度。
+假設：137資源仍可用；禁止修改凍結source／舊manifest來蒙混身分；先核對封存對應方式。
+可重現性：新run完成後與失敗run共同1056筆比對；Gemma缺舊結果，不能稱五模型全量已重現。
+Stop：修理證據與同版本驗證閉合、全量重跑有效啟動後交回，不持續監控整輪；不自行加跑第二整批。
+已定位：137原版load/READY/close最小probe三次中第三次SIGSEGV；gdb另一次重現
+`sip_api_get_address → cleanup_qobject → cleanup_on_exit → Py_FinalizeEx`，位於PyQt退出清理。
+首次診斷probe缺spawn main guard而逾時，屬probe錯誤，保留但不算產品重現；修正後才取得上述證據。
+兩項Windows回歸先red：close只隱藏視窗、第一次失敗後錯誤鎖定closed。修理重用Qt drain，
+以accepted close的WA_DeleteOnClose完成原生銷毀，成功才標closed；不跳過MainWindow關閉政策。
+首次修理原生三次正常exit0且window_destroyed=true；非永久穩定保證。獨立覆核另找到延後銷毀
+後再次close存取已刪Qt timer，已補red與刪除感知的重試；最終59項Windows直接測試、
+changed-file Ruff/format通過，獨立source覆核解除阻擋。精確版本原生退出與CI仍待執行。
+封存使用既有create_package建立`stages/dev/round-04/repair-01`，保留candidate4與舊父入口；
+新完整source/manifest/run獨立，不偷偷重指舊版，不計第5輪，不自動納入父DEV aggregate。
+Next：最終直接測試／獨立覆核→同head CI與原生exit→封存及全量新run初始驗收。UI無改動。
+
+## 已交回 — DEV 第4輪正式量測已啟動
 
 使用者已讀完並批准`碩論準備/實驗/DEV階段紀錄/DEV第3輪總結與第4輪改善計畫.md`
 第五節，要求修改後正式開跑。R3完整1320筆：Granite4多物件、Gemma操作變文字承諾、
@@ -21,7 +49,28 @@ Complexity：重用研究assembler和append_round，產品LOC與owner不增加�
 Stop：同版本驗證、獨立覆核與封存完成，run產出有效初始量測及正常進度後交回；不監控到結束。
 進度：13項預期red後42項提示保護及27項session接線均通過；Ruff通過，產品程式未改。
 獨立source覆核找到開窗參數條件句歧義，已改為即使提到窗內設定也固定{}，覆核解除阻擋。
-修改後69項與Ruff重驗通過；下一步凍結source、完整輸入/tokenizer及同headCI。UI無變更。
+修改後69項與Ruff重驗通過；UI無變更。
+已凍結source `dd2a5e75cc2db782a33590e40399b861371398d8`，PR #155未合併，承接#154/#153。
+137暫存source為`.runtime/round4-stage-dd2a5e75/source`，完整來源clean；工程證據在
+NAS根`results/engineering/round4-dd2a5e75/`，prepare／append及正式啟動已完成。
+66真fixture／1320輸入及五模型精確tokenizer初次/潛在retry全過，最高2953/7680，RAG未裁切。
+兩位獨立reviewer完成source／實際輸入／配置artifact覆核：五模型七stage及另選六個缺值／
+不操作要求，無阻擋；固定因素不變。輸入為既存capture重播，不冒稱fresh retrieval或準確率。
+同head CI全completed：22成功、5 scope skip；GPU空閒後追加round-04並單次啟動。
+169個舊封存檔／10份run身分不變，第1–4輪環境check通過；未覆寫歷史source或結果。
+正式run `20261002-024229-8b91f51c`，log `.runtime/logs/dev-round04-dd2a5e75.log`，
+tmux `xbl-dev-round04-dd2a5e75`。已觀察8→17/1320，初始10筆recorded／cleanup／live system
+及capture hash／RAG核對通過。只證明初始量測正常，不稱整輪完成或準確率提高。
+Next：依約停止監控，待使用者要求查結果／討論第5輪；不重複啟動，不自行調提示或開始第5輪。
+重跑入口：NAS根`stages/dev/round-04/./run.sh`；外部實驗README／計畫與指令已同步。
+只留本頁凍結後記錄dirty，settings.json仍為使用者修改，未merge。
+
+封存diff相對R3 e6d10a9f（新增/刪除/淨）：產品0/0/0、測試38/4/+34、腳本44/13/+31、
+文件62/3/+59、設定/其他0/0/0，合計144/20/+124；二進位0。文件含未提交R3交回／分析，
+非全為本次新寫；本頁凍結後及外部文件另計，不混入候選source。
+分支對main72548c累積：產品5/1/+4、測試1390/3/+1387、腳本1541/73/+1468、文件402/6/+396，
+設定/其他0，合計3338/83/+3255；包含之前封裝/R2/R3。產品本輪未改，測試/腳本經focused、
+同headCI與獨立覆核；文件MkDocs通過、外部連結核對，設定未動。不評回答品質，未做VALID/TEST。
 
 ## 已完成 — DEV 第3輪結果分析
 

@@ -238,6 +238,98 @@ def test_condition_warmup_uses_owned_engine_and_isolates_real_capture(
     assert engines[0].close_called.is_set()
 
 
+def test_condition_close_destroys_native_window_before_certifying_cleanup(
+    qtbot, tmp_path, controlled_condition_runtime
+):
+    from PyQt6 import sip
+
+    from XBrainLab.ui.qt_runtime import drain_qt_runtime_after_event_loop
+
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    with patch.dict(os.environ):
+        try:
+            session.__init__(request(), tmp_path)
+            window = session.window
+            destroyed = []
+            window.destroyed.connect(lambda: destroyed.append(True))
+
+            assert session.close() is True
+            assert controlled_condition_runtime["engines"][0].close_called.is_set()
+            assert sip.isdeleted(window), "Hidden is not native QWidget destruction"
+            assert destroyed == [True]
+            assert not sip.isdeleted(session.app)
+        finally:
+            session.close()
+            if session.window is not None and not sip.isdeleted(session.window):
+                session.window.deleteLater()
+                drain_qt_runtime_after_event_loop(session.app)
+
+
+def test_condition_close_retries_failed_cleanup_before_certifying_success(
+    qtbot, tmp_path, controlled_condition_runtime, monkeypatch
+):
+    from PyQt6 import sip
+
+    from XBrainLab.ui.qt_runtime import drain_qt_runtime_after_event_loop
+
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    with patch.dict(os.environ):
+        session.__init__(request(), tmp_path)
+        window = session.window
+        cancel = session.service.cancel_all_owned_operations
+        attempts = []
+
+        def fail_once():
+            attempts.append(True)
+            if len(attempts) == 1:
+                raise RuntimeError("Injected first cleanup failure")
+            return cancel()
+
+        monkeypatch.setattr(session.service, "cancel_all_owned_operations", fail_once)
+        try:
+            assert session.close() is False
+            assert not controlled_condition_runtime["engines"][0].close_called.is_set()
+            assert session.close() is True
+            assert len(attempts) >= 2, "A failed close must not latch cleanup success"
+            assert controlled_condition_runtime["engines"][0].close_called.is_set()
+            assert sip.isdeleted(window)
+        finally:
+            monkeypatch.setattr(session.service, "cancel_all_owned_operations", cancel)
+            # Release real worker ownership even against the defective baseline,
+            # whose first failure incorrectly latches closed=True.
+            session.closed = False
+            session.close()
+            if session.window is not None and not sip.isdeleted(session.window):
+                session.window.deleteLater()
+                drain_qt_runtime_after_event_loop(session.app)
+
+
+def test_condition_close_can_retry_after_native_window_was_destroyed(
+    qtbot, tmp_path, controlled_condition_runtime, monkeypatch
+):
+    from PyQt6 import sip
+
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    with patch.dict(os.environ):
+        session.__init__(request(), tmp_path)
+        wait = session.wait_until
+
+        def late_deadline(predicate, seconds):
+            wait(predicate, seconds)
+            if seconds == 15:
+                raise TimeoutError("Close completed at its deadline boundary")
+
+        try:
+            with monkeypatch.context() as fault:
+                fault.setattr(session, "wait_until", late_deadline)
+                assert session.close() is False
+            assert sip.isdeleted(session.window)
+            assert session.close() is True
+            assert session.closed is True
+        finally:
+            session.close()
+
+
 @pytest.mark.parametrize("failure", ["load_error", "startup_timeout"])
 def test_unstarted_condition_cleanup_leaves_case_resumable(
     qtbot, monkeypatch, tmp_path, controlled_condition_runtime, failure
