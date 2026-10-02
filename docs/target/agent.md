@@ -73,7 +73,9 @@ JSON就變成可信事實；schema與來源通過不證明語意正確或已准�
 `respond_to_user`不是第19個工具，不進executor；缺值回答不是等待補值state。
 移除decision／mode／changes／source_turn／quote、RequestUpdate與參數草稿DTO，
 不維護兩套runtime解析或將新契約轉入舊receipt。正常工具的required/type/enum/range仍
-由既有validator與backend擁有；五個direct工具來源只核對本輪原文。
+由既有validator與backend擁有。2026-10-03使用者批准：bandpass／notch／resample
+的數值由模型解析，Host不要求阿拉伯數字出現在原句；reference／normalization方法
+仍核對本輪原文。RAG示例的來源檢查不隨此Host放行修理改動。
 非direct工具遵守其既有參數契約，不強迫enum字面值出現在使用者句子。
 來源匹配不是intent／否定證明，不用Host語意救援把模型錯答改判成功。
 
@@ -291,8 +293,10 @@ preprocess command owner 必須在 MNE prepare 前，從本次 source data 的�
 ### Direct-preprocess 單輪要求
 
 依[單輪理解邊界](#unified-clarification)與[模型契約](#agent-m0-contract)，五個direct工具
-只從本輪原文驗證完整實參。Host不得用歷史、RAG、預設或舊receipt補齊；bare值不是
-沿用上一操作的授權。值來源核對不取代模型對操作、否定或多步要求的理解。
+仍須完整實參。模型負責從本輪要求理解數值，Host不以原句數字membership阻擋
+bandpass／notch／resample，也不新增英文數字解析器；方法來源檢查維持既有行為。
+Host不得用歷史、RAG、預設或舊receipt補齊；bare值不是沿用上一操作的授權。
+缺值／數值是否屬於要求由模型判斷，Host仍驗參數契約和後端安全邊界，不代替語意判分。
 舊Host補值、bandpass排序、草稿與跨輪來源DTO退出產品路徑；原實驗保留歷史版本身分。
 
 ### Lifecycle tools

@@ -2569,49 +2569,49 @@ class TestExecuteDebugTool:
 
         ctrl.panel_navigation_requested.emit.assert_not_called()
 
-    def test_parameter_origin_response_has_no_execution_side_effect(self, ctrl):
-        ctrl._append_history("user", "Resample the EEG data.")
+    def test_method_origin_response_has_no_execution_side_effect(self, ctrl):
+        ctrl._append_history("user", "Set the EEG reference.")
         ctrl._finalize_turn = MagicMock()
         ctrl._handle_tool_attempt_blocked = MagicMock()
         decision = ToolAttemptDecision(
             ToolAttemptAction.RESPOND,
-            "resample_data",
-            {"rate": 128},
-            context=_enabled_tool_context("resample_data", generation=17),
-            message="What resampling rate should I use?",
+            "set_reference",
+            {"method": "average"},
+            context=_enabled_tool_context("set_reference", generation=17),
+            message="What EEG reference method should I use?",
         )
 
         assert ctrl._present_tool_attempt_boundary(decision) is True
 
         ctrl._finalize_turn.assert_called_once_with(
-            "What resampling rate should I use?"
+            "What EEG reference method should I use?"
         )
         ctrl._handle_tool_attempt_blocked.assert_not_called()
         ctrl.panel_navigation_requested.emit.assert_not_called()
 
-    def test_model_invented_value_never_executes(self, ctrl):
+    def test_unprovided_reference_method_never_executes(self, ctrl):
         from XBrainLab.llm.tools import get_all_tools
 
-        ctrl._append_history("user", "Resample the EEG data.")
+        ctrl._append_history("user", "Set the EEG reference.")
         ctrl._turn_orchestrator.active_publication = PromptToolPublication(
-            tool_names=frozenset({"resample_data"}),
+            tool_names=frozenset({"set_reference"}),
             workflow_stage="data_loaded",
             backend_generation=17,
         )
         ctrl.registry.get_tool.return_value = next(
-            tool for tool in get_all_tools() if tool.name == "resample_data"
+            tool for tool in get_all_tools() if tool.name == "set_reference"
         )
         _set_context_reader(
-            ctrl, return_value=_enabled_tool_context("resample_data", generation=17)
+            ctrl, return_value=_enabled_tool_context("set_reference", generation=17)
         )
-        ctrl.current_response = _response("resample_data", {"rate": 128})
+        ctrl.current_response = _response("set_reference", {"method": "average"})
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 127
         ctrl._execute_tool_attempt = MagicMock()
         ctrl._on_generation_finished(127, [])
         ctrl._execute_tool_attempt.assert_not_called()
         assert (
-            "resampling rate"
+            "reference method"
             in ctrl.response_presentation_ready.emit.call_args.args[0].text
         )
 

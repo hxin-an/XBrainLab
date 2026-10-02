@@ -1644,6 +1644,67 @@ def test_missing_or_invalid_product_observation_blocks_complete_not_model_score(
     assert actual["cases"][0]["product_outcome"] == product
 
 
+def test_configured_research_completeness_uses_raw_measurement_not_product_diagnostics(
+    tmp_path,
+):
+    root = _experiment_run(tmp_path)
+    baseline = report.build_report(root)
+    product = {
+        "measurement_valid": False,
+        "outcome": "invalid_measurement",
+        "execution": "not_started",
+        "ui_handoff": "not_requested",
+        "admission": "respond",
+        "issues": ["product_execution_observation_missing"],
+    }
+
+    def diagnostic_gap(result):
+        result["product_outcome"] = product
+        result["diagnostic_issues"] = list(product["issues"])
+        result["ui"] = {
+            "events": [{"kind": "panel_ready", "request_id": "unobserved-request"}]
+        }
+
+    _change_result(root, diagnostic_gap)
+    actual = report.build_report(root)
+    assert actual["complete_selected_schedule"] is True
+    assert all(item["complete"] for item in actual["repeat_summary"].values())
+    assert actual["repeat_summary"] == baseline["repeat_summary"]
+    row = actual["cases"][0]
+    assert row["decision_valid"] is True and row["final"] is True
+    assert row["timing_complete"] is True
+    assert row["product_measurement_valid"] is False
+    assert row["product_outcome"] == product
+    assert row["diagnostic_issues"] == product["issues"]
+    assert row["ui_timing_issues"] == ["ui_latency_unpaired"]
+    assert "ui_latency_unpaired" not in row["timing_issues"]
+
+
+@pytest.mark.parametrize(
+    "damage", ["capture", "input", "raw_score", "decision_clock", "cleanup"]
+)
+def test_configured_research_still_requires_raw_evidence_timing_and_cleanup(
+    tmp_path, damage
+):
+    root = _experiment_run(tmp_path)
+
+    def invalidate(result):
+        result["product_outcome"]["measurement_valid"] = False
+        if damage in {"capture", "input"}:
+            result[damage + "_audit"]["issues"] = ["injected_evidence_gap"]
+        elif damage == "raw_score":
+            result["scores"]["measurement_valid"] = False
+        elif damage == "decision_clock":
+            result["decision_clock"]["terminal_observed"] = False
+        else:
+            result["cleanup_ok"] = False
+
+    _change_result(root, invalidate)
+    actual = report.build_report(root)
+    assert actual["complete_selected_schedule"] is False
+    assert not all(item["complete"] for item in actual["repeat_summary"].values())
+
+
 def test_product_counts_use_saved_policy_without_reclassifying_handoff(tmp_path):
     root = _run(tmp_path, [("Action", True, True, "completed")])
     product = {

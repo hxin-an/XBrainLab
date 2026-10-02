@@ -424,6 +424,7 @@ class PilotConditionSession:
 
     def run_case(self, payload: dict, output: Path) -> dict[str, Any]:
         from PyQt6.QtCore import QTimer
+        from PyQt6.QtWidgets import QApplication
 
         from scripts.dev.assistant_pilot_fixture import prepare_fixture
         from scripts.dev.assistant_pilot_observation import PilotCaseTrace
@@ -442,6 +443,7 @@ class PilotConditionSession:
         from XBrainLab.backend.application.owned_work import OwnedWorkKind
 
         case = payload["case"]
+        research = is_experiment_protocol(payload.get("experiment"))
         result: dict[str, Any] = {
             "schema": "xbrainlab.assistant_pilot_case.v1",
             **experiment_result_identity(payload),
@@ -600,8 +602,13 @@ class PilotConditionSession:
                 self.service, result["trace"], fixture, self.window
             )
             result["jobs"] = result["runtime_evidence"]["jobs"]
-            result["issues"].extend(result["runtime_evidence"]["issues"])
-            result["issues"].extend(ui_measurement_issues(result["ui"]))
+            diagnostics = (
+                result.setdefault("diagnostic_issues", [])
+                if research
+                else result["issues"]
+            )
+            diagnostics.extend(result["runtime_evidence"]["issues"])
+            diagnostics.extend(ui_measurement_issues(result["ui"]))
             result["after_state"] = self.service.get_state().to_dict()
             result["visible_messages"] = [
                 asdict(item) for item in collect_visible_messages(panel)
@@ -630,8 +637,30 @@ class PilotConditionSession:
             result["issues"].extend(result["input_audit"]["issues"])
             result["issues"].extend(result["capture_audit"]["issues"])
             result["issues"].extend(result["scores"]["measurement_issues"])
+            if research:
+                if result["scores"].get("measurement_valid") is not True:
+                    result["issues"].append("decision_measurement_unavailable")
+                if result["decision_clock"].get("terminal_observed") is not True:
+                    result["issues"].append("decision_clock_unobserved")
             result["product_outcome"] = score_product_outcome(case, result)
-            result["issues"].extend(result["product_outcome"]["issues"])
+            if research:
+                if (
+                    "product_or_cancel_deadline" in result["issues"]
+                    and result["scores"].get("measurement_valid") is True
+                    and result["decision_clock"].get("terminal_observed") is True
+                    and not result["decision_timed_out"]
+                ):
+                    # The unchanged raw scorer has certified the actual terminal.
+                    # Cleanup below must still retire every live product owner.
+                    result["issues"] = [
+                        issue
+                        for issue in result["issues"]
+                        if issue != "product_or_cancel_deadline"
+                    ]
+                    diagnostics.append("product_or_cancel_deadline")
+            diagnostics.extend(result["product_outcome"]["issues"])
+            if research:
+                result["diagnostic_issues"] = list(dict.fromkeys(diagnostics))
             result["issues"] = list(dict.fromkeys(result["issues"]))
             result["status"] = "measurement_failed" if result["issues"] else "recorded"
         except Exception as exc:
@@ -656,6 +685,17 @@ class PilotConditionSession:
                     and not self.runtime.turn_in_flight
                     and not self.manager.agent_controller.is_processing
                     and self.driver.snapshot()["pending_count"] == 0
+                    and (
+                        not research
+                        or (
+                            self.manager.agent_controller.pending_interactions.confirmation
+                            is None
+                            and self.manager.agent_controller.pending_interactions.workflow_handoff
+                            is None
+                            and QApplication.activeModalWidget() is None
+                            and not self.service.get_state().training.is_running
+                        )
+                    )
                     and self.service.training.wait_until_restart_safe(timeout=0),
                     15,
                 )

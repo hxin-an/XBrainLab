@@ -427,10 +427,14 @@ def _case(
             timings=timings,
             timing_issues=timing_issues + condition_timing_issues + ui_timing_issues,
             timing_complete=not (
-                timing_issues or condition_timing_issues or ui_timing_issues
+                timing_issues
+                or condition_timing_issues
+                or (ui_timing_issues and not current)
             ),
             condition_evidence=condition_evidence,
             ui_handoff_seconds=ui_latencies,
+            ui_timing_issues=ui_timing_issues,
+            diagnostic_issues=result.get("diagnostic_issues", []),
             repairs=_repair(scores),
             product_outcome=product,
             product_measurement_valid=isinstance(product, dict)
@@ -443,6 +447,8 @@ def _case(
             + scores.get("measurement_issues", [])
             + provenance_issues,
         )
+        if current:
+            row["timing_issues"] = timing_issues + condition_timing_issues
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         row.update(evidence_status="invalid_evidence", issues=[str(exc)])
     return row
@@ -663,12 +669,12 @@ def _validate_experiment_inventory(manifest: dict) -> None:
         raise ValueError("Frozen research population is incomplete")
 
 
-def _complete_measurements(rows: list[dict]) -> bool:
+def _complete_measurements(rows: list[dict], *, require_product: bool = True) -> bool:
     return bool(rows) and all(
         row.get("case_recorded")
         and row["decision_valid"]
         and row["timing_complete"]
-        and row["product_measurement_valid"]
+        and (not require_product or row["product_measurement_valid"])
         for row in rows
     )
 
@@ -696,7 +702,7 @@ def _repeat_summary(
         complete = (
             cleanup
             and repeats == experiment["repeats"]
-            and _complete_measurements(matching)
+            and _complete_measurements(matching, require_product=False)
         )
 
         def mean(numbers):
@@ -948,7 +954,9 @@ def build_report(run: Path) -> dict:
         and records[-1]["event"] == "session_end"
         and records[-1].get("cleanup_certified") is True
     )
-    complete = session_cleanup_certified and _complete_measurements(rows)
+    complete = session_cleanup_certified and _complete_measurements(
+        rows, require_product=not current
+    )
     full_matrix = (
         len(jobs) == 300
         and len(conditions) == 10

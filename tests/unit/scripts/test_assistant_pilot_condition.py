@@ -477,6 +477,342 @@ def test_wrong_3d_call_records_error_and_continues_clean_next_case(
             assert session.close()
 
 
+@pytest.mark.parametrize("cutoffs", ["four to eighteen", "4 to 18"])
+def test_numeric_bandpass_proposal_executes_regardless_of_request_number_spelling(
+    qtbot,
+    tmp_path,
+    monkeypatch,
+    controlled_condition_runtime,
+    cutoffs,
+):
+    """Replay a fixed raw answer through the real Host, Command, capture and scorer."""
+    import json
+
+    from tests.unit.llm.core.test_runtime_prompt_capture import _Streamer, _Tokenizer
+    from tests.unit.scripts.test_assistant_pilot_fixture import _fixture
+
+    payload = request()
+    payload["fixture"] = _fixture("data_loaded", tool="apply_bandpass_filter")
+    payload["case"].update(
+        input=f"Apply a bandpass filter from {cutoffs} Hz.",
+        decision="Action",
+        expected_tool="apply_bandpass_filter",
+        expected_parameters={"low_freq": 4, "high_freq": 18},
+        expected_workflow_stage="data_loaded",
+        fixture_id=payload["fixture"]["metadata"]["fixture_id"],
+    )
+    raw = json.dumps(
+        {
+            "tool_name": "apply_bandpass_filter",
+            "parameters": {"low_freq": 4, "high_freq": 18},
+        }
+    )
+    outputs = iter(["READY", raw])
+    monkeypatch.setattr(_Streamer, "__iter__", lambda _self: iter([next(outputs)]))
+    template = _Tokenizer.apply_chat_template
+
+    def synthetic_tokens(self, messages, *, tokenize, add_generation_prompt):
+        value = template(
+            self,
+            messages,
+            tokenize=tokenize,
+            add_generation_prompt=add_generation_prompt,
+        )
+        # This transport double counts characters, not actual model tokens.
+        # Keep complete captured text; do not claim native-tokenizer fit evidence.
+        return value[::4] if tokenize else value
+
+    monkeypatch.setattr(_Tokenizer, "apply_chat_template", synthetic_tokens)
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    with patch.dict(os.environ):
+        try:
+            session.__init__(payload, tmp_path)
+            result = session.run_case(payload, tmp_path / "case")
+            assert result["status"] == "recorded", result.get("issues", result)
+            assert result["cleanup_ok"] is True
+            assert result["scores"]["measurement_valid"] is True
+            assert result["scores"]["first_decision_correct"] is True
+            assert result["scores"]["final_decision_correct"] is True
+            assert result["scores"]["repair_count"] == 0
+            generations = result["trace"]["generations"]
+            assert len(generations) == 1
+            assert generations[0]["raw_response"] == raw
+            events = result["trace"]["events"]
+            admissions = [
+                event["payload"]
+                for event in events
+                if event["kind"] == "host_decision"
+                and event["payload"].get("kind") == "admission"
+            ]
+            assert len(admissions) == 1
+            assert admissions[0]["action"] == "execute"
+            commands = [
+                event["payload"]
+                for event in events
+                if event["kind"] == "command_result"
+            ]
+            assert len(commands) == 1
+            assert commands[0]["tool_name"] == "apply_bandpass_filter"
+            assert commands[0]["ok"] is True
+            assert result["before_state"]["pipeline_stage"] == "data_loaded"
+            assert result["after_state"]["pipeline_stage"] == "preprocessed"
+            filtered = session.study.preprocessed_data_list[0].get_mne()
+            assert filtered.info["highpass"] == 4
+            assert filtered.info["lowpass"] == 18
+            assert result["trace"]["turn_terminal"]["outcome"] == "completed"
+            assert result["capture_audit"]["issues"] == []
+            captures = result["capture_audit"]["captures"]
+            assert len(captures) == 1
+            assert (Path(captures[0]["path"]) / "raw-output.txt").read_text(
+                encoding="utf-8"
+            ) == raw
+            assert result["ui"]["pending_count"] == 0
+        finally:
+            assert session.close()
+
+
+@pytest.mark.parametrize(
+    "research,diagnostic,damage",
+    [
+        (research, diagnostic, None)
+        for research in (True, False)
+        for diagnostic in ("host_respond", "runtime_gap", "ui_gap", "product_failure")
+    ]
+    + [(True, "host_respond", damage) for damage in ("capture", "cleanup_pending")]
+    + [
+        (True, "product_deadline", damage)
+        for damage in (None, "terminal", "cleanup_pending")
+    ],
+)
+def test_raw_research_result_is_independent_of_product_diagnostics(
+    qtbot,
+    tmp_path,
+    monkeypatch,
+    controlled_condition_runtime,
+    research,
+    diagnostic,
+    damage,
+):
+    import json
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from scripts.dev import assistant_pilot_condition as condition
+    from scripts.dev import assistant_pilot_outcome as outcome
+    from scripts.dev import assistant_pilot_runtime_evidence as runtime_evidence
+    from scripts.dev.assistant_pilot_observation import PilotCaseTrace
+    from tests.unit.llm.core.test_runtime_prompt_capture import _Streamer, _Tokenizer
+    from tests.unit.scripts.test_assistant_pilot_case import ablation_request
+    from tests.unit.scripts.test_assistant_pilot_fixture import _fixture
+    from XBrainLab.llm.agent.tool_attempt_coordinator import (
+        ToolAttemptAction,
+        ToolAttemptCoordinator,
+        ToolAttemptDecision,
+    )
+
+    payload = ablation_request("rag-off") if research else request()
+    payload["fixture"] = _fixture("data_loaded", tool="apply_bandpass_filter")
+    payload["case"].update(
+        input="Apply a bandpass filter from 4 to 18 Hz.",
+        decision="Action",
+        expected_tool="apply_bandpass_filter",
+        expected_parameters={"low_freq": 4, "high_freq": 18},
+        expected_workflow_stage="data_loaded",
+        fixture_id=payload["fixture"]["metadata"]["fixture_id"],
+    )
+    raw = json.dumps(
+        {
+            "tool_name": "apply_bandpass_filter",
+            "parameters": {"low_freq": 4, "high_freq": 18},
+        }
+    )
+    outputs = iter(["READY", raw, raw])
+    monkeypatch.setattr(_Streamer, "__iter__", lambda _self: iter([next(outputs)]))
+    template = _Tokenizer.apply_chat_template
+
+    def synthetic_tokens(self, messages, *, tokenize, add_generation_prompt):
+        rendered = template(
+            self,
+            messages,
+            tokenize=tokenize,
+            add_generation_prompt=add_generation_prompt,
+        )
+        return rendered[::4] if tokenize else rendered
+
+    monkeypatch.setattr(_Tokenizer, "apply_chat_template", synthetic_tokens)
+    if diagnostic == "host_respond":
+        evaluate = ToolAttemptCoordinator.evaluate
+
+        def observe_refusal(owner, proposal):
+            decision = evaluate(owner, proposal)
+            return replace(
+                decision,
+                action=ToolAttemptAction.RESPOND,
+                message="Restate the cutoffs.",
+            )
+
+        # Reproduce the old Host's refusal without changing raw output or scorer.
+        monkeypatch.setattr(ToolAttemptCoordinator, "evaluate", observe_refusal)
+    elif diagnostic == "runtime_gap":
+        collect = runtime_evidence.collect_runtime_evidence
+
+        def missing_observation(*args):
+            observed = collect(*args)
+            observed["issues"].append("training_observation_unavailable")
+            return observed
+
+        monkeypatch.setattr(
+            runtime_evidence, "collect_runtime_evidence", missing_observation
+        )
+    elif diagnostic == "product_failure":
+        import mne
+
+        def filter_failed(*_args, **_kwargs):
+            raise RuntimeError("Injected scientific filtering failure")
+
+        monkeypatch.setattr(mne.io.BaseRaw, "filter", filter_failed)
+    elif diagnostic == "product_deadline":
+        collect = runtime_evidence.collect_runtime_evidence
+        real_time = condition.time
+        offset = [0.0]
+        monkeypatch.setattr(
+            condition,
+            "time",
+            SimpleNamespace(
+                perf_counter=lambda: real_time.perf_counter() + offset[0],
+                perf_counter_ns=real_time.perf_counter_ns,
+                sleep=real_time.sleep,
+            ),
+        )
+
+        def unfinished_product(*args):
+            observed = collect(*args)
+            if any(event["kind"] == "command_result" for event in args[1]["events"]):
+                offset[0] += 61
+                observed["waiting"] = True
+            return observed
+
+        monkeypatch.setattr(
+            runtime_evidence, "collect_runtime_evidence", unfinished_product
+        )
+        if damage == "terminal":
+            snapshot = PilotCaseTrace.snapshot
+
+            def missing_terminal(owner):
+                observed = snapshot(owner)
+                observed["events"] = [
+                    event
+                    for event in observed["events"]
+                    if event["kind"] != "turn_terminal"
+                ]
+                observed["turn_terminal"] = None
+                return observed
+
+            monkeypatch.setattr(PilotCaseTrace, "snapshot", missing_terminal)
+    if damage == "capture":
+        verify = condition.verify_prompt_captures
+
+        def corrupt_capture(*args, **kwargs):
+            audit = verify(*args, **kwargs)
+            audit["issues"].append("capture_integrity")
+            return audit
+
+        monkeypatch.setattr(condition, "verify_prompt_captures", corrupt_capture)
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    with patch.dict(os.environ):
+        try:
+            session.__init__(payload, tmp_path)
+            pending = session.manager.agent_controller.pending_interactions
+            if damage == "cleanup_pending":
+                score = outcome.score_product_outcome
+                original_wait = session.wait_until
+
+                def leave_pending(case, result):
+                    measured = score(case, result)
+                    decision = ToolAttemptDecision(
+                        ToolAttemptAction.CONFIRMATION_REQUIRED,
+                        "reset_preprocessing",
+                        {},
+                    )
+                    pending.begin_confirmation(
+                        decision,
+                        ToolAttemptCoordinator.build_confirmation_request(decision),
+                    )
+                    return measured
+
+                monkeypatch.setattr(outcome, "score_product_outcome", leave_pending)
+                monkeypatch.setattr(
+                    session,
+                    "wait_until",
+                    lambda predicate, seconds: original_wait(
+                        predicate,
+                        0.1 if pending.has_pending and seconds == 15 else seconds,
+                    ),
+                )
+            if diagnostic == "ui_gap":
+                snapshot = session.driver.snapshot
+
+                def ui_missing():
+                    observed = snapshot()
+                    observed["issues"].append("ui_observation_limit")
+                    return observed
+
+                monkeypatch.setattr(session.driver, "snapshot", ui_missing)
+            result = session.run_case(payload, tmp_path / "case")
+            should_record = damage is None and (
+                research or diagnostic == "product_failure"
+            )
+            assert result["status"] == (
+                "recorded" if should_record else "measurement_failed"
+            )
+            assert result["cleanup_ok"] is (damage != "cleanup_pending")
+            if damage == "terminal":
+                assert result["scores"]["measurement_valid"] is False
+                assert "product_or_cancel_deadline" in result["issues"]
+            else:
+                assert result["scores"]["measurement_valid"] is True
+                assert result["scores"]["first_decision_correct"] is True
+                assert result["scores"]["final_decision_correct"] is True
+            assert result["trace"]["generations"][0]["raw_response"] == raw
+            assert bool(result["capture_audit"]["issues"]) is (damage == "capture")
+            product = result["product_outcome"]
+            assert product["measurement_valid"] is (diagnostic == "product_failure")
+            assert product["outcome"] == (
+                "failed" if diagnostic == "product_failure" else "invalid_measurement"
+            )
+            if research and damage is None:
+                assert result["issues"] == []
+                assert set(product["issues"]) <= set(result["diagnostic_issues"])
+            if diagnostic == "product_deadline" and damage != "terminal":
+                assert "product_or_cancel_deadline" in result["diagnostic_issues"]
+                assert "product_or_cancel_deadline" not in result["issues"]
+            if diagnostic == "host_respond":
+                assert product["admission"] == "respond"
+                assert product["execution"] == "not_started"
+                assert not any(
+                    event["kind"] == "command_started"
+                    for event in result["trace"]["events"]
+                )
+                if research and damage is None:
+                    following_payload = copy.deepcopy(payload)
+                    following_payload["case"]["case_id"] = payload["case"][
+                        "case_id"
+                    ].replace("-V0", "-V1")
+                    following = session.run_case(following_payload, tmp_path / "next")
+                    assert following["status"] == "recorded", following.get(
+                        "issues", following
+                    )
+                    assert following["cleanup_ok"] is True
+                    assert following["scores"]["final_decision_correct"] is True
+                    assert following["case_boundary"]["runtime_reused"] is True
+                    assert following["case_boundary"]["conversation_messages"] == 0
+                    assert following["case_boundary"]["pending_interactions"] == 0
+        finally:
+            if damage == "cleanup_pending":
+                session.manager.agent_controller.pending_interactions.clear()
+            assert session.close()
+
+
 def test_condition_close_destroys_native_window_before_certifying_cleanup(
     qtbot, tmp_path, controlled_condition_runtime
 ):

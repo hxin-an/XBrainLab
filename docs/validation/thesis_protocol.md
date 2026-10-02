@@ -96,6 +96,20 @@ Phi-4 Mini R5（macro 0.7654320988），不因TEST結果換模型或提示。
 合法回答率解讀成回答品質。分開記錄原始模型、Host admission及實際執行結果。
 補充full對各off的配對差、修復觸發／救回／時間成本，不以變好才宣稱完成。
 
+2026-10-03使用者確認：研究正確率只評模型原始工具／參數答案，首答及既有格式重試
+後答案分開保存。Host拒絕、成功執行或執行失敗均不改模型分數。現行research runner
+與其engineering-smoke以完整raw/capture/input identity、原scorer、decision計時及
+fixture/reset/cleanup為有效量測條件；product outcome及UI計時另留診斷，觀測不完整
+不得偽称執行成功，也不得單獨排除原始答案或中斷整批。原standalone Pilot gate不變。
+
+首次TEST在fa9d4d54因英文數字four/eighteen與Host原句literal檢查不相容停止：模型
+bandpass 4/18原始答案已判正確，並非模型錯答。使用者另批准移除bandpass/notch/resample
+的Host原句數字membership檢查，仍保留schema/range/capability/publication/confirmation；
+method來源及RAG共用helper不變。新TEST封存揭露此post-VALID工程修理與新source，
+不能稱完整產品版本與VALID相同。模型／prompt／RAG／生成／oracle／raw scorer不變，
+執行前另驗Full輸入逐字一致。既有DEV/VALID原始分數與source保留，不回填或重跑。
+失敗TEST批次保留，新source重新完整排程，不拼接兩版結果；新run不以分數高低重跑。
+
 不確定性：依Action／Clarification／No-call分層，分別以36／12／18個family為抽樣
 單位有放回重抽10000次（analysis seed0）；每family的2改寫×3repeat及四條件成套
 保留。由每family六次平均正確率算各層均值，再三層等權計macro；同一次抽樣索引用於

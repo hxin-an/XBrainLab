@@ -276,9 +276,13 @@ class ToolAttemptCoordinator:
         if command_name == "start_training":
             add_start_training_confirmation_details(params, state=context.state)
 
+        # The model extracts numeric arguments; the verifier below checks their
+        # contract. Literal number matching remains a RAG-example policy only.
         origin_validation = (
             VerificationResult(True)
             if not request.enforce_direct_parameter_origins
+            or command_name
+            in {"apply_bandpass_filter", "apply_notch_filter", "resample_data"}
             else verify_direct_parameter_origins(
                 command_name,
                 params,

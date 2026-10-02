@@ -82,8 +82,11 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 模型輸入不附先前user／Assistant對話，連上一則Assistant回覆也不附；畫面聊天與診斷
 紀錄仍保留。模型只取得當輪原文、必要後端狀態／工具／規則及可選參考，不支援依聊天
 歷史理解「你剛才說的」。此刪除不是已知模型漏答的修復或新的模型成績。
-Host不解析自然語言意圖、不排序bandpass值，也沒有零LLM補值捷徑；五個direct工具仍
-依當輪原文驗證參數來源。確認及GUI handoff保留既有typed回呼、取消與freshness邊界。
+Host不解析自然語言意圖、不排序bandpass值，也沒有零LLM補值捷徑。2026-10-03另獲授權
+（本分支修正、尚未合併）
+移除bandpass／notch／resample的原句數字membership放行限制；數值由模型解析，仍驗
+完整schema／range／後端狀態。Reference／normalization方法來源及RAG示例檢查維持原樣。
+確認及GUI handoff保留既有typed回呼、取消與freshness邊界。
 來源匹配不證明理解正確；執行仍須通過完整schema、capability與確認。格式錯誤最多
 一次修復，多個完整JSON操作要求選一件，不執行其中任何一個。
 完整契約見[Agent target](target/agent.md)，責任分工見[Agent架構](architecture/agent.md)。
