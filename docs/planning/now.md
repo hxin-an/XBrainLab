@@ -1,8 +1,33 @@
 # XBrainLab Now
 
-最後更新：`2026-09-30`
+最後更新：`2026-10-02`
 
-## 施工中 — DEV 第2輪提示與工具呈現
+## 施工中 — DEV 第3輪逐模型提示呈現
+
+使用者已批准第2輪總結所列五模型改善方案，要求移除草稿／待確認狀態、實作並正式開跑。
+證據：第2輪1320筆完整結束，首次正確847→684、最終894→808；完整封裝與操作／回覆混淆
+因模型而異，不能將共同文字呈現視為各模型最佳起點。外部詳細計畫位於
+`碩論準備/實驗/DEV階段紀錄/DEV第2輪總結與第3輪改善計畫.md`。
+Outcome：每模型固定一套candidate3；Granite4／Llama以R2提示起步，Phi／Gemma／Granite3.3
+以R1提示呈現起步，明示完整JSON輸出及操作／回覆邊界。共用runner與產品修復不回退。
+Scope：研究提示呈現、直接測試與封存／文件；不改模型／生成／RAG／題庫／scorer／Host／
+一次格式重試，不讀VALID／TEST，不改UI、不merge、不新增推論或通用控制層。
+授權正式五模型各264筆（共1320）；本輪不額外跑20題工程smoke、不暗中搜尋或重跑候選。
+假設：137既有環境／模型／GPU仍可用，部署前核對；settings.json保持原狀。
+步驟：提示與baseline保護→focused tests→五模型完整輸入及tokenizer預算→獨立程式／
+研究契約與實際輸入覆核→同head適用CI→封存完整source/config並追加round-03→正式開跑。
+驗證：工具schema／membership／blocker／RAG／當前請求不變，完整輸出例合法，模型選擇
+不依case/oracle，舊round1/2及證據不變；五模型candidate3與完整source身分可追溯。
+Complexity：產品owner與預計production LOC均不增加，重用assembler純呈現hook與append_round。
+Stop：正式run已產生有效初始紀錄與進度，交付run/log/一行重跑入口即停止監控，不等跑完。
+進度：已實作逐模型baseline與公開契約完整JSON示意；產品程式與固定研究因素未改。
+提示保護先重現26項預期失敗再通過37項；獨立source／契約覆核無阻擋，仍待實際輸入覆核。
+相鄰接線三項舊測試已同步已批准的逐模型目錄；159項直接測試均已有green證據，Ruff通過。
+Next：固定source，產生真fixture完整輸入並核對tokenizer／RAG，完成独立輸入覆核與同head CI。
+正式推論尚未啟動；準確率改善尚未證實。
+
+
+## 已交回 — DEV 第2輪正式量測已啟動
 
 使用者認同共同調整→逐模型重點，要求覆核並提出做到137正常開跑即交回的實作計畫。
 唯一施工順序由本頁追蹤；詳細候選/步驟見`碩論準備/實驗/DEV階段紀錄/DEV第1輪問題討論.md`
@@ -19,15 +44,34 @@ scorer、題庫、Host政策與一次格式修復；不讀VALID/TEST，不調UI�
 oracle/scorer可比較、舊round1完整性、focused tests及適用CI、獨立輸入/程式覆核。
 Stop：正式run初始有效量測與進度正常，提供run/log/重跑入口後停止監控，不等整輪結束。
 使用者已授權本計畫施工、固定20筆工程驗證及正式開跑；要求開跑前多位獨立reviewer
-核對實際程式/研究契約/完整模型輸入。尚未推論，不援引R1舊授權或舊review代替本輪。
-Next：提示與接線、可驗證追加輪次操作分工施工，focused tests及獨立覆核後封存部署。
+核對實際程式/研究契約/完整模型輸入。已按本輪授權執行，不援引R1舊review代替本輪。
+Next：等待使用者下一次要求查結果／分析；不持續監控，不追加推論或啟動第3輪。
 UI不變；settings.json保留不動。未授權合併，不將啟動成功誤報為整輪完成或準確率改善。
 進度：139項Windows focused回歸通過；Linux封裝22＋package/shared33項通過，Ruff全庫通過。
 新增round獨立review通過，另做第二次move故障注入，舊round仍可執行且可重試追加。
-66真fixture／1320份初次輸入preflight通過；最終clean source仍須重建capture、驗五tokenizer
-與RAG保留，完成獨立完整輸入review及同head CI後才部署/推論。所有scorer/frozen依賴未改。
+最終source `d2e679c2269c2edcd56698a0cdf30b5b332237b5`，PR #153未合併。
+同head CI：22成功、5 scope skip，全completed。66真fixture／1320份完整輸入通過；
+五個精確tokenizer重播全部初次與可能retry，RAG/state/request原文不裁切；最大retry2157
+tokens < 7680。所有scorer/frozen依賴未改。三個獨立審查面向均通過；輸入review抓到
+禮貌問句與資訊問題的歧義，已在推論前修正並重新產生全部capture，沒有用分數調提示。
+NAS已追加round-02；157舊封存檔、8歷史run身分保持不變，round1/2 check均通過。
+固定20工程案例完整，exit0；23份prompt/raw captures及五模型CUDA/cleanup由獨立review
+核對。模型錯答保留為有效量測，不拿工程成功宣稱全答對。沒有額外smoke或候選搜尋。
+正式run `20260930-132737-274c0afd`，只跑round-02五模型candidate2共1320題。
+已確認進度30→56/1320，直接核對前10筆recorded、trace與cleanup；不是整輪完成宣稱。
+NAS根`/mnt/home/2025/hxin/XBrainLab-experiments`；log為
+`.runtime/logs/dev-round02-d2e679c2.log`，工程證據為`results/engineering/round2-d2e679c2`。
+手動重跑入口`stages/dev/round-02/./run.sh`；目前正在跑，勿重複啟動。外部實驗文件已同步。
 Complexity：產品僅原樣預設呈現hook（+5/-1），沒有新增owner；研究呈現與追加輪次重用
 原assembler/packager/runner，沒有新state、scheduler或評分機制。原始證據不覆寫。
+
+封存候選LOC（新增/刪除/淨；不含settings；二進位0）：相對da137366，產品5/1/+4、
+測試353/2/+351、腳本330/14/+316、文件57/3/+54、設定/其他0，合計745/20/+725。
+此基準含開工前已討論但未提交的計畫文件，不冒稱全為本次新寫；本交回記錄另計。
+分支對main72548c累積：產品5/1/+4、測試1280/3/+1277、腳本1436/73/+1363、
+文件288/6/+282、設定/其他0，合計3009/83/+2926；含先前封裝/進度/比較報告工作。
+產品/測試/腳本由focused與同head CI覆蓋，文件MkDocs通過，設定無改動；實際模型準確率
+與全輪完成仍未知，未做VALID/TEST、未評回答文字品質。外部文件不混入repo LOC。
 
 ## 已完成 — DEV 第1輪唯讀交叉分析與討論筆記
 

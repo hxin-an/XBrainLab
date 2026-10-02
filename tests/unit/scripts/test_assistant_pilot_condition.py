@@ -108,7 +108,14 @@ def test_experiment_session_wires_exact_model_presentation(
                     {"role": "user", "content": payload["case"]["input"]},
                 ]
             ).to_model_messages()
-            assert "Available choices (guidance, not output):" in messages[0]["content"]
+            expected_catalog_heading = (
+                "Available choices (guidance, not output):"
+                if model_id
+                in {"ibm-granite/granite-4.0-micro", "meta-llama/Llama-3.2-3B-Instruct"}
+                else "Action Contract Catalog (input definitions, never an output array):"
+            )
+            assert expected_catalog_heading in messages[0]["content"]
+            assert "Complete output illustrations:" in messages[0]["content"]
             assert assembler._decision_instructions() in messages[0]["content"]
             assert controlled_condition_runtime["engines"][0].load_calls == 1
         finally:

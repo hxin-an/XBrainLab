@@ -14,6 +14,16 @@ from XBrainLab.backend.study import Study
 from XBrainLab.llm.agent.assembler import ContextAssembler
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
+ROUND1_MODELS = (
+    "microsoft/Phi-4-mini-instruct",
+    "google/gemma-3-4b-it",
+    "ibm-granite/granite-3.3-2b-instruct",
+)
+ROUND2_MODELS = (
+    "ibm-granite/granite-4.0-micro",
+    "meta-llama/Llama-3.2-3B-Instruct",
+)
+
 
 class PublicationRuntime:
     def __init__(self, publication):
@@ -145,13 +155,7 @@ def real_registry():
 
 @pytest.mark.parametrize(
     "model_id",
-    [
-        "ibm-granite/granite-4.0-micro",
-        "ibm-granite/granite-3.3-2b-instruct",
-        "microsoft/Phi-4-mini-instruct",
-        "meta-llama/Llama-3.2-3B-Instruct",
-        "google/gemma-3-4b-it",
-    ],
+    ROUND2_MODELS,
 )
 def test_readable_real_tool_contracts_preserve_arguments_and_blockers(model_id):
     registry = real_registry()
@@ -183,6 +187,61 @@ def test_readable_real_tool_contracts_preserve_arguments_and_blockers(model_id):
     assert "Action: unavailable_action" not in catalog
 
 
+@pytest.mark.parametrize("model_id", ROUND1_MODELS)
+def test_round1_models_reuse_original_policy_and_lossless_json_catalog(model_id):
+    registry = real_registry()
+    baseline = ContextAssembler(registry, None)
+    candidate = DevContextAssembler(registry, None, model_id=model_id)
+    names = [tool.name for tool in registry.get_all_tools()]
+    blockers = {"unavailable_action": "No data"}
+    assert candidate._decision_instructions().startswith(
+        baseline._decision_instructions()
+    )
+    assert candidate._TOOL_BLOCK_TEMPLATE == baseline._TOOL_BLOCK_TEMPLATE
+    catalog = candidate._format_tools(names, unavailable_actions=blockers)
+    assert catalog.split("\n\nComplete output illustrations:")[0] == (
+        baseline._format_tools(names, unavailable_actions=blockers)
+    )
+
+
+@pytest.mark.parametrize("model_id", DEV_PROMPT_MODEL_IDS)
+@pytest.mark.parametrize(
+    "names",
+    [[], ["import_eeg_data"], ["switch_panel"], ["start_training", "switch_panel"]],
+)
+def test_output_illustrations_are_complete_legal_and_only_callable(model_id, names):
+    from XBrainLab.llm.agent.parser import CommandParser
+    from XBrainLab.llm.agent.verifier import ToolSchemaValidator
+
+    registry = real_registry()
+    assembler = DevContextAssembler(registry, None, model_id=model_id)
+    catalog = assembler._format_tools(names)
+    examples = catalog.split("Complete output illustrations:\n", 1)[1]
+    proposals = [
+        json.loads(line) for line in examples.splitlines() if line.startswith("{")
+    ]
+    assert len(proposals) == 1 + bool(set(names) - {"switch_panel"}) + (
+        "switch_panel" in names
+    )
+    validator = ToolSchemaValidator(
+        {tool.name: tool.parameters for tool in registry.get_all_tools()}
+    )
+    for proposal in proposals:
+        assert (
+            CommandParser.parse_product(json.dumps(proposal)).proposal_dict()
+            == proposal
+        )
+        if proposal["tool_name"] == "respond_to_user":
+            assert set(proposal["parameters"]) == {"message"}
+        else:
+            assert proposal["tool_name"] in names
+            assert validator.validate(
+                proposal["tool_name"], proposal["parameters"]
+            ).is_valid
+            assert "message" not in proposal["parameters"]
+    assert "not values or permission for this request" in examples
+
+
 @pytest.mark.parametrize("model_id", [None, "granite4", "unknown/model"])
 def test_research_prompt_never_falls_back_for_missing_or_unknown_model(model_id):
     with pytest.raises(ValueError, match="DEV prompt model"):
@@ -206,7 +265,7 @@ def test_new_schema_constraints_cannot_silently_disappear_from_readable_catalog(
         ),
     )
     assembler = DevContextAssembler(
-        real_registry(), None, model_id="google/gemma-3-4b-it"
+        real_registry(), None, model_id="ibm-granite/granite-4.0-micro"
     )
     with pytest.raises(ValueError, match=r"Unsupported.*minimum"):
         assembler._format_tools(["resample_data"])
@@ -264,14 +323,24 @@ def test_complete_messages_preserve_backend_rag_retry_and_current_request(model_
         assert json.loads(actual[-1]["content"]) == expected_request
         assert "HIDDEN OLD REQUEST" not in json.dumps(actual)
         assert research.get_messages([current]) == actual
-        assert "Action: import_eeg_data\n" in actual[0]["content"]
-        assert "Action: apply_bandpass_filter\n" not in actual[0]["content"]
-        assert "- apply_bandpass_filter:" in actual[0]["content"]
+        catalog = research._format_tools(
+            research.latest_tool_publication.tool_names,
+            unavailable_actions=dict(research.latest_tool_publication.blocked_reasons),
+        )
+        assert catalog in actual[0]["content"]
+        assert "import_eeg_data" in research.latest_tool_publication.tool_names
+        assert (
+            "apply_bandpass_filter" not in research.latest_tool_publication.tool_names
+        )
+        assert research.latest_tool_publication.blocked_reason("apply_bandpass_filter")
         assert '"tool_name"' in actual[0]["content"]
         policy = " ".join(actual[0]["content"].split())
-        assert "Information or explanation requests and prohibitions" in policy
-        assert "Polite requests to perform an action" in policy
-        assert "even when phrased as questions, are action requests" in policy
+        if model_id in ROUND2_MODELS:
+            assert "Information or explanation requests and prohibitions" in policy
+            assert "Polite requests to perform an action" in policy
+            assert "even when phrased as questions, are action requests" in policy
+        else:
+            assert normal._decision_instructions() in actual[0]["content"]
         assert "A question, explanation request or prohibition" not in policy
         assert "Use it for questions," not in policy
         assert "For questions, prohibitions," not in policy

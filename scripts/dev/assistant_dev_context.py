@@ -54,36 +54,42 @@ _MODEL_EMPHASIS = {
     "ibm-granite/granite-4.0-micro": (
         "Check each required value against the current request. A partly supplied "
         "operation is still incomplete: ask for the missing value, without borrowing "
-        "one from a reference. When every required value is supplied, use the tool."
+        "one from a reference. When every required value is supplied, use the tool. "
+        "An enabled dialog needs no form values: return its action, not a reply "
+        "promising to open it."
     ),
     "ibm-granite/granite-3.3-2b-instruct": (
-        "You may choose respond_to_user instead of an action. Use it for "
-        "information or explanation requests, "
-        "prohibitions, unavailable actions and missing values; never guess values "
-        "or do prerequisites. Put any explanation only in its message string. "
-        "Output one JSON object, with no introduction, trailing prose or // comments."
+        "Action parameters contain only that action's listed arguments. They "
+        "never contain message, a description or the user's request. An action "
+        "with no arguments has an empty parameters object. A message belongs "
+        "only to respond_to_user, which displays a reply and executes no action."
     ),
     "microsoft/Phi-4-mini-instruct": (
-        "The two output fields are tool_name and parameters, never name. Tool "
-        "descriptions are input guidance, not an answer to copy: do not output "
-        "description, type or properties. A zero-parameter dialog uses {}; do not "
-        "put its form fields or a question inside the parameters."
+        "The catalog's name identifies a tool; your output field is tool_name, "
+        "never name. Output a complete JSON object, not a tool name alone. "
+        "This also applies to respond_to_user: include parameters with message. "
+        "Do not copy schema fields such as description, type or properties."
     ),
     "meta-llama/Llama-3.2-3B-Instruct": (
         "Decide whether an action is appropriate before filling parameters. "
         "For information or explanation requests, prohibitions, unavailable actions "
         "or missing required values, use respond_to_user. Do not invent tools or fill missing values "
-        "with null. Zero-parameter tools take {} without method, view_mode or message."
+        "with null. Every response has tool_name and parameters. For an action "
+        'with no arguments, write the field "parameters": {}. The empty object '
+        "is that field's value, not a quoted string or a standalone response."
     ),
     "google/gemma-3-4b-it": (
-        "For an available, fully specified action request, call the action tool. "
-        "Saying you will open a dialog does not open it; use its tool with {}. "
-        "Do not ask for form fields, repeat supplied values as questions, or ask "
-        "whether to proceed. This does not override prohibitions, blockers or "
-        "missing required values, which still need respond_to_user."
+        "The output illustrations show two different effects: an action object "
+        "requests execution; respond_to_user only displays text. To open an "
+        "enabled dialog, use its action object with empty parameters. A reply "
+        "about opening it does not open it. For information, prohibitions, "
+        "blockers or missing required values, use the complete reply object."
     ),
 }
 DEV_PROMPT_MODEL_IDS = tuple(_MODEL_EMPHASIS)
+_ROUND2_PRESENTATION_MODELS = frozenset(
+    {"ibm-granite/granite-4.0-micro", "meta-llama/Llama-3.2-3B-Instruct"}
+)
 
 # These units are backend semantics, not fields claimed to exist in the schema:
 # backend/preprocessor/filtering.py (l_freq/h_freq/notch_freqs) and resample.py (sfreq).
@@ -152,14 +158,82 @@ class DevContextAssembler(ContextAssembler):
     ):
         validate_dev_prompt_model(model_id)
         self.model_id = model_id
+        if model_id not in _ROUND2_PRESENTATION_MODELS:
+            self._TOOL_BLOCK_TEMPLATE = ContextAssembler._TOOL_BLOCK_TEMPLATE
         super().__init__(
             tool_registry, study_state, application_runtime=application_runtime
         )
 
     def _decision_instructions(self) -> str:
-        return _DECISION_STEPS + "\nRemember: " + _MODEL_EMPHASIS[self.model_id] + "\n"
+        baseline = (
+            _DECISION_STEPS
+            if self.model_id in _ROUND2_PRESENTATION_MODELS
+            else super()._decision_instructions()
+        )
+        return baseline + "\nRemember: " + _MODEL_EMPHASIS[self.model_id] + "\n"
 
     def _format_tools(self, allowed_names, *, unavailable_actions=None) -> str:
+        formatter = (
+            self._format_readable_tools
+            if self.model_id in _ROUND2_PRESENTATION_MODELS
+            else super()._format_tools
+        )
+        catalog = formatter(allowed_names, unavailable_actions=unavailable_actions)
+        return catalog + "\n\n" + self._output_illustrations(allowed_names)
+
+    def _output_illustrations(self, allowed_names) -> str:
+        """Illustrate wire shapes from callable contracts, never case answers."""
+        lines = [
+            "Complete output illustrations:",
+            "These show format and effect, not values or permission for this request. "
+            "Choose one response using the rules above; never copy example values.",
+        ]
+        active_tools = [
+            tool for tool in self.registry.get_all_tools() if tool.name in allowed_names
+        ]
+        zero_argument = next(
+            (tool for tool in active_tools if not tool.parameters.get("properties")),
+            None,
+        )
+        if zero_argument is not None:
+            lines.extend(
+                (
+                    "Action with no arguments: requests the named action, not a text reply.",
+                    json.dumps({"tool_name": zero_argument.name, "parameters": {}}),
+                )
+            )
+        panel_tool = next(
+            (tool for tool in active_tools if tool.name == "switch_panel"), None
+        )
+        if panel_tool is not None:
+            panel = panel_tool.parameters["properties"]["panel_name"]["enum"][0]
+            lines.extend(
+                (
+                    "Action with arguments: requests a panel change only when the user asks for it.",
+                    json.dumps(
+                        {
+                            "tool_name": "switch_panel",
+                            "parameters": {"panel_name": panel},
+                        }
+                    ),
+                )
+            )
+        lines.extend(
+            (
+                "Reply: displays an answer or question; executes no action.",
+                json.dumps(
+                    {
+                        "tool_name": "respond_to_user",
+                        "parameters": {
+                            "message": "Which operation would you like help with?"
+                        },
+                    }
+                ),
+            )
+        )
+        return "\n".join(lines)
+
+    def _format_readable_tools(self, allowed_names, *, unavailable_actions=None) -> str:
         reply_schema = model_proposal_schema()["allOf"][0]["then"]["properties"][
             "parameters"
         ]
