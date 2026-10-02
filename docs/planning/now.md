@@ -1,6 +1,6 @@
 # XBrainLab Now
 
-最後更新：`2026-10-02`
+最後更新：`2026-10-03`
 
 ## 目前 — TEST封存、三次完整量測與本機結果交付
 
@@ -43,8 +43,7 @@ VALID已回存result/VALID/20261002-124746-8263faf9：10143原檔402369543bytes�
 離線links有效、逐檔hash讀回一致；排除1485個synthetic fixture及1共享模型link。
 TEST沿用既有NAS樹的stages/test入口、snapshot/sources及results/runs；不為外觀重複
 封存一份程式。local TEST仍按run-id集中。此為沿用現有封存owner的具體位置。
-完整題庫已定位附錄/題型_已審完整版.xlsx，尚未讀內容。Next：最終source/CI，137先
-跑99VALID×4條件真fixture/RAG/tokenizer等價性，再解封TEST並做66fixture預檢；不推論調參。
+完整題庫為附錄/題型_已審完整版.xlsx；研究因素凍結後已解封做無LLM工程預檢。
 封存f8af513f已完成99VALID×4真fixture／RAG／token預檢，Full對7c逐字一致且無截斷。
 解封TEST後64/66 fixtures通過；FX-TEST-A09-01的已審1–100Hz bandpass，以及
 FX-TEST-A11-02的已審channel selection起始狀態未被fixture支援，cleanup均正常。
@@ -53,7 +52,22 @@ FX-TEST-A11-02的已審channel selection起始狀態未被fixture支援，cleanu
 保留f8失敗預檢，另封新source與CI，重驗66fixture及396VALID輸入；尚未TEST推論。
 兩fixture先2red，真Command數值／events／來源備份保護15green，完整fixture50green；
 獨立data/implementation覆核無阻擋。只scripts23增3刪、tests76增1刪，產品0。
-f8同head CI24成功／3scope skip已完成但不能代替新修理head；Next新封存與預檢／CI。
+新封存fa9d4d54已通過396VALID及528TEST輸入預檢；66/66 TEST fixtures完成。
+Full與原7c輸入一致，三消融維持單因素，最大含retry3294tokens，無截斷。
+fa9 CI24成功／3scope skip及實物獨立覆核通過；publication完成，但run.sh於schema
+檢查拒絕，仍無TEST推論。真NAS舊入口hardcode353b53df bootstrap，在選新coordinator前
+先用舊config parser拒絕TEST；publisher測試漏掉真舊shell入口。原log／source保留。
+Next：同publisher/launcher owner修理歷史入口遷移，真shell red-green涵蓋TEST及舊scope；
+不得僅用直接python繞過不可用的./run.sh，不改題庫／prompt／scorer。
+複雜度／封存決策：沿用batch owner，production0、owner不增；migration只改shell及
+manifest對應hash，舊entry與manifest先exclusive封存。Coordinator/candidate/config仍fa9，
+不引入old runtime compatibility branch。修理tool另封SHA與CI，既有受測source預檢仍有效。
+真舊入口(TEST、DEV、root/compare dispatch)及失敗rollback通過後才恢復正式量測。
+入口修理已真shell重現TEST/DEV舊schema拒絕；獨立覆核補抓發布後中斷還原不一致，
+真os.replace後KeyboardInterrupt的entry及manifest兩負例先red後green，34項Linux batch通過。
+涵蓋修理後可啟動、未推論check、受測bytes不變、發布前/後中斷一致性、重試及非法head。
+獨立diff及部署helper覆核無剩餘阻擋；scripts113增8刪、tests208增，產品0。
+Next：repair-tool exact CI、NAS migration與真./run.sh預檢再啟動，仍未TEST推論。
 
 ## 已完成 — VALID量測與TEST前討論
 

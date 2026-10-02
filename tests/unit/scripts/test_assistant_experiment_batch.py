@@ -14,6 +14,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -245,6 +246,213 @@ class ExperimentBatchTests(unittest.TestCase):
         del config["case_ids"]
         selection["config"].write_text(json.dumps(config))
         return selection
+
+    def legacy_tree_with_test_selection(self):
+        """Historical hardcoded shell and TEST-unaware parser, not today's bootstrap."""
+        parser = self.source / "scripts/dev/assistant_experiment_config.py"
+        original_parser = parser.read_text()
+        parser.write_text(
+            original_parser.replace('{"DEV", "VALID", "TEST"}', '{"DEV", "VALID"}')
+        )
+        self.fixture.git(self.source, "add", ".")
+        self.fixture.git(self.source, "commit", "-qm", "Historical TEST-unaware parser")
+        old_head = self.fixture.git(self.source, "rev-parse", "HEAD").strip()
+        self.fixture.values["models"][0]["source"]["head"] = old_head
+        self.create()
+        manifest = self.api.verify_experiment(self.study)
+        entries = [
+            (scope, "run.sh", f"--scope {scope}") for scope in manifest["scopes"]
+        ]
+        entries.append((".", "compare.sh", "--compare"))
+        for scope, filename, action in entries:
+            directory = self.study if scope == "." else self.study / scope
+            relative = os.path.relpath(self.study, directory)
+            entry = directory / filename
+            entry.write_text(
+                "#!/bin/sh\nset -eu\n"
+                f'EXPERIMENT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/{relative}" && pwd)\n'
+                f"exec python{sys.version_info.major}.{sys.version_info.minor} -I -B "
+                f'"$EXPERIMENT_ROOT/snapshot/sources/{old_head}/scripts/dev/assistant_experiment_batch.py" '
+                f'--experiment "$EXPERIMENT_ROOT" {action} "$@"\n'
+            )
+            manifest["files"][entry.relative_to(self.study).as_posix()] = (
+                self.api.package_api._digest(entry)
+            )
+        self.api.package_api._write(self.study / "snapshot/manifest.json", manifest)
+        parser.write_text(original_parser)
+        self.fixture.git(self.source, "add", ".")
+        self.fixture.git(self.source, "commit", "-qm", "TEST-capable coordinator")
+        candidate_head = self.fixture.git(self.source, "rev-parse", "HEAD").strip()
+        self.fixture.values["models"][0]["source"]["head"] = candidate_head
+        selection = self.selection(5, path="stages/test")
+        config = json.loads(selection["config"].read_text())
+        config.update(split="TEST", purpose="research")
+        del config["case_ids"]
+        config["models"][0]["alias"] = "phi4"
+        selection["config"].write_text(json.dumps(config))
+        self.api.activate_test_stage(
+            self.study, selection, coordinator_root=self.source
+        )
+        return candidate_head
+
+    def test_migrate_real_old_bootstrap_before_schema_validation_preserves_research(
+        self,
+    ):
+        candidate_head = self.legacy_tree_with_test_selection()
+        for scope in (DEV, "stages/test"):
+            result = self.launch(scope, "--check-environment")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Unsupported experiment schema", result.stderr)
+        before = {
+            p.relative_to(self.study).as_posix(): p.read_bytes()
+            for p in self.study.rglob("*")
+            if p.is_file()
+        }
+        # Neither coordinator nor measured candidate/config changes for this repair.
+        history = self.api.migrate_launchers(self.study)
+        manifest = self.api.verify_experiment(self.study)
+        self.assertEqual(manifest["coordinator"], candidate_head)
+        self.assertEqual(
+            (history / "manifest.json").read_bytes(), before["snapshot/manifest.json"]
+        )
+        for name, content in before.items():
+            if name == "snapshot/manifest.json":
+                continue
+            if name in {"compare.sh", "run.sh"} or (
+                name.startswith("stages/") and name.endswith("/run.sh")
+            ):
+                self.assertEqual((history / "entries" / name).read_bytes(), content)
+            else:
+                self.assertEqual((self.study / name).read_bytes(), content, name)
+        for scope in (DEV, "stages/test"):
+            result = self.launch(scope, "--check-environment")
+            self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls(), [])
+        result = self.launch("stages/test")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        call = json.loads(self.calls()[0].read_text())
+        self.assertEqual(call["config"]["models"][0]["source"]["head"], candidate_head)
+        self.assertTrue(call["env"]["PYTHONPATH"].endswith(candidate_head))
+        after = (self.study / "snapshot/manifest.json").read_bytes()
+        self.assertIsNone(self.api.migrate_launchers(self.study))
+        self.assertEqual((self.study / "snapshot/manifest.json").read_bytes(), after)
+
+    def test_launcher_migration_failed_manifest_publish_restores_entries_and_keeps_history(
+        self,
+    ):
+        self.legacy_tree_with_test_selection()
+        before = {
+            p.relative_to(self.study).as_posix(): p.read_bytes()
+            for p in self.study.rglob("*")
+            if p.is_file()
+        }
+        replace = self.api.os.replace
+
+        def fail_publication(source, destination):
+            if Path(destination) == self.study / "snapshot/manifest.json":
+                raise OSError("Injected manifest publication failure")
+            return replace(source, destination)
+
+        with (
+            patch.object(self.api.os, "replace", side_effect=fail_publication),
+            self.assertRaisesRegex(OSError, "publication"),
+        ):
+            self.api.migrate_launchers(self.study)
+        for name, content in before.items():
+            self.assertEqual((self.study / name).read_bytes(), content, name)
+        self.api.verify_experiment(self.study)
+        histories = list((self.study / "snapshot/bootstrap-history").iterdir())
+        self.assertEqual(len(histories), 1)
+        self.assertEqual(
+            (histories[0] / "manifest.json").read_bytes(),
+            before["snapshot/manifest.json"],
+        )
+        self.api.migrate_launchers(self.study)
+        self.assertEqual(
+            len(list((self.study / "snapshot/bootstrap-history").iterdir())), 2
+        )
+        self.assertEqual(
+            self.launch("stages/test", "--check-environment").returncode, 0
+        )
+
+    def test_launcher_migration_refuses_modified_entry_before_any_write(self):
+        self.legacy_tree_with_test_selection()
+        entry = self.study / "stages/test/run.sh"
+        entry.write_text(entry.read_text() + "# user modification\n")
+        before = entry.read_bytes()
+        with self.assertRaisesRegex(ValueError, "Frozen experiment file differs"):
+            self.api.migrate_launchers(self.study)
+        self.assertEqual(entry.read_bytes(), before)
+        self.assertFalse((self.study / "snapshot/bootstrap-history").exists())
+
+    def test_launcher_migration_interrupt_after_manifest_commit_keeps_committed_tree(
+        self,
+    ):
+        self.legacy_tree_with_test_selection()
+        replace = self.api.os.replace
+
+        def interrupt_after_publication(source, destination):
+            result = replace(source, destination)
+            if Path(destination) == self.study / "snapshot/manifest.json":
+                raise KeyboardInterrupt("after manifest publication")
+            return result
+
+        with (
+            patch.object(
+                self.api.os, "replace", side_effect=interrupt_after_publication
+            ),
+            self.assertRaises(KeyboardInterrupt),
+        ):
+            self.api.migrate_launchers(self.study)
+        self.api.verify_experiment(self.study)
+        self.assertEqual(
+            self.launch("stages/test", "--check-environment").returncode, 0
+        )
+        self.assertEqual(self.calls(), [])
+
+    def test_launcher_migration_interrupt_after_entry_swap_restores_old_tree(self):
+        self.legacy_tree_with_test_selection()
+        original_manifest = (self.study / "snapshot/manifest.json").read_bytes()
+        original_entry = (self.study / "compare.sh").read_bytes()
+        replace = self.api.os.replace
+
+        def interrupt_after_entry(source, destination):
+            result = replace(source, destination)
+            if Path(destination) == self.study / "compare.sh":
+                raise KeyboardInterrupt("after entry replacement")
+            return result
+
+        with (
+            patch.object(self.api.os, "replace", side_effect=interrupt_after_entry),
+            self.assertRaises(KeyboardInterrupt),
+        ):
+            self.api.migrate_launchers(self.study)
+        self.api.verify_experiment(self.study)
+        self.assertEqual(
+            (self.study / "snapshot/manifest.json").read_bytes(), original_manifest
+        )
+        self.assertEqual((self.study / "compare.sh").read_bytes(), original_entry)
+
+    def test_new_dynamic_entry_rejects_invalid_coordinator_before_launch(self):
+        self.create()
+        path = self.study / "snapshot/manifest.json"
+        manifest = json.loads(path.read_text())
+        unlisted = (
+            self.study
+            / "snapshot/sources"
+            / ("b" * 40)
+            / "scripts/dev/assistant_experiment_batch.py"
+        )
+        unlisted.parent.mkdir(parents=True)
+        unlisted.write_text("print('UNTRUSTED ENTRY EXECUTED')\n")
+        for coordinator in ("../../untrusted-source", "b" * 40):
+            manifest["coordinator"] = coordinator
+            path.write_text(json.dumps(manifest))
+            result = self.launch(ROUND)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Invalid experiment coordinator", result.stderr)
+            self.assertNotIn("UNTRUSTED", result.stdout)
+        self.assertEqual(self.calls(), [])
 
     def test_activate_test_preserves_prior_scopes_and_frozen_shell(self):
         self.create()

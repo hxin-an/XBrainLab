@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -194,10 +195,9 @@ def create_experiment(
         _entry(
             directory / "run.sh",
             os.path.relpath(output, directory),
-            head,
             f"--scope {scope}",
         )
-    _entry(output / "compare.sh", ".", head, "--compare")
+    _entry(output / "compare.sh", ".", "--compare")
     (output / "README.md").write_text(
         "# Reproducible experiment\n\n"
         "Copy this entire directory to your writable Linux/NAS location.\n"
@@ -256,7 +256,8 @@ def _publish_selection(
     """Publish one new selection, keeping all previously sealed files unchanged.
 
     New artifacts are prepared and validated privately. Existing entries remain
-    byte-identical: they already resolve the runner from the manifest coordinator.
+    byte-identical. Historical hardcoded entries require migrate_launchers before
+    running a newly supported stage; new entries resolve the current coordinator.
     The atomic manifest replacement is the only publication point. Call this
     deployment operation with no concurrent writers to the experiment tree.
     """
@@ -308,8 +309,8 @@ def _publish_selection(
             if name.startswith((f"{key}/", "snapshot/inputs/", "snapshot/environment/"))
         }
         if activate_stage is not None:
-            # Its bootstrap already reads the manifest coordinator. Do not replace
-            # a frozen entry simply because the staged coordinator has a new SHA.
+            # Preserve the sealed entry; explicit launcher migration handles
+            # historical hardcoded bootstraps without rewriting research inputs.
             del incoming_files[f"{key}/run.sh"]
         moves = [] if activate_stage is not None else [key]
         moves.extend(
@@ -383,16 +384,120 @@ def _copy_reference(output: Path, reference: Path, manifest: dict) -> None:
     manifest["references"].append(source.name)
 
 
-def _entry(path: Path, relative: str, head: str, action: str) -> None:
+def _entry(path: Path, relative: str, action: str) -> None:
+    # Read only routing metadata before importing any version-specific config
+    # validator. The selected coordinator then verifies the entire sealed tree.
+    bootstrap = (
+        "import json, os, re, sys\n"
+        "from pathlib import Path\n"
+        "root = Path(sys.argv[1])\n"
+        "manifest = json.loads((root / 'snapshot/manifest.json').read_text(encoding='utf-8'))\n"
+        "head = manifest.get('coordinator')\n"
+        "if not isinstance(head, str) or not re.fullmatch('[0-9a-f]{40}', head) or not isinstance(manifest.get('sources'), list) or head not in manifest['sources']:\n"
+        "    raise SystemExit('Invalid experiment coordinator')\n"
+        f"script = root / 'snapshot/sources' / head / '{MODULE}'\n"
+        "if script.resolve() != script or not script.is_file():\n"
+        "    raise SystemExit('Coordinator entry must be a physical sealed file')\n"
+        "os.execv(sys.executable, [sys.executable, '-I', '-B', str(script), *sys.argv[2:]])\n"
+    )
     path.write_text(
         "#!/bin/sh\nset -eu\n"
         f'EXPERIMENT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/{relative}" && pwd)\n'
-        f"exec python{sys.version_info.major}.{sys.version_info.minor} -I -B "
-        f'"$EXPERIMENT_ROOT/snapshot/sources/{head}/{MODULE}" '
+        f"exec python{sys.version_info.major}.{sys.version_info.minor} -I -B -c {shlex.quote(bootstrap)} "
+        '"$EXPERIMENT_ROOT" '
         f'--experiment "$EXPERIMENT_ROOT" {action} "$@"\n',
         encoding="utf-8",
     )
     path.chmod(0o755)
+
+
+def migrate_launchers(root: Path) -> Path | None:
+    """Archive historical shell entries, then publish schema-independent routing.
+
+    This one-time deployment repair changes no source, candidate, config or
+    result. Run with no concurrent publisher. A failed publication restores only
+    this invocation's shell changes; the prior manifest remains authoritative.
+    """
+    manifest = verify_experiment(root)
+    root = root.resolve(strict=True)
+    manifest_path = root / "snapshot/manifest.json"
+    original_manifest = manifest_path.read_bytes()
+    entries = {"compare.sh": "--compare"}
+    entries.update(
+        {
+            ("run.sh" if scope == "." else f"{scope}/run.sh"): f"--scope {scope}"
+            for scope in manifest["scopes"]
+        }
+    )
+    originals = {name: _physical(root, name).read_bytes() for name in entries}
+    modes = {name: (root / name).stat().st_mode for name in entries}
+    changed = []
+    history = _physical(root, f"snapshot/bootstrap-history/{_identifier()}")
+    with tempfile.TemporaryDirectory(
+        prefix=".launcher-migration-", dir=root.parent
+    ) as temporary:
+        staged = Path(temporary)
+        for name, action in entries.items():
+            target = staged / "entries" / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            _entry(target, os.path.relpath(root, (root / name).parent), action)
+        if all(
+            (staged / "entries" / name).read_bytes() == old
+            for name, old in originals.items()
+        ):
+            return None
+        archived = staged / "history"
+        archived.mkdir()
+        (archived / "manifest.json").write_bytes(original_manifest)
+        for name, content in originals.items():
+            target = archived / "entries" / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+        for path in archived.rglob("*"):
+            if path.is_file():
+                name = (
+                    (history / path.relative_to(archived)).relative_to(root).as_posix()
+                )
+                manifest["files"][name] = package_api._digest(path)
+        for name in entries:
+            manifest["files"][name] = package_api._digest(staged / "entries" / name)
+        if manifest_path.read_bytes() != original_manifest:
+            raise ValueError("Experiment manifest changed before launcher migration")
+        history.parent.mkdir(exist_ok=True)
+        if history.exists():
+            raise FileExistsError(history)
+        archived.rename(history)  # Preserve old bytes before replacing any entry.
+        published_manifest = None
+        try:
+            for name in entries:
+                # Register before replacement: interruption may follow a successful
+                # atomic swap before Python executes the next statement.
+                changed.append(name)
+                os.replace(staged / "entries" / name, root / name)
+            _verify_manifest(root, manifest)
+            if manifest_path.read_bytes() != original_manifest:
+                raise ValueError(  # noqa: TRY301 - this publication boundary owns rollback.
+                    "Experiment manifest changed during launcher migration"
+                )
+            pending = staged / "manifest.json"
+            package_api._write(pending, manifest)
+            published_manifest = pending.read_bytes()
+            os.replace(pending, manifest_path)
+        except BaseException:
+            current_manifest = manifest_path.read_bytes()
+            if current_manifest == original_manifest:
+                for name in reversed(changed):
+                    (root / name).write_bytes(originals[name])
+                    (root / name).chmod(modes[name])
+            elif current_manifest != published_manifest:
+                raise RuntimeError(
+                    "Manifest changed unexpectedly; preserved launcher state and history"
+                ) from None
+            # A completed manifest swap commits the entries even if interrupted
+            # immediately afterward. Never undo them against the new hashes.
+            # Failed-migration history is deliberately retained, never overwritten.
+            raise
+    return history
 
 
 def verify_experiment(root: Path) -> dict:
