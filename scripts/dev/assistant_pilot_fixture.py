@@ -108,7 +108,12 @@ def _configuration(fixture: dict) -> tuple[dict, dict, float, list[str], list[st
     prior = conditions.get("prior_preprocessing")
     if prior is not None and (
         stage != "preprocessed"
-        or prior not in ({"notch": 60}, {"bandpass": {"low_freq": 1, "high_freq": 40}})
+        or prior
+        not in (
+            {"notch": 60},
+            {"bandpass": {"low_freq": 1, "high_freq": 40}},
+            {"reference": "average"},
+        )
     ):
         raise ValueError("Unsupported reviewed prior preprocessing fixture")
     return conditions, metadata, float(sfreq), list(channels), defaults
@@ -215,6 +220,12 @@ def _prepare_fixture(
         if prior == {"notch": 60}:
             execute(
                 PreprocessCommand(operation=PreprocessOperation.NOTCH, notch_freq=60)
+            )
+        elif prior == {"reference": "average"}:
+            execute(
+                PreprocessCommand(
+                    operation=PreprocessOperation.REREFERENCE, method="average"
+                )
             )
         elif prior is not None:
             execute(

@@ -33,6 +33,14 @@ VALID preflight先missing API red後2green；封存batch/package49green；報告
 使用者另要求本機`碩論準備/實驗/result`：依R1–R5成功批次匯出離線報告、逐題輸入輸出
 及CSV/JSON，相對links保持有效，不複製環境、模型、暫存EEG或失敗批次；NAS原證據不動。
 Next：最終source CI／137真VALID33fixtures與990normal/retry輸入核對，封存後啟動1485排程。
+Checkpoint：f86441fd已封存／PR157 CI中；尚未推論、未發布VALIDstage。預檢helper首次
+錯以為snapshot有完整Git歷史，改讀原封存source（舊helper/log保留）。第二次真33fixtures
+找出FX-VALID-C04-01的reviewed prior_preprocessing={reference:average}尚未被fixture
+實作；其他32情境通過。直接必要修理：以真PreprocessCommand平均參照建立起始狀態，
+先red／波形和publication保護再實作；不改銀行內容、oracle、prompt或產品契約。
+新source需新CI及33fixture完整預檢；失敗f864證據保留、不覆寫、不計模型改善輪次。
+平均參照修理先2red／5green，再直接7green與完整fixture42green；独立數值與
+publication／原始資料／EOG保護通過，獨立diff覆核無阻擋。只改研究fixture，產品0。
 
 ## 歷史 — DEV第5輪已完成
 

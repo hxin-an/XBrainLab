@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 
+import mne
 import numpy as np
 import pytest
 import torch
@@ -23,21 +24,64 @@ def test_reviewed_auxiliary_channel_exists_and_is_not_eeg(study, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "prior", [{"notch": 60}, {"bandpass": {"low_freq": 1, "high_freq": 40}}]
+    "prior,auxiliary",
+    [
+        ({"notch": 60}, []),
+        ({"bandpass": {"low_freq": 1, "high_freq": 40}}, []),
+        ({"reference": "average"}, []),
+        ({"reference": "average"}, ["EOG1"]),
+    ],
 )
-def test_reviewed_prior_filter_is_actually_applied(study, tmp_path, prior):
+def test_reviewed_prior_preprocessing_is_actually_applied(
+    study, tmp_path, prior, auxiliary
+):
     fixture = _fixture("preprocessed")
     fixture["conditions"]["prior_preprocessing"] = prior
-    prepare_fixture(study, fixture, tmp_path / "prior")
+    fixture["conditions"]["auxiliary_channels"] = auxiliary
+    result = prepare_fixture(study, fixture, tmp_path / "prior")
     original = study.loaded_data_list[0].get_mne().copy().load_data()
     actual = study.preprocessed_data_list[0].get_mne()
+    source_data = mne.io.read_raw_fif(
+        tmp_path / "prior" / "fixture_raw.fif", preload=True, verbose=False
+    ).get_data()
+    np.testing.assert_array_equal(original.get_data(), source_data)
     if "notch" in prior:
-        expected = original.notch_filter(freqs=60, verbose=False)
+        expected = original.notch_filter(freqs=60, verbose=False).get_data()
+    elif "reference" in prior:
+        expected = source_data.copy()
+        eeg_count = len(fixture["conditions"]["channels"])
+        expected[:eeg_count] -= source_data[:eeg_count].mean(axis=0, keepdims=True)
+        publication = get_application_service(study).get_view_publication()
+        assert publication.state.preprocessed.operations == ["Re-reference (Average)"]
+        assert result["state"] == publication.state.to_dict()
+        assert publication.state.pipeline_stage == "preprocessed"
+        assert study.loaded_data_list[0].get_preprocess_history() == []
+        assert not np.array_equal(actual.get_data(), source_data)
     else:
-        expected = original.filter(l_freq=1, h_freq=40, verbose=False)
-    np.testing.assert_allclose(
-        actual.get_data(), expected.get_data(), rtol=1e-7, atol=1e-12
+        expected = original.filter(l_freq=1, h_freq=40, verbose=False).get_data()
+    np.testing.assert_allclose(actual.get_data(), expected, rtol=1e-7, atol=1e-12)
+    np.testing.assert_array_equal(
+        study.loaded_data_list[0].get_mne().get_data(), source_data
     )
+
+
+@pytest.mark.parametrize(
+    "stage,prior",
+    [
+        ("preprocessed", {"reference": "Cz"}),
+        ("preprocessed", {"reference": "average", "notch": 60}),
+        ("data_loaded", {"reference": "average"}),
+    ],
+)
+def test_prior_reference_rejects_unreviewed_variants_before_writes(
+    study, tmp_path, stage, prior
+):
+    fixture = _fixture(stage)
+    fixture["conditions"]["prior_preprocessing"] = prior
+    with pytest.raises(ValueError, match="Unsupported reviewed prior preprocessing"):
+        prepare_fixture(study, fixture, tmp_path / "case")
+    assert not (tmp_path / "case").exists()
+    assert not study.loaded_data_list
 
 
 def _fixture(stage, sfreq=256, tool=""):
