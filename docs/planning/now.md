@@ -21,6 +21,14 @@ UI無改動；settings.json保留。五模型呈現已實作，4項新保護先r
 獨立source覆核通過。相鄰session檢查找出3項沿用R4強調位置的舊斷言，改為核對本輪
 明定的R2／R3／R4位置；其餘28項通過，不改產品接線。
 Next：精確source封存／CI與137無推論完整輸入檢查，覆核通過後才正式啟動。
+Checkpoint：d1d2ff3d的66-state／1320-context與精確tokenizer及獨立完整輸入覆核通過。
+CI阻擋：既有saliency queue handoff測試忽略release_shutdown_fence的bool，背景retry仍握有
+同generation reservation時可合法返回False，隨後query仍可成功，測試卻立即要求pending清空。
+先用有界交錯probe確認；只修直接阻擋驗證的測試同步、保留終態／一次通知断言，不改產品／
+提示或研究條件。若證據成立，新test-only source重新CI與封存檢查後才開跑；保留原CI失敗。
+受控原生probe已重現原失敗：真retry握有reservation時release=False／fenced=True／pending=True；
+放行後真交接完成、release=True／fenced=False／pending=False。測試改沿用既有有界release重試，
+不增加watchdog，不刪終態／一次通知断言；正常focused green，產品及提示不變。
 
 ## 已完成 — 第4輪分析與DEV研究文件精簡
 
