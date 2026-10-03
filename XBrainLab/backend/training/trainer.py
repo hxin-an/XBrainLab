@@ -1,6 +1,7 @@
 """Trainer module for managing and executing training plan queues."""
 
 import threading
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from enum import Enum
 from uuid import uuid4
@@ -583,6 +584,10 @@ class Trainer:
     def get_state_snapshot_token(self) -> TrainingStateToken:
         """Return the shared nested-state generation and stability flag."""
         return self._state_tracker.token()
+
+    def state_snapshot_read(self) -> AbstractContextManager[None]:
+        """Keep one stable nested-state read from racing the next update."""
+        return self._state_tracker.stable_read()
 
     def get_state_snapshot_identity(self) -> str:
         """Return the stable identity for this trainer instance."""

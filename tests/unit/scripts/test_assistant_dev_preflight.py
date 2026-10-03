@@ -126,7 +126,13 @@ def test_test_preflight_captures_four_conditions_only_with_identical_admission()
     registry = ToolRegistry()
     for tool in get_all_tools():
         registry.register(tool)
-    cases = [{"case_id": "synthetic-preflight", "input": "Open import."}]
+    cases = [
+        {
+            "case_id": "synthetic-preflight",
+            "input": "Open import.",
+            "expected_workflow_stage": "empty",
+        }
+    ]
     try:
         contexts = model_contexts(registry, study, cases, config=_test_config())
         assert set(contexts) == {
@@ -182,7 +188,13 @@ def test_preflight_captures_all_profiles_with_current_request_and_real_publicati
     registry = ToolRegistry()
     for tool in get_all_tools():
         registry.register(tool)
-    cases = [{"case_id": "DEV-A01-01-V0", "input": "Open import."}]
+    cases = [
+        {
+            "case_id": "DEV-A01-01-V0",
+            "input": "Open import.",
+            "expected_workflow_stage": "empty",
+        }
+    ]
     try:
         contexts = model_contexts(registry, study, cases)
         assert set(contexts) == set(MODELS.values())
@@ -220,7 +232,13 @@ def test_preflight_uses_explicit_historical_candidate(live_study, candidate):
     config["split"] = "VALID"
     config["prompt_profile"] = "frozen-dev-round"
     config["models"][0]["candidate_index"] = candidate
-    cases = [{"case_id": "synthetic", "input": "Open import."}]
+    cases = [
+        {
+            "case_id": "synthetic",
+            "input": "Open import.",
+            "expected_workflow_stage": "empty",
+        }
+    ]
     contexts = model_contexts(registry, study, cases, config=config)
     kwargs = {"model_id": MODELS["phi4"]} if candidate != 1 else {}
     original = archived_class(candidate)(registry, study, **kwargs)
@@ -240,3 +258,41 @@ def live_study():
         yield study, service
     finally:
         service.close()
+
+
+@pytest.mark.parametrize("drift", ["unavailable", "trained"])
+def test_preflight_rejects_actual_context_drift_with_valid_backend(
+    live_study, monkeypatch, drift
+):
+    from scripts.dev.assistant_dev_context import DevContextAssembler
+
+    study, service = live_study
+    registry = ToolRegistry()
+    for tool in get_all_tools():
+        registry.register(tool)
+    original = DevContextAssembler.get_messages
+
+    def drifting_messages(self, *args, **kwargs):
+        messages = original(self, *args, **kwargs)
+        value = json.loads(messages[-1]["content"])
+        value["application_state"].update(
+            workflow_stage=drift, state_reliable=drift != "unavailable"
+        )
+        messages[-1]["content"] = json.dumps(value)
+        return messages
+
+    monkeypatch.setattr(DevContextAssembler, "get_messages", drifting_messages)
+    assert service.get_state().pipeline_stage == "empty"
+    with pytest.raises(ValueError, match="initial_workflow_stage_mismatch"):
+        model_contexts(
+            registry,
+            study,
+            [
+                {
+                    "case_id": "synthetic",
+                    "input": "Do nothing.",
+                    "expected_workflow_stage": "empty",
+                }
+            ],
+            config=_test_config(),
+        )

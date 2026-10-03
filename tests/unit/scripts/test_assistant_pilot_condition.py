@@ -229,6 +229,7 @@ def test_ablation_real_turn_preserves_host_block_and_retry_budget(
 ):
     import json
 
+    from scripts.dev import assistant_pilot_condition as condition
     from tests.unit.llm.core.test_runtime_prompt_capture import _Streamer, _Tokenizer
     from tests.unit.scripts.test_assistant_pilot_case import ablation_request
     from tests.unit.scripts.test_assistant_pilot_fixture import _fixture
@@ -271,12 +272,21 @@ def test_ablation_real_turn_preserves_host_block_and_retry_budget(
 
     # Transport double counts characters as tokens; no claim about model context fit.
     monkeypatch.setattr(_Tokenizer, "apply_chat_template", synthetic_tokens)
+    initial_checks = []
+    check = condition.initial_state_issues
+
+    def observed_check(case, messages):
+        initial_checks.append(case["case_id"])
+        return check(case, messages)
+
+    monkeypatch.setattr(condition, "initial_state_issues", observed_check)
     session = PilotConditionSession.__new__(PilotConditionSession)
     with patch.dict(os.environ):
         try:
             session.__init__(payload, tmp_path)
             result = session.run_case(payload, tmp_path / "case")
             assert result["status"] == "recorded", result.get("issues", result)
+            assert initial_checks == [payload["case"]["case_id"]]
             assert result["cleanup_ok"] is True
             assert result["scores"]["first_decision_correct"] is False
             assert result["scores"]["final_decision_correct"] is (ablation == "full")
@@ -363,6 +373,114 @@ def controlled_condition_runtime(monkeypatch):
     )
     monkeypatch.setattr(local, "Thread", _ImmediateThread)
     return control
+
+
+@pytest.mark.parametrize("drift", ["unavailable", "wrong_stage"])
+def test_research_initial_state_drift_stops_before_engine_tokens(
+    qtbot, tmp_path, monkeypatch, controlled_condition_runtime, drift
+):
+    import json
+
+    from PyQt6.QtCore import QThread
+
+    from scripts.dev import assistant_pilot_condition as condition
+    from tests.unit.llm.core.test_runtime_prompt_capture import _Streamer, _Tokenizer
+    from tests.unit.scripts.test_assistant_pilot_case import ablation_request
+    from tests.unit.scripts.test_assistant_pilot_fixture import _fixture
+
+    payload = ablation_request("rag-off")
+    payload["fixture"] = _fixture("empty")
+    payload["case"].update(
+        decision="No-call",
+        expected_tool="respond_to_user",
+        expected_parameters=None,
+        fixture_id=payload["fixture"]["metadata"]["fixture_id"],
+        input="Do not change anything.",
+    )
+    reply = json.dumps(
+        {"tool_name": "respond_to_user", "parameters": {"message": "Unchanged."}}
+    )
+    outputs = iter(["READY", reply])
+    monkeypatch.setattr(_Streamer, "__iter__", lambda _: iter([next(outputs)]))
+    template = _Tokenizer.apply_chat_template
+
+    def synthetic_tokens(self, messages, *, tokenize, add_generation_prompt):
+        value = template(
+            self,
+            messages,
+            tokenize=tokenize,
+            add_generation_prompt=add_generation_prompt,
+        )
+        return value[::4] if tokenize else value
+
+    monkeypatch.setattr(_Tokenizer, "apply_chat_template", synthetic_tokens)
+    checked_threads = []
+    check = condition.initial_state_issues
+
+    def observed_check(case, messages):
+        checked_threads.append(QThread.currentThread())
+        return check(case, messages)
+
+    monkeypatch.setattr(condition, "initial_state_issues", observed_check)
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    with patch.dict(os.environ):
+        try:
+            session.__init__(payload, tmp_path)
+            assembler = session.manager.agent_controller.assembler
+            original = assembler.get_messages
+
+            def drifting_messages(*args, **kwargs):
+                messages = original(*args, **kwargs)
+                value = json.loads(messages[-1]["content"])
+                value["application_state"].update(
+                    workflow_stage="unavailable"
+                    if drift == "unavailable"
+                    else "trained",
+                    state_reliable=drift != "unavailable",
+                )
+                messages[-1]["content"] = json.dumps(value)
+                return messages
+
+            monkeypatch.setattr(assembler, "get_messages", drifting_messages)
+            result = session.run_case(payload, tmp_path / "case")
+            assert result["before_state"]["pipeline_stage"] == "empty"
+            assert result["status"] == "measurement_failed"
+            expected = (
+                "initial_state_unreliable"
+                if drift == "unavailable"
+                else "initial_workflow_stage_mismatch"
+            )
+            assert expected in result["input_audit"]["issues"]
+            engine = controlled_condition_runtime["engines"][0]
+            assert len(engine.generated_messages) == 1, (
+                "Only warmup may reach the engine"
+            )
+            assert result["cleanup_ok"] is True
+            assert checked_threads == [session.manager.agent_controller.worker_thread]
+            assert checked_threads[0] != session.app.thread()
+            assert result["trace"]["turn_terminal"]["outcome"] == "generation_error"
+
+            monkeypatch.setattr(assembler, "get_messages", original)
+            following_payload = copy.deepcopy(payload)
+            following_payload["case"]["case_id"] += "-next"
+            following = session.run_case(following_payload, tmp_path / "next")
+            assert following["status"] == "recorded", following["issues"]
+            assert following["scores"]["final_decision_correct"] is True
+            assert following["cleanup_ok"] is True
+            assert len(engine.generated_messages) == 2
+            assert len(checked_threads) == 2
+
+            monkeypatch.setattr(assembler, "get_messages", drifting_messages)
+            last_payload = copy.deepcopy(payload)
+            last_payload["case"]["case_id"] += "-last"
+            last = session.run_case(last_payload, tmp_path / "last")
+            assert last["status"] == "measurement_failed"
+            assert expected in last["input_audit"]["issues"]
+            assert last["cleanup_ok"] is True
+            assert len(engine.generated_messages) == 2
+            assert len(checked_threads) == 3
+        finally:
+            assert session.close()
 
 
 def test_condition_warmup_uses_owned_engine_and_isolates_real_capture(

@@ -44,6 +44,7 @@ def model_contexts(
         ablation_policy,
         experiment_identity,
     )
+    from scripts.dev.assistant_pilot_case import initial_state_issues
 
     if config is not None:
         experiment_identity(config)
@@ -78,6 +79,12 @@ def model_contexts(
             messages = assembler.get_messages(
                 [{"role": "user", "content": case["input"]}]
             )
+            issues = initial_state_issues(case, messages)
+            if issues:
+                raise ValueError(
+                    f"Invalid actual initial state for {case['case_id']}: "
+                    + ", ".join(issues)
+                )
             publication = assembler.latest_tool_publication
             captures.append(
                 {

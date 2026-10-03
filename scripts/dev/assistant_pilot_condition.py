@@ -28,6 +28,7 @@ from scripts.dev.assistant_pilot_case import (
     bootstrap_case_checkout,
     experiment_result_identity,
     force_case_exit,
+    initial_state_issues,
     poll_case_safely,
     record_decision_clock,
     submit_case_input,
@@ -205,10 +206,25 @@ class PilotConditionSession:
         self.case_index = 0
         self.launch = make_launch_spec(payload["model_id"], payload["model_cache"])
         research_worker = None
+        self._initial_input_case = None
+
+        def initial_input_guard(messages):
+            # Armed only while the preceding case is quiescent, before submission.
+            # Consume once: a format-recovery request is not a new fixture input.
+            case = self._initial_input_case
+            self._initial_input_case = None
+            return [] if case is None else initial_state_issues(case, messages)
 
         def worker_factory():
             nonlocal research_worker
-            research_worker = build_research_worker(self.launch)
+            research_worker = build_research_worker(
+                self.launch,
+                initial_input_guard=(
+                    initial_input_guard
+                    if is_experiment_protocol(payload.get("experiment"))
+                    else None
+                ),
+            )
             return research_worker
 
         def factory(host, actual_study, *, application_service):
@@ -513,6 +529,7 @@ class PilotConditionSession:
             trace = PilotCaseTrace(case["case_id"])
             trace.attach(self.manager.agent_controller, self.runtime)
             panel = self.manager.chat_panel
+            self._initial_input_case = case if research else None
             before_decision, before_decision_ns = submit_case_input(
                 panel, case["input"], self.wait_until
             )

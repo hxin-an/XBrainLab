@@ -170,6 +170,33 @@ def verify_prompt_captures(
     return {"issues": issues, "captures": captures}
 
 
+def initial_state_issues(case: dict, messages: list[dict]) -> list[str]:
+    """Certify the actual model-facing state, never a prior fixture snapshot."""
+    states = []
+    for raw_message in messages:
+        message = dict(raw_message)
+        if message.get("role") != "user":
+            continue
+        try:
+            value = json.loads(message.get("content", ""))
+        except (ValueError, TypeError):
+            continue
+        if isinstance(value, dict) and isinstance(value.get("current_user"), dict):
+            states.append(value.get("application_state"))
+    if len(states) != 1 or not isinstance(states[0], dict):
+        return ["initial_state_not_observed"]
+    state = states[0]
+    issues = []
+    if state.get("state_reliable") is not True:
+        issues.append("initial_state_unreliable")
+    expected = case.get("expected_workflow_stage")
+    if not expected or state.get("workflow_stage") != expected:
+        issues.append("initial_workflow_stage_mismatch")
+    if expected == "training" and state.get("running") is not True:
+        issues.append("initial_training_not_running")
+    return issues
+
+
 def audit_initial_input(
     case: dict, fixture: dict, trace: dict, *, decision_timed_out: bool = False
 ) -> dict:
@@ -199,6 +226,7 @@ def audit_initial_input(
             }
         return {"issues": ["initial_input_not_observed"]}
     messages = [dict(message) for message in generations[0]["request"]["messages"]]
+    issues.extend(initial_state_issues(case, messages))
     requests = []
     for message in messages:
         role, content = message.get("role"), message.get("content")

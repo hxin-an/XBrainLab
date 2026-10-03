@@ -445,7 +445,7 @@ def test_completed_capture_still_accepts_exact_observed_output(tmp_path):
 def test_initial_input_audit_rejects_history_and_authoritative_missing_value():
     import json
 
-    case = {"input": "Filter from 8 Hz."}
+    case = {"input": "Filter from 8 Hz.", "expected_workflow_stage": "data_loaded"}
     fixture = {"conditions": {"missing_authoritative_values": ["high_freq"]}}
     context = {
         "schema": "xbrainlab.untrusted_context.v1",
@@ -475,7 +475,7 @@ def test_initial_input_audit_rejects_history_and_authoritative_missing_value():
 def test_initial_input_audit_keeps_untrusted_rag_examples_separate_from_state():
     import json
 
-    case = {"input": "Filter from 8 Hz."}
+    case = {"input": "Filter from 8 Hz.", "expected_workflow_stage": "data_loaded"}
     fixture = {"conditions": {"missing_authoritative_values": ["high_freq"]}}
     context = {
         "schema": "xbrainlab.untrusted_context.v1",
@@ -492,7 +492,11 @@ def test_initial_input_audit_keeps_untrusted_rag_examples_separate_from_state():
             "content": json.dumps(
                 {
                     "current_user": {"text": case["input"]},
-                    "application_state": {"raw_count": 1},
+                    "application_state": {
+                        "raw_count": 1,
+                        "workflow_stage": "data_loaded",
+                        "state_reliable": True,
+                    },
                 }
             ),
         },
@@ -504,3 +508,73 @@ def test_initial_input_audit_keeps_untrusted_rag_examples_separate_from_state():
     assert result["issues"] == []
     assert result["untrusted_rag_example_count"] == 1
     assert result["human_review_required_for_input_semantics"] is True
+
+
+@pytest.mark.parametrize(
+    "state,issue",
+    [
+        (
+            {"workflow_stage": "unavailable", "state_reliable": False},
+            "initial_state_unreliable",
+        ),
+        (
+            {"workflow_stage": "trained", "state_reliable": True},
+            "initial_workflow_stage_mismatch",
+        ),
+        (
+            {"workflow_stage": "training", "state_reliable": True, "running": False},
+            "initial_training_not_running",
+        ),
+        (
+            {"workflow_stage": "training", "state_reliable": 1, "running": True},
+            "initial_state_unreliable",
+        ),
+    ],
+)
+def test_initial_input_audit_rejects_actual_state_drift_despite_valid_fixture(
+    state, issue
+):
+    import json
+
+    case = {
+        "input": "Do not change the running training.",
+        "expected_workflow_stage": "training",
+    }
+    fixture = {"conditions": {"stage": "training"}}
+    messages = [
+        {
+            "role": "user",
+            "content": json.dumps(
+                {"current_user": {"text": case["input"]}, "application_state": state}
+            ),
+        }
+    ]
+    result = audit_initial_input(
+        case, fixture, {"generations": [{"request": {"messages": messages}}]}
+    )
+    assert issue in result["issues"]
+
+
+@pytest.mark.parametrize("running", [False, None, 1, "true"])
+def test_initial_training_guard_requires_observed_true_boolean(running):
+    import json
+
+    from scripts.dev.assistant_pilot_case import initial_state_issues
+
+    state = {"workflow_stage": "training", "state_reliable": True, "running": running}
+    messages = [
+        {
+            "role": "user",
+            "content": json.dumps(
+                {"current_user": {"text": "Wait."}, "application_state": state}
+            ),
+        }
+    ]
+    assert initial_state_issues({"expected_workflow_stage": "training"}, messages) == [
+        "initial_training_not_running"
+    ]
+    state["running"] = True
+    messages[0]["content"] = json.dumps(
+        {"current_user": {"text": "Wait."}, "application_state": state}
+    )
+    assert initial_state_issues({"expected_workflow_stage": "training"}, messages) == []

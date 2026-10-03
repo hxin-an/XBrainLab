@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from threading import Lock
@@ -311,6 +312,9 @@ class ApplicationViewCoordinator:
         build_training_history: Callable[[], list[dict[str, Any]]] | None = None,
         build_data_summary_rows: Callable[[], list[dict[str, Any]]] | None = None,
         capture_training_boundary: Callable[[], TrainingReadBoundary],
+        training_snapshot_read: Callable[[], AbstractContextManager[None]] = (
+            nullcontext
+        ),
         initial_training_history: tuple[dict[str, Any], ...] | None = None,
         initial_data_summary_rows: tuple[dict[str, Any], ...] | None = None,
     ) -> None:
@@ -324,6 +328,7 @@ class ApplicationViewCoordinator:
         self._build_training_history = build_training_history
         self._build_data_summary_rows = build_data_summary_rows
         self._capture_training_boundary = capture_training_boundary
+        self._training_snapshot_read = training_snapshot_read
 
     def committed(self) -> ApplicationViewPublication:
         """Return an isolated copy of the current atomic publication."""
@@ -385,21 +390,21 @@ class ApplicationViewCoordinator:
         state: ApplicationStateSnapshot | None = None
         training_history: tuple[dict[str, Any], ...] | None = None
         data_summary_rows: tuple[dict[str, Any], ...] | None = None
-        after = self._capture_training_boundary()
         for _attempt in range(_STABLE_CAPTURE_ATTEMPTS):
-            before = after
-            state = self._build_state()
-            training_history = (
-                self._capture_training_history()
-                if state.state_reliable and before.stable
-                else None
-            )
-            data_summary_rows = (
-                self._capture_data_summary_rows()
-                if state.state_reliable and before.stable
-                else None
-            )
-            after = self._capture_training_boundary()
+            with self._training_snapshot_read():
+                before = self._capture_training_boundary()
+                state = self._build_state()
+                training_history = (
+                    self._capture_training_history()
+                    if state.state_reliable and before.stable
+                    else None
+                )
+                data_summary_rows = (
+                    self._capture_data_summary_rows()
+                    if state.state_reliable and before.stable
+                    else None
+                )
+                after = self._capture_training_boundary()
             verified = self._state_with_verified_training_boundary(
                 state,
                 before=before,

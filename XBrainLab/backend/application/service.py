@@ -380,6 +380,7 @@ class ApplicationService(Observable):
             capture_training_boundary=(
                 self.state_snapshot.capture_training_read_boundary
             ),
+            training_snapshot_read=self.training_runtime.snapshot_read,
             initial_training_history=initial_training_history,
             initial_data_summary_rows=initial_data_summary_rows,
         )

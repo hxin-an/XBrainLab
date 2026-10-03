@@ -199,6 +199,8 @@ class _TrainingManagerRuntimePort(Protocol):
 
     def capture_training_read_boundary(self) -> TrainingReadBoundary: ...
 
+    def training_snapshot_read(self) -> AbstractContextManager[None]: ...
+
     def stop_training_if_present(
         self,
         wait_timeout: float | None = None,
@@ -327,6 +329,9 @@ class StudyTrainingRuntime:
 
     def capture_read_boundary(self) -> TrainingReadBoundary:
         return self._manager.capture_training_read_boundary()
+
+    def snapshot_read(self) -> AbstractContextManager[None]:
+        return self._manager.training_snapshot_read()
 
     def stop_training(
         self,

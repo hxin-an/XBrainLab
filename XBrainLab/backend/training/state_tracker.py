@@ -16,8 +16,8 @@ class TrainingStateTracker:
     even when the nested training state is stable.  All holders and records in
     one :class:`Trainer` share the same tracker, so a state snapshot can reject
     a read that overlaps a background update. Normal mutation markers do not
-    hold the tracker lock while work runs; only a short compare-and-publish
-    commit briefly serializes token readers.
+    hold the tracker lock while work runs. A stable read or short
+    compare-and-publish commit briefly serializes new mutation markers.
     """
 
     def __init__(self) -> None:
@@ -47,6 +47,27 @@ class TrainingStateTracker:
                 generation=self._generation,
                 stable=self._active_mutations == 0,
             )
+
+    @contextmanager
+    def stable_read(self) -> Iterator[None]:
+        """Keep a stable boundary still for one read, without waiting on work.
+
+        Existing mutations must remain free to finish. If one is active (or
+        a compare-and-publish owns the lock), the caller retains its ordinary
+        before/after token verification instead of treating that read as safe.
+        """
+        acquired = self._lock.acquire(blocking=False)
+        if not acquired:
+            yield
+            return
+        if self._active_mutations:
+            self._lock.release()
+            yield
+            return
+        try:
+            yield
+        finally:
+            self._lock.release()
 
     @contextmanager
     def mutation_if_current(self, expected_generation: int) -> Iterator[bool]:

@@ -17,6 +17,7 @@ from XBrainLab.backend.application.view_publication import (
     ApplicationViewCoordinator,
 )
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training import Trainer
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyPhase,
     PostTrainingSaliencyStatus,
@@ -26,6 +27,124 @@ from XBrainLab.backend.training_state_contract import (
 )
 
 THREAD_WATCHDOG_SECONDS = 2.0
+
+
+def test_live_training_updates_do_not_starve_a_stable_publication_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real tracked update arriving mid-read waits for one coherent capture."""
+    study = Study()
+    trainer = Trainer([])
+    study.training_manager.trainer = trainer
+    service = ApplicationService(study)
+    original_build = service.state_snapshot.build
+    writers: list[Thread] = []
+    updates: list[Event] = []
+
+    def build_while_training_updates(**kwargs):
+        state = original_build(**kwargs)
+        started = Event()
+        updated = Event()
+
+        def update_progress():
+            started.set()
+            trainer.set_interrupt()
+            updated.set()
+
+        writer = Thread(target=update_progress)
+        writers.append(writer)
+        updates.append(updated)
+        writer.start()
+        assert started.wait(THREAD_WATCHDOG_SECONDS)
+        # Before the repair this completes inside every optimistic capture,
+        # exhausting all attempts. A protected read releases the writer after
+        # its state, training history and boundary have been captured together.
+        updated.wait(0.05)
+        return state
+
+    monkeypatch.setattr(service.state_snapshot, "build", build_while_training_updates)
+    try:
+        for _ in range(3):
+            state = service.get_state()
+            publication = service._committed_view_publication()
+            assert state.state_reliable is True
+            assert publication.usable is True
+            assert publication.state == state
+            for writer in writers:
+                writer.join(THREAD_WATCHDOG_SECONDS)
+            assert all(update.is_set() for update in updates)
+    finally:
+        for writer in writers:
+            writer.join(THREAD_WATCHDOG_SECONDS)
+        assert not any(writer.is_alive() for writer in writers)
+
+
+def test_publication_during_active_training_mutation_still_fails_closed() -> None:
+    study = Study()
+    trainer = Trainer([])
+    study.training_manager.trainer = trainer
+    service = ApplicationService(study)
+    mutating = Event()
+    finish = Event()
+
+    def unfinished_update():
+        with trainer._state_tracker.mutation():
+            trainer.progress_text = "partial update"
+            mutating.set()
+            assert finish.wait(THREAD_WATCHDOG_SECONDS)
+            trainer.progress_text = "completed update"
+
+    writer = Thread(target=unfinished_update)
+    writer.start()
+    try:
+        assert mutating.wait(THREAD_WATCHDOG_SECONDS)
+        state = service.get_state()
+        assert state.state_reliable is False
+        assert service._committed_view_publication().usable is False
+    finally:
+        finish.set()
+        writer.join(THREAD_WATCHDOG_SECONDS)
+    assert not writer.is_alive()
+    assert service.get_state().state_reliable is True
+    assert service._committed_view_publication().usable is True
+
+
+def test_failed_snapshot_releases_training_and_saliency_publication_locks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    study = Study()
+    trainer = Trainer([])
+    study.training_manager.trainer = trainer
+    service = ApplicationService(study)
+    original_build = service.state_snapshot.build
+
+    def broken_build(**_kwargs):
+        # The status read is reentrant inside the coherent publication scope.
+        assert study.training_manager.get_post_training_saliency_status().phase is (
+            PostTrainingSaliencyPhase.IDLE
+        )
+        raise RuntimeError("read failed inside snapshot")
+
+    monkeypatch.setattr(service.state_snapshot, "build", broken_build)
+    with pytest.raises(RuntimeError, match="read failed inside snapshot"):
+        service.get_state()
+    assert service._committed_view_publication().usable is False
+
+    completed = Event()
+
+    def next_update():
+        study.training_manager.capture_training_read_boundary()
+        trainer.set_interrupt()
+        study.training_manager.get_post_training_saliency_status()
+        completed.set()
+
+    writer = Thread(target=next_update)
+    writer.start()
+    writer.join(THREAD_WATCHDOG_SECONDS)
+    assert not writer.is_alive()
+    assert completed.is_set()
+    monkeypatch.setattr(service.state_snapshot, "build", original_build)
+    assert service.get_state().state_reliable is True
 
 
 def _boundary(

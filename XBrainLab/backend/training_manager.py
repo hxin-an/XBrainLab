@@ -331,7 +331,7 @@ class TrainingManager:
         self._training_operation_sequence = 0
         self._training_operation_owner: _TrainingPipelineOperationLease | None = None
         self._training_start_admission: _TrainingStartAdmission | None = None
-        self._saliency_job_lock = Lock()
+        self._saliency_job_lock = RLock()
         self._saliency_request_sequence = 0
         self._saliency_cancellation_epoch = 0
         self._saliency_request_owner: _PostTrainingSaliencyOwnership | None = None
@@ -2073,6 +2073,24 @@ class TrainingManager:
         """Capture trainer identity and generation under the lifecycle lock."""
         with self._training_pipeline_lock:
             return self._capture_training_read_boundary_locked()
+
+    @contextmanager
+    def training_snapshot_read(self) -> Iterator[None]:
+        """Capture one view in the same lock order as result publication.
+
+        Identity and saliency publication precede the trainer tracker. Status
+        getters re-enter these manager locks while assembling the view; no
+        callback or worker join runs inside this read scope. Untracked/busy
+        trainers still require the existing optimistic boundary verification.
+        """
+        with self._training_pipeline_lock, self._saliency_job_lock:
+            trainer = self.trainer
+            read = getattr(type(trainer), "state_snapshot_read", None)
+            if callable(read):
+                with read(trainer):
+                    yield
+            else:
+                yield
 
     def capture_pipeline_mutation_boundary(
         self,
