@@ -2,78 +2,82 @@
 
 最後更新：`2026-10-03`
 
-## 目前 — 25個凍結候選VALID，選版不同時接續TEST
+## Active — 完整實驗入口整理與一次重現
 
-2026-10-03使用者授權：完成五模型各五版本的VALID，低頻監控；按既定指標選版，
-若與原Phi R5不同，自動接續新勝出版本的TEST／原三項消融。原有結果與實際時序保留，
-不另做選版流程對照實驗，不聲稱本次追加排程在初次TEST前已預先固定。
+使用者核准根／stage／round同一`./run.sh`、每批獨立結果、逐題比對及本機回存。
+目前NAS上層DEV R4仍舊source、VALID仍五版三遍、TEST仍Phi三遍，README亦過時；
+個別成功批次可追溯，不等於根入口已代表最後採用研究。
+Outcome：明確封存DEV五輪五模型6600、VALID25版各一次2475、固定Granite4 R3
+TEST四條件各一次528，合計9603；統一入口、進度／索引／原始輸入輸出及比較可用。
+Scope：沿用既有batch/package/compare，整理NAS入口／文件與必要研究runtime接線、
+focused測試、獨立封存／研究等價覆核；通過才啟動一次完整重跑，低頻監控、完成後核對回存。
+Non-goals：不調prompt/RAG/model/題目/scorer，不依新分數重新選版，不改產品UI、不merge；
+舊source／run／失敗證據保留，不碰settings.json。UI確認：產品無可見變更。
+假設：137共享環境與GPU可用；不能把舊DEV已知缺陷runtime直接開跑，也不能默默換新提示。
+工程遷移須保留五輪byte-frozen renderer，核對正常／retry完整輸入與歷史證據，標示新runtime。
+步驟：檢查既有owner和成功config→測試先行補必要入口／DEV frozen profile／比較接線→
+同source focused與適用CI、獨立review→NAS可恢復發布（不覆寫歷史研究身份）→
+無推論全matrix預檢／輸入等價→確認GPU單次啟動→低頻核對終態／差異／本地副本。
+Complexity：重用batch選範圍、runner量測與compare判比對三個既有owner；產品owner增量0。
+不建第二控制層；優先刪除入口歧義，新增研究script限直接整合需要，不為結構重寫engine。
+Focused validation：完整9603排程、scope分母、new-run不覆蓋、錯誤fail closed、階段/輪路徑、
+歷史source差異揭露、逐題key對齊與輸入/決策/判分/延遲比較、relative links、hash讀回。
+Stop：新整批完整性／原始證據／比较與本機回存通過；若必要資源或新研究決策阻擋則明示。
+使用者追加必要關卡：全部準備好後，多位獨立reviewer高強度分別覆核封存／排程、
+原始數據真實性與評分程式／ground truth；各自不審自己實作，直接讀exact source及實物，
+含可重現反例與限制，不能只看摘要。影響研究效度的阻擋未解不得正式推論；完成後再核對raw／分母。
+Next：完成batch／DEV profile／compare接線與focused回歸，封source跑無推論全matrix，
+同head CI及上述獨立覆核通過後才發布與啟動。已修reference入口接線；正在補comparison
+對partial／cleanup失敗報告的拒絕認證，歷史輸入稽核亦需核對raw實物hash而非只讀trace。
 
-- 問題／證據：原VALID只包含DEV各選一版共五版，無法比較全部25候選；舊候選有已修好的
-  執行器／Qt生命週期問題，不能直接復用舊runner。起始HEAD093f20d3，settings.json不動。
-- Outcome：依使用者最新指令，每版只跑一次：25候選各99題，VALID矩陣2475筆全部新跑；
-  舊VALID後Host路徑修理可能影響decision latency，故不混用舊1485筆。新winner不同時TEST528筆。
-- Scope：計畫／方法文件、既有runner必要候選接線、封存與完整輸入等價預檢、focused測試及
-  獨立覆核、137部署、低頻監控、結果與本機副本。無UI改動／無需UI確認。
-- Non-goals：不加第六輪、不改模型／提示／RAG／oracle／raw scorer、不依TEST高低回頭換版；
-  不新增BFCL、模型下載或額外smoke推論，不merge、不覆寫歷史封存與原始結果。
-- 假設：137 SSH、共用環境及模型可用；先查GPU使用情況，不終止他人程序。
-- 選版：單次macro優先，再單次P50；同模型完全相同取較早candidate，跨模型
-  完全相同沿既有Granite4、Granite3.3、Phi、Llama、Gemma順序。先固定再讀新增VALID。
-- 步驟：清點25個封存配置→可靠runner承載且完整normal/retry輸入等價→直接測試／覆核→
-  新包封存與啟動→約15分鐘檢查一次摘要／終態→完整性驗收／選版→如不同則凍結該winner
-  及三消融、預檢後TEST→同頻監控／結果驗證／複製回本機。
-- 驗證：候選原始source/run可追溯、25個身分無漏重；真fixture與完整模型輸入／token預檢；
-  固定題庫／單次repeat0／raw scorer／cleanup／capture；不因有效錯答重跑；selection只讀VALID。
-- Stop：完整VALID、若適用新TEST與本機結果交付；遇必要新決策／無法取得資源才blocked。
-  不以啟動、CI pending或context compaction為完成。監控期間不逐題查詢或反覆下載全log。
-- 施工：產品未改；凍結五輪原renderer，以明確profile接既有runner；新排程repeat0，
-  舊三次封存／報告保持原義。Windows focused 456項通過（193接線、229真Qt／renderer、
-  30統計、4報告）；獨立source覆核無阻擋。這不是新模型準確率證據。
-- 已啟動：c073cf1b8f45a67f7ed6557b2c01d4f30672fb5c，同SHA CI24成功／3scope skip。
-  137五輪各33真fixtures、495 normal＋495 retry輸入／RAG／token預檢與獨立實物覆核通過。
-  工程預檢sample key曾誤用App publication欄位，僅修報告取樣key；失敗證據保留，未跑LLM。
-  NAS入口stages/val/all-candidates/run.sh；tmux xbl-valid25-c073cf1b，
-  log .runtime/logs/valid25-c073cf1b.log；2475筆、每候選repeat0一次，原封存未改。
-- 05:51 UTC前2475/2475全部執行完成，五批正常退出；同版原scorer重播與capture／cleanup
-  核對完成。初始10筆通過不代表全量輸入可靠：全量比對2474筆與預檢一致，1筆不一致。
-- Blocker：Granite4 R1／VALID-N03-01-V0實際收到unavailable／state_reliable=false，
-  而非預定training；舊input audit只驗state card存在，未驗stage／reliability，因此未攔下。
-  是量測輸入缺陷，不改原始模型答案或判分；strict選版gate未通過，未產生winner／未啟動TEST。
-  已確認publication unusable；高頻training更新存在可達競態，但當時refresh_error未封存，
-  不能斷言精確的refresh來源。產品fail-closed不應放寬。
-- 獨立覆核：R1正確情境那一題的結果取0或1，macro只可能67.2840%–68.5185%；
-  完整輸入有效的Granite4 R3為80.2469%，故該缺值不改變最高版，但不能認證25版全有效。
-  此界限分析不是已核准的例外選版規則，也不證明R1完整排名或TEST執行可靠。
-- 五批原始結果已回存碩論準備/實驗/result/VALID，各批逐檔hash與離線連結通過；
-  all-live-inputs／raw-integrity／freeze／CI admission亦已回存且與NAS hash一致。
-- 2026-10-03追加授權：修好狀態競態與推論前檢查，只重跑Granite4 R1完整99題一次。
-  新99題整批取代原R1作為選版依據；舊證據保留、不挑高分、不新舊逐題拼接；
-  其他24候選保持原量測。工程修理不是第六輪DEV，也不採用缺值界限例外。
-- 本修理scope：既有publication／training snapshot owner及研究量測actual-input guard；
-  保持UI／工具／模型輸入與raw scorer／計時邊界，禁止硬填training或放寬stale fail-closed。
-  沒有新增owner或通用重試層。先用可控競態重現，確認可靠snapshot及錯情境不送LLM，
-  真training fixture與normal/retry預檢、直接相鄰tests、獨立lifecycle／研究覆核及同版CI。
-- Next：修理與補測→封存新source→固定99題替代批次→低頻監控／全量輸入及raw scorer驗收→
-  重選25候選；若仍Phi R5且研究因素等價則沿用原TEST，否則winner四條件各132題一次。
-  原單題界限不適用重跑99題後的分數，不預先固化Granite4 R3勝出。完成結果回存本機再交付。
-- 修理進度：真Trainer＋ApplicationService的可控mid-read更新已red→green；沿既有manager
-  pipeline→saliency→tracker鎖順序保護一次一致擷取，保留既有三次optimistic驗證和busy fail-closed。
-  Owner前後不變、無可刪除的重複owner、無新重試層；六產品檔+72/-17（net55）。
-  Windows backend直接相鄰191＋335 tests通過；研究guard focused88及recovery3通過，
-  invalid→valid→invalid真Qt worker dispatch證明不送無效輸入，warmup／recovery不被誤攔。
-  guard與backend鎖順序獨立review通過；相鄰audit/profile另82 tests通過。
-  137真訓練壓測、同版CI及正式99尚未執行；無法由unit保證永不unavailable。
-- 59e252b0工程驗證：137真EEGNet首組200次fresh state/model card讀取中，sample3與147
-  仍因讀取開始前已active的mutation而unavailable；cleanup／stop通過，stress.json保留。
-  沒有推論／正式99未開跑。穩定起點的coherent scope不足以解決busy起點的緊密重抓，
-  繼續處理既有owner的有界讀取時機，不放寬fail-closed。CI另抓training_snapshot_read
-  動態context manager型別兩項診斷，一併修正；不重跑等價全套來代替定位。
-- 續修：沿既有tracker RLock用Condition等待短mutation完成，每次最多50ms、最多三次；
-  穩定讀取不等待，notify後立即續做，長忙碌仍fail-closed，無額外鎖／owner／重試輪數。
-  busy-at-entry已red→green；native196 tests及targeted typecheck零diagnostics，覆核後重新封存。
-- 使用者詢問舊實驗是否受影響：並行唯讀稽核已保存五輪DEV／原VALID／原TEST的實際首次
-  model state（可靠性／expected stage／training running），不推論、不重判、不修改歷史。
-  在結果出來前不以舊報告complete宣稱全部情境有效；不自行扩大正式重跑範圍。
+## 已完成 — 25個凍結候選VALID、整批R1替代與新winner TEST
+
+2026-10-03已完成使用者要求的整輪收尾：五模型各五個既有DEV候選各99題VALID一次，
+完整25版選版後，新winner的Full及三消融各132題TEST一次。未新增DEV候選／調參／改題，
+未使用TEST結果選版，不merge；下一階段待討論。本頁為封存後文件更新，受測source如下。
+
+- 原25候選：source c073cf1b8f45a67f7ed6557b2c01d4f30672fb5c，2475筆正常退出。
+  全量輸入稽核抓到Granite4 R1／VALID-N03-01-V0收到unavailable而非training，原99不能認證；
+  其餘24候選actual輸入逐筆符合原預檢，完整報告及原scorer重播可核對。
+- 使用者批准publication競態修理與推論前actual-input guard，完整重跑R1 99題一次。
+  Source 7dea586a8624a83707b12e0f2791aa824d36464e；同head CI24成功／3scope skip，
+  獨立backend／研究source覆核、Windows focused及137真訓練1000次讀取通過。
+  首次59e252b0修理仍有busy-entry競態及型別診斷，失敗證據保留，未用該版本正式推論。
+- R1替代run：20261003-072328-020375cb，99/99、exit0、cleanup／原scorer及完整輸入核對通過。
+  新99整批替代原99，其餘24候選保留，不挑高分、不逐題拼接；兩個工程source明示。
+  source／模型／提示／題庫／RAG／scorer身份及完整normal/retry輸入等價均封存。
+- Winner：Granite4 R3，macro65/81=80.2469%、P50 0.448813123秒；第二名Phi R5=76.5432%。
+  無最高macro同分，未用延遲破同分；獨立按原報告重算25版排名及全99實物覆核通過。
+  固定替代規則在重跑前決定；原缺值界限分析沒有作為正式選版例外。
+- 新TEST：stages/test/valid25-selected；run20261003-073134-fc4822b9，source7dea586a。
+  開跑前66真fixtures、528 normal／396 retry與原R3／消融定義等價，無截斷；
+  實跑四條件各132、repeat0、528/528、runner／launch exit0、cleanup全通過。
+  無resume／replace-invalid／拼接，已按約15分鐘間隔完成監控；實驗session退出、GPU已釋放。
+- 完整528實際首次輸入逐筆等於凍結預檢，原scorer重播及同版report重建一致，
+  原始證據digest前後不變；audits/closure-7dea586a.json。
+  獨立review另核對528 request/result、541次實際capture，並獨立重算family bootstrap，無阻擋。
+- TEST macro：Full81.94%、RAG off75.46%、tool-filter off68.52%、retry off80.56%；
+  Full總正確105/132、decision P50 0.579秒／P95 1.077秒。Full格式修復4題、救回3題。
+  10000次family bootstrap：Full95%區間73.15%–89.35%；Full減RAG off +6.48pp
+  [−0.46,+13.43]、filter off +13.43pp [+5.09,+22.69]、retry off +1.39pp [0,+3.24]。
+  個別條件式區間，單次執行未量重複變異；不宣稱RAG顯著普遍提升、模型全對或產品零缺陷。
+- 本機結果均已回存碩論準備/實驗/result：原五批VALID、R1替代705原檔29663747bytes
+  ／693離線links、新TEST3546原檔133663268bytes／3722links，逐檔hash讀回及連結通過。
+  補跑／選版／預檢／CI證據亦與NAS核對；舊source、原始分數與失敗證據未覆寫。
+- 歷史9669筆首輸入回查：DEV6600、舊TEST1584未發現同類問題；舊VALID1485有一筆
+  Granite3.3 R5 repeat1／VALID-N03-01-V0失效，已於索引註記。不用舊VALID參與本次選版；
+  這是狀態來源檢查，不冒稱所有研究因素全面重認證。
+- 論文文件已區分新Granite單次與歷史Phi三次，保留本次擴大VALID是在初次TEST之後追加的時序。
+  完整結果、單行重跑、每類新增／刪除／淨行數及來源差異在碩論準備/實驗/TEST執行與結果.md
+  與VALID選版與執行.md；settings.json是使用者既有修改，未動、未stage。
+- 修理切片c073..7dea：產品87/18/+69、測試482/6/+476、腳本84/4/+80、
+  文件56/3/+53、設定其他0；合計709/31/+678，二進位0。分支對main72548c：
+  產品311/41/+270、測試5826/278/+5548、腳本4058/182/+3876、文件980/20/+960、
+  設定其他0，合計11175/521/+10654。封存後Now與外部文件／結果／稽核助手不混入受測source。
+
+本輪為research scope-complete，不是merge批准或新增產品手測通過；沒有待執行推論。
+未解的题庫／RAG相似性限制沿資料集驗證文件保留，不依本次TEST修題或回頭調參。
+以下為歷史階段，非active施工清單。
 
 ## 已完成 — 原五版VALID及首次TEST
 

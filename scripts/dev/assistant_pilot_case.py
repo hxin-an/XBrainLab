@@ -38,7 +38,6 @@ def validate_case_request(payload: dict) -> None:
         payload["prompt_profile"] != "frozen-dev-round"
         or not current
         or experiment["purpose"] != "research"
-        or split not in {"VALID", "TEST"}
     ):
         raise ValueError("Invalid frozen prompt profile")
     if current and (

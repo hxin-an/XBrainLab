@@ -213,6 +213,12 @@ def _load(run: Path) -> dict:
                 state["issues"].append("unreadable_report:" + str(error))
         if report is None:
             raise ValueError("No saved report matches the current manifest and journal")
+        if (
+            report.get("complete_selected_schedule") is not True
+            or report.get("partial") is not False
+            or report.get("session_cleanup_certified") is not True
+        ):
+            state["issues"].append("report_incomplete_or_cleanup_uncertified")
         reported = defaultdict(list)
         for row in report["cases"]:
             reported[row["id"]].append(row)
@@ -400,6 +406,16 @@ def compare_runs(run_a: Path, run_b: Path) -> dict:
     paths = [Path(path).resolve(strict=True) for path in (run_a, run_b)]
     before = [evidence_digest(path) for path in paths]
     states = [_load(path) for path in paths]
+    result = compare_states(states)
+    if before != [evidence_digest(path) for path in paths]:
+        raise ValueError(
+            "Original run evidence changed while comparison was reading it"
+        )
+    return {**result, "original_evidence": before, "original_evidence_unchanged": True}
+
+
+def compare_states(states: list[dict], *, strict_identity: bool = False) -> dict:
+    """Compare already verified evidence; batch adapters supply explicit selections."""
     differences = []
     for field in (
         "source",
@@ -426,7 +442,11 @@ def compare_runs(run_a: Path, run_b: Path) -> dict:
     for state in states:
         indexed = defaultdict(list)
         for entry in state["rows"]:
-            indexed[_key(entry["job"])].append(entry)
+            job = entry["job"]
+            key = _key(job)
+            if strict_identity:
+                key += (str(job.get("split", "")), str(job.get("candidate_index", "")))
+            indexed[key].append(entry)
         indexes.append(indexed)
     rows = []
     for key in sorted(indexes[0].keys() | indexes[1].keys()):
@@ -463,6 +483,18 @@ def compare_runs(run_a: Path, run_b: Path) -> dict:
             "correctness_comparable": comparable,
             "correctness_reason": reason,
         }
+        if strict_identity:
+            row.update(split=key[3], candidate_index=key[4])
+        prompts = [
+            [capture["prompt"] for capture in entry["captures"]]
+            if entry and entry["valid"]
+            else []
+            for entry in pair
+        ]
+        row["first_input_equal"] = (
+            prompts[0][0] == prompts[1][0] if all(prompts) else None
+        )
+        row["all_inputs_equal"] = prompts[0] == prompts[1] if all(prompts) else None
         for phase in ("first", "final"):
             da, db = (_decision(entry, phase) for entry in pair)
             tool_equal = da["tool"] == db["tool"] if da and db else None
@@ -534,11 +566,6 @@ def compare_runs(run_a: Path, run_b: Path) -> dict:
         if any(item["status"] == "different" for item in differences)
         else "same_config_reproduction"
     )
-    after = [evidence_digest(path) for path in paths]
-    if before != after:
-        raise ValueError(
-            "Original run evidence changed while comparison was reading it"
-        )
     grouped = {}
     for condition, repeat in sorted(
         {(row["condition"], row["repeat"]) for row in rows}
@@ -560,8 +587,6 @@ def compare_runs(run_a: Path, run_b: Path) -> dict:
         "runs": [
             {key: state[key] for key in ("run", "report", "issues")} for state in states
         ],
-        "original_evidence": before,
-        "original_evidence_unchanged": True,
         "planned_union": len(rows),
         "summary": _aggregate(rows),
         "by_model_repeat": grouped,
@@ -771,7 +796,19 @@ def main(argv=None) -> int:
     parser.add_argument("run_b", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
-    result = write_comparison(args.run_a, args.run_b, args.output)
+    batch = [(path / "manifest.json").is_file() for path in (args.run_a, args.run_b)]
+    if any(batch):
+        if not all(batch):
+            parser.error(
+                "Compare two batches/references or two saved runs, not mixed scopes"
+            )
+        from scripts.dev.assistant_experiment_batch_compare import (
+            write_batch_comparison,
+        )
+
+        result = write_batch_comparison(args.run_a, args.run_b, args.output)
+    else:
+        result = write_comparison(args.run_a, args.run_b, args.output)
     print(
         json.dumps(
             {"classification": result["classification"], "output": result["output"]}

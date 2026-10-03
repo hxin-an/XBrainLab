@@ -80,11 +80,15 @@ def test_frozen_experiment_accepts_valid_repeat_without_weakening_legacy_gate():
     assert experiment_result_identity(request()) == {}
 
 
-@pytest.mark.parametrize("split", ["VALID", "TEST"])
+@pytest.mark.parametrize("split", ["DEV", "VALID", "TEST"])
 def test_explicit_prompt_profile_and_single_repeat_are_preserved(split):
     from scripts.dev.assistant_pilot_case import experiment_result_identity
 
-    payload = experiment_request() if split == "VALID" else ablation_request()
+    payload = (
+        ablation_request()
+        if split == "TEST"
+        else experiment_request(split=split, repeat=0)
+    )
     payload.update(prompt_profile="frozen-dev-round", repeat=0)
     payload["experiment"]["repeats"] = [0]
     validate_case_request(payload)
@@ -106,6 +110,14 @@ def test_legacy_case_cannot_opt_into_frozen_round_profile():
     payload = request()
     payload["prompt_profile"] = "frozen-dev-round"
     with pytest.raises(ValueError):
+        validate_case_request(payload)
+
+
+def test_engineering_smoke_case_cannot_opt_into_frozen_round_profile():
+    payload = experiment_request(split="DEV", repeat=0)
+    payload["experiment"]["purpose"] = "engineering-smoke"
+    payload["prompt_profile"] = "frozen-dev-round"
+    with pytest.raises(ValueError, match="frozen prompt profile"):
         validate_case_request(payload)
 
 

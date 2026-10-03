@@ -195,6 +195,8 @@ def fixture(
         "journal_sha256": hashlib.sha256(journal_bytes).hexdigest(),
         "cases": rows,
         "complete_selected_schedule": all(item is not None for item in observations),
+        "partial": any(item is None for item in observations),
+        "session_cleanup_certified": True,
     }
     save(root / "reports/20260929/report.json", report)
     return root

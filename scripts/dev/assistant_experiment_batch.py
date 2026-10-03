@@ -9,6 +9,7 @@ owns admission, measurement, journal, cleanup and scoring.
 from __future__ import annotations
 
 import argparse
+import html
 import os
 import re
 import shlex
@@ -34,6 +35,7 @@ from scripts.dev.assistant_experiment_shared import (
 
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = "xbrainlab.assistant_experiment_tree.v1"
+BATCH_SCHEMA = "xbrainlab.assistant_experiment_batch.v1"
 MODULE = "scripts/dev/assistant_experiment_batch.py"
 
 
@@ -176,6 +178,8 @@ def create_experiment(
             "bank": _seal_input(output, Path(selection["bank"]).resolve(strict=True)),
             "config": f"{key}/config.json",
         }
+        if "expected_cases" in selection:
+            manifest["scopes"][key]["expected_cases"] = selection["expected_cases"]
     for commit, source in sources.items():
         package_api._clean_source(source, commit)
         package_api._snapshot(source, output / "snapshot/sources" / commit, commit)
@@ -206,7 +210,9 @@ def create_experiment(
         "- stages/: frozen scopes, per-model config/source and adjustment notes.\n"
         "- snapshot/: independent sources, inputs and environment identities. Do not edit.\n"
         "- results/reference/: unchanged original evidence, compare-only.\n"
-        "- results/runs/: a new directory per run; no overwrite.\n"
+        "- results/runs/: one new batch directory per invocation; no overwrite.\n"
+        "  Open its index.html for stage/round progress and child result links.\n"
+        "  manifest.json records selection, frozen snapshot identity and child exits.\n"
         "- .runtime/: local caches/logs/temp; no installation or downloads.\n\n"
         "At any scope: ./run.sh --check-environment (no inference), or ./run.sh.\n"
         "At root: ./compare.sh results/reference/<id> results/runs/<id>.\n"
@@ -549,7 +555,11 @@ def _verify_manifest(root: Path, manifest: dict) -> dict:
                 or not value["blocked_reason"].strip()
             ):
                 raise ValueError("Blocked scope needs a reason")
-        elif set(value) == {"bank", "config"}:
+        elif set(value) in ({"bank", "config"}, {"bank", "config", "expected_cases"}):
+            if "expected_cases" in value and (
+                type(value["expected_cases"]) is not int or value["expected_cases"] <= 0
+            ):
+                raise ValueError("Expected case count must be a positive integer")
             required.update(_verify_config(root, manifest, key, value))
         else:
             raise ValueError("Invalid scope configuration")
@@ -685,15 +695,37 @@ def run_scope(root: Path, scope: str, *, check_environment: bool = False) -> int
         )
         return 0
     output.mkdir(parents=True, exist_ok=True)
+    batch = output / _identifier()
+    batch.mkdir()  # Exclusive publication: never reuse an existing batch.
     records = [
-        {"scope": key, "run": _identifier(), "status": "unattempted"} for key in leaves
+        {
+            "scope": key,
+            "run": key.removeprefix("stages/"),
+            "status": "unattempted",
+            "exit_code": None,
+            **{
+                name: manifest["scopes"][key][name]
+                for name in ("expected_cases",)
+                if name in manifest["scopes"][key]
+            },
+        }
+        for key in leaves
     ]
-    index = output / f"{_identifier()}-scope.json"
+    status = {
+        "schema": BATCH_SCHEMA,
+        "scope": scope,
+        "coordinator": manifest["coordinator"],
+        "snapshot_sha256": package_api._digest(root / "snapshot/manifest.json"),
+        "runs": records,
+    }
+    _write_batch_status(batch, status)
+    print(f"Batch index: {batch / 'index.html'}", flush=True)
     for record in records:
         value = manifest["scopes"][record["scope"]]
-        destination = output / record["run"]
+        destination = _physical(batch, record["run"])
+        destination.parent.mkdir(parents=True, exist_ok=True)
         record["status"] = "running"
-        package_api._write(index, {"scope": scope, "runs": records})
+        _write_batch_status(batch, status)
         print(f"Run output: {destination}", flush=True)
         try:
             result = _invoke(
@@ -716,15 +748,69 @@ def run_scope(root: Path, scope: str, *, check_environment: bool = False) -> int
             )
             if result == 0 and not (destination / "prepared-manifest.json").is_file():
                 result = 2
-            record["status"] = "completed" if result == 0 else f"failed (exit {result})"
+            record["exit_code"] = result
+            record["status"] = "completed" if result == 0 else "failed"
         except BaseException:
-            record["status"] = "failed (entry interrupted or unavailable)"
+            record["status"] = "failed"
+            record["error"] = (
+                "Entry interrupted or unavailable; inspect launcher output."
+            )
             raise
         finally:
-            package_api._write(index, {"scope": scope, "runs": records})
+            _write_batch_status(batch, status)
         if result:
             return result
     return 0
+
+
+def _write_batch_status(batch: Path, status: dict) -> None:
+    """Publish readable progress; the child runner still owns its result truth."""
+    pending = batch / ".manifest.pending"
+    package_api._write(pending, status)
+    os.replace(pending, batch / "manifest.json")
+    rows = []
+    for record in status["runs"]:
+        links = []
+        run = batch / record["run"]
+        for path, label in (
+            (run / "index.html", "Results"),
+            (run / "prepared-manifest.json", "Prepared manifest"),
+        ):
+            if path.is_file():
+                relative = path.relative_to(batch).as_posix()
+                links.append(
+                    f'<a href="{html.escape(relative, quote=True)}">{label}</a>'
+                )
+        rows.append(
+            "<tr>"
+            f"<td>{html.escape(record['scope'])}</td>"
+            f"<td>{html.escape(record['status'])}</td>"
+            f"<td>{record.get('expected_cases', '—')}</td>"
+            f"<td>{record['exit_code'] if record['exit_code'] is not None else '—'}</td>"
+            f"<td>{' · '.join(links)}</td></tr>"
+        )
+    completed = sum(row["status"] == "completed" for row in status["runs"])
+    page = (
+        '<!doctype html><html lang="en"><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        "<title>Experiment batch</title><style>"
+        "body{font:16px system-ui;margin:2rem;max-width:75rem}"
+        "table{border-collapse:collapse;width:100%}"
+        "th,td{text-align:left;padding:.65rem;border-bottom:1px solid #ccc}"
+        "</style><h1>Experiment batch</h1>"
+        f"<p>Scope: {html.escape(status['scope'])}. "
+        f"Completed selections: {completed}/{len(status['runs'])}.</p>"
+        '<p><a href="manifest.json">Batch manifest</a>. '
+        "Refresh this page for updated selection status. "
+        "An unattempted selection has not run; failed selections are not complete evidence.</p>"
+        "<table><thead><tr><th>Selection</th><th>Status</th><th>Expected cases</th>"
+        "<th>Exit</th><th>Evidence</th></tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table></html>"
+    )
+    pending = batch / ".index.pending"
+    pending.write_text(page, encoding="utf-8")
+    os.replace(pending, batch / "index.html")
 
 
 def _environment(root: Path, manifest: dict, configs: list[dict]) -> tuple[Path, dict]:
@@ -744,6 +830,16 @@ def compare_experiment(root: Path, first: Path, second: Path) -> int:
     for requested in (first, second):
         run = requested.resolve(strict=True)
         if run.parent == root / "results/reference":
+            descriptor = _physical(run, "manifest.json")
+            if descriptor.is_file() and package_api._json(descriptor).get("schema") in {
+                BATCH_SCHEMA,
+                "xbrainlab.assistant_experiment_reference.v1",
+            }:
+                if descriptor.relative_to(root).as_posix() not in manifest["files"]:
+                    raise ValueError("Batch reference descriptor must be sealed")
+                # verify_experiment checked this descriptor's frozen digest;
+                # the batch comparator verifies each explicitly referenced run.
+                continue
             inventory = package_api._json(
                 _physical(root, f"snapshot/inputs/reference-{run.name}.json")
             )

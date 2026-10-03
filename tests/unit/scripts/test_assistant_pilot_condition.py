@@ -57,13 +57,14 @@ def test_condition_accepts_distinct_cases_with_one_runtime_identity():
 
 
 @pytest.mark.parametrize("candidate", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("split", ["DEV", "VALID"])
 def test_research_session_wires_explicit_frozen_candidate(
-    qtbot, tmp_path, controlled_condition_runtime, candidate
+    qtbot, tmp_path, controlled_condition_runtime, candidate, split
 ):
     from tests.unit.scripts.test_assistant_dev_profiles import archived_class
     from tests.unit.scripts.test_assistant_pilot_case import experiment_request
 
-    payload = experiment_request(split="VALID", repeat=0)
+    payload = experiment_request(split=split, repeat=0)
     payload["candidate_index"] = candidate
     payload["prompt_profile"] = "frozen-dev-round"
     payload["rag_cache"] = str(tmp_path / "external-rag")

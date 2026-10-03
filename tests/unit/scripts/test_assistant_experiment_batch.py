@@ -137,12 +137,107 @@ class ExperimentBatchTests(unittest.TestCase):
         )
 
     def calls(self):
-        return sorted((self.study / "results/runs").glob("*/called.json"))
+        return sorted((self.study / "results/runs").rglob("called.json"))
 
     def scope_index(self):
-        files = list((self.study / "results/runs").glob("*-scope.json"))
+        files = list((self.study / "results/runs").glob("*/manifest.json"))
         self.assertEqual(len(files), 1)
         return files[0].read_text()
+
+    def test_batch_groups_stage_rounds_and_exposes_frozen_identity_and_links(self):
+        self.create([self.selection(1), self.selection(2)])
+        result = self.launch(DEV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        batches = list((self.study / "results/runs").iterdir())
+        self.assertEqual(len(batches), 1)
+        batch = batches[0]
+        manifest = json.loads((batch / "manifest.json").read_text())
+        self.assertEqual(manifest["schema"], "xbrainlab.assistant_experiment_batch.v1")
+        self.assertEqual(manifest["scope"], DEV)
+        self.assertEqual(manifest["coordinator"], self.head)
+        self.assertEqual(
+            manifest["snapshot_sha256"],
+            self.api.package_api._digest(self.study / "snapshot/manifest.json"),
+        )
+        self.assertEqual(
+            [row["run"] for row in manifest["runs"]],
+            ["dev/round-01", "dev/round-02"],
+        )
+        page = (batch / "index.html").read_text()
+        for row in manifest["runs"]:
+            self.assertEqual(row["status"], "completed")
+            self.assertEqual(row["exit_code"], 0)
+            relative = row["run"] + "/prepared-manifest.json"
+            self.assertTrue((batch / relative).is_file())
+            self.assertIn(f'href="{relative}"', page)
+        previous = {
+            path.relative_to(batch): path.read_bytes()
+            for path in batch.rglob("*")
+            if path.is_file()
+        }
+        result = self.launch(ROUND)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(list((self.study / "results/runs").iterdir())), 2)
+        for relative, content in previous.items():
+            self.assertEqual((batch / relative).read_bytes(), content)
+
+    def test_root_batch_keeps_dev_valid_rounds_and_test_under_one_directory(self):
+        selections = [
+            self.selection(1),
+            self.selection(2, path="stages/val/round-01"),
+            self.selection(3, path="stages/test"),
+        ]
+        for item, count in zip(selections, (1320, 495, 528), strict=True):
+            item["expected_cases"] = count
+        self.api.create_experiment(
+            self.study,
+            selections,
+            {
+                ".": {"children": [DEV, "stages/val", "stages/test"]},
+                DEV: {"children": [ROUND]},
+                "stages/val": {"children": ["stages/val/round-01"]},
+            },
+            coordinator_root=self.source,
+            shared_python=self.python,
+        )
+        result = self.launch(".")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        manifest = json.loads(self.scope_index())
+        self.assertEqual(
+            [row["run"] for row in manifest["runs"]],
+            ["dev/round-01", "val/round-01", "test"],
+        )
+        self.assertEqual(
+            [row["expected_cases"] for row in manifest["runs"]], [1320, 495, 528]
+        )
+        self.assertEqual(len(self.calls()), 3)
+
+    def test_existing_batch_is_never_reused_even_on_identifier_collision(self):
+        self.create()
+        with patch.object(self.api, "_identifier", return_value="same-batch"):
+            self.assertEqual(self.api.run_scope(self.study, ROUND), 0)
+            batch = self.study / "results/runs/same-batch"
+            previous = {
+                path.relative_to(batch): path.read_bytes()
+                for path in batch.rglob("*")
+                if path.is_file()
+            }
+            with self.assertRaises(FileExistsError):
+                self.api.run_scope(self.study, ROUND)
+            self.assertEqual(len(self.calls()), 1)
+            for relative, content in previous.items():
+                self.assertEqual((batch / relative).read_bytes(), content)
+
+    def test_invalid_expected_count_is_rejected_before_execution(self):
+        self.create()
+        original = self.api.verify_experiment(self.study)
+        for count in (0, -1, True, "1320", 1.5):
+            with self.subTest(count=count):
+                changed = json.loads(json.dumps(original))
+                changed["scopes"][ROUND]["expected_cases"] = count
+                with self.assertRaisesRegex(ValueError, "positive integer"):
+                    self.api._verify_manifest(self.study, changed)
+        self.assertEqual(self.calls(), [])
 
     def test_central_source_dedup_and_stage_entries_share_one_snapshot(self):
         self.create([self.selection(1), self.selection(2)])
@@ -651,7 +746,7 @@ class ExperimentBatchTests(unittest.TestCase):
                 self.assertTrue(Path(saved["env"][name]).is_relative_to(self.study))
             args = saved["args"]
             self.assertEqual(
-                Path(args[args.index("--output") + 1]).parent,
+                Path(args[args.index("--output") + 1]).parents[2],
                 self.study / "results/runs",
             )
             config = Path(args[args.index("--config") + 1])
@@ -816,6 +911,13 @@ class ExperimentBatchTests(unittest.TestCase):
         index = self.scope_index()
         self.assertIn("failed", index)
         self.assertIn("unattempted", index)
+        manifest = json.loads(index)
+        self.assertEqual(manifest["runs"][0]["exit_code"], 7)
+        self.assertIsNone(manifest["runs"][1]["exit_code"])
+        page = next((self.study / "results/runs").glob("*/index.html")).read_text()
+        self.assertIn("failed", page)
+        self.assertIn("unattempted", page)
+        self.assertNotIn('href="dev/round-02/prepared-manifest.json"', page)
 
     def test_zero_exit_without_actual_run_is_failure(self):
         self.create()
@@ -835,7 +937,7 @@ class ExperimentBatchTests(unittest.TestCase):
         )
         try:
             deadline = time.monotonic() + 15
-            while not list((self.study / "results/runs").glob("*/waiting")):
+            while not list((self.study / "results/runs").rglob("waiting")):
                 if process.poll() is not None or time.monotonic() >= deadline:
                     self.fail("Frozen runner fixture did not start")
                 time.sleep(0.05)
@@ -843,7 +945,7 @@ class ExperimentBatchTests(unittest.TestCase):
             _, error = process.communicate(timeout=10)
             self.assertEqual(process.returncode, 128 + number, error)
             self.assertEqual(
-                len(list((self.study / "results/runs").glob("*/terminated"))), 1
+                len(list((self.study / "results/runs").rglob("terminated"))), 1
             )
             self.assertEqual(len(self.calls()), 1)
             self.assertIn("unattempted", self.scope_index())
@@ -892,6 +994,40 @@ class ExperimentBatchTests(unittest.TestCase):
         self.assertEqual(evidence_digest(reference), before)
         self.assertEqual(evidence_digest(copied), before)
         self.assertEqual(self.calls(), [])
+
+    def test_sealed_batch_reference_dispatches_without_legacy_run_inventory(self):
+        self.create()
+        reference = self.study / "results/reference/adopted"
+        reference.mkdir()
+        descriptor = reference / "manifest.json"
+        descriptor.write_text(
+            json.dumps(
+                {
+                    "schema": "xbrainlab.assistant_experiment_reference.v1",
+                    "root": "../../..",
+                    "runs": [],
+                }
+            )
+        )
+        # Dispatch only: comparison itself owns row/schema completeness checks.
+        with patch.object(self.api, "_invoke", return_value=0) as invoke:
+            with self.assertRaisesRegex(ValueError, "descriptor must be sealed"):
+                self.api.compare_experiment(self.study, reference, reference)
+            invoke.assert_not_called()
+            manifest_path = self.study / "snapshot/manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["files"][descriptor.relative_to(self.study).as_posix()] = (
+                self.api.package_api._digest(descriptor)
+            )
+            manifest_path.write_text(json.dumps(manifest))
+            self.assertEqual(
+                self.api.compare_experiment(self.study, reference, reference), 0
+            )
+            self.assertIn(str(reference), invoke.call_args.args[0])
+            descriptor.write_text(descriptor.read_text() + "\n")
+            with self.assertRaisesRegex(ValueError, "Frozen experiment file differs"):
+                self.api.compare_experiment(self.study, reference, reference)
+            self.assertEqual(invoke.call_count, 1)
 
     def test_changed_reference_copy_is_rejected_without_altering_original(self):
         reference = compare_tests.fixture(

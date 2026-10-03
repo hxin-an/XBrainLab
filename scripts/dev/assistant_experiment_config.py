@@ -56,10 +56,12 @@ def experiment_identity(config: dict) -> dict:
         raise ValueError("Unsupported experiment schema, split or purpose")
     if purpose == "engineering-smoke" and split != "DEV":
         raise ValueError("Engineering smoke only permits DEV")
-    if any(key in config for key in ("prompt_profile", "repeats")) and (
+    if "prompt_profile" in config and purpose != "research":
+        raise ValueError("Frozen prompt profiles require a research experiment")
+    if "repeats" in config and (
         purpose != "research" or split not in {"VALID", "TEST"}
     ):
-        raise ValueError("Profile/repeat overrides require research VALID or TEST")
+        raise ValueError("Repeat overrides require research VALID or TEST")
     if "prompt_profile" in config and config["prompt_profile"] != "frozen-dev-round":
         raise ValueError("Unknown frozen prompt profile")
     if "repeats" in config and config["repeats"] is None:

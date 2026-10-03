@@ -154,9 +154,13 @@ def test_profile_and_repeat_opt_ins_reject_invalid_values(tmp_path, field, value
         protocol.experiment_identity(config)
 
 
-@pytest.mark.parametrize("purpose", ["research", "engineering-smoke"])
 @pytest.mark.parametrize(
-    "field,value", [("prompt_profile", "frozen-dev-round"), ("repeats", [0])]
+    "purpose,field,value",
+    [
+        ("engineering-smoke", "prompt_profile", "frozen-dev-round"),
+        ("engineering-smoke", "repeats", [0]),
+        ("research", "repeats", [0]),
+    ],
 )
 def test_profile_and_repeat_opt_ins_do_not_redefine_dev(
     tmp_path, purpose, field, value
