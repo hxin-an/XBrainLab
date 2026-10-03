@@ -187,6 +187,7 @@ def fixture(
         "jobs": jobs,
     }
     manifest_sha = save(root / "raw/manifest.json", manifest)
+    journal.append({"event": "session_end", "cleanup_certified": True})
     journal_bytes = "".join(json.dumps(item) + "\n" for item in journal).encode()
     (root / "raw/journal.jsonl").write_bytes(journal_bytes)
     report = {

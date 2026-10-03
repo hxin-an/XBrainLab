@@ -1,5 +1,6 @@
 """Whole batches compare saved evidence, not inferred or re-scored answers."""
 
+import hashlib
 import json
 
 import pytest
@@ -205,3 +206,36 @@ def test_report_failure_does_not_certify_reproduction_or_erase_raw_agreement(
     assert actual["classification"] == "incompatible_or_unknown"
     assert actual["summary"]["final"]["tool_parameters_equal"]["rate"] == 1
     assert actual["scopes"]["stages/dev/round-01"]["runs"][0]["issues"]
+
+
+@pytest.mark.parametrize("change", ["missing", "false", "duplicate", "not_terminal"])
+def test_complete_report_cannot_override_uncertified_journal(tmp_path, change):
+    from scripts.dev.assistant_experiment_batch_compare import compare_batches
+
+    root = tmp_path / "a"
+    run = fixture(root / "dev/round-01", [[("resample", {"sfreq": 64}, True)]])
+    batch(root, [entry()])
+    journal = run / "raw/journal.jsonl"
+    records = [json.loads(line) for line in journal.read_text().splitlines()]
+    if change == "missing":
+        records.pop()
+    elif change == "false":
+        records[-1]["cleanup_certified"] = False
+    elif change == "duplicate":
+        records.append(dict(records[-1]))
+    else:
+        records.append({"event": "session_start"})
+    content = "".join(json.dumps(record) + "\n" for record in records).encode()
+    journal.write_bytes(content)
+    report_path = run / "reports/20260929/report.json"
+    report = json.loads(report_path.read_text())
+    report["journal_sha256"] = hashlib.sha256(content).hexdigest()
+    save(report_path, report)
+    actual = compare_batches(root, root)
+    assert actual["classification"] == "incompatible_or_unknown"
+    assert actual["summary"]["final"]["tool_parameters_equal"]["rate"] == 1
+    assert (
+        "journal_session_cleanup_uncertified"
+        in actual["scopes"]["stages/dev/round-01"]["runs"][0]["issues"]
+    )
+    assert actual["original_evidence_unchanged"] is True

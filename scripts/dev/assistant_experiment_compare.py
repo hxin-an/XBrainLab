@@ -219,6 +219,16 @@ def _load(run: Path) -> dict:
             or report.get("session_cleanup_certified") is not True
         ):
             state["issues"].append("report_incomplete_or_cleanup_uncertified")
+        session_ends = [
+            record for record in records if record.get("event") == "session_end"
+        ]
+        if (
+            len(session_ends) != 1
+            or not records
+            or records[-1].get("event") != "session_end"
+            or session_ends[0].get("cleanup_certified") is not True
+        ):
+            state["issues"].append("journal_session_cleanup_uncertified")
         reported = defaultdict(list)
         for row in report["cases"]:
             reported[row["id"]].append(row)
