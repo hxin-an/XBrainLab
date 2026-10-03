@@ -98,7 +98,9 @@ def test_publication_during_active_training_mutation_still_fails_closed() -> Non
     writer.start()
     try:
         assert mutating.wait(THREAD_WATCHDOG_SECONDS)
+        before = time.monotonic()
         state = service.get_state()
+        assert time.monotonic() - before < 1.0
         assert state.state_reliable is False
         assert service._committed_view_publication().usable is False
     finally:
@@ -106,6 +108,61 @@ def test_publication_during_active_training_mutation_still_fails_closed() -> Non
         writer.join(THREAD_WATCHDOG_SECONDS)
     assert not writer.is_alive()
     assert service.get_state().state_reliable is True
+    assert service._committed_view_publication().usable is True
+
+
+def test_publication_waits_for_an_already_active_short_training_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Busy-at-entry is different from an update starting inside a stable read."""
+    study = Study()
+    trainer = Trainer([])
+    study.training_manager.trainer = trainer
+    service = ApplicationService(study)
+    # Enlarge only the test budget to distinguish notification from sleeping
+    # until a timeout; production waits at most 50 ms per busy attempt.
+    monkeypatch.setattr(
+        "XBrainLab.backend.training.state_tracker._STABLE_READ_WAIT_SECONDS", 1.0
+    )
+    mutating = Event()
+    finish_update = Event()
+    reading = Event()
+    read_done = Event()
+    states = []
+
+    def update():
+        with trainer._state_tracker.mutation():
+            trainer.progress_text = "partial update"
+            mutating.set()
+            assert finish_update.wait(THREAD_WATCHDOG_SECONDS)
+            trainer.progress_text = "completed update"
+
+    def read():
+        reading.set()
+        states.append(service.get_state())
+        read_done.set()
+
+    writer = Thread(target=update)
+    reader = Thread(target=read)
+    writer.start()
+    try:
+        assert mutating.wait(THREAD_WATCHDOG_SECONDS)
+        reader.start()
+        assert reading.wait(THREAD_WATCHDOG_SECONDS)
+        # Tight optimistic retries used to return unavailable before this short
+        # update could finish. A bounded wait must let the writer complete.
+        assert not read_done.wait(0.02)
+        finish_update.set()
+        assert read_done.wait(0.2), "Mutation completion must notify, not sleep"
+    finally:
+        finish_update.set()
+        writer.join(THREAD_WATCHDOG_SECONDS)
+        if reader.ident is not None:
+            reader.join(THREAD_WATCHDOG_SECONDS)
+    assert not writer.is_alive()
+    assert not reader.is_alive()
+    assert len(states) == 1
+    assert states[0].state_reliable is True
     assert service._committed_view_publication().usable is True
 
 

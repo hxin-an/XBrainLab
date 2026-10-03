@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -2080,14 +2080,19 @@ class TrainingManager:
 
         Identity and saliency publication precede the trainer tracker. Status
         getters re-enter these manager locks while assembling the view; no
-        callback or worker join runs inside this read scope. Untracked/busy
-        trainers still require the existing optimistic boundary verification.
+        callback or worker join runs inside this read scope. Active training
+        mutations touch only trainer/holder/record state, so their completion
+        needs neither manager lock while the tracker waits briefly. Untracked
+        or long-busy trainers still require optimistic boundary verification.
         """
         with self._training_pipeline_lock, self._saliency_job_lock:
             trainer = self.trainer
             read = getattr(type(trainer), "state_snapshot_read", None)
             if callable(read):
-                with read(trainer):
+                snapshot_read = cast(
+                    Callable[[Any], AbstractContextManager[None]], read
+                )
+                with snapshot_read(trainer):
                     yield
             else:
                 yield

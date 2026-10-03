@@ -63,6 +63,17 @@
   invalid→valid→invalid真Qt worker dispatch證明不送無效輸入，warmup／recovery不被誤攔。
   guard與backend鎖順序獨立review通過；相鄰audit/profile另82 tests通過。
   137真訓練壓測、同版CI及正式99尚未執行；無法由unit保證永不unavailable。
+- 59e252b0工程驗證：137真EEGNet首組200次fresh state/model card讀取中，sample3與147
+  仍因讀取開始前已active的mutation而unavailable；cleanup／stop通過，stress.json保留。
+  沒有推論／正式99未開跑。穩定起點的coherent scope不足以解決busy起點的緊密重抓，
+  繼續處理既有owner的有界讀取時機，不放寬fail-closed。CI另抓training_snapshot_read
+  動態context manager型別兩項診斷，一併修正；不重跑等價全套來代替定位。
+- 續修：沿既有tracker RLock用Condition等待短mutation完成，每次最多50ms、最多三次；
+  穩定讀取不等待，notify後立即續做，長忙碌仍fail-closed，無額外鎖／owner／重試輪數。
+  busy-at-entry已red→green；native196 tests及targeted typecheck零diagnostics，覆核後重新封存。
+- 使用者詢問舊實驗是否受影響：並行唯讀稽核已保存五輪DEV／原VALID／原TEST的實際首次
+  model state（可靠性／expected stage／training running），不推論、不重判、不修改歷史。
+  在結果出來前不以舊報告complete宣稱全部情境有效；不自行扩大正式重跑範圍。
 
 ## 已完成 — 原五版VALID及首次TEST
 
