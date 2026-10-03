@@ -324,10 +324,19 @@ def test_dev_resume_cannot_run_while_same_output_is_locked(run_inputs):
         runner.execute(manifest, bank, output, resume=True)
 
 
-@pytest.mark.parametrize("split", ["VALID", "TEST"])
+@pytest.mark.parametrize(
+    "split,alias,candidate,profile",
+    [
+        ("VALID", "phi4", 5, None),
+        ("TEST", "phi4", 5, None),
+        ("VALID", "granite4", 1, "frozen-dev-round"),
+        ("TEST", "granite4", 1, "frozen-dev-round"),
+    ],
+)
 def test_configured_research_runs_real_children_and_never_resends_wrong_valid(
-    run_inputs, tmp_path, monkeypatch, split
+    run_inputs, tmp_path, monkeypatch, split, alias, candidate, profile
 ):
+    from scripts.dev.assistant_pilot_case import validate_case_request
     from tests.unit.scripts.test_assistant_pilot_bank import _workbook
     from tests.unit.scripts.test_assistant_test_schedule import test_bank
     from tests.unit.scripts.test_run_assistant_dev import experiment_config, valid_rows
@@ -335,17 +344,27 @@ def test_configured_research_runs_real_children_and_never_resends_wrong_valid(
     manifest, bank, output = run_inputs
     config = experiment_config(tmp_path, split)
     config["models"] = [config["models"][1]]
+    config["models"][0].update(alias=alias, candidate_index=candidate)
+    if profile is not None:
+        config.update(prompt_profile=profile, repeats=[0])
     manifest["config"] = config
     manifest["runtime_config"] = {
-        "model_caches": {runner._MODELS["phi4"]: str(tmp_path)},
+        "model_caches": {runner._MODELS[alias]: str(tmp_path)},
         "embedding_cache": str(tmp_path),
-        "sources": {"phi4": config["models"][0]["source"]},
+        "sources": {alias: config["models"][0]["source"]},
     }
     bank = (
         test_bank()
         if split == "TEST"
         else runner.load_bank(_workbook(tmp_path, valid_rows()))
     )
+    if split == "TEST":
+        for case in bank["cases"]:
+            case.update(input="Open import", expected_workflow_stage="empty")
+            bank["fixtures"][case["fixture_id"]] = {
+                "metadata": {"fixture_id": case["fixture_id"]},
+                "conditions": {"stage": "empty"},
+            }
     manifest["experiment"] = runner.experiment_config.experiment_identity(config)
     selection = runner.experiment_config.build_selection(bank, config)
     manifest["selection"] = selection
@@ -403,13 +422,22 @@ def test_configured_research_runs_real_children_and_never_resends_wrong_valid(
     )
     assert runner.execute(manifest, bank, output) == 0
     requests = sorted((output / "conditions").glob("*.request.json"))
-    assert len(requests) == (12 if split == "TEST" else 3)
-    assert {runner._json(path)["repeat"] for path in requests} == {0, 1, 2}
+    repeats = {0} if profile else {0, 1, 2}
+    assert len(requests) == len(repeats) * (4 if split == "TEST" else 1)
+    assert {runner._json(path)["repeat"] for path in requests} == repeats
     for path in requests:
         payload = runner._json(path)
-        assert payload["candidate_index"] == 5
+        assert payload["candidate_index"] == candidate
         assert payload["source_head"] == "5" * 40
         assert payload["jobs"][0]["payload"]["repeat"] == payload["repeat"]
+        assert payload.get("prompt_profile") == profile
+        assert ("prompt_profile" in payload) is (profile is not None)
+        for item in payload["jobs"]:
+            request = item["payload"]
+            validate_case_request(request)
+            assert request["model_id"] == runner._MODELS[alias]
+            assert request.get("prompt_profile") == profile
+            assert ("prompt_profile" in request) is (profile is not None)
         if split == "TEST":
             expected = runner.experiment_config.ablation_policy(payload["ablation"])
             assert {key: payload[key] for key in expected} == expected

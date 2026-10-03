@@ -1,4 +1,4 @@
-"""Pilot case admission never accepts Test, drifting identities or output reuse."""
+"""Pilot case admission requires approved frozen identities and fresh output."""
 
 from pathlib import Path
 
@@ -80,6 +80,35 @@ def test_frozen_experiment_accepts_valid_repeat_without_weakening_legacy_gate():
     assert experiment_result_identity(request()) == {}
 
 
+@pytest.mark.parametrize("split", ["VALID", "TEST"])
+def test_explicit_prompt_profile_and_single_repeat_are_preserved(split):
+    from scripts.dev.assistant_pilot_case import experiment_result_identity
+
+    payload = experiment_request() if split == "VALID" else ablation_request()
+    payload.update(prompt_profile="frozen-dev-round", repeat=0)
+    payload["experiment"]["repeats"] = [0]
+    validate_case_request(payload)
+    assert experiment_result_identity(payload)["prompt_profile"] == "frozen-dev-round"
+    payload["repeat"] = 1
+    with pytest.raises(ValueError):
+        validate_case_request(payload)
+
+
+@pytest.mark.parametrize("profile", [None, "", "unknown"])
+def test_case_rejects_unknown_explicit_prompt_profile(profile):
+    payload = experiment_request()
+    payload["prompt_profile"] = profile
+    with pytest.raises(ValueError):
+        validate_case_request(payload)
+
+
+def test_legacy_case_cannot_opt_into_frozen_round_profile():
+    payload = request()
+    payload["prompt_profile"] = "frozen-dev-round"
+    with pytest.raises(ValueError):
+        validate_case_request(payload)
+
+
 def ablation_request(ablation="full"):
     """Synthetic input only; never read the sealed TEST question bank."""
     from scripts.dev.assistant_experiment_config import (
@@ -121,14 +150,28 @@ def ablation_request(ablation="full"):
 @pytest.mark.parametrize(
     "ablation", ["full", "rag-off", "tool-filter-off", "retry-off"]
 )
-def test_single_factor_test_identity_is_admitted_and_preserved(ablation):
+@pytest.mark.parametrize(
+    "model_id,candidate",
+    [
+        ("ibm-granite/granite-4.0-micro", 1),
+        ("ibm-granite/granite-3.3-2b-instruct", 2),
+        ("microsoft/Phi-4-mini-instruct", 5),
+        ("meta-llama/Llama-3.2-3B-Instruct", 3),
+        ("google/gemma-3-4b-it", 4),
+    ],
+)
+def test_single_factor_test_identity_is_admitted_and_preserved(
+    ablation, model_id, candidate
+):
     from scripts.dev.assistant_experiment_config import ablation_policy
     from scripts.dev.assistant_pilot_case import experiment_result_identity
 
     payload = ablation_request(ablation)
+    payload.update(model_id=model_id, candidate_index=candidate)
     validate_case_request(payload)
     identity = experiment_result_identity(payload)
     assert identity["ablation"] == ablation
+    assert identity["candidate_index"] == candidate
     for name, value in ablation_policy(ablation).items():
         assert type(identity[name]) is type(value)
         assert identity[name] == value
@@ -143,8 +186,8 @@ def test_single_factor_test_identity_is_admitted_and_preserved(ablation):
         ("max_format_recovery_attempts", 0),
         ("max_format_recovery_attempts", True),
         ("tool_filter_enabled", 1),
-        ("model_id", "google/gemma-3-4b-it"),
-        ("candidate_index", 4),
+        ("model_id", "unapproved/model"),
+        ("candidate_index", 6),
     ],
 )
 def test_test_runtime_rejects_factor_and_selected_system_drift(field, value):

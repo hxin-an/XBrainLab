@@ -346,6 +346,20 @@ def _case(
                 request.get(key) != job[key] or result.get(key) != job[key]
                 for key in ("candidate_index", "split", "repeat", "source_head")
             )
+            or any(
+                ("prompt_profile" in actual) != ("prompt_profile" in job)
+                or actual.get("prompt_profile") != job.get("prompt_profile")
+                for actual in (request, result, result.get("condition_evidence", {}))
+            )
+            or (
+                "prompt_profile" in job
+                and (
+                    type(result.get("condition_evidence", {}).get("candidate_index"))
+                    is not int
+                    or result["condition_evidence"]["candidate_index"]
+                    != job["candidate_index"]
+                )
+            )
             or result.get("seed") != 0
             or result.get("scores", {}).get("scorer_schema")
             not in {"xbrainlab.assistant_decision_scores.v3", *_PROPOSAL_SCORERS}
@@ -653,6 +667,10 @@ def _validate_experiment_inventory(manifest: dict) -> None:
         raise ValueError("Frozen experiment job inventory differs from configuration")
     decisions = {}
     for job in manifest["jobs"]:
+        if ("prompt_profile" in job) != ("prompt_profile" in config) or job.get(
+            "prompt_profile"
+        ) != config.get("prompt_profile"):
+            raise ValueError("Frozen prompt profile differs from configuration")
         if type(job["repeat"]) is not int or type(job["candidate_index"]) is not int:
             raise ValueError("Invalid candidate/repeat identity type")
         if decisions.setdefault(job["case_id"], job["decision"]) != job["decision"]:
@@ -949,6 +967,8 @@ def build_report(run: Path) -> dict:
                     "source_root",
                 )
             }
+            if "prompt_profile" in row:
+                aggregate["identity"]["prompt_profile"] = row["prompt_profile"]
     session_cleanup_certified = bool(
         records
         and records[-1]["event"] == "session_end"
@@ -1020,7 +1040,9 @@ def build_report(run: Path) -> dict:
     if current and experiment["stage"] == "TEST" and complete:
         from scripts.dev.assistant_experiment_statistics import paired_family_analysis
 
-        analysis["paired_family_analysis"] = paired_family_analysis(rows)
+        analysis["paired_family_analysis"] = paired_family_analysis(
+            rows, repeats=tuple(experiment["repeats"])
+        )
     return {
         **analysis,
         "schema": f"xbrainlab.assistant_{report_kind}_report.v{report_version}",

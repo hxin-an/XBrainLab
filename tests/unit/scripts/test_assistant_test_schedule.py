@@ -78,15 +78,107 @@ def test_test_schedule_is_1584_unique_jobs_in_twelve_rotated_sessions(tmp_path):
     )
 
 
+@pytest.mark.parametrize("alias", list(protocol.MODELS))
+@pytest.mark.parametrize("candidate", range(1, 6))
+def test_test_schedule_accepts_one_approved_frozen_winner(tmp_path, alias, candidate):
+    config = test_config(tmp_path)
+    original_policy = protocol.experiment_identity(config)
+    config["models"][0].update(alias=alias, candidate_index=candidate)
+    assert protocol.experiment_identity(config) == original_policy
+    selection = protocol.build_selection(test_bank(), config)
+    jobs = protocol.build_jobs(selection, config)
+    assert len(jobs) == len({job["id"] for job in jobs}) == 1584
+    sessions = Counter(protocol.job_condition_identity(job) for job in jobs)
+    assert len(sessions) == 12
+    assert set(sessions.values()) == {132}
+    assert {job["candidate_index"] for job in jobs} == {candidate}
+    assert {job["condition"] for job in jobs} == {
+        f"{alias}-{ablation}" for ablation in protocol.TEST_ABLATIONS
+    }
+    assert len(runner.condition_batches(jobs)) == 12
+    for ablation in protocol.TEST_ABLATIONS:
+        assert runner.condition_spec(f"{alias}-{ablation}") == (
+            protocol.MODELS[alias],
+            protocol.ablation_policy(ablation)["rag_enabled"],
+        )
+    for job in jobs:
+        for factor, value in protocol.ablation_policy(job["ablation"]).items():
+            assert job[factor] == value
+
+
+def test_test_condition_lookup_preserves_legacy_scope_and_rejects_unknowns():
+    assert runner.select_conditions("all") == list(runner.CONDITIONS)
+    assert len(runner.CONDITIONS) == 10
+    for condition, expected in runner.CONDITIONS.items():
+        assert runner.condition_spec(condition) == expected
+    with pytest.raises(ValueError, match="Unknown"):
+        runner.select_conditions("granite4-full")
+    for condition in ("unapproved-full", "phi4-extra-retry", "granite4-full-extra"):
+        with pytest.raises(KeyError):
+            runner.condition_spec(condition)
+
+
+@pytest.mark.parametrize("split", ["VALID", "TEST"])
+def test_explicit_frozen_round_single_repeat_is_threaded_without_changing_defaults(
+    tmp_path, split
+):
+    config = test_config(tmp_path)
+    config["split"] = split
+    original = protocol.experiment_identity(config)
+    selection = {"case_ids": [f"{split}-A01-01-V0"]}
+    legacy_jobs = protocol.build_jobs(selection, config)
+    assert original["repeats"] == [0, 1, 2]
+    assert all("prompt_profile" not in job for job in legacy_jobs)
+    config.update(prompt_profile="frozen-dev-round", repeats=[0])
+    policy = protocol.experiment_identity(config)
+    assert policy == {**original, "repeats": [0]}
+    assert protocol.is_experiment_protocol(policy)
+    jobs = protocol.build_jobs(selection, config)
+    assert len(jobs) == (4 if split == "TEST" else 1)
+    assert {job["repeat"] for job in jobs} == {0}
+    assert all(job["prompt_profile"] == "frozen-dev-round" for job in jobs)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("prompt_profile", value) for value in (None, "", "unapproved")]
+    + [
+        ("repeats", value)
+        for value in (None, [], [1], [0, 1], [False], [0, 0], [2, 1, 0])
+    ],
+)
+def test_profile_and_repeat_opt_ins_reject_invalid_values(tmp_path, field, value):
+    config = test_config(tmp_path)
+    config[field] = value
+    with pytest.raises(ValueError):
+        protocol.experiment_identity(config)
+
+
+@pytest.mark.parametrize("purpose", ["research", "engineering-smoke"])
+@pytest.mark.parametrize(
+    "field,value", [("prompt_profile", "frozen-dev-round"), ("repeats", [0])]
+)
+def test_profile_and_repeat_opt_ins_do_not_redefine_dev(
+    tmp_path, purpose, field, value
+):
+    config = test_config(tmp_path)
+    config.update(split="DEV", purpose=purpose)
+    if purpose == "engineering-smoke":
+        config["case_ids"] = ["DEV-A01-01-V0"]
+    config[field] = value
+    with pytest.raises(ValueError):
+        protocol.experiment_identity(config)
+
+
 @pytest.mark.parametrize(
     "mutation", ["candidate", "model", "two-models", "subset", "smoke"]
 )
-def test_test_config_rejects_unfrozen_winner_or_scope(tmp_path, mutation):
+def test_test_config_rejects_unapproved_winner_or_scope(tmp_path, mutation):
     config = test_config(tmp_path)
     if mutation == "candidate":
-        config["models"][0]["candidate_index"] = 4
+        config["models"][0]["candidate_index"] = 6
     elif mutation == "model":
-        config["models"][0]["alias"] = "granite4"
+        config["models"][0]["alias"] = "unapproved-model"
     elif mutation == "two-models":
         other = deepcopy(config["models"][0])
         other["alias"] = "granite4"

@@ -14,17 +14,26 @@ _DRAWS = 10_000
 _SEED = 0
 
 
-def paired_family_analysis(rows: list[dict]) -> dict:
+def paired_family_analysis(
+    rows: list[dict], *, repeats: tuple[int, ...] = _REPEATS
+) -> dict:
     """Estimate three-category macro accuracy and paired Full-minus-off intervals.
 
-    Each family is one cluster: its two variants, three repeats and four
+    Each family is one cluster: its two variants, declared repeats and four
     conditions travel together. Resampling is with replacement within each
     decision category. Repeats are not treated as independent new questions.
     The caller owns source/scorer/capture validation; this function additionally
     rejects incomplete, unverified or inconsistent scored TEST matrices.
     """
-    if not isinstance(rows, list) or len(rows) != 1584:
-        raise ValueError("TEST statistics require the complete 1584-row matrix")
+    if (
+        type(repeats) is not tuple
+        or any(type(repeat) is not int for repeat in repeats)
+        or repeats not in ((0,), _REPEATS)
+    ):
+        raise ValueError("Unsupported declared TEST repeat policy")
+    expected_count = 132 * len(TEST_ABLATIONS) * len(repeats)
+    if not isinstance(rows, list) or len(rows) != expected_count:
+        raise ValueError("TEST statistics require the complete declared matrix")
     matrix, case_identity, family_category = {}, {}, {}
     family_cases = defaultdict(set)
     for row in rows:
@@ -48,7 +57,7 @@ def paired_family_analysis(rows: list[dict]) -> dict:
             or not isinstance(decision, str)
             or decision not in _FAMILIES
             or type(repeat) is not int
-            or repeat not in _REPEATS
+            or repeat not in repeats
             or not isinstance(ablation, str)
             or ablation not in TEST_ABLATIONS
         ):
@@ -80,7 +89,7 @@ def paired_family_analysis(rows: list[dict]) -> dict:
     expected = {
         (case, repeat, ablation)
         for case in case_identity
-        for repeat in _REPEATS
+        for repeat in repeats
         for ablation in TEST_ABLATIONS
     }
     if matrix.keys() != expected:
@@ -91,7 +100,7 @@ def paired_family_analysis(rows: list[dict]) -> dict:
     bootstrap = np.zeros((_DRAWS, len(TEST_ABLATIONS)))
     category_scores = {}
     for decision, families in grouped.items():
-        # N families x four conditions; each cell averages all six observations.
+        # N families x four conditions; keep every declared repeat in its cluster.
         values = np.array(
             [
                 [
@@ -99,7 +108,7 @@ def paired_family_analysis(rows: list[dict]) -> dict:
                         [
                             matrix[(case, repeat, ablation)]
                             for case in sorted(family_cases[family])
-                            for repeat in _REPEATS
+                            for repeat in repeats
                         ]
                     )
                     for ablation in TEST_ABLATIONS
@@ -133,7 +142,7 @@ def paired_family_analysis(rows: list[dict]) -> dict:
             "cases": 132,
             "families_by_category": dict(_FAMILIES),
             "variants_per_family": 2,
-            "repeats": list(_REPEATS),
+            "repeats": list(repeats),
             "measurements": len(rows),
         },
         "conditions": {
@@ -159,7 +168,9 @@ def paired_family_analysis(rows: list[dict]) -> dict:
         },
         "limitations": [
             "Intervals are conditional on the bank's task coverage and family sampling assumptions, not all real users.",
-            "Three repeats measure execution variability on the same questions, not three independent banks.",
+            "Three repeats measure execution variability on the same questions, not three independent banks."
+            if repeats == _REPEATS
+            else "Single repeat: intervals reflect family sampling, not repeated-execution variability.",
             "Intervals are pointwise, not simultaneous multiple-comparison significance claims; no p-values are computed.",
         ],
     }

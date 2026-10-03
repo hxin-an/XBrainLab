@@ -220,7 +220,7 @@ def test_macro_equal_weights_categories_and_first_final_are_separate(tmp_path):
     assert actual["active_budget"]["charged_seconds"] == 100
 
 
-def _experiment_run(tmp_path, *, split="VALID"):
+def _experiment_run(tmp_path, *, split="VALID", repeats=None, prompt_profile=None):
     from scripts.dev import assistant_experiment_config as contract
 
     template = _run(tmp_path, [("Action", True, True, "completed")], dev=True)
@@ -258,6 +258,10 @@ def _experiment_run(tmp_path, *, split="VALID"):
             }
         ],
     }
+    if repeats is not None:
+        config["repeats"] = repeats
+    if prompt_profile is not None:
+        config["prompt_profile"] = prompt_profile
     selection = contract.build_selection(
         {"source": {"sha256": "bank"}, "cases": cases}, config
     )
@@ -285,6 +289,8 @@ def _experiment_run(tmp_path, *, split="VALID"):
             key: job[key]
             for key in ("candidate_index", "split", "repeat", "source_head")
         }
+        if prompt_profile is not None:
+            identity["prompt_profile"] = prompt_profile
         if split == "TEST":
             identity.update(
                 ablation=job["ablation"], **contract.ablation_policy(job["ablation"])
@@ -304,6 +310,9 @@ def _experiment_run(tmp_path, *, split="VALID"):
             final_decision_correct=job["repeat"] != 1,
         )
         result["condition_evidence"]["artifact_id"] = condition
+        if prompt_profile is not None:
+            result["condition_evidence"]["prompt_profile"] = prompt_profile
+            result["condition_evidence"]["candidate_index"] = job["candidate_index"]
         if split == "TEST":
             result["condition_evidence"]["ablation_factors"] = contract.ablation_policy(
                 job["ablation"]
@@ -368,6 +377,51 @@ def _experiment_run(tmp_path, *, split="VALID"):
         "".join(json.dumps(row) + "\n" for row in journal)
     )
     return root
+
+
+@pytest.mark.parametrize("split", ["VALID", "TEST"])
+def test_single_repeat_report_preserves_explicit_prompt_profile(tmp_path, split):
+    root = _experiment_run(
+        tmp_path, split=split, repeats=[0], prompt_profile="frozen-dev-round"
+    )
+    result = report.build_report(root)
+    assert result["complete_selected_schedule"] is True
+    assert len(result["cases"]) == (528 if split == "TEST" else 99)
+    assert len(result["conditions"]) == (4 if split == "TEST" else 1)
+    for summary in result["repeat_summary"].values():
+        assert summary["complete"] is True
+        assert summary["repeats"] == [0]
+        assert summary["identity"]["prompt_profile"] == "frozen-dev-round"
+    if split == "TEST":
+        assert (
+            result["paired_family_analysis"]["full_minus_ablation"]["retry-off"][
+                "estimate"
+            ]
+            == 0
+        )
+    _change_result(root, lambda value: value.pop("prompt_profile"))
+    damaged = report.build_report(root)
+    assert damaged["complete_selected_schedule"] is False
+    assert damaged["cases"][0]["evidence_status"] == "invalid_evidence"
+    _change_result(
+        root,
+        lambda value: (
+            value.update(prompt_profile="frozen-dev-round"),
+            value["condition_evidence"].update(candidate_index=99),
+        ),
+    )
+    assert (
+        report.build_report(root)["cases"][0]["evidence_status"] == "invalid_evidence"
+    )
+
+
+def test_legacy_experiment_cannot_acquire_a_profile_in_saved_result(tmp_path):
+    root = _experiment_run(tmp_path, repeats=[0])
+    assert report.build_report(root)["complete_selected_schedule"] is True
+    _change_result(root, lambda value: value.update(prompt_profile="frozen-dev-round"))
+    assert (
+        report.build_report(root)["cases"][0]["evidence_status"] == "invalid_evidence"
+    )
 
 
 def test_test_report_keeps_four_ablations_and_three_repeats(tmp_path):

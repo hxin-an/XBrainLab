@@ -44,7 +44,7 @@ def experiment_identity(config: dict) -> dict:
     if (
         not isinstance(config, dict)
         or not required <= config.keys()
-        or config.keys() - required - {"case_ids"}
+        or config.keys() - required - {"case_ids", "prompt_profile", "repeats"}
     ):
         raise ValueError("Unknown or missing experiment config fields")
     split, purpose = config["split"], config["purpose"]
@@ -56,6 +56,14 @@ def experiment_identity(config: dict) -> dict:
         raise ValueError("Unsupported experiment schema, split or purpose")
     if purpose == "engineering-smoke" and split != "DEV":
         raise ValueError("Engineering smoke only permits DEV")
+    if any(key in config for key in ("prompt_profile", "repeats")) and (
+        purpose != "research" or split not in {"VALID", "TEST"}
+    ):
+        raise ValueError("Profile/repeat overrides require research VALID or TEST")
+    if "prompt_profile" in config and config["prompt_profile"] != "frozen-dev-round":
+        raise ValueError("Unknown frozen prompt profile")
+    if "repeats" in config and config["repeats"] is None:
+        raise ValueError("Explicit repeats must be a bounded list")
     ids = config.get("case_ids")
     if "case_ids" in config and (
         purpose != "engineering-smoke"
@@ -121,16 +129,12 @@ def experiment_identity(config: dict) -> dict:
             for value in (source["root"], model["model_cache"])
         ):
             raise ValueError("Candidate source/cache paths must be explicit")
-    if split == "TEST" and (
-        len(models) != 1
-        or models[0]["alias"] != "phi4"
-        or models[0]["candidate_index"] != 5
-    ):
-        raise ValueError("TEST requires the frozen VALID winner Phi-4 Mini candidate 5")
-    return _policy(split, purpose)
+    if split == "TEST" and len(models) != 1:
+        raise ValueError("TEST requires exactly one frozen VALID winner")
+    return _policy(split, purpose, repeats=config.get("repeats"))
 
 
-def _policy(split: str, purpose: str) -> dict:
+def _policy(split: str, purpose: str, *, repeats: list | None = None) -> dict:
     if (split, purpose) not in {
         ("DEV", "research"),
         ("VALID", "research"),
@@ -138,11 +142,19 @@ def _policy(split: str, purpose: str) -> dict:
         ("DEV", "engineering-smoke"),
     }:
         raise ValueError("Unsupported experiment stage/purpose")
+    default_repeats = [0, 1, 2] if split in {"VALID", "TEST"} else [0]
+    if repeats is not None and (
+        type(repeats) is not list
+        or any(type(value) is not int for value in repeats)
+        or repeats
+        not in ([default_repeats, [0]] if split in {"VALID", "TEST"} else [[0]])
+    ):
+        raise ValueError("Unsupported frozen repeat schedule")
     policy = {
         "protocol": PROTOCOL,
         "stage": split,
         "purpose": purpose,
-        "repeats": [0, 1, 2] if split in {"VALID", "TEST"} else [0],
+        "repeats": default_repeats if repeats is None else list(repeats),
         "seed": 0,
         "rag_enabled": True,
         "max_candidates": 5,
@@ -165,7 +177,11 @@ def is_experiment_protocol(experiment: object) -> bool:
         return False
     try:
         return json.dumps(experiment, sort_keys=True, allow_nan=False) == json.dumps(
-            _policy(experiment.get("stage"), experiment.get("purpose")),
+            _policy(
+                experiment.get("stage"),
+                experiment.get("purpose"),
+                repeats=experiment.get("repeats"),
+            ),
             sort_keys=True,
             allow_nan=False,
         )
@@ -238,6 +254,8 @@ def build_jobs(selection: dict, config: dict) -> list[dict]:
                     "source_head": model["source"]["head"],
                     "source_root": model["source"]["root"],
                 }
+                if "prompt_profile" in config:
+                    identity["prompt_profile"] = config["prompt_profile"]
                 if ablation is not None:
                     identity.update(ablation=ablation, **ablation_policy(ablation))
                 for case_id in selection["case_ids"]:

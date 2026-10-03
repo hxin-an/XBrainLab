@@ -37,7 +37,7 @@ def model_contexts(
     No model is loaded and no retrieval is performed here. Separate replay of
     saved RAG captures checks reference retention and native tokenizer limits.
     """
-    from scripts.dev.assistant_dev_context import DevContextAssembler
+    from scripts.dev.assistant_dev_profiles import build_dev_context
     from scripts.dev.assistant_experiment_config import (
         MODELS,
         TEST_ABLATIONS,
@@ -52,6 +52,11 @@ def model_contexts(
     )
     is_test = config is not None and config["split"] == "TEST"
     contexts = {}
+    candidates = (
+        {}
+        if config is None
+        else {model["alias"]: model["candidate_index"] for model in config["models"]}
+    )
     profiles = [
         (alias, ablation)
         for alias in aliases
@@ -60,11 +65,13 @@ def model_contexts(
     for alias, ablation in profiles:
         model_id = MODELS[alias]
         policy = ablation_policy(ablation)
-        assembler = DevContextAssembler(
+        assembler = build_dev_context(
             registry,
             study,
             model_id=model_id,
             tool_filter_enabled=policy["tool_filter_enabled"],
+            candidate_index=candidates.get(alias),
+            prompt_profile=None if config is None else config.get("prompt_profile"),
         )
         captures = []
         for case in cases:
@@ -93,6 +100,11 @@ def model_contexts(
                     ).hexdigest(),
                 }
             )
+            if config is not None and "prompt_profile" in config:
+                captures[-1].update(
+                    prompt_profile=assembler.prompt_profile,
+                    candidate_index=assembler.candidate_index,
+                )
         contexts[f"{alias}-{ablation}" if is_test else model_id] = captures
     return contexts
 

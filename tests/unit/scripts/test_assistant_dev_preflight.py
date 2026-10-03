@@ -206,3 +206,37 @@ def test_preflight_captures_all_profiles_with_current_request_and_real_publicati
         assert len(systems) == 5
     finally:
         service.close()
+
+
+@pytest.mark.parametrize("candidate", range(1, 6))
+def test_preflight_uses_explicit_historical_candidate(live_study, candidate):
+    from tests.unit.scripts.test_assistant_dev_profiles import archived_class
+
+    study, _service = live_study
+    registry = ToolRegistry()
+    for tool in get_all_tools():
+        registry.register(tool)
+    config = _test_config()
+    config["split"] = "VALID"
+    config["prompt_profile"] = "frozen-dev-round"
+    config["models"][0]["candidate_index"] = candidate
+    cases = [{"case_id": "synthetic", "input": "Open import."}]
+    contexts = model_contexts(registry, study, cases, config=config)
+    kwargs = {"model_id": MODELS["phi4"]} if candidate != 1 else {}
+    original = archived_class(candidate)(registry, study, **kwargs)
+    capture = contexts[MODELS["phi4"]][0]
+    assert capture["messages"] == original.get_messages(
+        [{"role": "user", "content": cases[0]["input"]}]
+    )
+    assert capture["candidate_index"] == candidate
+    assert capture["prompt_profile"] == "frozen-dev-round"
+
+
+@pytest.fixture
+def live_study():
+    study = Study()
+    service = get_application_service(study)
+    try:
+        yield study, service
+    finally:
+        service.close()

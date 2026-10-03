@@ -84,7 +84,13 @@ def validate_condition_request(payload: dict) -> None:
         ):
             raise ValueError("Initial DEV requires its exact experiment and RAG on")
     first = jobs[0]["payload"]
-    condition_keys = ["candidate_index", "split", "repeat", "source_head"]
+    condition_keys = [
+        "candidate_index",
+        "split",
+        "repeat",
+        "source_head",
+        "prompt_profile",
+    ]
     if current and first.get("split") == "TEST":
         condition_keys.extend(
             (
@@ -213,15 +219,17 @@ class PilotConditionSession:
                     worker_factory=worker_factory,
                 )
                 if payload.get("experiment") is not None:
-                    from scripts.dev.assistant_dev_context import DevContextAssembler
+                    from scripts.dev.assistant_dev_profiles import build_dev_context
 
                     original = controller.assembler
-                    controller.assembler = DevContextAssembler(
+                    controller.assembler = build_dev_context(
                         original.registry,
                         original.study_state,
                         model_id=payload["model_id"],
                         application_runtime=original.application_runtime,
                         tool_filter_enabled=payload.get("tool_filter_enabled", True),
+                        candidate_index=payload.get("candidate_index"),
+                        prompt_profile=payload.get("prompt_profile"),
                     )
                     if payload.get("split") == "TEST":
                         controller._strict_envelope_recovery_policy = replace(
@@ -320,6 +328,12 @@ class PilotConditionSession:
             "rag_warmup": rag_warmup,
             "runtime": asdict(self.runtime.current),
         }
+        if "prompt_profile" in payload:
+            assembler = self.manager.agent_controller.assembler
+            self.condition_evidence.update(
+                prompt_profile=assembler.prompt_profile,
+                candidate_index=assembler.candidate_index,
+            )
         if payload.get("split") == "TEST":
             self.condition_evidence["ablation_factors"] = {
                 "rag_enabled": self.manager.agent_controller._rag_enabled,

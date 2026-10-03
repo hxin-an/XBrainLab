@@ -56,6 +56,36 @@ def test_condition_accepts_distinct_cases_with_one_runtime_identity():
     validate_condition_request(condition_request())
 
 
+@pytest.mark.parametrize("candidate", [1, 2, 3, 4, 5])
+def test_research_session_wires_explicit_frozen_candidate(
+    qtbot, tmp_path, controlled_condition_runtime, candidate
+):
+    from tests.unit.scripts.test_assistant_dev_profiles import archived_class
+    from tests.unit.scripts.test_assistant_pilot_case import experiment_request
+
+    payload = experiment_request(split="VALID", repeat=0)
+    payload["candidate_index"] = candidate
+    payload["prompt_profile"] = "frozen-dev-round"
+    payload["rag_cache"] = str(tmp_path / "external-rag")
+    session = PilotConditionSession.__new__(PilotConditionSession)
+    with patch.dict(os.environ):
+        try:
+            session.__init__(payload, tmp_path)
+            assembler = session.manager.agent_controller.assembler
+            kwargs = {"application_runtime": assembler.application_runtime}
+            if candidate != 1:
+                kwargs["model_id"] = payload["model_id"]
+            original = archived_class(candidate)(
+                assembler.registry, assembler.study_state, **kwargs
+            )
+            history = [{"role": "user", "content": payload["case"]["input"]}]
+            assert assembler.get_messages(history) == original.get_messages(history)
+            assert session.condition_evidence["prompt_profile"] == "frozen-dev-round"
+            assert session.condition_evidence["candidate_index"] == candidate
+        finally:
+            assert session.close()
+
+
 def test_missing_research_profile_is_rejected_before_runtime_bootstrap(
     monkeypatch, tmp_path
 ):
@@ -1029,6 +1059,31 @@ def test_condition_cannot_mix_candidates_even_with_the_same_model_and_repeat():
     payload["source_head"] = first["source_head"]
     second = copy.deepcopy(first)
     second["candidate_index"] = 3
+    payload["jobs"].append({"id": "second", "payload": second})
+    with pytest.raises(ValueError, match="identit"):
+        validate_condition_request(payload)
+
+
+def test_condition_cannot_mix_legacy_and_explicit_frozen_profiles():
+    from scripts.dev.assistant_pilot_case import experiment_result_identity
+    from tests.unit.scripts.test_assistant_pilot_case import experiment_request
+
+    first = experiment_request()
+    first["prompt_profile"] = "frozen-dev-round"
+    payload = {
+        "schema": SCHEMA,
+        "condition": "gemma3-rag-on",
+        "case_start_budget_seconds": 1000,
+        **experiment_result_identity(first),
+        "jobs": [{"id": "first", "payload": first}],
+    }
+    validate_condition_request(payload)
+    payload.pop("prompt_profile")
+    with pytest.raises(ValueError, match="identity"):
+        validate_condition_request(payload)
+    payload["prompt_profile"] = first["prompt_profile"]
+    second = copy.deepcopy(first)
+    second.pop("prompt_profile")
     payload["jobs"].append({"id": "second", "payload": second})
     with pytest.raises(ValueError, match="identit"):
         validate_condition_request(payload)

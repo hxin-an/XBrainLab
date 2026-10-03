@@ -58,11 +58,11 @@ CONDITIONS = {
 
 def condition_spec(condition: str) -> tuple[str, bool]:
     """Resolve sealed TEST factors without widening the legacy Pilot --all scope."""
-    for ablation in experiment_config.TEST_ABLATIONS:
-        if condition == "phi4-" + ablation:
-            return _MODELS["phi4"], experiment_config.ablation_policy(ablation)[
-                "rag_enabled"
-            ]
+    alias, _, ablation = condition.partition("-")
+    if alias in _MODELS and ablation in experiment_config.TEST_ABLATIONS:
+        return _MODELS[alias], experiment_config.ablation_policy(ablation)[
+            "rag_enabled"
+        ]
     return CONDITIONS[condition]
 
 
@@ -674,6 +674,8 @@ def _execute(
                         ablation=job["ablation"],
                         **experiment_config.ablation_policy(job["ablation"]),
                     )
+                if "prompt_profile" in job:
+                    payload["prompt_profile"] = job["prompt_profile"]
                 artifact = job.get("artifact_id", job["id"])
                 case_request = output / "cases" / f"{artifact}.request.json"
                 if dev_initial and case_request.exists():
@@ -722,6 +724,8 @@ def _execute(
                 condition_payload.update(
                     ablation=ablation, **experiment_config.ablation_policy(ablation)
                 )
+            if "prompt_profile" in batch["jobs"][0]:
+                condition_payload["prompt_profile"] = batch["jobs"][0]["prompt_profile"]
             destination = output / "conditions" / condition_artifact
             request = destination.with_suffix(".request.json")
             _write_new(request, condition_payload)

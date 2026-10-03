@@ -2,130 +2,64 @@
 
 最後更新：`2026-10-03`
 
-## 目前 — TEST封存、三次完整量測與本機結果交付
+## 目前 — 25個凍結候選VALID，選版不同時接續TEST
 
-2026-10-02使用者批准完整TEST施工計畫及結果回存，要求節省額度、避免頻繁監控。
-基準head為7c4ac807；settings.json為使用者設定，不更動。VALID已完成並依既定規則
-選定Phi-4 Mini R5；現有runner/config尚未接通TEST及指定三項消融，不能直接開跑。
-Outcome：Full、RAG off、tool-catalog filter off、format retry off各132題×3 repeats，
-共1584筆有效案例（修復生成另計），完成報告、離線核對、題庫稽核及本機完整結果副本。
-Scope：沿用封存／runner／scorer／report owners，補TEST配置與單因素消融、必要fixture、
-無LLM預檢、獨立風險覆核、同head CI、137正式執行及NAS→本機完整VALID/TEST回存。
-Non-goals：除2026-10-03另批准的Host數字來源限制移除，不改UI或其他產品工具／Host契約；
-不改入選提示／RAG／生成／判分，不追加DEV、模型、
-B0或新環境，不merge，不依TEST錯答調整或重跑。失敗source與原始證據保留。
-研究因素先凍結再讀TEST；catalog off只擴大呈現目錄，原RAG eligibility、固定示意、
-state、backend admission與confirmation保持不變。RAG off與retry off各只關自身因素。
-固定greedy seed0、既有137環境／Phi snapshot；三repeat按四條件循環輪換排程，
-各condition獨立session、逐題reset及既有warmup。不以Host阻擋把錯誤提案計正確。
-分析保持三類macro及每repeat P50/P95再平均；呈現各類、always-respond 66.67%參照、
-配對變化、retry救回／成本與模型／Host／執行分層。補三類分層family配對bootstrap，
-10000 draws、analysis seed0，所有變體／repeat／condition一同取樣；區間僅對題庫涵蓋
-的任務作條件式推論，不當成三個repeat的新樣本或多重檢定整體顯著性。
-步驟：固化協定→DEV/VALID paired-input與配置red-green→精確source／CI與獨立覆核
-→解封TEST及無LLM完整fixture/input/token預檢→新封存→137單次正式啟動→完成核對。
-TEST正式啟動後做下列題庫／示例稽核，不拿TEST回饋調提示。若真fixture缺口需修，
-只修工程接線並重新封存／驗證；實質oracle或研究決策缺口另交使用者，不暗改。
-Focused validation：單因素完整輸入差異、blocked工具仍受Host拒絕、off條件證據正確、
-12 conditions×132唯一jobs、三repeat、封存防覆寫與新run、cleanup／退出／原scorer重播。
-交付：NAS stages/test完整source/config/run；本機碩論準備/實驗/result/VALID及TEST
-完整成功run（index/reports/raw/inputs/launches/audits/manifest），核對逐檔hash與離線links；
-不複製權重、環境或暫存EEG，不覆寫舊批次。UI無改動，不新增產品手測門檻。
-監控：啟動確認一次，之後按預估時程低頻讀取摘要或終態；不連續讀log／逐題輪詢。
-等待期間做已授權離線分析／回存，無工作則使用等待機制；異常才深入診斷。
-Stop：1584筆／12完整conditions、正常退出與cleanup、報告／稽核／回存驗證完成，
-或需要使用者提供的TEST來源／新決策等真實blocker。不因compact、CI pending或啟動就停。
-Checkpoint：TEST排程／reader／runtime已接通，產品0修改；173runtime、61reader/preflight、
-79配置相鄰、30parent、51封存及23統計focused checks通過，非真模型分數。
-獨立覆核發現報告漏驗actual runtime factors，先red後補嚴格核對；完整1584報告及2負例
-共3项green。離線重評9項通過；比較工具22項在UTF-8通過（初次cp950有5讀檔失敗，
-未改分數或產品）。完整報告其餘回歸已通過，新的exact head CI仍待執行。
-VALID已回存result/VALID/20261002-124746-8263faf9：10143原檔402369543bytes、10523
-離線links有效、逐檔hash讀回一致；排除1485個synthetic fixture及1共享模型link。
-TEST沿用既有NAS樹的stages/test入口、snapshot/sources及results/runs；不為外觀重複
-封存一份程式。local TEST仍按run-id集中。此為沿用現有封存owner的具體位置。
-完整題庫為附錄/題型_已審完整版.xlsx；研究因素凍結後已解封做無LLM工程預檢。
-封存f8af513f已完成99VALID×4真fixture／RAG／token預檢，Full對7c逐字一致且無截斷。
-解封TEST後64/66 fixtures通過；FX-TEST-A09-01的已審1–100Hz bandpass，以及
-FX-TEST-A11-02的已審channel selection起始狀態未被fixture支援，cleanup均正常。
-批准計畫內的必要工程修理：真Command建立上述已審狀態，保護波形／channel／publication；
-不改題庫、oracle、prompt、產品或研究因素，不用只修改狀態欄位冒充處理成功。
-保留f8失敗預檢，另封新source與CI，重驗66fixture及396VALID輸入；尚未TEST推論。
-兩fixture先2red，真Command數值／events／來源備份保護15green，完整fixture50green；
-獨立data/implementation覆核無阻擋。只scripts23增3刪、tests76增1刪，產品0。
-新封存fa9d4d54已通過396VALID及528TEST輸入預檢；66/66 TEST fixtures完成。
-Full與原7c輸入一致，三消融維持單因素，最大含retry3294tokens，無截斷。
-fa9 CI24成功／3scope skip及實物獨立覆核通過；publication完成，但run.sh於schema
-檢查拒絕，仍無TEST推論。真NAS舊入口hardcode353b53df bootstrap，在選新coordinator前
-先用舊config parser拒絕TEST；publisher測試漏掉真舊shell入口。原log／source保留。
-Next：同publisher/launcher owner修理歷史入口遷移，真shell red-green涵蓋TEST及舊scope；
-不得僅用直接python繞過不可用的./run.sh，不改題庫／prompt／scorer。
-複雜度／封存決策：沿用batch owner，production0、owner不增；migration只改shell及
-manifest對應hash，舊entry與manifest先exclusive封存。Coordinator/candidate/config仍fa9，
-不引入old runtime compatibility branch。修理tool另封SHA與CI，既有受測source預檢仍有效。
-真舊入口(TEST、DEV、root/compare dispatch)及失敗rollback通過後才恢復正式量測。
-入口修理已真shell重現TEST/DEV舊schema拒絕；獨立覆核補抓發布後中斷還原不一致，
-真os.replace後KeyboardInterrupt的entry及manifest兩負例先red後green，34項Linux batch通過。
-涵蓋修理後可啟動、未推論check、受測bytes不變、發布前/後中斷一致性、重試及非法head。
-獨立diff及部署helper覆核無剩餘阻擋；scripts113增8刪、tests208增，產品0。
-入口修理tool 12aebf9d exact CI24成功／3scope skip；NAS已保留舊entry/manifest並完成migration，
-真stages/test及stages/dev的./run.sh --check-environment均exit0，受測source/config仍fa9。
-正式run 20261002-171315-44094303已在第30題TEST-A08-01-V1因
-product_execution_observation_missing停止：29 recorded，cleanup true、runner exit1，原始資料保留。
-題目four/eighteen Hz，模型raw正確提出bandpass 4/18；Host參數來源驗證僅Arabic decimal，
-admission respond要求補值且terminal completed。觀察層只識別blocked/confirmation等nonexecution，
-未識別這個明確respond，誤歸缺少執行證據。非fixture缺口，不可依TEST修改Host或oracle。
-2026-10-03使用者另明確授權移除Host「原句偵測不到數字就不放行」條件，取代上述
-僅修觀測層方向。使用者重申實驗只關心模型原始答案分數，Host/執行紀錄僅診斷。
-本次outcome/scorer尚無修改；停止該方向，不藉新產品修理調整研究評分。
-Outcome：bandpass/notch/resample由模型解析數值，Host不再做原句數字membership；
-保留required/type/enum/range、capability、publication、confirmation及method來源檢查。
-RAG example_policy重用的來源helper保持原樣，不因Host修理改檢索/模型輸入。
-先真路由固定模型輸出red-green與schema/range相鄰測試，獨立覆核、新source／CI後
-另存完整TEST批次；保留舊run，不拼接。UI無layout變動，放行行為已明確批准。
-DEV五輪6600及VALID1485原紀錄已全量核對：270次numeric admission respond，全部
-raw final_decision_correct=false，無正確答案被此Host擋下的既有案例；不用為此重跑DEV/VALID。
-模型原始分數由raw scorer擁有，不因Host阻擋變正確；本次失敗TEST raw score本來即true。
-Host已只在三numeric tools跳過原句membership；4項coordinator red→123相鄰green，
-真condition English red→English/digit/既有ablation共5green，另24項schema/range保護通過。
-獨立產品／raw-score邊界覆核通過，待舊數字gate專屬測試同步及其覆核；尚未重啟正式推論。
-2026-10-03使用者再次確認只關心模型原始答案分數，要求持續完成原計畫。
-後續修理也解除research量測完成條件與product_outcome有效性的耦合：完整原始capture、
-原scorer、decision計時、case identity／fixture與cleanup仍必須通過；Host拒絕／執行
-觀測缺口只留獨立診斷，不改模型分數或分母。產品／UI診斷不能偽稱成功；state/reset或
-模型量測本身不完整仍阻止繼續。先以Host非執行、執行異常及cleanup負例red-green，
-覆核caller/report/audit一致性，不刪診斷、不調prompt/RAG/oracle，舊Pilot契約不默改。
-舊數字gate測試已同步：268項focused通過，tests22增202刪；待最後獨立覆核。
-Next：完成research分層修理與覆核→新exact SHA/CI→新TEST封存及完整輸入預檢
-→1584正式量測→報告／題庫稽核／本機回存。中途checkpoint不結束授權工作。
-研究分層修理已完成：current／legacy條件先3red/3green，報告先1red/5必要負例green；
-最終真route19passed、報告9passed，含Host respond、執行失敗、diagnostic後下一題、
-完整raw後product deadline、capture損坏／missing terminal／pending cleanup失敗仍拒絕。
-原product outcome先保存真timeout，僅current完整raw+真clock+非decision timeout才將
-product deadline移為診斷；不延長等待或假造terminal。Scripts56增8刪，獨立最終覆核通過；
-模型input/scorer/RAG/fixture/parser未改。Next為commit／CI與新source無LLM預檢。
-題庫數值稽核已完成於results/engineering/dataset-overlap-fa9d4d54：495題、161RAG、
-2固定示例，9組154737 case-pairs，75個family候選待AI語意覆核。結構全量無issue；
-跨split完全相同0，DEV–RAG完全相同2（不能直接推論洩漏）。使用既有CPU/offline
-MiniLM；原helper遇到installed SentenceTransformer不支援local_files_only constructor，
-v2只去除此參數，仍以固定本機snapshot與offline環境執行，未下載／推論受測LLM。
-稽核沿用fa9凍結bank/RAG/context；新source只改Host與量測分類，另核對相關hash不變。
-75組候選雙agent語意覆核已完成並回存碩論準備/資料集驗證/2026-10-03，核對原13檔、
-helper及兩review的hash和75組evidence IDs。主分類8任務等價（跨split7）、39文字相近
-但任務不同、16模板近似、12完整state等價未決；不稱無洩漏，不改題庫／分母。
-NAS原數值audit保留semantic_review_complete=false歷史欄，另存semantic-adjudication.json
-作本輪覆核結論；此為有界AI輔助稽核，不是第二人類標註。資料分析不需再呼叫受測模型。
-bb36d5d9已封存並通過396 VALID／528 TEST無LLM輸入預檢，Full逐字不變、無截斷；
-CI抓到4個尚未遷移的integration斷言仍要求舊numeric membership拒絕。
-完整CI另有3個舊工程evaluator測試仍預期Host補救／拒絕numeric提案；同步遷移測試，
-保留錯誤raw判錯、合法JSON不語意重試、研究執行邊界抑制等保護；scorer本身不改。
-Next：只遷移兩份integration tests，保留current-turn輸入隔離及仍有效method來源保護，
-不恢復已批准移除的Host數字限制；focused checks與獨立覆核後新exact SHA／CI／封存。
-再完整執行1584題、離線核對及本機回存；舊失敗CI與source保留，不拼接研究資料。
-遷移後兩integration檔17passed、工程evaluator兩檔114passed；保留current-only完整input、
-前輪7Hz不合併到本輪11Hz、真Command／MNE結果及method來源拒絕，raw錯答仍錯。
-本次只改tests／plan，產品與研究runner／scorer／模型輸入保持bb36位元組。
-零推論的舊入口失敗log與本次模型原始輸出皆保留；題庫稽核已完成，完整TEST／回存未完成。
+2026-10-03使用者授權：完成五模型各五版本的VALID，低頻監控；按既定指標選版，
+若與原Phi R5不同，自動接續新勝出版本的TEST／原三項消融。原有結果與實際時序保留，
+不另做選版流程對照實驗，不聲稱本次追加排程在初次TEST前已預先固定。
+
+- 問題／證據：原VALID只包含DEV各選一版共五版，無法比較全部25候選；舊候選有已修好的
+  執行器／Qt生命週期問題，不能直接復用舊runner。本地HEAD093f20d3，settings.json不動。
+- Outcome：依使用者最新指令，每版只跑一次：25候選各99題，VALID矩陣2475筆全部新跑；
+  舊VALID後Host路徑修理可能影響decision latency，故不混用舊1485筆。新winner不同時TEST528筆。
+- Scope：計畫／方法文件、既有runner必要候選接線、封存與完整輸入等價預檢、focused測試及
+  獨立覆核、137部署、低頻監控、結果與本機副本。無UI改動／無需UI確認。
+- Non-goals：不加第六輪、不改模型／提示／RAG／oracle／raw scorer、不依TEST高低回頭換版；
+  不新增BFCL、模型下載或額外smoke推論，不merge、不覆寫歷史封存與原始結果。
+- 假設：137 SSH、共用環境及模型可用；先查GPU使用情況，不終止他人程序。
+- 選版：單次macro優先，再單次P50；同模型完全相同取較早candidate，跨模型
+  完全相同沿既有Granite4、Granite3.3、Phi、Llama、Gemma順序。先固定再讀新增VALID。
+- 步驟：清點25個封存配置→可靠runner承載且完整normal/retry輸入等價→直接測試／覆核→
+  新包封存與啟動→約15分鐘檢查一次摘要／終態→完整性驗收／選版→如不同則凍結該winner
+  及三消融、預檢後TEST→同頻監控／結果驗證／複製回本機。
+- 驗證：候選原始source/run可追溯、25個身分無漏重；真fixture與完整模型輸入／token預檢；
+  固定題庫／單次repeat0／raw scorer／cleanup／capture；不因有效錯答重跑；selection只讀VALID。
+- Stop：完整VALID、若適用新TEST與本機結果交付；遇必要新決策／無法取得資源才blocked。
+  不以啟動、CI pending或context compaction為完成。監控期間不逐題查詢或反覆下載全log。
+- 施工：產品未改；凍結五輪原renderer，以明確profile接既有runner；新排程repeat0，
+  舊三次封存／報告保持原義。Windows focused 456項通過（193接線、229真Qt／renderer、
+  30統計、4報告）；獨立source覆核無阻擋。這不是新模型準確率證據。
+- Next：封存exact head、同SHA CI與137五輪完整normal／retry／RAG／token輸入預檢，
+  全部通過後啟動2475筆，約15分鐘一次監控；不把準備完成冒稱已開跑。
+
+## 已完成 — 原五版VALID及首次TEST
+
+2026-10-03完成使用者批准的TEST、題庫／RAG稽核及本機結果回存；不自動追加
+DEV／TEST、不依分數調參、不merge。下一階段待使用者討論。本頁完成摘要是封存後
+文件更新；受測程式仍是下列clean source，settings.json使用者修改保持原樣。
+
+- Source：093f20d3f3101a39e027586af754b4605c68e539；PR157未合併。同source CI
+  24成功／3scope skip，最後測試遷移131passed及獨立覆核通過。舊失敗CI／source／run保留。
+- NAS入口：/mnt/home/2025/hxin/XBrainLab-experiments/stages/test/repair-01/run.sh。
+  Run：20261002-202613-a3787f16，位於該入口runs/；12條件各132題，1584筆有效，
+  runner／launch exit0，全部cleanup通過，無resume／replace-invalid／結果拼接。
+- 完整396VALID／528TEST輸入預檢通過，Full與入選版本一致、無截斷。Post-VALID
+  Host數字來源限制移除及research診斷分層已明記；模型／prompt／RAG／oracle／raw scorer未調。
+- 同封存source重建報告與原報告一致，1584筆原scorer／input重播零issues，原證據digest不變；
+  audits/closure-093f20d3.json。獨立實物覆核核對排程、分母、macro、延遲及family配對分析通過。
+- 本機完整TEST副本：碩論準備/實驗/result/TEST/20261002-202613-a3787f16，
+  10757原檔463409173bytes，逐檔hash讀回一致，11088離線HTML links有效；
+  排除1584個可重建fixture目錄及1個外部資源link，不複製權重／環境。VALID副本既已完成。
+- 主macro（三類等權、三repeat平均）：Full74.54%、RAG off70.83%、tool-filter off73.61%、
+  retry off74.54%。Full P50約0.538秒／P95約1.178秒。RAG／filter配對差區間均跨0，
+  不宣稱普遍提升；本批retry0次，不宣稱重試無用。三遍逐題正誤一致不是三份獨立題庫。
+- 題庫稽核已回存碩論準備/資料集驗證/2026-10-03：75候選雙agent語意覆核，
+  7組跨split任務等價、12組完整state等價未決；不是全題庫重合率或第二位人類標註。
+- 詳細結果、限制、重跑指令及封存版本分項LOC在碩論準備/實驗/TEST執行與結果.md；
+  本機索引、封存說明及重跑文件已同步，不將舊入口當新版本。沒有新增產品手測／merge批准。
+
+本輪為research scope-complete；不宣稱所有模型答對、全產品零缺陷或論文因果結論。
+先前施工checkpoint由Git及封存工程證據保留，以下為更早階段歷史，非待執行排程。
 
 ## 已完成 — VALID量測與TEST前討論
 

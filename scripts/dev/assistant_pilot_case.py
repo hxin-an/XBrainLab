@@ -34,6 +34,13 @@ def validate_case_request(payload: dict) -> None:
     split = experiment["stage"] if current else "DEV"
     if experiment is not None and not current and experiment != DEV_EXPERIMENT:
         raise ValueError("Invalid frozen experiment policy")
+    if "prompt_profile" in payload and (
+        payload["prompt_profile"] != "frozen-dev-round"
+        or not current
+        or experiment["purpose"] != "research"
+        or split not in {"VALID", "TEST"}
+    ):
+        raise ValueError("Invalid frozen prompt profile")
     if current and (
         payload.get("split") != split
         or type(payload.get("candidate_index")) is not int
@@ -45,13 +52,9 @@ def validate_case_request(payload: dict) -> None:
         raise ValueError("Invalid frozen experiment candidate identity")
     if current and split == "TEST":
         factors = ablation_policy(payload.get("ablation"))
-        if (
-            payload.get("model_id") != "microsoft/Phi-4-mini-instruct"
-            or payload["candidate_index"] != 5
-            or any(
-                type(payload.get(key)) is not type(value) or payload[key] != value
-                for key, value in factors.items()
-            )
+        if any(
+            type(payload.get(key)) is not type(value) or payload[key] != value
+            for key, value in factors.items()
         ):
             raise ValueError("Invalid frozen TEST ablation identity")
     elif any(
@@ -99,6 +102,8 @@ def experiment_result_identity(payload: dict) -> dict:
             "source_head",
         )
     }
+    if "prompt_profile" in payload:
+        identity["prompt_profile"] = payload["prompt_profile"]
     if payload["split"] == "TEST":
         identity.update(
             {

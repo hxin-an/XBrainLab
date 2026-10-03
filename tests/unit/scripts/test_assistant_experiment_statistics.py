@@ -160,3 +160,29 @@ def test_rejects_wrong_family_size_even_with_complete_case_matrix():
             row["family_id"] = "TEST-A-01"
     with pytest.raises(ValueError, match="famil"):
         paired_family_analysis(rows)
+
+
+def test_single_repeat_requires_explicit_policy_and_preserves_paired_family_draws():
+    rows = _rows(lambda _d, family, _v, _r, _a: family % 2 == 0)
+    single = [row for row in rows if row["repeat"] == 0]
+    with pytest.raises(ValueError):
+        paired_family_analysis(single)
+    result = paired_family_analysis(single, repeats=(0,))
+    assert result["population"]["measurements"] == 528
+    assert result["population"]["repeats"] == [0]
+    assert result["conditions"] == paired_family_analysis(rows)["conditions"]
+    assert (
+        result["full_minus_ablation"]
+        == paired_family_analysis(rows)["full_minus_ablation"]
+    )
+    assert any("Single repeat" in item for item in result["limitations"])
+    with pytest.raises(ValueError):
+        paired_family_analysis(single[:-1], repeats=(0,))
+    with pytest.raises(ValueError):
+        paired_family_analysis(rows, repeats=(0,))
+
+
+@pytest.mark.parametrize("repeats", [(), (1,), (0, 1), (False,), (0, 0), (0, 1, 2, 3)])
+def test_bootstrap_rejects_unsupported_repeat_policy(repeats):
+    with pytest.raises(ValueError):
+        paired_family_analysis(_rows(), repeats=repeats)
