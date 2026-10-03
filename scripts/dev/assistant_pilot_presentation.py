@@ -85,6 +85,13 @@ def experiment_conditions(report: dict, *, dev: bool) -> str:
     population = (
         f"{questions} question{'' if questions == 1 else 's'} · " if questions else ""
     )
+    if (
+        is_experiment_protocol(report.get("experiment"))
+        and report["experiment"]["stage"] == "TEST"
+    ):
+        return (
+            f"1 model · {count} conditions · " + population + "Single-factor ablations"
+        )
     return models + population + ("RAG on" if dev else "RAG conditions shown below")
 
 
@@ -122,7 +129,7 @@ def _condition_label(name: str, condition: dict) -> str:
         identity["condition"].removesuffix("-rag-on")
         + f" · candidate {identity['candidate_index']}"
     )
-    if identity["split"] == "VALID":
+    if identity["split"] in {"VALID", "TEST"}:
         label += f" · repeat {identity['repeat'] + 1}"
     return label
 
@@ -194,7 +201,7 @@ def _render_accuracy_breakdowns(report: dict, details: dict) -> str:
         # The reviewed bank's group is part of its stable case identity. This
         # also classifies unstarted cases, which have no request artifact yet.
         match = re.fullmatch(
-            r"(?:DEV|VALID)-([ACN][0-9]{2})-[0-9]{2}-V[0-9]+", row["case_id"]
+            r"(?:DEV|VALID|TEST)-([ACN][0-9]{2})-[0-9]{2}-V[0-9]+", row["case_id"]
         )
         expected_category = {"A": "Action", "C": "Clarification", "N": "No-call"}
         group = (

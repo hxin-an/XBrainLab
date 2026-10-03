@@ -2008,6 +2008,12 @@ def test_training_refreshes_metrics_before_explicit_saliency_click(
     assert analysis_update_counts["visualization"] == 2
     assert evaluation._application_generation != terminal_evaluation_query
     assert visualization.last_application_query is not terminal_visualization_query
+    # Render completion is not delivery completion: the independent background
+    # terminal notifier may still be returning from the acknowledged publication.
+    qtbot.waitUntil(
+        lambda: len(terminal_publications) == 1 and len(analysis_publications) == 1,
+        timeout=5_000,
+    )
     assert len(terminal_publications) == 1
     assert len(analysis_publications) == 1
 

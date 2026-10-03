@@ -153,6 +153,66 @@ def test_reads_normalized_cases_and_preserves_original_evidence(tmp_path):
     assert fixture["metadata"]["起始情境"] == "Empty workspace"
 
 
+def _test_rows():
+    """Synthetic TEST sheet, never the sealed research questions."""
+    rows = _rows()
+    return {
+        "TEST" if sheet == "DEV" else sheet: [
+            {key: value.replace("DEV", "TEST") for key, value in record.items()}
+            for record in records
+            if not any("VALID" in value for value in record.values())
+        ]
+        for sheet, records in rows.items()
+        if sheet != "VALID"
+    }
+
+
+def test_test_workbook_requires_explicit_intake_and_preserves_oracle(tmp_path):
+    path = _workbook(tmp_path, _test_rows())
+    with pytest.raises(ValueError, match="sheet"):
+        load_bank(path)
+    bank = load_bank(path, allow_test=True)
+    assert bank["source"]["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert bank["source"]["sheets"] == ["TEST", "ground_truth", "情境定義"]
+    assert len(bank["cases"]) == 1
+    case = bank["cases"][0]
+    assert case["case_id"] == "TEST-A01-01-V0"
+    assert case["split"] == "TEST"
+    assert case["expected_parameters"] == {}
+    assert case["metadata"]["ground_truth"]["source_sha"] == "old-evidence"
+    assert bank["fixtures"][case["fixture_id"]]["conditions"] == {"stage": "empty"}
+
+
+def test_test_intake_reads_full_workbook_without_discarding_source_records(tmp_path):
+    rows = _rows()
+    test_rows = _test_rows()
+    rows["TEST"] = test_rows["TEST"]
+    for sheet in ("ground_truth", "情境定義"):
+        rows[sheet].extend(test_rows[sheet])
+    bank = load_bank(_workbook(tmp_path, rows), allow_test=True)
+    assert {case["split"] for case in bank["cases"]} == {"DEV", "VALID", "TEST"}
+    assert len(bank["fixtures"]) == 3
+
+
+def test_test_intake_rejects_missing_test_or_partial_dev_valid_before_content(tmp_path):
+    for rows in (_rows(), {**_test_rows(), "DEV": _rows()["DEV"]}):
+        path = _workbook(tmp_path, rows, corrupt_shared=True)
+        with pytest.raises(ValueError, match="sheet"):
+            load_bank(path, allow_test=True)
+
+
+@pytest.mark.parametrize("flag", ["true", 1, None])
+def test_test_intake_rejects_nonboolean_opt_in_before_opening(tmp_path, flag):
+    with pytest.raises(ValueError, match="allow_test"):
+        load_bank(tmp_path / "absent.xlsx", allow_test=flag)
+
+
+@pytest.mark.parametrize("fault", ["formula", "entity", "huge"])
+def test_test_intake_retains_selected_content_safety_checks(tmp_path, fault):
+    with pytest.raises(ValueError):
+        load_bank(_workbook(tmp_path, _test_rows(), **{fault: True}), allow_test=True)
+
+
 def test_historical_bank_metadata_is_preserved_without_migration(tmp_path):
     rows = _rows()
     rows["ground_truth"][0]["review_status"] = "待人工複核"

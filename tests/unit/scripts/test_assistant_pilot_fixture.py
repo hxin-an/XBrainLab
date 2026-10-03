@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 
+import mne
 import numpy as np
 import pytest
 import torch
@@ -23,21 +24,139 @@ def test_reviewed_auxiliary_channel_exists_and_is_not_eeg(study, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "prior", [{"notch": 60}, {"bandpass": {"low_freq": 1, "high_freq": 40}}]
+    "prior,auxiliary",
+    [
+        ({"notch": 60}, []),
+        ({"bandpass": {"low_freq": 1, "high_freq": 40}}, []),
+        ({"bandpass": {"low_freq": 1, "high_freq": 100}}, []),
+        ({"reference": "average"}, []),
+        ({"reference": "average"}, ["EOG1"]),
+    ],
 )
-def test_reviewed_prior_filter_is_actually_applied(study, tmp_path, prior):
+def test_reviewed_prior_preprocessing_is_actually_applied(
+    study, tmp_path, prior, auxiliary
+):
     fixture = _fixture("preprocessed")
     fixture["conditions"]["prior_preprocessing"] = prior
-    prepare_fixture(study, fixture, tmp_path / "prior")
+    fixture["conditions"]["auxiliary_channels"] = auxiliary
+    result = prepare_fixture(study, fixture, tmp_path / "prior")
     original = study.loaded_data_list[0].get_mne().copy().load_data()
     actual = study.preprocessed_data_list[0].get_mne()
+    source_data = mne.io.read_raw_fif(
+        tmp_path / "prior" / "fixture_raw.fif", preload=True, verbose=False
+    ).get_data()
+    np.testing.assert_array_equal(original.get_data(), source_data)
     if "notch" in prior:
-        expected = original.notch_filter(freqs=60, verbose=False)
+        expected = original.notch_filter(freqs=60, verbose=False).get_data()
+    elif "reference" in prior:
+        expected = source_data.copy()
+        eeg_count = len(fixture["conditions"]["channels"])
+        expected[:eeg_count] -= source_data[:eeg_count].mean(axis=0, keepdims=True)
+        publication = get_application_service(study).get_view_publication()
+        assert publication.state.preprocessed.operations == ["Re-reference (Average)"]
+        assert result["state"] == publication.state.to_dict()
+        assert publication.state.pipeline_stage == "preprocessed"
+        assert study.loaded_data_list[0].get_preprocess_history() == []
+        assert not np.array_equal(actual.get_data(), source_data)
     else:
-        expected = original.filter(l_freq=1, h_freq=40, verbose=False)
-    np.testing.assert_allclose(
-        actual.get_data(), expected.get_data(), rtol=1e-7, atol=1e-12
+        cutoffs = prior["bandpass"]
+        expected = original.filter(
+            l_freq=cutoffs["low_freq"], h_freq=cutoffs["high_freq"], verbose=False
+        ).get_data()
+        assert actual.info["highpass"] == cutoffs["low_freq"]
+        assert actual.info["lowpass"] == cutoffs["high_freq"]
+    np.testing.assert_allclose(actual.get_data(), expected, rtol=1e-7, atol=1e-12)
+    np.testing.assert_array_equal(
+        study.loaded_data_list[0].get_mne().get_data(), source_data
     )
+
+
+def test_reviewed_prior_channel_selection_uses_real_command_and_retains_source(
+    study, tmp_path
+):
+    fixture = _fixture("preprocessed", tool="reset_preprocessing")
+    fixture["conditions"].update(
+        channels=["C3", "C4", "Cz"],
+        prior_preprocessing="channel selection applied; retain C3/C4/Cz",
+    )
+    result = prepare_fixture(study, fixture, tmp_path / "selected")
+    source_path = tmp_path / "selected" / "fixture_raw.fif"
+    source = mne.io.read_raw_fif(source_path, preload=True, verbose=False)
+    assert source.ch_names == ["C3", "C4", "Cz", "Fz", "REF"]
+    assert (
+        hashlib.sha256(source_path.read_bytes()).hexdigest()
+        == result["source"]["sha256"]
+    )
+    backup = study.data_manager.backup_loaded_data_list[0]
+    assert backup.get_mne().ch_names == source.ch_names
+    assert backup.get_preprocess_history() == []
+    np.testing.assert_array_equal(backup.get_mne().get_data(), source.get_data())
+    selected = study.preprocessed_data_list[0]
+    assert selected is study.loaded_data_list[0]
+    assert selected.get_mne().ch_names == ["C3", "C4", "Cz"]
+    np.testing.assert_array_equal(
+        selected.get_mne().get_data(), source.get_data(picks=["C3", "C4", "Cz"])
+    )
+    source_events, source_ids = mne.events_from_annotations(source, verbose=False)
+    events, event_ids = selected.get_event_list()
+    np.testing.assert_array_equal(events, source_events)
+    assert event_ids == source_ids
+    assert len(events) == 12
+    assert selected.get_preprocess_history() == ["Select 3 Channel"]
+    assert [item["command"] for item in result["commands"]] == [
+        "scan_source",
+        "preview_interpretation",
+        "validate_interpretation",
+        "apply_interpretation",
+        "preprocess",
+    ]
+    assert all(item["ok"] for item in result["commands"])
+    publication = get_application_service(study).get_view_publication()
+    assert publication.state.pipeline_stage == "preprocessed"
+    assert publication.state.preprocessed.operations == ["Select 3 Channel"]
+    assert result["state"] == publication.state.to_dict()
+    assert result["evidence"]["channels"] == ["C3", "C4", "Cz"]
+
+
+@pytest.mark.parametrize(
+    "stage,prior",
+    [
+        ("preprocessed", {"reference": "Cz"}),
+        ("preprocessed", {"reference": "average", "notch": 60}),
+        ("data_loaded", {"reference": "average"}),
+        ("preprocessed", {"bandpass": {"low_freq": 1, "high_freq": 90}}),
+        ("preprocessed", {"bandpass": {"low_freq": 1, "high_freq": 100}, "notch": 60}),
+        ("preprocessed", "channel selection applied; retain C3/C4"),
+        ("data_loaded", "channel selection applied; retain C3/C4/Cz"),
+    ],
+)
+def test_prior_reference_rejects_unreviewed_variants_before_writes(
+    study, tmp_path, stage, prior
+):
+    fixture = _fixture(stage)
+    fixture["conditions"]["prior_preprocessing"] = prior
+    with pytest.raises(ValueError, match="Unsupported reviewed prior preprocessing"):
+        prepare_fixture(study, fixture, tmp_path / "case")
+    assert not (tmp_path / "case").exists()
+    assert not study.loaded_data_list
+
+
+@pytest.mark.parametrize(
+    "channels,auxiliary", [(["C3", "C4"], []), (["C3", "C4", "Cz"], ["EOG1"])]
+)
+def test_prior_channel_selection_rejects_conflicting_declared_layout_before_writes(
+    study, tmp_path, channels, auxiliary
+):
+    fixture = _fixture("preprocessed")
+    fixture["conditions"].update(
+        channels=channels,
+        auxiliary_channels=auxiliary,
+        prior_preprocessing="channel selection applied; retain C3/C4/Cz",
+    )
+    with pytest.raises(ValueError, match="prior preprocessing"):
+        prepare_fixture(study, fixture, tmp_path / "case")
+    assert not (tmp_path / "case").exists()
+    assert not study.loaded_data_list
 
 
 def _fixture(stage, sfreq=256, tool=""):

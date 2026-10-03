@@ -1,4 +1,4 @@
-"""Compose frozen DEV/VALID experiments; preserve historical initial DEV reads."""
+"""Compose frozen DEV/VALID/TEST experiments; preserve historical initial DEV reads."""
 
 from __future__ import annotations
 
@@ -168,8 +168,9 @@ def run_attempt(
         if code == 0
         else f"Incomplete {stage} attempt (exit {code})"
     )
+    factors = "four single-factor conditions" if stage == "TEST" else "RAG on"
     notice = (
-        f"Frozen {stage} {manifest['experiment']['purpose']}, RAG on, seed 0. Candidate/split/repeat denominators remain separate."
+        f"Frozen {stage} {manifest['experiment']['purpose']}, {factors}, seed 0. Candidate/split/repeat denominators remain separate."
         if configured
         else "Initial DEV candidate, RAG on. Full baseline requires all five models / 1,320 valid measurements. No tuning, VALID or TEST."
     )

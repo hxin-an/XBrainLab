@@ -1,4 +1,4 @@
-"""Pilot case admission never accepts Test, drifting identities or output reuse."""
+"""Pilot case admission requires approved frozen identities and fresh output."""
 
 from pathlib import Path
 
@@ -78,6 +78,135 @@ def test_frozen_experiment_accepts_valid_repeat_without_weakening_legacy_gate():
     assert observed["source_head"] == "a" * 40
     assert observed["candidate_index"] == 2 and observed["seed"] == 0
     assert experiment_result_identity(request()) == {}
+
+
+@pytest.mark.parametrize("split", ["DEV", "VALID", "TEST"])
+def test_explicit_prompt_profile_and_single_repeat_are_preserved(split):
+    from scripts.dev.assistant_pilot_case import experiment_result_identity
+
+    payload = (
+        ablation_request()
+        if split == "TEST"
+        else experiment_request(split=split, repeat=0)
+    )
+    payload.update(prompt_profile="frozen-dev-round", repeat=0)
+    payload["experiment"]["repeats"] = [0]
+    validate_case_request(payload)
+    assert experiment_result_identity(payload)["prompt_profile"] == "frozen-dev-round"
+    payload["repeat"] = 1
+    with pytest.raises(ValueError):
+        validate_case_request(payload)
+
+
+@pytest.mark.parametrize("profile", [None, "", "unknown"])
+def test_case_rejects_unknown_explicit_prompt_profile(profile):
+    payload = experiment_request()
+    payload["prompt_profile"] = profile
+    with pytest.raises(ValueError):
+        validate_case_request(payload)
+
+
+def test_legacy_case_cannot_opt_into_frozen_round_profile():
+    payload = request()
+    payload["prompt_profile"] = "frozen-dev-round"
+    with pytest.raises(ValueError):
+        validate_case_request(payload)
+
+
+def test_engineering_smoke_case_cannot_opt_into_frozen_round_profile():
+    payload = experiment_request(split="DEV", repeat=0)
+    payload["experiment"]["purpose"] = "engineering-smoke"
+    payload["prompt_profile"] = "frozen-dev-round"
+    with pytest.raises(ValueError, match="frozen prompt profile"):
+        validate_case_request(payload)
+
+
+def ablation_request(ablation="full"):
+    """Synthetic input only; never read the sealed TEST question bank."""
+    from scripts.dev.assistant_experiment_config import (
+        ablation_policy,
+        experiment_identity,
+    )
+
+    payload = request()
+    payload.update(
+        experiment=experiment_identity(
+            {
+                "schema": "xbrainlab.assistant_experiment_config.v1",
+                "split": "TEST",
+                "purpose": "research",
+                "embedding_cache": ".",
+                "resource_inventory": "resources.json",
+                "budget_seconds": 10,
+                "models": [
+                    {
+                        "alias": "phi4",
+                        "candidate_index": 5,
+                        "source": {"head": "a" * 40, "root": "."},
+                        "model_cache": ".",
+                    }
+                ],
+            }
+        ),
+        model_id="microsoft/Phi-4-mini-instruct",
+        candidate_index=5,
+        source_head="a" * 40,
+        split="TEST",
+        ablation=ablation,
+        **ablation_policy(ablation),
+    )
+    payload["case"].update(split="TEST", case_id="TEST-A01-01-V0")
+    return payload
+
+
+@pytest.mark.parametrize(
+    "ablation", ["full", "rag-off", "tool-filter-off", "retry-off"]
+)
+@pytest.mark.parametrize(
+    "model_id,candidate",
+    [
+        ("ibm-granite/granite-4.0-micro", 1),
+        ("ibm-granite/granite-3.3-2b-instruct", 2),
+        ("microsoft/Phi-4-mini-instruct", 5),
+        ("meta-llama/Llama-3.2-3B-Instruct", 3),
+        ("google/gemma-3-4b-it", 4),
+    ],
+)
+def test_single_factor_test_identity_is_admitted_and_preserved(
+    ablation, model_id, candidate
+):
+    from scripts.dev.assistant_experiment_config import ablation_policy
+    from scripts.dev.assistant_pilot_case import experiment_result_identity
+
+    payload = ablation_request(ablation)
+    payload.update(model_id=model_id, candidate_index=candidate)
+    validate_case_request(payload)
+    identity = experiment_result_identity(payload)
+    assert identity["ablation"] == ablation
+    assert identity["candidate_index"] == candidate
+    for name, value in ablation_policy(ablation).items():
+        assert type(identity[name]) is type(value)
+        assert identity[name] == value
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("ablation", "unknown"),
+        ("rag_enabled", False),
+        ("tool_filter_enabled", False),
+        ("max_format_recovery_attempts", 0),
+        ("max_format_recovery_attempts", True),
+        ("tool_filter_enabled", 1),
+        ("model_id", "unapproved/model"),
+        ("candidate_index", 6),
+    ],
+)
+def test_test_runtime_rejects_factor_and_selected_system_drift(field, value):
+    payload = ablation_request()
+    payload[field] = value
+    with pytest.raises(ValueError):
+        validate_case_request(payload)
 
 
 def test_standalone_rejects_configured_experiment_before_side_effects(
@@ -328,7 +457,7 @@ def test_completed_capture_still_accepts_exact_observed_output(tmp_path):
 def test_initial_input_audit_rejects_history_and_authoritative_missing_value():
     import json
 
-    case = {"input": "Filter from 8 Hz."}
+    case = {"input": "Filter from 8 Hz.", "expected_workflow_stage": "data_loaded"}
     fixture = {"conditions": {"missing_authoritative_values": ["high_freq"]}}
     context = {
         "schema": "xbrainlab.untrusted_context.v1",
@@ -358,7 +487,7 @@ def test_initial_input_audit_rejects_history_and_authoritative_missing_value():
 def test_initial_input_audit_keeps_untrusted_rag_examples_separate_from_state():
     import json
 
-    case = {"input": "Filter from 8 Hz."}
+    case = {"input": "Filter from 8 Hz.", "expected_workflow_stage": "data_loaded"}
     fixture = {"conditions": {"missing_authoritative_values": ["high_freq"]}}
     context = {
         "schema": "xbrainlab.untrusted_context.v1",
@@ -375,7 +504,11 @@ def test_initial_input_audit_keeps_untrusted_rag_examples_separate_from_state():
             "content": json.dumps(
                 {
                     "current_user": {"text": case["input"]},
-                    "application_state": {"raw_count": 1},
+                    "application_state": {
+                        "raw_count": 1,
+                        "workflow_stage": "data_loaded",
+                        "state_reliable": True,
+                    },
                 }
             ),
         },
@@ -387,3 +520,73 @@ def test_initial_input_audit_keeps_untrusted_rag_examples_separate_from_state():
     assert result["issues"] == []
     assert result["untrusted_rag_example_count"] == 1
     assert result["human_review_required_for_input_semantics"] is True
+
+
+@pytest.mark.parametrize(
+    "state,issue",
+    [
+        (
+            {"workflow_stage": "unavailable", "state_reliable": False},
+            "initial_state_unreliable",
+        ),
+        (
+            {"workflow_stage": "trained", "state_reliable": True},
+            "initial_workflow_stage_mismatch",
+        ),
+        (
+            {"workflow_stage": "training", "state_reliable": True, "running": False},
+            "initial_training_not_running",
+        ),
+        (
+            {"workflow_stage": "training", "state_reliable": 1, "running": True},
+            "initial_state_unreliable",
+        ),
+    ],
+)
+def test_initial_input_audit_rejects_actual_state_drift_despite_valid_fixture(
+    state, issue
+):
+    import json
+
+    case = {
+        "input": "Do not change the running training.",
+        "expected_workflow_stage": "training",
+    }
+    fixture = {"conditions": {"stage": "training"}}
+    messages = [
+        {
+            "role": "user",
+            "content": json.dumps(
+                {"current_user": {"text": case["input"]}, "application_state": state}
+            ),
+        }
+    ]
+    result = audit_initial_input(
+        case, fixture, {"generations": [{"request": {"messages": messages}}]}
+    )
+    assert issue in result["issues"]
+
+
+@pytest.mark.parametrize("running", [False, None, 1, "true"])
+def test_initial_training_guard_requires_observed_true_boolean(running):
+    import json
+
+    from scripts.dev.assistant_pilot_case import initial_state_issues
+
+    state = {"workflow_stage": "training", "state_reliable": True, "running": running}
+    messages = [
+        {
+            "role": "user",
+            "content": json.dumps(
+                {"current_user": {"text": "Wait."}, "application_state": state}
+            ),
+        }
+    ]
+    assert initial_state_issues({"expected_workflow_stage": "training"}, messages) == [
+        "initial_training_not_running"
+    ]
+    state["running"] = True
+    messages[0]["content"] = json.dumps(
+        {"current_user": {"text": "Wait."}, "application_state": state}
+    )
+    assert initial_state_issues({"expected_workflow_stage": "training"}, messages) == []

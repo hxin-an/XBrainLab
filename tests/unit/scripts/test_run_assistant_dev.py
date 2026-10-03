@@ -97,6 +97,57 @@ def test_configured_valid_selection_reads_real_bank_and_keeps_three_repeats(tmp_
     assert all(job["source_head"] == str(job["candidate_index"]) * 40 for job in jobs)
 
 
+def test_frozen_dev_profiles_preserve_all_five_rounds_models_and_cases(tmp_path):
+    from scripts.dev import assistant_experiment_config as protocol
+
+    jobs = []
+    for candidate in range(1, 6):
+        config = experiment_config(tmp_path, "DEV")
+        config["prompt_profile"] = "frozen-dev-round"
+        template = config["models"][0]
+        config["models"] = [
+            {**deepcopy(template), "alias": alias, "candidate_index": candidate}
+            for alias in protocol.MODELS
+        ]
+        policy = protocol.experiment_identity(config)
+        selection = protocol.build_selection(full_bank(), config)
+        round_jobs = protocol.build_jobs(selection, config)
+        assert policy["repeats"] == [0]
+        assert protocol.is_experiment_protocol(policy)
+        assert selection["counts"] == {
+            "Action": 144,
+            "Clarification": 48,
+            "No-call": 72,
+        }
+        assert len(runner.condition_batches(round_jobs)) == 5
+        jobs.extend(round_jobs)
+    assert len(jobs) == len({job["id"] for job in jobs}) == 6600
+    assert len({job["case_id"] for job in jobs}) == 264
+    assert {job["candidate_index"] for job in jobs} == set(range(1, 6))
+    assert {job["repeat"] for job in jobs} == {0}
+    assert {job["prompt_profile"] for job in jobs} == {"frozen-dev-round"}
+    assert {job["split"] for job in jobs} == {"DEV"}
+
+
+@pytest.mark.parametrize("change", ["smoke", "partial", "repeat", "unknown_profile"])
+def test_frozen_dev_profile_does_not_relax_population_or_schedule(tmp_path, change):
+    from scripts.dev import assistant_experiment_config as protocol
+
+    config = experiment_config(tmp_path, "DEV")
+    config["prompt_profile"] = "frozen-dev-round"
+    bank = full_bank()
+    if change == "smoke":
+        config.update(purpose="engineering-smoke", case_ids=["DEV-A01-01-V0"])
+    elif change == "partial":
+        bank["cases"].pop()
+    elif change == "repeat":
+        config["repeats"] = [0, 1, 2]
+    else:
+        config["prompt_profile"] = "latest"
+    with pytest.raises(ValueError):
+        protocol.build_selection(bank, config)
+
+
 def test_incomplete_research_bank_cannot_be_silently_used_as_smoke(tmp_path):
     from scripts.dev import assistant_experiment_config as protocol
     from tests.unit.scripts.test_assistant_pilot_bank import _workbook

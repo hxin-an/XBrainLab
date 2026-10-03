@@ -1154,7 +1154,15 @@ def test_terminal_queue_handoff_failure_retries_once_after_shutdown_fence(
     assert application_events == []
     assert saliency_events == []
 
-    service.release_shutdown_fence()
+    # A manager retry can still own the rolled-back generation's reservation.
+    # A state query is permitted while fenced; it does not certify release.
+    release_deadline = monotonic() + _THREAD_WATCHDOG_SECONDS
+    released = service.release_shutdown_fence()
+    while not released and monotonic() < release_deadline:
+        Event().wait(0.01)
+        released = service.release_shutdown_fence()
+    assert released is True
+    assert service.shutdown_lifecycle.is_shutdown_fenced is False
     recovered = service.execute(QueryStateCommand())
     publication = service.get_view_publication()
 

@@ -93,7 +93,7 @@ def _known_product_notice(dialog: QDialog, item: dict) -> bool:
         and payload.view_mode == "3d_plot"
         and type(dialog) is ModalAlertDialog
         and not dialog.is_confirmation
-        and dialog.windowTitle() == "VRAM Warning"
+        and dialog.windowTitle() == "GPU Memory Usage"
     )
 
 

@@ -76,6 +76,47 @@ class AuditTests(unittest.TestCase):
             ],
         )
 
+    def test_test_retry_off_replay_uses_frozen_condition_not_global_default(self):
+        self.detail["request"].update(
+            ablation="retry-off",
+            rag_enabled=True,
+            tool_filter_enabled=True,
+            max_format_recovery_attempts=0,
+        )
+        calls = []
+
+        def scorer(case, trace, **kwargs):
+            calls.append(kwargs)
+            return self.result["scores"]
+
+        result = replay_rows(
+            [{"id": "case"}],
+            lambda row: self.detail,
+            scorer,
+            lambda *a, **k: {"passed": True},
+            {"stage": "TEST"},
+        )
+        self.assertEqual(result["issues"], [])
+        self.assertEqual(
+            calls, [{"decision_timed_out": False, "max_format_recovery_attempts": 0}]
+        )
+
+    def test_test_replay_rejects_forged_retry_factor(self):
+        self.detail["request"].update(
+            ablation="retry-off",
+            rag_enabled=True,
+            tool_filter_enabled=True,
+            max_format_recovery_attempts=1,
+        )
+        result = replay_rows(
+            [{"id": "case"}],
+            lambda row: self.detail,
+            lambda *a, **k: self.fail("Forged factor must not reach scorer"),
+            lambda *a, **k: {},
+            {"stage": "TEST"},
+        )
+        self.assertIn("factor", result["issues"][0]["issues"][0])
+
     def test_corrupt_evidence_cannot_be_reported_as_an_incorrect_model_answer(self):
         self.detail["result"] = {}
         result = replay_rows(

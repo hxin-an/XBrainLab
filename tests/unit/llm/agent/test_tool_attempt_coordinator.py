@@ -186,6 +186,29 @@ def test_published_action_with_explicit_values_is_not_host_reclassified() -> Non
     assert registry.reads == 1
 
 
+@pytest.mark.parametrize(
+    ("tool_name", "params", "text"),
+    [
+        (
+            "apply_bandpass_filter",
+            {"low_freq": 4, "high_freq": 18},
+            "Band-pass filter the recording between four hertz and eighteen hertz.",
+        ),
+        ("apply_notch_filter", {"freq": 50}, "Notch filter at fifty hertz."),
+        ("resample_data", {"rate": 128}, "Resample to one hundred twenty-eight Hz."),
+        ("apply_notch_filter", {"freq": 50}, "Apply the requested notch filter."),
+    ],
+)
+def test_numeric_admission_does_not_reparse_user_numbers(tool_name, params, text):
+    coordinator, _, verifier, _ = _coordinator(_context(tool_name=tool_name))
+    decision = coordinator.evaluate(
+        _request(tool_name=tool_name, params=params, text=text)
+    )
+    assert decision.action is ToolAttemptAction.EXECUTE
+    assert decision.params == params
+    assert verifier.calls == 1
+
+
 def test_capability_block_prevents_registry_lookup() -> None:
     coordinator, source, verifier, registry = _coordinator(_context(enabled=False))
 

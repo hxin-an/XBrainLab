@@ -8,6 +8,8 @@ from contextlib import contextmanager
 
 from XBrainLab.backend.training_state_contract import TrainingStateToken
 
+_STABLE_READ_WAIT_SECONDS = 0.05
+
 
 class TrainingStateTracker:
     """Expose a sequence token around nested training mutations.
@@ -16,12 +18,13 @@ class TrainingStateTracker:
     even when the nested training state is stable.  All holders and records in
     one :class:`Trainer` share the same tracker, so a state snapshot can reject
     a read that overlaps a background update. Normal mutation markers do not
-    hold the tracker lock while work runs; only a short compare-and-publish
-    commit briefly serializes token readers.
+    hold the tracker lock while work runs. A stable read or short
+    compare-and-publish commit briefly serializes new mutation markers.
     """
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
+        self._stable = threading.Condition(self._lock)
         self._generation = 0
         self._active_mutations = 0
 
@@ -39,6 +42,7 @@ class TrainingStateTracker:
                 self._active_mutations -= 1
                 if self._active_mutations == 0:
                     self._generation += 1
+                    self._stable.notify_all()
 
     def token(self) -> TrainingStateToken:
         """Return the current generation and whether no mutation is active."""
@@ -47,6 +51,31 @@ class TrainingStateTracker:
                 generation=self._generation,
                 stable=self._active_mutations == 0,
             )
+
+    @contextmanager
+    def stable_read(self) -> Iterator[None]:
+        """Wait briefly for a short update, then keep one stable read still.
+
+        A stable entry does not wait. A busy entry releases the tracker lock
+        while waiting at most 50 ms for existing mutations to finish. If that
+        budget expires, the caller still uses ordinary before/after tokens and
+        must fail closed on any overlap; long work is never certified stable.
+        """
+        acquired = self._lock.acquire(blocking=False)
+        if not acquired:
+            yield
+            return
+        try:
+            if not self._stable.wait_for(
+                lambda: self._active_mutations == 0,
+                timeout=_STABLE_READ_WAIT_SECONDS,
+            ):
+                acquired = False
+                self._lock.release()
+            yield
+        finally:
+            if acquired:
+                self._lock.release()
 
     @contextmanager
     def mutation_if_current(self, expected_generation: int) -> Iterator[bool]:
@@ -64,4 +93,5 @@ class TrainingStateTracker:
         finally:
             self._active_mutations -= 1
             self._generation += 1
+            self._stable.notify_all()
             self._lock.release()

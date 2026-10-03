@@ -1,6 +1,6 @@
 # XBrainLab Assistant 研究與實驗規格
 
-最後更新：`2026-09-29`
+最後更新：`2026-10-03`
 
 ## 文件狀態與接續方式
 
@@ -8,6 +8,40 @@
 [Now](../planning/now.md) 擁有施工順序、授權範圍與進度，
 [Current](../current.md#assistant-research-baseline) 擁有實際證據及限制。
 設計確認不代表已實作或實驗已完成。壓縮後依上述文件及 Git 接續，不重開舊清理。
+
+### 目前執行方法：全部25候選VALID與條件式TEST
+
+五模型各有五個已封存的DEV候選；DEV用於開發，不先依DEV淘汰候選。所有25候選
+以同一可靠執行基礎各跑完整99題VALID一次，共2475筆（使用者最新指令取消三次重複）。
+每候選計算單次三類等權macro及decision P50。依未四捨五入macro遞減、P50遞增選版；
+仍完全相同時按Granite4、Granite3.3、Phi、Llama、Gemma順序，同模型取較早candidate。
+所有候選完成且證據有效才選版；失敗／缺題不是較低分，不容許挑選完成的部分。
+
+各候選模型／量化／生成／提示／RAG／oracle／raw scorer保持原封存內容；研究source明記
+原DEV與本次執行版本，完整normal/retry模型輸入驗證等價後才推論。五輪為五個既有runner
+配置及同一批次入口，不新增執行控制層。舊VALID後Host路徑修理可能影響計時，故本次
+25候選全新執行，不把舊1485筆混入母體；舊三repeat封存不追改，新配置明確repeats=[0]。
+
+若最終winner仍為原Phi R5且模型輸入／研究因素相同，沿用原TEST結果；若不同，先凍結
+新winner，再跑Full及原三項單因素消融，各132題一次，共528筆，條件順序沿原repeat0。
+配對family bootstrap仍抽10000次，但只使用該次原始答案，不宣稱已量到重複執行變異。
+不依TEST高低再選版、不新增DEV第六輪、不改題目或評分；新結果如實保存並回存本機。
+沿用每個五模型VALID配置14400秒active上限，整個五配置順序執行；約15分鐘監控摘要
+一次，終態後驗收完整性，不密集逐題輪詢。GPU不可用則等待，不終止他人程序。
+
+此擴大選版於2026-10-03初次TEST後獲使用者批准；原封存與實際時序保留。以下已執行
+的五版VALID及首次TEST是歷史紀錄，不再限制本次25候選排程。這是方法補齊，不另設
+新舊選版流程比較實驗；文件不把新增排程冒稱事前已固定或已完成。
+
+2026-10-03全量輸入驗收發現Granite4 R1的VALID-N03-01-V0收到unavailable而非training，
+原99題情境驗收不成立。使用者批准修理publication競態及actual-input檢查後，僅將該
+候選完整99題再跑一次，作為工程替代量測，不是第六套DEV提示或三次重複設計。
+替代規則在重跑前固定：新99題整批納入，原R1 99題保留但排除正式選版；不挑高分、
+不逐題拼接、不採缺值界限例外。其他24候選保留已核對的原量測與source，選版記錄明示
+兩個工程source與替代原因；新source須保持模型／提示／RAG／題庫／raw scorer／計時邊界，
+完整模型輸入與原預檢等價。重跑後重新選版，不能預設先前觀察到的Granite4 R3仍勝出。
+若不同於Phi R5，再依上列矩陣執行單次TEST；推論前與封存稽核皆需驗實際輸入可靠性及
+預定workflow stage，不以fixture建立成功或Host擋下錯誤呼叫代替輸入有效性。
 
 歷史d0的完整DEV起始基準已完成：五模型各264題，1,320次執行計入當時研究批次第一套。
 2026-09-29使用者確認五模型各完成五輪，第1輪為基準、第2–5輪改善，不由agent依分數
@@ -23,10 +57,112 @@
 2026-09-29使用者另批准合併工具PR後啟動正式第1輪：137、五模型各264題、candidate1、
 seed0／repeat0、RAG on、最多一次格式修復、14400秒active執行預算。確認啟動與最初
 有效案例正常後即交回，不持續監控整輪；不自行開始第2輪或因錯答調參／重跑。
-先前137固定20題工程smoke保持獨立，不再追加。不得執行正式VALID、讀取／執行TEST
+上述第1輪的137固定20題工程smoke保持獨立，不再追加該輪額度。不得執行正式VALID、讀取／執行TEST
 或重新下載模型；不擴張本輪矩陣、不把舊d0的結果作為本次第一輪。
+2026-09-30使用者另授權第2輪：共同文字工具呈現與五模型短提示，固定candidate2，
+先做新的固定20筆工程smoke，再啟動1,320筆正式DEV；開跑前多位獨立reviewer核對
+程式與輸入／研究契約。20筆為五模型各四題（A01-01、A08-01、C01-01、N01-01之V0），
+工程budget3600秒，不依其分數調提示或追加候選。正式預算與第1輪相同；初始量測正常
+即交回，不持續監控至完成。不授權VALID／TEST或下一輪。
+2026-10-02使用者另批准第3輪：Granite4／Llama沿用第2輪規則與文字目錄作起點，
+Phi／Gemma／Granite3.3沿用第1輪規則與JSON目錄作起點，再加入各自的完整輸出形狀／
+操作與回覆區分。這是研究提示起點，不回退共用runner或產品修復。精確model_id選固定
+profile；完整source在推論前封存。每模型candidate3各264題，共1320筆，固定因素及正式
+預算不變；本輪不追加20題smoke。離線驗證與獨立覆核後開跑，初始有效量測正常即交回。
+不因有效錯答改提示／重跑，不授權第4輪、VALID／TEST或merge。
+2026-10-02使用者閱讀第3輪總結後另批准第4輪：Granite4從R2提示移除泛用輸出示意，
+明示單一操作／回覆互斥；Gemma從R1提示明示執行決策而非文字承諾，不帶泛用示意；
+Phi／Llama／Granite3.3保留R3基礎，分別釐清工具／參數來源、當前請求與參考值、首次
+JSON封裝及不操作邊界。逐模型短提示置於目錄／保留示意之後，不新增推理階段或Host政策。
+只改研究提示呈現；固定因素、一次格式重試及預算不變，candidate4五模型各264題。
+不追加smoke推論；完整輸入／精確tokenizer與獨立覆核、同head適用CI通過再封存開跑。
+初始有效量測及進度正常即交回；不授權第5輪、VALID／TEST或merge。
+2026-10-02使用者另批准第5輪：Granite4以R2提示改為必填操作欄位的當前值來源提示；
+Phi／Llama以R3提示分別替換帶參數／泛用reply示意為完整缺值／開窗資訊對照；
+Gemma以R4提示聚焦所請求工具自身條件；Granite3.3以R4格式要求搭配操作／回覆對照。
+示例依公開工具契約撰寫，不取DEV原句、改寫或答案數值；只替換呈現，不回退共用工程修理。
+固定candidate5、五模型各264題、既有生成／RAG／判分／一次格式重試不變；無額外smoke。
+同head CI、完整輸入及精確tokenizer／獨立覆核後封存開跑，初始有效紀錄正常即交回。
+這是第五套也是最後一套DEV候選；不自動選版、啟動VALID／TEST、追加候選或merge。
+2026-10-02使用者在五輪完成後明確授權VALID：按既定DEV平衡正確率／P50選五套，
+一次排入全部三次repeat，共1485筆；封存、直接驗證及獨立覆核後開跑，初始有效量測與
+進度正常即交回，不監控整輪、不merge或讀TEST。五輪是事先固定的候選評估預算，
+不是收斂／全域最優宣稱；Granite3.3末輪仍改善的限制保留，不因此追加第六輪。
+DEV入選：Granite4=R2、Llama=R3、Gemma=R4 repair-03、Phi與Granite3.3=R5，無同分。
+早期source有已知Qt退出／停止確認缺陷，VALID使用明記的新工程封存：保留各入選
+prompt完整輸入等價、固定模型／RAG／生成／判分，共用已修理的R5執行基礎。不冒稱原DEV
+SHA直接執行；入選DEV source/run與VALID執行source分別記錄，舊證據不重判、不覆寫。
+開跑前固定順序：沿既有build_jobs模型順序Granite4、Granite3.3、Phi、Llama、Gemma，
+每模型依repeat0、1、2，各repeat按case_id排序且獨立新condition/session；不複製輸出。
+DEV完全同分同P50取較早candidate（本次未用）；VALID按三次平均平衡正確率，再平均P50，
+仍完全相同時按上述既有模型順序選定。不使用VALID結果再改提示或選版規則。
 舊 B0/B1/B2 搜尋安排、最多 30 條件 VALID、TEST 加跑同模型 B0、P95 10 秒門檻
 已被新版設計取代，不再派工；歷史決策留 Git，舊 B0 封存／分數／入口不追改。
+
+### 2026-10-02 TEST執行凍結
+
+使用者批准TEST施工、完整執行、資料稽核及本機回存。VALID成功run為
+`20261002-124746-8263faf9`（7c4ac807，1485筆）；依事前平均macro再平均P50選定
+Phi-4 Mini R5（macro 0.7654320988），不因TEST結果換模型或提示。
+正式矩陣為以下四條件各132題、repeat 0/1/2，共1584次案例執行；修復生成另計。
+
+| 條件 | RAG | 狀態式工具目錄篩選 | 最多格式重試 |
+| --- | --- | --- | ---: |
+| full | on | on | 1 |
+| rag-off | off | on | 1 |
+| tool-filter-off | on | off | 1 |
+| retry-off | on | on | 0 |
+
+目錄消融僅擴大提供模型的工具schema；state、blocked原因、RAG候選資格／結果、
+固定提示示意及Host admission／confirmation維持full。可看見不代表可執行；Host攔截
+不將錯誤模型提案變成正確。另兩項各只停用自己的機制。Full完整輸入須於既有DEV/VALID
+情境與入選版本逐字相同；各消融完整輸入／runtime政策差異在讀TEST前用無推論證據確認。
+沿用精確Phi模型／生成設定、137及共用環境，不增加模型、DEV候選、B0或smoke推論。
+
+排程先repeat後條件：repeat0為上述表格順序；repeat1左移一格，repeat2左移兩格。
+每condition/repeat独立載入與既定warmup，案例依case_id遞增且逐題reset。
+這是減少時間順序偏差的固定輪換，不宣稱四條件完全平衡。預算仍受14400秒active上限
+約束，不因有效錯答加跑。完整題庫僅在此研究配置固定及無推論消融檢查通過後解封；
+其來源hash、fixture/input/token預檢與最後工程source SHA在執行前封存。
+
+主分數仍為各repeat三類macro後平均；P50/P95各repeat先算再平均，不混池。
+呈現三類分數及always-respond參照macro 66.67%（Action 0、其餘100%），不將兩類
+合法回答率解讀成回答品質。分開記錄原始模型、Host admission及實際執行結果。
+補充full對各off的配對差、修復觸發／救回／時間成本，不以變好才宣稱完成。
+
+2026-10-03使用者確認：研究正確率只評模型原始工具／參數答案，首答及既有格式重試
+後答案分開保存。Host拒絕、成功執行或執行失敗均不改模型分數。現行research runner
+與其engineering-smoke以完整raw/capture/input identity、原scorer、decision計時及
+fixture/reset/cleanup為有效量測條件；product outcome及UI計時另留診斷，觀測不完整
+不得偽称執行成功，也不得單獨排除原始答案或中斷整批。原standalone Pilot gate不變。
+
+首次TEST在fa9d4d54因英文數字four/eighteen與Host原句literal檢查不相容停止：模型
+bandpass 4/18原始答案已判正確，並非模型錯答。使用者另批准移除bandpass/notch/resample
+的Host原句數字membership檢查，仍保留schema/range/capability/publication/confirmation；
+method來源及RAG共用helper不變。新TEST封存揭露此post-VALID工程修理與新source，
+不能稱完整產品版本與VALID相同。模型／prompt／RAG／生成／oracle／raw scorer不變，
+執行前另驗Full輸入逐字一致。既有DEV/VALID原始分數與source保留，不回填或重跑。
+失敗TEST批次保留，新source重新完整排程，不拼接兩版結果；新run不以分數高低重跑。
+
+不確定性：依Action／Clarification／No-call分層，分別以36／12／18個family為抽樣
+單位有放回重抽10000次（analysis seed0）；每family的2改寫×3repeat及四條件成套
+保留。由每family六次平均正確率算各層均值，再三層等權計macro；同一次抽樣索引用於
+full/off配對差，取2.5及97.5百分位數。此分析不再生成模型輸出，不把repeat當獨立題庫。
+區間是題庫涵蓋任務／family抽樣假設下的條件式不確定性，不代表所有真實使用者，
+不把三個個別95%區間稱為同時95%或事後用顯著性重選系統。模板相關性列限制。
+
+題庫／RAG重合稽核依使用者`碩論準備/資料集驗證/README.md`，於正式TEST啟動後
+進行，不因此再調提示、題目、oracle或分母。標準答案建立及scorer證據如實交代；
+既有使用者審題與工程驗證不冒稱第二位獨立人工標註。不新增強制真人研究。
+工程fixture修正需新source及重驗；正式source改變不得混批。未知缺證據／cleanup失敗
+仍fail closed。正常錯答照實保存；新oracle／研究決策問題交使用者，不自行修答案。
+
+NAS TEST沿用stage內一個完整封存包、12條件在同一run；全部成功VALID/TEST結果
+複製至`D:\workspace_v2\projects\lab\碩論準備\實驗\result/<STAGE>/<run-id>`，
+保留index、reports、raw證據、inputs、launches、audits（如有）、prepared manifest。
+逐檔hash及離線HTML links核對後才稱回存完成。不帶權重／環境／暫存EEG，NAS原件不改。
+使用者要求節制監控：啟動核對後依預估時程低頻讀摘要／終態；不逐題輪詢或反覆拉全log。
+本輪終點為完整TEST、稽核與本機副本交付，不以啟動即宣稱完成，不自動merge。
 
 ## 1. 研究定位與限制
 
@@ -69,8 +205,8 @@ DEV 不調 RAG 語料與檢索設定；degraded retrieval 不算 RAG on。題庫
 | 階段 | 已確認矩陣 | 次數與出口 |
 | --- | --- | --- |
 | DEV | 五模型，每模型五套設定（基準占第一套）；每套完整264題一次 | 完整矩陣6,600次；各選一套 |
-| VALID | 五套入選系統 × 99 題 × 三次 | 1,485 次；選完整系統 |
-| TEST | 完整系統及三項消融 × 132 題 × 三次 | 1,584 次；評估，不再選版 |
+| VALID | 全部25個凍結候選 × 99 題 × 一次 | 2,475 次；選完整系統 |
+| TEST（若新winner） | 完整系統及三項消融 × 132 題 × 一次 | 528 次；評估，不再選版 |
 
 基準輪的1,320次包含於五輪矩陣，不額外加跑基準或RAG off。五輪是候選設定，不是同
 設定重複五次；各模型可不同調整，但可調範圍、題庫與評估次數一致。每輪先記錄理由
@@ -107,7 +243,9 @@ Runner 原樣複製題庫，不做刪欄或特殊指紋轉換；新實驗重新 
 新 DEV 的研究專用投影只控制非任務資訊：模型 state card 不含 backend generation 數字；
 training progress 的匿名 subject reference 按出現順序改成穩定別名。真實 stage、進度數值、
 工具與任務資訊保留。Host 仍用原 publication generation 作 freshness/admission，
-不固定真 counter、不略過 stale checks；原 publication 與實際模型輸入分別保留。
+不固定真 counter；停止確認依[核准的run-bound例外](../target/agent.md#backend-owned-stage-contract)
+在執行邊界核對原trainer/run仍在running，不因同場進度更新失效，其餘stale checks不變。
+原 publication 與實際模型輸入分別保留。
 這是新 DEV 配置，不回套舊 B0，也不宣稱兩者輸入相同。
 
 ## 4. 評分、計時與量測完整性
@@ -131,6 +269,8 @@ training progress 的匿名 subject reference 按出現順序改成穩定別名�
   少類別、缺題或未知終態不能宣稱完整矩陣完成。
 
 決策、admission、使用者確認及實際 Command／GUI outcome 分層記錄。
+完整且同turn/request的確認拒絕／取消事件是有效量測的`blocked`／`cancelled`，不是
+執行成功，也不是「缺少執行觀察」。缺事件、重複或矛盾執行事件、身分不符仍判量測無效。
 Scorer 正反例保護參數、格式、錯誤工具、正常不操作與有效失敗，並獨立覆核可達的錯判。
 正式實驗若發現 scorer 缺陷，一致重評受影響資料，不只修抽到的個案。
 
@@ -190,6 +330,74 @@ JSON排版／key順序不構成參數差異；不評非操作回覆的文字品�
 v1歷史封存仍可讀取，但不往舊包加新入口或更改manifest；如需比較，由新包讀取兩份結果。
 
 ### 可封存 DEV／VALID 協定
+
+#### 同工作站／NAS：共用唯讀資源與分層入口（2026-09-30）
+
+使用者選定本次使用方式：完整程式與評分器、題庫、設定隨實驗版本封存；接收者複製
+到自己的可寫資料夾。Python環境與模型／embedding可繼續使用NAS上同一份固定資源，
+只需接收者讀取／進入／執行權限，不要求每個副本重建venv或複製模型。
+這不是任意機器的獨立可攜包；原資源不可刪除／原地升級，未通過權限檢查不能宣稱
+另一帳號可用。工具不自動chmod／開放私人目錄，也不處理跨帳號GPU排程。
+
+搬移單位是完整`experiment/`，不是各個round；固定頂層為README、run.sh、compare.sh、
+`stages/`、`snapshot/`、`results/`，另有執行時隱藏`.runtime/`。透過
+`assistant_experiment_batch.create_experiment`封存一次完整樹，取代前版逐層batch-source。
+`snapshot/sources/<commit>/`每個不同commit只存一份完整獨立Git快照，跨模型／round／stage
+共用；`snapshot/inputs/`按內容封存題庫及資源指紋，TEST未授權時不讀取或加入。
+`snapshot/environment/shared.json`固定Python位置、平台及套件版本，不是已安裝二進位的
+逐檔hash。模型內容仍由既有runner於推論前核對。各round的`config.json`對應模型、
+candidate及source；README記調整理由／目標模型／共同影響，不能覆蓋機器設定。
+
+在自己的副本執行`./run.sh --check-environment`核對封存、環境版本、資源目錄存取及
+執行限制工具，不推論、不新建run；`./run.sh`自動清理衝突Python環境變數、設定offline／
+offscreen及本地cache，委派既有runner。保留core=0及18000秒外層wall guard，active預算
+由原config擁有。所有cache/log/temp位於副本`.runtime/cache/`，拒絕cache樹既有符號連結；
+run及comparison輸出不允許導向副本外。檢查模式不證明CUDA／模型準確率或逐位元重現。
+
+root、`stages/dev`、各round、`stages/val`、`stages/test`各有`run.sh`，全部引用中央snapshot；
+`snapshot/manifest.json`固定scope、順序及檔案指紋。不掃目錄、不新增另一套case journal、
+評分或resume政策。只允許實體子目錄、禁止重複選擇；全樹封存核對及所選scope的完整
+ready／環境預檢在第一次推論前完成。歷史source／round配置／run證據不原地升級。
+新增DEV輪次使用`assistant_experiment_batch.append_round`：先驗既有封存，再暫存新
+source／輸入／round，驗證組合後原子發佈更新manifest。根manifest及coordinator因新增
+輪次而有新身分；既有round檔案與結果保持原內容。部署時不得有並行寫入者或執行中批次。
+任一stage有blocked_reason就整個所選範圍拒絕執行，不跳過後宣稱完整研究完成。
+只有DEV第1輪固定時，可建立清楚標示只含round-01的DEV批次；root若包含尚未ready的
+VALID／TEST必須保持blocked。將來完整五輪／VALID／TEST全固定後才可建立整研究重跑包。
+
+批次按固定順序委派runner，失敗／取消即停止後續；每次產生新的`results/runs/<id>/`。
+`results/runs/<id>-scope.json`只列選擇及已指定的輸出位置、完成／失敗／未嘗試，不另計分。
+成功原始參考結果逐檔核對複製到`results/reference/<original-id>/`，原始manifest／source
+身分及歷史絕對路徑不改寫。比較器从包內raw及中央snapshot讀取；reference只供比較，
+不承諾搬移後resume部分舊run。`compare.sh`不推論／重評分，另存`results/comparisons/`。
+不允許從多次執行挑最高分。GPU仍需使用者協調，
+同一副本不應同時啟動多批，入口不是常駐服務或安全沙箱。
+
+階段封存：DEV每輪保存五模型各自候選、完整程式／prompt／RAG／scorer及差異理由，
+相同source僅存一次；VALID階段固定DEV入選的五套系統及來源round/run對應，固定三次
+repeat後不回頭調參；TEST在選定完整系統與三項消融及工程驗證固定後才取得封存TEST。
+現有config仍只接受DEV／VALID；TEST和消融的實際執行尚未實作，不因分層入口而解禁。
+同版本重現另建run，不占另一改善輪，也不能用重跑湊五套候選；正式計分run須記錄。
+工程修正版新包須區分封裝coordinator與各模型source，不回寫舊run的版本／指紋。
+
+DEV第2輪沿用共同程式，由精確model_id選定短提示；未知模型在載入前拒絕。
+研究用`DevContextAssembler`將真實工具schema呈現為文字，保留required／選填、型別、
+enum及額外欄位限制；各模型提示與共同程式一併按source封存，不依題號／答案選提示。
+產品預設提示、Host／工具契約、scorer、RAG與一次格式修復不變。candidate_index只記錄
+候選輪次，不決定執行時提示。五模型各264筆；本輪固定20筆工程驗證不作挑提示的搜尋集，
+答錯與工程執行失敗分開記錄。無推論preflight涵蓋全部DEV fixture及五模型完整輸入，
+另以保存的RAG輸入與精確tokenizer核對預算；這些不代表模型準確率改善。
+
+量測工具修改的無推論驗證也須涵蓋錯誤工具選擇，不只fixture與預期答案的happy path：
+用固定回應走真Host／產品視窗，核對導航、開窗取消、確認、通知、渲染失敗／逾時及
+下一題清理。產品通知測試須呼叫實際建立者，不能複製舊文案造視窗代替；未知視窗、
+缺證據與清理失敗仍停止，已完整觀察的模型錯答照實計錯、不轉成量測排除。
+無推論工程重播不計正式準確率、不增加候選輪次；修理後新source另封存，保留舊失敗run。
+
+第3輪按上述逐模型起點保留JSON或文字目錄，重用同一產品schema／publication；
+完整輸出示意只從當前可用的公開工具契約產生，不讀case ID或oracle，不提供當題授權／值。
+五套profile連同共同程式封存；候選來源決定呈現，不由candidate_index或觀測分數切換。
+第2輪工程20題為歷史證據，第3輪不沿用為同source驗證，也不追加新smoke推論。
 
 #### 相容工作站的可搬移副本
 

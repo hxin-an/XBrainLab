@@ -63,7 +63,10 @@ def test_valid_wrong_decision_never_retries_or_gets_host_rescued():
     assert not result.raw_score.passed
     assert not result.post_recovery_score.passed
     assert not result.final_score.passed
-    assert not result.product_terminal["execution_boundary_reached"]
+    # A schema-valid numeric proposal reaches the boundary but remains wrong;
+    # this measurement seam suppresses execution, never rescues the raw score.
+    assert result.product_terminal["execution_boundary_reached"]
+    assert result.product_terminal["execution_suppressed"]
 
 
 def test_one_format_repair_keeps_wrong_raw_separate_from_correct_final():

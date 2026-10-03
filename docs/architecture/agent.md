@@ -145,7 +145,7 @@ Qt processing／closing admission。這些內部責任移交不新增工具或�
 - 初次生成最多加一次既有格式修復；同一修復仍失敗即停止，不重送第二次相同策略。
   多個完整物件維持 choose-one terminal，已交付操作、確認取消與執行失敗不由格式重試重送。
 - `respond_to_user`只呈現回答；其他工具由`ToolAttemptCoordinator`核對publication、
-  當輪參數來源與`VerificationLayer`的完整required/type/enum/range，再進執行admission。
+  適用的方法來源與`VerificationLayer`的完整required/type/enum/range，再進執行admission。
 - 套用 ApplicationService capability gate，避免 assistant 在錯誤 backend state 呼叫不該開放的工具。
 - 將已驗證的單一 tool 交給 `ToolExecutionCoordinator`；mapped workflow tool 透過
   `execute_application_tool_command(...)` 執行 ApplicationService command，直接取得
@@ -214,8 +214,10 @@ command 仍由同一個 Study-scoped ApplicationService lock 序列化，避免 
 
 每次普通要求獨立；缺值只回答並請使用者重新提供完整要求，不保存草稿或合併歷史值。
 一般說明、裸值與指涉文字仍交同一模型路徑理解；沒有Host intent router、bandpass排序
-或免生成補值捷徑。五個direct preprocess工具的參數來源只核對最近user原文，
-不接受history、RAG或backend state補值。數值／方法匹配不證明語意、否定或操作意圖正確。
+或免生成補值捷徑。Bandpass／notch／resample數值由模型解析；Host不再要求原句
+含相同阿拉伯數字，也不另做英文數字解析。完整schema／range與後端admission仍必須通過。
+Reference／normalization方法來源仍只核對最近user原文；Host不以history、RAG或backend
+state補值。來源匹配不證明語意、否定或操作意圖正確；RAG示例來源helper未隨Host放行改動。
 
 `PendingInteractionCoordinator`只保存blocking confirmation／GUI handoff。這些互動仍按
 typed request identity消費一次；確認後重讀publication，取消、Stop、New Chat與Close不
@@ -552,7 +554,12 @@ admission。若 state publication 不可靠，prompt stage 固定為 `unavailabl
 模型輸出採前述兩欄response，不回填 `workflow_stage`。Stage 在 required
 `application_state`／backend publication 中，system 亦保留同一 publication 的簡短 stage
 事實；Host 以保存的 generation 驗證 proposal、confirmation 及 execution，不從模型 JSON
-取得 state。舊五欄／三欄提案不被產品parser接受，沒有雙格式相容路徑。
+取得 state。停止確認依核准例外綁定原publication的`TrainingRunIdentity`，同場running進度
+更新不失效；既有確認DTO同步投影此身分供失效提示使用。批准後由可信執行adapter寫入
+`StopTrainingCommand.expected_run`，manager／Trainer在既有鎖內核對相同run仍為RUNNING
+才提交interrupt；換run／terminal／stopping拒絕，等待worker在manager鎖外。
+GUI無綁定的即時停止仍沿用既有控制路徑；不新增模型參數、確認重試或全域generation例外。
+舊五欄／三欄提案不被產品parser接受，沒有雙格式相容路徑。
 
 RAG操作示範都受同一條18-tool與stage publication邊界約束；非執行回答示範以
 `respond_to_user`分類，不能授予執行權限。

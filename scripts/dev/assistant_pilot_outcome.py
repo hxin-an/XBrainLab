@@ -52,6 +52,61 @@ def ui_measurement_issues(ui: dict) -> list[str]:
     return [code for code in ui.get("issues", []) if code not in confirmed]
 
 
+def _confirmation_nonexecution(trace: dict, tool: str) -> str | None:
+    """Recognize a recorded refusal, not an inferred or successful execution."""
+    if any(
+        event.get("kind") in {"command_started", "command_result", "ui_requested"}
+        for event in trace.get("events", [])
+    ):
+        return None
+    kinds = (
+        "host_decision",
+        "confirmation_requested",
+        "confirmation_submitted",
+        "interaction_resolved",
+        "turn_terminal",
+    )
+    chain = [
+        event
+        for event in trace.get("events", [])
+        if event.get("kind") in kinds
+        and (
+            event["kind"] != "host_decision"
+            or event.get("payload", {}).get("kind") == "admission"
+        )
+    ]
+    if tuple(event["kind"] for event in chain) != kinds:
+        return None
+    admission, request, submitted, resolution, terminal = (
+        event["payload"] for event in chain
+    )
+    status = terminal.get("outcome")
+    correlation = terminal.get("correlation")
+    if (
+        status not in {"blocked", "cancelled"}
+        or terminal != trace.get("turn_terminal")
+        or not isinstance(correlation, dict)
+        or not correlation
+        or any(event.get("observed_turn") != correlation for event in chain)
+        or admission.get("action") != "confirmation_required"
+        or any(
+            payload.get("command_name") != tool
+            for payload in (admission, request, submitted, resolution)
+        )
+        or not request.get("request_id")
+        or resolution.get("request_id") != request["request_id"]
+        or resolution.get("status") != status
+        or submitted.get("status")
+        != ("approved" if status == "blocked" else "cancelled")
+        or any(
+            key not in request or submitted.get(key) != request[key]
+            for key in ("request_id", "params_fingerprint", "publication_generation")
+        )
+    ):
+        return None
+    return status
+
+
 def score_product_outcome(case: dict, result: dict) -> dict:
     """Score one completed recorder result, keeping all three evidence layers.
 
@@ -175,6 +230,8 @@ def score_product_outcome(case: dict, result: dict) -> dict:
             )
         elif navigation:
             _navigation_outcome(navigation[-1], ui, answer)
+        elif nonexecution := _confirmation_nonexecution(trace, expected):
+            answer["outcome"] = nonexecution
         elif correct:
             issues.append("product_execution_observation_missing")
         elif observed_actions:

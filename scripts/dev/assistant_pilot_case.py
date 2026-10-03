@@ -21,7 +21,10 @@ from typing import Any
 
 
 def validate_case_request(payload: dict) -> None:
-    from scripts.dev.assistant_experiment_config import is_experiment_protocol
+    from scripts.dev.assistant_experiment_config import (
+        ablation_policy,
+        is_experiment_protocol,
+    )
     from scripts.dev.assistant_pilot_bank import DEV_EXPERIMENT
     from scripts.dev.assistant_pilot_models import research_model_spec
 
@@ -31,15 +34,37 @@ def validate_case_request(payload: dict) -> None:
     split = experiment["stage"] if current else "DEV"
     if experiment is not None and not current and experiment != DEV_EXPERIMENT:
         raise ValueError("Invalid frozen experiment policy")
+    if "prompt_profile" in payload and (
+        payload["prompt_profile"] != "frozen-dev-round"
+        or not current
+        or experiment["purpose"] != "research"
+    ):
+        raise ValueError("Invalid frozen prompt profile")
     if current and (
         payload.get("split") != split
         or type(payload.get("candidate_index")) is not int
         or not 1 <= payload["candidate_index"] <= 5
         or not isinstance(payload.get("source_head"), str)
         or not re.fullmatch(r"[0-9a-f]{40}", payload["source_head"])
-        or payload.get("rag_enabled") is not True
+        or (split != "TEST" and payload.get("rag_enabled") is not True)
     ):
         raise ValueError("Invalid frozen experiment candidate identity")
+    if current and split == "TEST":
+        factors = ablation_policy(payload.get("ablation"))
+        if any(
+            type(payload.get(key)) is not type(value) or payload[key] != value
+            for key, value in factors.items()
+        ):
+            raise ValueError("Invalid frozen TEST ablation identity")
+    elif any(
+        key in payload
+        for key in (
+            "ablation",
+            "tool_filter_enabled",
+            "max_format_recovery_attempts",
+        )
+    ):
+        raise ValueError("Ablation factors require a frozen TEST experiment")
     if (
         case.get("split") != split
         or not str(case.get("case_id", "")).startswith(split + "-")
@@ -65,7 +90,7 @@ def experiment_result_identity(payload: dict) -> dict:
 
     if not is_experiment_protocol(payload.get("experiment")):
         return {}
-    return {
+    identity = {
         key: payload[key]
         for key in (
             "experiment",
@@ -76,6 +101,21 @@ def experiment_result_identity(payload: dict) -> dict:
             "source_head",
         )
     }
+    if "prompt_profile" in payload:
+        identity["prompt_profile"] = payload["prompt_profile"]
+    if payload["split"] == "TEST":
+        identity.update(
+            {
+                key: payload[key]
+                for key in (
+                    "ablation",
+                    "rag_enabled",
+                    "tool_filter_enabled",
+                    "max_format_recovery_attempts",
+                )
+            }
+        )
+    return identity
 
 
 def verify_prompt_captures(
@@ -129,6 +169,33 @@ def verify_prompt_captures(
     return {"issues": issues, "captures": captures}
 
 
+def initial_state_issues(case: dict, messages: list[dict]) -> list[str]:
+    """Certify the actual model-facing state, never a prior fixture snapshot."""
+    states = []
+    for raw_message in messages:
+        message = dict(raw_message)
+        if message.get("role") != "user":
+            continue
+        try:
+            value = json.loads(message.get("content", ""))
+        except (ValueError, TypeError):
+            continue
+        if isinstance(value, dict) and isinstance(value.get("current_user"), dict):
+            states.append(value.get("application_state"))
+    if len(states) != 1 or not isinstance(states[0], dict):
+        return ["initial_state_not_observed"]
+    state = states[0]
+    issues = []
+    if state.get("state_reliable") is not True:
+        issues.append("initial_state_unreliable")
+    expected = case.get("expected_workflow_stage")
+    if not expected or state.get("workflow_stage") != expected:
+        issues.append("initial_workflow_stage_mismatch")
+    if expected == "training" and state.get("running") is not True:
+        issues.append("initial_training_not_running")
+    return issues
+
+
 def audit_initial_input(
     case: dict, fixture: dict, trace: dict, *, decision_timed_out: bool = False
 ) -> dict:
@@ -158,6 +225,7 @@ def audit_initial_input(
             }
         return {"issues": ["initial_input_not_observed"]}
     messages = [dict(message) for message in generations[0]["request"]["messages"]]
+    issues.extend(initial_state_issues(case, messages))
     requests = []
     for message in messages:
         role, content = message.get("role"), message.get("content")

@@ -71,7 +71,20 @@ def replay_rows(rows, read_detail, scorer, input_audit, experiment: dict) -> dic
                 problems.append("missing_request_or_result")
             else:
                 arguments = {"decision_timed_out": result["decision_timed_out"]}
-                if "max_format_recovery_attempts" in experiment:
+                if experiment.get("stage") == "TEST":
+                    from scripts.dev.assistant_experiment_config import ablation_policy
+
+                    factors = ablation_policy(request.get("ablation"))
+                    if any(
+                        type(request.get(key)) is not type(value)
+                        or request.get(key) != value
+                        for key, value in factors.items()
+                    ):
+                        raise ValueError("TEST replay factor identity mismatch")
+                    arguments["max_format_recovery_attempts"] = factors[
+                        "max_format_recovery_attempts"
+                    ]
+                elif "max_format_recovery_attempts" in experiment:
                     arguments["max_format_recovery_attempts"] = experiment[
                         "max_format_recovery_attempts"
                     ]

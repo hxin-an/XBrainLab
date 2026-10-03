@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -331,7 +331,7 @@ class TrainingManager:
         self._training_operation_sequence = 0
         self._training_operation_owner: _TrainingPipelineOperationLease | None = None
         self._training_start_admission: _TrainingStartAdmission | None = None
-        self._saliency_job_lock = Lock()
+        self._saliency_job_lock = RLock()
         self._saliency_request_sequence = 0
         self._saliency_cancellation_epoch = 0
         self._saliency_request_owner: _PostTrainingSaliencyOwnership | None = None
@@ -611,8 +611,26 @@ class TrainingManager:
             )
         return stopped
 
-    def stop_training_if_present(self, wait_timeout: float | None = None) -> bool:
+    def stop_training_if_present(
+        self,
+        wait_timeout: float | None = None,
+        *,
+        expected_run: TrainingRunIdentity | None = None,
+    ) -> bool | None:
         """Atomically capture and stop the current trainer, if one exists."""
+        if expected_run is not None:
+            with self._training_pipeline_lock:
+                trainer = self.trainer
+                if trainer is None or self._training_start_admission is not None:
+                    return None
+                stopped = trainer.stop(expected_run=expected_run)
+            if stopped is not False or wait_timeout is None:
+                return stopped
+            # Join only the captured trainer, outside manager admission locks.
+            return trainer.wait_for_completion(
+                timeout=max(0.0, float(wait_timeout)),
+                expected_run=expected_run,
+            )
         stopped = self._stop_training_if_present(wait_timeout=wait_timeout)
         return bool(stopped)
 
@@ -2055,6 +2073,29 @@ class TrainingManager:
         """Capture trainer identity and generation under the lifecycle lock."""
         with self._training_pipeline_lock:
             return self._capture_training_read_boundary_locked()
+
+    @contextmanager
+    def training_snapshot_read(self) -> Iterator[None]:
+        """Capture one view in the same lock order as result publication.
+
+        Identity and saliency publication precede the trainer tracker. Status
+        getters re-enter these manager locks while assembling the view; no
+        callback or worker join runs inside this read scope. Active training
+        mutations touch only trainer/holder/record state, so their completion
+        needs neither manager lock while the tracker waits briefly. Untracked
+        or long-busy trainers still require optimistic boundary verification.
+        """
+        with self._training_pipeline_lock, self._saliency_job_lock:
+            trainer = self.trainer
+            read = getattr(type(trainer), "state_snapshot_read", None)
+            if callable(read):
+                snapshot_read = cast(
+                    Callable[[Any], AbstractContextManager[None]], read
+                )
+                with snapshot_read(trainer):
+                    yield
+            else:
+                yield
 
     def capture_pipeline_mutation_boundary(
         self,

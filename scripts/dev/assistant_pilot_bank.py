@@ -1,4 +1,4 @@
-"""Read the explicitly supplied non-Test authoring workbook; never discover banks.
+"""Read an explicitly supplied authoring workbook; TEST requires opt-in.
 
 This is a bounded reader for this workbook contract, not a general Excel reader.
 It preserves human/oracle provenance and makes no product-readiness claims.
@@ -64,15 +64,18 @@ def _xml(archive: zipfile.ZipFile, name: str) -> ET.Element:
     return root
 
 
-def _sheets(archive: zipfile.ZipFile) -> dict[str, str]:
+def _sheets(archive: zipfile.ZipFile, *, allow_test: bool = False) -> dict[str, str]:
     workbook = _xml(archive, "xl/workbook.xml")
     sheets = workbook.findall(f"{_NS}sheets/{_NS}sheet")
     names = [sheet.get("name", "") for sheet in sheets]
+    required = {"TEST", "ground_truth", "情境定義"} if allow_test else _REQUIRED
+    allowed = _ALLOWED | {"TEST"} if allow_test else _ALLOWED
     # Metadata gate precedes sharedStrings and all worksheet contents.
     if (
         len(names) != len(set(names))
-        or set(names) - _ALLOWED
-        or not set(names) >= _REQUIRED
+        or set(names) - allowed
+        or not set(names) >= required
+        or (allow_test and len(set(names) & {"DEV", "VALID"}) == 1)
     ):
         raise ValueError("Unsupported, duplicate or missing workbook sheet")
     relationships = _xml(archive, "xl/_rels/workbook.xml.rels")
@@ -219,7 +222,7 @@ def _normalize(tables: dict[str, list[dict[str, str]]]) -> tuple[list[dict], dic
         for key, row in fixture_rows.items()
     }
     cases, seen, family_splits, used_fixtures = [], set(), {}, set()
-    for split in ("DEV", "VALID"):
+    for split in (name for name in ("DEV", "VALID", "TEST") if name in tables):
         for case_id, human in _index(tables[split], "題號").items():
             truth = truths.get(case_id)
             family, fixture_id = human["Family"], human["情境編號"]
@@ -287,8 +290,14 @@ def _normalize(tables: dict[str, list[dict[str, str]]]) -> tuple[list[dict], dic
     return cases, fixtures
 
 
-def load_bank(path: str | Path) -> dict:
-    """Read only one explicit DEV/VALID XLSX; reject unsafe or inconsistent inputs."""
+def load_bank(path: str | Path, *, allow_test: bool = False) -> dict:
+    """Read one explicit XLSX; reject TEST metadata before content unless opted in.
+
+    TEST intake accepts its standalone workbook or the complete DEV/VALID/TEST
+    workbook. It does not select cases: the frozen stage config owns selection.
+    """
+    if type(allow_test) is not bool:
+        raise ValueError("allow_test must be an explicit boolean")
     path = Path(path)
     if path.suffix.lower() != ".xlsx":
         raise ValueError("Expected an explicit XLSX file")
@@ -315,7 +324,7 @@ def load_bank(path: str | Path) -> dict:
                     or ":" in name
                 ):
                     raise ValueError("Unsafe or oversized archive member")
-            sheets = _sheets(archive)
+            sheets = _sheets(archive, allow_test=allow_test)
             shared = []
             if "xl/sharedStrings.xml" in names:
                 shared = [
@@ -329,9 +338,11 @@ def load_bank(path: str | Path) -> dict:
                 for name, required in (
                     ("DEV", _HUMAN),
                     ("VALID", _HUMAN),
+                    ("TEST", _HUMAN),
                     ("ground_truth", _TRUTH),
                     ("情境定義", _FIXTURE),
                 )
+                if name in sheets
             }
             cases, fixtures = _normalize(tables)
     except (
@@ -341,7 +352,7 @@ def load_bank(path: str | Path) -> dict:
         zipfile.BadZipFile,
         RecursionError,
     ) as error:
-        raise ValueError("Invalid or incomplete non-Test workbook") from error
+        raise ValueError("Invalid or incomplete authoring workbook") from error
     return {
         "schema": SCHEMA,
         "source": {

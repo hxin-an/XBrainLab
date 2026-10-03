@@ -56,6 +56,16 @@ CONDITIONS = {
 }
 
 
+def condition_spec(condition: str) -> tuple[str, bool]:
+    """Resolve sealed TEST factors without widening the legacy Pilot --all scope."""
+    alias, _, ablation = condition.partition("-")
+    if alias in _MODELS and ablation in experiment_config.TEST_ABLATIONS:
+        return _MODELS[alias], experiment_config.ablation_policy(ablation)[
+            "rag_enabled"
+        ]
+    return CONDITIONS[condition]
+
+
 def select_conditions(value: str) -> list[str]:
     requested = list(CONDITIONS) if value == "all" else value.split(",")
     if (
@@ -488,7 +498,7 @@ def _execute(
         decisions = {case["case_id"]: case["decision"] for case in bank["cases"]}
         for job in expected_jobs:
             job["source_root"] = manifest["runtime_config"]["sources"][
-                job["condition"].removesuffix("-rag-on")
+                job["condition"].split("-", 1)[0]
             ]["root"]
             job["decision"] = decisions[job["case_id"]]
         if (
@@ -496,7 +506,8 @@ def _execute(
             != experiment_config.experiment_identity(manifest["config"])
             or manifest["budget_seconds"] != manifest["config"]["budget_seconds"]
             or manifest["selection"] != selection
-            or manifest["jobs"] != expected_jobs
+            or json.dumps(manifest["jobs"], sort_keys=True, allow_nan=False)
+            != json.dumps(expected_jobs, sort_keys=True, allow_nan=False)
         ):
             raise ValueError(
                 "Experiment manifest differs from the derived config identity"
@@ -508,8 +519,11 @@ def _execute(
         replace_invalid and (not dev_initial or not resume)
     ):
         raise ValueError("Replacement requires an explicit initial DEV resume")
-    if dev_initial and any(
-        not CONDITIONS[job["condition"]][1] for job in manifest["jobs"]
+    test_stage = configured and manifest["experiment"]["stage"] == "TEST"
+    if (
+        dev_initial
+        and not test_stage
+        and any(not CONDITIONS[job["condition"]][1] for job in manifest["jobs"])
     ):
         raise ValueError("Initial DEV only permits RAG on")
     _assert_identity(manifest)
@@ -573,7 +587,10 @@ def _execute(
             journal("budget_exhausted")
             return 2
         rag_root = None
-        if any(CONDITIONS[job["condition"]][1] for job in manifest["jobs"]):
+        if any(
+            job["rag_enabled"] if test_stage else CONDITIONS[job["condition"]][1]
+            for job in manifest["jobs"]
+        ):
             preparation = output / "rag-preparation.json"
             if resume:
                 storage = _json(preparation)
@@ -629,7 +646,7 @@ def _execute(
                 if dev_initial
                 else CONDITION_TIMEOUT_SECONDS
             )
-            model, rag_enabled = CONDITIONS[condition]
+            model, rag_enabled = condition_spec(condition)
             jobs = []
             for job in batch["jobs"]:
                 case = cases[job["case_id"]]
@@ -652,6 +669,13 @@ def _execute(
                             for key in ("candidate_index", "split", "source_head")
                         }
                     )
+                if test_stage:
+                    payload.update(
+                        ablation=job["ablation"],
+                        **experiment_config.ablation_policy(job["ablation"]),
+                    )
+                if "prompt_profile" in job:
+                    payload["prompt_profile"] = job["prompt_profile"]
                 artifact = job.get("artifact_id", job["id"])
                 case_request = output / "cases" / f"{artifact}.request.json"
                 if dev_initial and case_request.exists():
@@ -695,6 +719,13 @@ def _execute(
                         )
                     }
                 )
+            if test_stage:
+                ablation = batch["jobs"][0]["ablation"]
+                condition_payload.update(
+                    ablation=ablation, **experiment_config.ablation_policy(ablation)
+                )
+            if "prompt_profile" in batch["jobs"][0]:
+                condition_payload["prompt_profile"] = batch["jobs"][0]["prompt_profile"]
             destination = output / "conditions" / condition_artifact
             request = destination.with_suffix(".request.json")
             _write_new(request, condition_payload)
@@ -990,14 +1021,14 @@ def _prepare_experiment_manifest(
     ):
         raise ValueError("Pinned RAG resources are missing or changed")
     embedding_sha256, _ = _identity(embedding)
-    bank = load_bank(bank_path)
+    bank = load_bank(bank_path, allow_test=config["split"] == "TEST")
     selection = experiment_config.build_selection(bank, config)
     cases = {case["case_id"]: case for case in bank["cases"]}
     jobs = experiment_config.build_jobs(selection, config)
     for job in jobs:
-        job["source_root"] = runtime["sources"][
-            job["condition"].removesuffix("-rag-on")
-        ]["root"]
+        job["source_root"] = runtime["sources"][job["condition"].split("-", 1)[0]][
+            "root"
+        ]
         job["decision"] = cases[job["case_id"]]["decision"]
     models = {
         model: {

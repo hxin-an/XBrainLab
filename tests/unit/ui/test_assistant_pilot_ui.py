@@ -24,10 +24,6 @@ from XBrainLab.ui.components.agent_manager import AgentManager
 from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     AssistantRuntimeLifecycle,
 )
-from XBrainLab.ui.components.modal_presentation import (
-    AlertSeverity,
-    ModalAlertDialog,
-)
 from XBrainLab.ui.main_window import MainWindow
 
 
@@ -139,14 +135,16 @@ def test_known_vram_notice_from_3d_navigation_is_observed_not_measurement_error(
     driver.attach(signals)
     done = []
 
+    from XBrainLab.ui.components.vram_checker import VRAMConflictChecker
+    from XBrainLab.ui.qt_settings import application_settings
+
+    settings = application_settings()
+    settings.remove("warnings/suppress_local_assistant_3d")
+    checker = VRAMConflictChecker(window, lambda: None)
+
     def present_notice(_request):
-        dialog = ModalAlertDialog(
-            severity=AlertSeverity.WARNING,
-            title="VRAM Warning",
-            message="Known product acknowledgement after opening the 3D view.",
-            parent=window,
-        )
-        done.append(dialog.exec())
+        checker.check(switching_to_local=True, switching_to_3d=True)
+        done.append(True)
 
     signals.panel_navigation_requested.connect(present_notice)
     signals.panel_navigation_requested.emit(
@@ -163,6 +161,7 @@ def test_known_vram_notice_from_3d_navigation_is_observed_not_measurement_error(
     assert notices[0]["widget_class"] == "ModalAlertDialog"
     assert Path(notices[0]["screenshot"]).is_file()
     assert "unexpected_dialog" not in snapshot["issues"]
+    assert not settings.value("warnings/suppress_local_assistant_3d", False, type=bool)
     assert any(
         event.get("kind") == "driver_action"
         and event.get("action") == "dismiss_product_notice"

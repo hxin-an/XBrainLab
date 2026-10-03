@@ -1,14 +1,18 @@
 """Lifecycle tests for one verified target assistant tool execution."""
 
 from collections.abc import Callable
+from dataclasses import replace
+from threading import Event
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
-from XBrainLab.backend.application import get_application_service
+from XBrainLab.backend.application import StopTrainingCommand, get_application_service
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training import Trainer
+from XBrainLab.backend.training_state_contract import TrainingOutcomeState
 from XBrainLab.llm.agent.metrics import AgentMetricsTracker
 from XBrainLab.llm.agent.tool_execution_coordinator import ToolExecutionCoordinator
 from XBrainLab.llm.agent.tool_feedback import format_tool_output
@@ -222,3 +226,109 @@ def test_execution_exception_completes_one_command_and_recovers_current_state(
     assert turn.tool_count == 1
     assert turn.tool_success_count == 0
     direct_execute.assert_not_called()
+
+
+def test_stop_execution_carries_reviewed_run_and_rejects_replacement(monkeypatch):
+    study = Study()
+    service = get_application_service(study)
+    old = Trainer([])
+    old.run(interact=False)
+    reviewed = old.get_terminal_outcome().run
+    current = Trainer([])
+    study.training_manager.trainer = current
+    started = Event()
+    finish = Event()
+
+    def job():
+        started.set()
+        assert finish.wait(timeout=5)
+
+    monkeypatch.setattr(current, "job", job)
+    current.run(interact=True)
+    assert started.wait(timeout=2)
+    context = replace(
+        _enabled_context("stop_training"),
+        state={
+            "state_reliable": True,
+            "training_liveness_reliable": True,
+            "training": {
+                "is_running": True,
+                "terminal_outcome": {"state": "running", "run": reviewed.to_dict()},
+            },
+        },
+    )
+    completed = []
+    coordinator = ToolExecutionCoordinator(
+        study,
+        _Registry(MagicMock()),
+        AgentMetricsTracker(),
+        block_policy=_BlockPolicy(),
+        emit_status=lambda _message: None,
+        emit_application_command_started=lambda: None,
+        emit_application_command_completed=completed.append,
+    )
+    try:
+        outcome = coordinator.execute(
+            "stop_training",
+            {},
+            context=context,
+            expected_publication_generation=context.generation,
+        )
+        assert not outcome.success
+        assert outcome.result.error_type == "precondition"
+        assert outcome.result.diagnostics["stale_confirmation"] is True
+        assert outcome.result.diagnostics["expected_training_run"] == reviewed.to_dict()
+        assert completed == [outcome.result]
+        assert current.get_terminal_outcome().state is TrainingOutcomeState.RUNNING
+        assert not current.interrupt
+    finally:
+        current.stop()
+        finish.set()
+        assert current.wait_for_completion(timeout=3)
+        service.close()
+
+
+def test_bound_stop_result_never_attributes_replacement_outcome_to_reviewed_run(
+    monkeypatch,
+):
+    study = Study()
+    service = get_application_service(study)
+    old = Trainer([])
+    replacement = Trainer([])
+    release_old = Event()
+    release_new = Event()
+    monkeypatch.setattr(old, "job", lambda: release_old.wait(timeout=5))
+    monkeypatch.setattr(replacement, "job", lambda: release_new.wait(timeout=5))
+    study.training_manager.trainer = old
+    old.run(interact=True)
+    reviewed = old.get_terminal_outcome().run
+    read_outcome = service.training_runtime.terminal_outcome
+
+    def replace_before_result_observation():
+        assert old.interrupt
+        release_old.set()
+        assert old.wait_for_completion(timeout=2)
+        with study.training_manager._training_pipeline_lock:
+            study.training_manager.trainer = replacement
+            replacement.run(interact=True)
+        return read_outcome()
+
+    monkeypatch.setattr(
+        service.training_runtime, "terminal_outcome", replace_before_result_observation
+    )
+    try:
+        result = service.execute(StopTrainingCommand(expected_run=reviewed))
+        assert result.ok
+        assert result.diagnostics["training_run"] == reviewed.to_dict()
+        assert result.diagnostics["terminal_outcome"] == "unknown"
+        assert replacement.get_terminal_outcome().state is TrainingOutcomeState.RUNNING
+        assert not replacement.interrupt
+    finally:
+        monkeypatch.setattr(service.training_runtime, "terminal_outcome", read_outcome)
+        old.stop()
+        replacement.stop()
+        release_old.set()
+        release_new.set()
+        assert old.wait_for_completion(timeout=3)
+        assert replacement.wait_for_completion(timeout=3)
+        service.close()

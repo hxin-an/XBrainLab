@@ -35,7 +35,11 @@ from XBrainLab.llm.tools.result_contract import (
 from XBrainLab.product_language import tool_action_label
 
 from .assembler import PromptToolPublication
-from .confirmation import AgentConfirmationRequest, AgentConfirmationRisk
+from .confirmation import (
+    AgentConfirmationRequest,
+    AgentConfirmationRisk,
+    running_training_identity,
+)
 from .execution_policy import HostExecutionPolicy
 from .parser import ToolCommand
 from .verifier import (
@@ -214,6 +218,11 @@ class ToolAttemptCoordinator:
             publication_generation=(tool_context.generation if tool_context else None),
             confirmation_kind=decision.confirmation_kind,
             risk=risk,
+            expected_training_run=(
+                running_training_identity(tool_context.state)
+                if cmd == "stop_training" and tool_context is not None
+                else None
+            ),
         )
 
     def evaluate(self, request: ToolAttemptRequest) -> ToolAttemptDecision:
@@ -267,9 +276,13 @@ class ToolAttemptCoordinator:
         if command_name == "start_training":
             add_start_training_confirmation_details(params, state=context.state)
 
+        # The model extracts numeric arguments; the verifier below checks their
+        # contract. Literal number matching remains a RAG-example policy only.
         origin_validation = (
             VerificationResult(True)
             if not request.enforce_direct_parameter_origins
+            or command_name
+            in {"apply_bandpass_filter", "apply_notch_filter", "resample_data"}
             else verify_direct_parameter_origins(
                 command_name,
                 params,

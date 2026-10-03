@@ -161,12 +161,40 @@ def build_research_engine(config: LLMConfig):
     )
 
 
-def build_research_worker(launch_spec: AssistantRuntimeLaunchSpec):
+def build_research_worker(
+    launch_spec: AssistantRuntimeLaunchSpec, *, initial_input_guard=None
+):
     """Keep the worker/process lifecycle and inject only frozen dependencies."""
-    from XBrainLab.llm.agent.worker import AgentWorker
+    from XBrainLab.llm.agent.turn import AssistantGenerationRequest
+    from XBrainLab.llm.agent.worker import (
+        AgentWorker,
+        AssistantGenerationAdmissionError,
+    )
 
     research_model_spec(launch_spec.model_id)
-    return AgentWorker(
+    worker_class = AgentWorker
+    if initial_input_guard is not None:
+
+        class GuardedResearchWorker(AgentWorker):
+            # A bound QObject method preserves the worker's queued thread affinity.
+            def generate_from_messages(self, request):
+                if (
+                    isinstance(request, AssistantGenerationRequest)
+                    and request.generation_id > 0
+                ):
+                    issues = initial_input_guard(request.to_model_messages())
+                    if issues:
+                        self._finish_generation_setup_failure(
+                            request.generation_id,
+                            AssistantGenerationAdmissionError(
+                                "Research input rejected: " + ", ".join(issues)
+                            ),
+                        )
+                        return
+                super().generate_from_messages(request)
+
+        worker_class = GuardedResearchWorker
+    return worker_class(
         engine_factory=build_research_engine,
         generation_config_loader=partial(build_frozen_config, launch_spec),
     )

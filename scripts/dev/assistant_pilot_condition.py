@@ -15,7 +15,7 @@ import math
 import os
 import threading
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -28,6 +28,7 @@ from scripts.dev.assistant_pilot_case import (
     bootstrap_case_checkout,
     experiment_result_identity,
     force_case_exit,
+    initial_state_issues,
     poll_case_safely,
     record_decision_clock,
     submit_case_input,
@@ -79,14 +80,31 @@ def validate_condition_request(payload: dict) -> None:
         if not dev_initial and "experiment" in job["payload"]:
             raise ValueError("DEV case identity requires an approved DEV condition")
         if dev_initial and (
-            job["payload"]["rag_enabled"] is not True
-            or job["payload"].get("experiment") != payload.get("experiment")
+            job["payload"].get("experiment") != payload.get("experiment")
+            or (not current and job["payload"]["rag_enabled"] is not True)
         ):
             raise ValueError("Initial DEV requires its exact experiment and RAG on")
     first = jobs[0]["payload"]
+    condition_keys = [
+        "candidate_index",
+        "split",
+        "repeat",
+        "source_head",
+        "prompt_profile",
+    ]
+    if current and first.get("split") == "TEST":
+        condition_keys.extend(
+            (
+                "ablation",
+                "rag_enabled",
+                "tool_filter_enabled",
+                "max_format_recovery_attempts",
+            )
+        )
     if current and any(
-        payload.get(key) != first.get(key)
-        for key in ("candidate_index", "split", "repeat", "source_head")
+        type(payload.get(key)) is not type(first.get(key))
+        or payload.get(key) != first.get(key)
+        for key in condition_keys
     ):
         raise ValueError("Condition and case experiment identity differ")
     if current and any(
@@ -125,6 +143,10 @@ class PilotConditionSession:
         self.manager = self.runtime = self.window = self.driver = None
         self.service = None
         validate_case_request(payload)
+        if payload.get("experiment") is not None:
+            from scripts.dev.assistant_dev_context import validate_dev_prompt_model
+
+            validate_dev_prompt_model(payload.get("model_id"))
         self.root = root.absolute()
         self.prompt_root = self.root / "prompts"
         for name, suffix in (
@@ -184,10 +206,25 @@ class PilotConditionSession:
         self.case_index = 0
         self.launch = make_launch_spec(payload["model_id"], payload["model_cache"])
         research_worker = None
+        self._initial_input_case = None
+
+        def initial_input_guard(messages):
+            # Armed only while the preceding case is quiescent, before submission.
+            # Consume once: a format-recovery request is not a new fixture input.
+            case = self._initial_input_case
+            self._initial_input_case = None
+            return [] if case is None else initial_state_issues(case, messages)
 
         def worker_factory():
             nonlocal research_worker
-            research_worker = build_research_worker(self.launch)
+            research_worker = build_research_worker(
+                self.launch,
+                initial_input_guard=(
+                    initial_input_guard
+                    if is_experiment_protocol(payload.get("experiment"))
+                    else None
+                ),
+            )
             return research_worker
 
         def factory(host, actual_study, *, application_service):
@@ -198,14 +235,25 @@ class PilotConditionSession:
                     worker_factory=worker_factory,
                 )
                 if payload.get("experiment") is not None:
-                    from scripts.dev.assistant_dev_context import DevContextAssembler
+                    from scripts.dev.assistant_dev_profiles import build_dev_context
 
                     original = controller.assembler
-                    controller.assembler = DevContextAssembler(
+                    controller.assembler = build_dev_context(
                         original.registry,
                         original.study_state,
+                        model_id=payload["model_id"],
                         application_runtime=original.application_runtime,
+                        tool_filter_enabled=payload.get("tool_filter_enabled", True),
+                        candidate_index=payload.get("candidate_index"),
+                        prompt_profile=payload.get("prompt_profile"),
                     )
+                    if payload.get("split") == "TEST":
+                        controller._strict_envelope_recovery_policy = replace(
+                            controller._strict_envelope_recovery_policy,
+                            max_recovery_attempts=payload[
+                                "max_format_recovery_attempts"
+                            ],
+                        )
                 self.driver.attach(controller)
                 return controller
 
@@ -296,6 +344,18 @@ class PilotConditionSession:
             "rag_warmup": rag_warmup,
             "runtime": asdict(self.runtime.current),
         }
+        if "prompt_profile" in payload:
+            assembler = self.manager.agent_controller.assembler
+            self.condition_evidence.update(
+                prompt_profile=assembler.prompt_profile,
+                candidate_index=assembler.candidate_index,
+            )
+        if payload.get("split") == "TEST":
+            self.condition_evidence["ablation_factors"] = {
+                "rag_enabled": self.manager.agent_controller._rag_enabled,
+                "tool_filter_enabled": self.manager.agent_controller.assembler.tool_filter_enabled,
+                "max_format_recovery_attempts": self.manager.agent_controller._strict_envelope_recovery_policy.max_recovery_attempts,
+            }
 
     def wait_until(self, predicate, seconds: float) -> None:
         deadline = time.perf_counter() + seconds
@@ -394,6 +454,7 @@ class PilotConditionSession:
 
     def run_case(self, payload: dict, output: Path) -> dict[str, Any]:
         from PyQt6.QtCore import QTimer
+        from PyQt6.QtWidgets import QApplication
 
         from scripts.dev.assistant_pilot_fixture import prepare_fixture
         from scripts.dev.assistant_pilot_observation import PilotCaseTrace
@@ -412,6 +473,7 @@ class PilotConditionSession:
         from XBrainLab.backend.application.owned_work import OwnedWorkKind
 
         case = payload["case"]
+        research = is_experiment_protocol(payload.get("experiment"))
         result: dict[str, Any] = {
             "schema": "xbrainlab.assistant_pilot_case.v1",
             **experiment_result_identity(payload),
@@ -467,6 +529,7 @@ class PilotConditionSession:
             trace = PilotCaseTrace(case["case_id"])
             trace.attach(self.manager.agent_controller, self.runtime)
             panel = self.manager.chat_panel
+            self._initial_input_case = case if research else None
             before_decision, before_decision_ns = submit_case_input(
                 panel, case["input"], self.wait_until
             )
@@ -570,8 +633,13 @@ class PilotConditionSession:
                 self.service, result["trace"], fixture, self.window
             )
             result["jobs"] = result["runtime_evidence"]["jobs"]
-            result["issues"].extend(result["runtime_evidence"]["issues"])
-            result["issues"].extend(ui_measurement_issues(result["ui"]))
+            diagnostics = (
+                result.setdefault("diagnostic_issues", [])
+                if research
+                else result["issues"]
+            )
+            diagnostics.extend(result["runtime_evidence"]["issues"])
+            diagnostics.extend(ui_measurement_issues(result["ui"]))
             result["after_state"] = self.service.get_state().to_dict()
             result["visible_messages"] = [
                 asdict(item) for item in collect_visible_messages(panel)
@@ -586,8 +654,9 @@ class PilotConditionSession:
                 case,
                 result["trace"],
                 decision_timed_out=result["decision_timed_out"],
-                max_format_recovery_attempts=payload.get("experiment", {}).get(
-                    "max_format_recovery_attempts"
+                max_format_recovery_attempts=payload.get(
+                    "max_format_recovery_attempts",
+                    payload.get("experiment", {}).get("max_format_recovery_attempts"),
                 ),
             )
             result["input_audit"] = audit_initial_input(
@@ -599,8 +668,30 @@ class PilotConditionSession:
             result["issues"].extend(result["input_audit"]["issues"])
             result["issues"].extend(result["capture_audit"]["issues"])
             result["issues"].extend(result["scores"]["measurement_issues"])
+            if research:
+                if result["scores"].get("measurement_valid") is not True:
+                    result["issues"].append("decision_measurement_unavailable")
+                if result["decision_clock"].get("terminal_observed") is not True:
+                    result["issues"].append("decision_clock_unobserved")
             result["product_outcome"] = score_product_outcome(case, result)
-            result["issues"].extend(result["product_outcome"]["issues"])
+            if research:
+                if (
+                    "product_or_cancel_deadline" in result["issues"]
+                    and result["scores"].get("measurement_valid") is True
+                    and result["decision_clock"].get("terminal_observed") is True
+                    and not result["decision_timed_out"]
+                ):
+                    # The unchanged raw scorer has certified the actual terminal.
+                    # Cleanup below must still retire every live product owner.
+                    result["issues"] = [
+                        issue
+                        for issue in result["issues"]
+                        if issue != "product_or_cancel_deadline"
+                    ]
+                    diagnostics.append("product_or_cancel_deadline")
+            diagnostics.extend(result["product_outcome"]["issues"])
+            if research:
+                result["diagnostic_issues"] = list(dict.fromkeys(diagnostics))
             result["issues"] = list(dict.fromkeys(result["issues"]))
             result["status"] = "measurement_failed" if result["issues"] else "recorded"
         except Exception as exc:
@@ -625,6 +716,17 @@ class PilotConditionSession:
                     and not self.runtime.turn_in_flight
                     and not self.manager.agent_controller.is_processing
                     and self.driver.snapshot()["pending_count"] == 0
+                    and (
+                        not research
+                        or (
+                            self.manager.agent_controller.pending_interactions.confirmation
+                            is None
+                            and self.manager.agent_controller.pending_interactions.workflow_handoff
+                            is None
+                            and QApplication.activeModalWidget() is None
+                            and not self.service.get_state().training.is_running
+                        )
+                    )
                     and self.service.training.wait_until_restart_safe(timeout=0),
                     15,
                 )
@@ -646,10 +748,12 @@ class PilotConditionSession:
     def close(self) -> bool:
         if getattr(self, "closed", False):
             return True
-        self.closed = True
-        from XBrainLab.backend.application.owned_work import OwnedWorkKind
+        from PyQt6 import sip
+        from PyQt6.QtCore import Qt
 
-        clean = True
+        from XBrainLab.backend.application.owned_work import OwnedWorkKind
+        from XBrainLab.ui.qt_runtime import drain_qt_runtime_after_event_loop
+
         try:
             service = getattr(self, "service", None)
             if service is not None:
@@ -661,18 +765,32 @@ class PilotConditionSession:
                     ),
                     10,
                 )
-            if self.driver is not None:
-                self.driver.close()
-            if self.manager is not None:
-                self.wait_until(self.manager.close, 20)
-            if self.window is not None:
+            # A deferred close can finish after an earlier wait timed out.
+            # Its driver timer and manager widgets then no longer exist.
+            if self.window is None or not sip.isdeleted(self.window):
+                if self.driver is not None:
+                    self.driver.close()
+                if self.manager is not None:
+                    self.wait_until(self.manager.close, 20)
+            if self.window is not None and not sip.isdeleted(self.window):
+                # Only an accepted MainWindow close may destroy its native tree.
+                # Hiding alone leaves Qt wrappers for unsafe interpreter teardown.
+                self.window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
                 self.window.close()
-                self.wait_until(lambda: not self.window.isVisible(), 15)
+
+                def window_destroyed():
+                    drain_qt_runtime_after_event_loop(self.app, cycles=1)
+                    return sip.isdeleted(self.window)
+
+                self.wait_until(window_destroyed, 15)
             if service is not None:
                 service.close()
+            if getattr(self, "app", None) is not None:
+                drain_qt_runtime_after_event_loop(self.app)
         except Exception:
-            clean = False
-        return clean
+            return False
+        self.closed = True
+        return True
 
 
 def run_condition(payload: dict, cases_root: Path, output: Path) -> dict:
