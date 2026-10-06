@@ -293,18 +293,11 @@ def test_explicit_direct_parameter_value_reaches_execution_boundary() -> None:
 @pytest.mark.parametrize(
     ("tool_name", "params", "text"),
     (
-        (
-            "apply_bandpass_filter",
-            {"low_freq": 1, "high_freq": 40},
-            "Apply a bandpass filter.",
-        ),
-        ("apply_notch_filter", {"freq": 50}, "Apply a notch filter."),
-        ("resample_data", {"rate": 128}, "Resample the EEG data."),
         ("set_reference", {"method": "average"}, "Set the EEG reference."),
         ("normalize_data", {"method": "z-score"}, "Normalize the EEG data."),
     ),
 )
-def test_invented_direct_parameter_is_rejected_without_execution(
+def test_unprovided_direct_method_is_rejected_without_execution(
     tool_name: str,
     params: dict[str, Any],
     text: str,
@@ -331,32 +324,7 @@ def test_invented_direct_parameter_is_rejected_without_execution(
     assert verifier.calls == [(tool_name, params)]
 
 
-@pytest.mark.parametrize(
-    "text",
-    (
-        "Can you apply a notch filter?",
-        "Could you please apply a notch filter?",
-        "Please apply a notch filter.",
-    ),
-)
-def test_affirmative_request_does_not_authorize_invented_values(text: str) -> None:
-    coordinator, _source, _verifier = _coordinator(
-        _context("apply_notch_filter", command_name="preprocess"),
-        tool=_Tool(parameters={"type": "object", "required": ["freq"]}),
-    )
-
-    decision = coordinator.evaluate(
-        _request("apply_notch_filter", params={"freq": 50}, text=text)
-    )
-
-    assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.message == (
-        "What notch frequency should I use? "
-        "Please restate the complete action with all required values."
-    )
-
-
-def test_partially_sourced_bandpass_cannot_execute() -> None:
+def test_host_admission_does_not_grade_numeric_proposal_against_user_text() -> None:
     coordinator, _source, _verifier = _coordinator(
         _context("apply_bandpass_filter", command_name="preprocess"),
         tool=_Tool(
@@ -372,12 +340,7 @@ def test_partially_sourced_bandpass_cannot_execute() -> None:
         )
     )
 
-    assert decision.action is ToolAttemptAction.RESPOND
-    assert (
-        decision.message
-        == "What high cutoff frequency should I use for the bandpass filter? "
-        "Please restate the complete action with all required values."
-    )
+    assert decision.action is ToolAttemptAction.EXECUTE
     assert decision.params == {"low_freq": 1, "high_freq": 40}
 
 
@@ -453,100 +416,7 @@ def test_model_mapped_reversed_bandpass_reaches_schema_validation() -> None:
     ]
 
 
-def test_word_number_frequency_is_not_treated_as_a_verified_decimal() -> None:
-    coordinator, _source, _verifier = _coordinator(
-        _context("apply_notch_filter", command_name="preprocess"),
-        tool=_Tool(parameters={"type": "object", "required": ["freq"]}),
-    )
-
-    first = coordinator.evaluate(
-        _request(
-            "apply_notch_filter",
-            params={"freq": 50},
-            text="Apply a notch filter at fifty hertz.",
-        )
-    )
-
-    assert first.action is ToolAttemptAction.RESPOND
-    assert first.message == (
-        "What notch frequency should I use? "
-        "Please restate the complete action with all required values."
-    )
-
-
-@pytest.mark.parametrize(
-    ("tool_name", "params", "text"),
-    (
-        ("resample_data", {"rate": 128}, "Do not resample the EEG data."),
-        ("resample_data", {"rate": 128}, "What is resampling?"),
-        ("normalize_data", {"method": "z-score"}, "What is normalization?"),
-        ("set_reference", {"method": "average"}, "What reference should I use?"),
-        ("resample_data", {"rate": 128}, "Apply a notch filter."),
-        ("resample_data", {"rate": 128}, "Open the visualization panel."),
-        (
-            "apply_notch_filter",
-            {"freq": 50},
-            "Tell me how to apply a notch filter.",
-        ),
-        (
-            "apply_notch_filter",
-            {"freq": 50},
-            "Never apply a notch filter.",
-        ),
-        (
-            "apply_notch_filter",
-            {"freq": 50},
-            "Would you use a notch filter?",
-        ),
-        (
-            "apply_notch_filter",
-            {"freq": 50},
-            "Avoid applying a notch filter.",
-        ),
-        (
-            "apply_notch_filter",
-            {"freq": 50},
-            "Do you recommend applying a notch filter?",
-        ),
-        (
-            "apply_notch_filter",
-            {"freq": 50},
-            "Skip applying a notch filter.",
-        ),
-        (
-            "apply_notch_filter",
-            {"freq": 50},
-            "Please apply a notch filter without changing the reference.",
-        ),
-    ),
-)
-def test_direct_origin_check_does_not_infer_values_from_user_english_intent(
-    tool_name: str,
-    params: dict[str, Any],
-    text: str,
-) -> None:
-    coordinator, _source, _verifier = _coordinator(
-        _context(tool_name, command_name="preprocess"),
-        tool=_Tool(parameters={"type": "object", "required": list(params)}),
-    )
-
-    decision = coordinator.evaluate(
-        _request(
-            tool_name,
-            params=params,
-            text=text,
-        )
-    )
-
-    assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.message
-    assert decision.action not in {
-        ToolAttemptAction.EXECUTE,
-        ToolAttemptAction.CONFIRMATION_REQUIRED,
-    }
-
-
-def test_unavailable_unsourced_direct_proposal_cannot_execute() -> None:
+def test_numeric_proposal_still_requires_backend_capability() -> None:
     coordinator, _source, _verifier = _coordinator(
         _context("resample_data", enabled=False, command_name="preprocess"),
         tool=_Tool(parameters={"type": "object", "required": ["rate"]}),
@@ -560,11 +430,9 @@ def test_unavailable_unsourced_direct_proposal_cannot_execute() -> None:
         )
     )
 
-    assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.message == (
-        "What resampling rate should I use? "
-        "Please restate the complete action with all required values."
-    )
+    assert decision.action is ToolAttemptAction.CAPABILITY_BLOCKED
+    assert decision.result is not None
+    assert decision.result.blocked_reason == "Dataset is not ready."
 
 
 def test_import_eeg_data_proposal_is_not_blocked_by_host_english_intent_gate() -> None:
@@ -582,61 +450,13 @@ def test_import_eeg_data_proposal_is_not_blocked_by_host_english_intent_gate() -
 
 
 @pytest.mark.parametrize(
-    ("tool_name", "params", "text"),
-    (
-        (
-            "apply_bandpass_filter",
-            {"low_freq": 15, "high_freq": 40},
-            "I want to do a bandpass filter and high is 40 Hz, low is 15 Hz.",
-        ),
-        ("resample_data", {"rate": 100}, "Use 100 Hz resample."),
-    ),
-)
-def test_complete_direct_preprocess_proposal_does_not_require_host_action_grammar(
-    tool_name: str,
-    params: dict[str, Any],
-    text: str,
-) -> None:
-    coordinator, _source, _verifier = _coordinator(
-        _context(tool_name, command_name="preprocess"),
-        tool=_Tool(parameters={"type": "object", "required": list(params)}),
-    )
-
-    decision = coordinator.evaluate(_request(tool_name, params=params, text=text))
-
-    assert decision.action is ToolAttemptAction.EXECUTE
-
-
-def test_prior_value_cannot_authorize_current_request_without_value() -> None:
-    coordinator, source, verifier = _coordinator(
-        _context("resample_data", command_name="preprocess")
-    )
-
-    decision = coordinator.evaluate(
-        _request("resample_data", params={"rate": 128}, text="Use the saved value.")
-    )
-
-    assert decision.action is ToolAttemptAction.RESPOND
-    assert decision.params == {"rate": 128}
-    assert source.reads == ["resample_data"]
-    assert verifier.calls == [("resample_data", {"rate": 128})]
-
-
-@pytest.mark.parametrize(
     ("tool_name", "params", "reply"),
     (
-        (
-            "apply_bandpass_filter",
-            {"low_freq": 1, "high_freq": 40},
-            "1\u201340 Hz",
-        ),
-        ("apply_notch_filter", {"freq": 50}, "50 Hz"),
-        ("resample_data", {"rate": 128}, "128 赫茲"),
         ("set_reference", {"method": "average"}, "average"),
         ("normalize_data", {"method": "z-score"}, "z-score"),
     ),
 )
-def test_current_turn_direct_values_reach_execution_boundary(
+def test_current_turn_direct_methods_reach_execution_boundary(
     tool_name: str,
     params: dict[str, Any],
     reply: str,

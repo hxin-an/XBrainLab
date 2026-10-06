@@ -10,6 +10,8 @@ from enum import Enum
 from typing import Any
 from uuid import uuid4
 
+from XBrainLab.backend.training_state_contract import TrainingRunIdentity
+
 _INTERNAL_CONFIRMATION_PARAMS = frozenset(
     {
         "confirmed",
@@ -35,6 +37,33 @@ _COMMAND_IMPACT_TEXT = {
 _HIGH_IMPACT_DECISION_BOUNDARIES = frozenset(
     {"high_impact", "high_impact_setting_change"}
 )
+
+
+def running_training_identity(state: object) -> TrainingRunIdentity | None:
+    """Extract only verified, still-running identity from trusted backend state."""
+    if (
+        not isinstance(state, dict)
+        or state.get("state_reliable") is not True
+        or state.get("training_liveness_reliable") is not True
+    ):
+        return None
+    training = state.get("training")
+    if not isinstance(training, dict) or training.get("is_running") is not True:
+        return None
+    outcome = training.get("terminal_outcome")
+    if not isinstance(outcome, dict) or outcome.get("state") != "running":
+        return None
+    run = outcome.get("run")
+    if not isinstance(run, dict):
+        return None
+    trainer_id = run.get("trainer_id")
+    run_id = run.get("run_id")
+    if not isinstance(trainer_id, str) or not isinstance(run_id, int):
+        return None
+    try:
+        return TrainingRunIdentity(trainer_id=trainer_id, run_id=run_id)
+    except TypeError:
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +133,7 @@ class AgentConfirmationRequest:
     description: str
     risk: AgentConfirmationRisk
     publication_generation: int | None
+    expected_training_run: TrainingRunIdentity | None = None
     confirmation_kind: str | None = None
     parameter_rows: tuple[tuple[str, str], ...] = ()
     request_id: str = field(default_factory=lambda: uuid4().hex)
@@ -117,6 +147,11 @@ class AgentConfirmationRequest:
         if not isinstance(self.risk, AgentConfirmationRisk):
             raise TypeError("Confirmation risk must use the typed risk contract.")
         _validate_generation(self.publication_generation)
+        if self.expected_training_run is not None and (
+            self.command_name != "stop_training"
+            or not isinstance(self.expected_training_run, TrainingRunIdentity)
+        ):
+            raise TypeError("Only stop confirmation may bind a typed training run.")
         if self.confirmation_kind is not None and not isinstance(
             self.confirmation_kind,
             str,
@@ -163,6 +198,7 @@ class AgentConfirmationRequest:
         confirmation_kind: str | None = None,
         request_id: str | None = None,
         risk: AgentConfirmationRisk | None = None,
+        expected_training_run: TrainingRunIdentity | None = None,
     ) -> AgentConfirmationRequest:
         """Build a request from exact params and a safe human-readable summary."""
         if not isinstance(params, Mapping):
@@ -183,6 +219,7 @@ class AgentConfirmationRequest:
             description=" ".join(str(description or "").split()),
             risk=typed_risk,
             publication_generation=publication_generation,
+            expected_training_run=expected_training_run,
             confirmation_kind=(
                 " ".join(confirmation_kind.split()) if confirmation_kind else None
             ),

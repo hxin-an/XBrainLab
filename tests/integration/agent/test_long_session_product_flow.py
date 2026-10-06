@@ -889,6 +889,13 @@ def test_model_confirmation_card_approval_resets_preprocessing_once(
         )
 
         approved = emitted_resolutions[0]
+        # Reset also starts backend montage preparation. Its independent terminal
+        # publication must settle before a duplicate's no-mutation baseline.
+        qtbot.waitUntil(
+            lambda: service.get_view_publication().state.visualization.montage_preparation_state
+            == "not_applicable",
+            timeout=2_000,
+        )
         after_approval = service.get_view_publication()
         assert approved.request_id == request_id
         assert approved.command_name == "reset_preprocessing"

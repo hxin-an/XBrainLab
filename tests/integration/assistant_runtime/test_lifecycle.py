@@ -550,25 +550,18 @@ def _send_request(harness: _RuntimeHarness, text: str) -> None:
     harness.panel.send_btn.click()
 
 
-def test_real_runtime_command_trace_remains_scoreable(qtbot, monkeypatch, tmp_path):
+def test_real_runtime_resample_has_one_correlated_command_and_terminal(
+    qtbot, monkeypatch, tmp_path
+):
     """Keep real dispatch/Command/terminal owners; isolate inference and RAG only."""
     import mne
     import numpy as np
 
-    from scripts.dev.assistant_pilot_observation import PilotCaseTrace
-    from scripts.dev.assistant_pilot_scoring import score_case_decisions
     from tests.integration.data_interpretation_support import (
         import_recording_through_interpretation,
     )
     from XBrainLab.backend.application import get_application_service
 
-    case = {
-        "case_id": "public-runtime-observer-resample",
-        "decision": "Action",
-        "expected_workflow_stage": "data_loaded",
-        "expected_tool": "resample_data",
-        "expected_parameters": {"rate": 64},
-    }
     with _runtime_harness(
         qtbot, monkeypatch, use_real_workflow_router=True, use_real_main_window=True
     ) as harness:
@@ -586,56 +579,85 @@ def test_real_runtime_command_trace_remains_scoreable(qtbot, monkeypatch, tmp_pa
         harness.engine.generation_output = (
             '{"tool_name":"resample_data","parameters":{"rate":64}}'
         )
-        trace = PilotCaseTrace(case["case_id"])
-        trace.attach(harness.controller, harness.runtime)
-        try:
-            _send_request(harness, "Resample to 64 Hz")
-            _wait_for_event(qtbot, harness.engine.generation_started)
-            harness.engine.generation_release.set()
-            qtbot.waitUntil(
-                lambda: trace.snapshot()["turn_terminal"] is not None,
-                timeout=WATCHDOG_MS,
-            )
-            report = trace.snapshot()
-            assert report["measurement_issues"] == []
-            assert harness.engine.generation_calls == 1
-            assert len(report["generations"]) == 1
-            generation = report["generations"][0]
-            assert generation["raw_response"] == harness.engine.generation_output
-            assert generation["terminal"] == "finished"
-            assert (
-                generation["request"]["response_contract"]
-                == "assistant_tool_response.v1"
-            )
-            assert [dict(message) for message in generation["request"]["messages"]] == (
-                harness.engine.generated_messages[0]
-            )
-            events = report["events"]
-            assert [
-                event["payload"]["phase"]
-                for event in events
-                if event["kind"] == "generation_event"
-            ] == ["started", "chunk", "finished"]
-            results = [
-                event["payload"]
-                for event in events
-                if event["kind"] == "command_result"
-            ]
-            assert len(results) == 1
-            assert results[0]["ok"] is True
-            assert results[0]["tool_name"] == "resample_data"
-            assert harness.study.preprocessed_data_list[0].get_mne().info["sfreq"] == 64
-            submission = next(
-                event["payload"] for event in events if event["kind"] == "submission"
-            )
-            assert report["turn_terminal"]["correlation"] == submission["correlation"]
-            assert report["turn_terminal"]["outcome"] == "completed"
-            score = score_case_decisions(case, report, max_format_recovery_attempts=0)
-            assert score["measurement_valid"] is True, score["measurement_issues"]
-            assert score["first_decision_correct"] is True
-            assert score["final_decision_correct"] is True
-        finally:
-            trace.detach()
+        terminals = QSignalSpy(harness.runtime.turn_finished)
+        submissions = QSignalSpy(harness.runtime.dispatcher.input_requested)
+        requests = []
+        harness.controller.sig_generate.connect(requests.append)
+        events = QSignalSpy(harness.controller.generation_event)
+        results = QSignalSpy(harness.controller.application_command_completed)
+        _send_request(harness, "Resample to 64 Hz")
+        _wait_for_event(qtbot, harness.engine.generation_started)
+        harness.engine.generation_release.set()
+        qtbot.waitUntil(lambda: len(terminals) == 1, timeout=WATCHDOG_MS)
+        assert harness.engine.generation_calls == 1
+        assert len(requests) == 1
+        assert [dict(message) for message in requests[0].messages] == (
+            harness.engine.generated_messages[0]
+        )
+        assert [event[0].phase.value for event in events] == [
+            "started",
+            "chunk",
+            "finished",
+        ]
+        assert events[1][0].text == harness.engine.generation_output
+        assert len(results) == 1
+        assert results[0][0].ok is True
+        assert results[0][0].tool_name == "resample_data"
+        assert harness.study.preprocessed_data_list[0].get_mne().info["sfreq"] == 64
+        assert len(submissions) == 1
+        assert terminals[0][0].correlation == submissions[0][0].correlation
+        assert terminals[0][0].outcome == "completed"
+
+
+@pytest.mark.parametrize("cutoffs", ["four to eighteen", "4 to 18"])
+def test_real_runtime_bandpass_accepts_numeric_proposal_without_literal_matching(
+    qtbot, monkeypatch, tmp_path, cutoffs
+):
+    """The same valid numeric answer reaches real DSP for either user spelling."""
+    import mne
+    import numpy as np
+
+    from scripts.dev.chatpanel_training_fixture import write_training_ready_raw_fif
+    from tests.integration.data_interpretation_support import (
+        import_recording_through_interpretation,
+    )
+    from XBrainLab.backend.application import get_application_service
+
+    with _runtime_harness(
+        qtbot, monkeypatch, use_real_workflow_router=True, use_real_main_window=True
+    ) as harness:
+        _release_initial_load(qtbot, harness)
+        source = write_training_ready_raw_fif(tmp_path / "bandpass_raw.fif")
+        service = get_application_service(harness.study)
+        assert import_recording_through_interpretation(service, source).ok
+        original = mne.io.read_raw_fif(source, preload=True, verbose=False)
+        expected = original.copy().filter(l_freq=4, h_freq=18, verbose=False)
+        harness.engine.generation_output = (
+            '{"tool_name":"apply_bandpass_filter",'
+            '"parameters":{"low_freq":4,"high_freq":18}}'
+        )
+        terminals = QSignalSpy(harness.runtime.turn_finished)
+        submissions = QSignalSpy(harness.runtime.dispatcher.input_requested)
+        commands = QSignalSpy(harness.controller.application_command_completed)
+        _send_request(harness, f"Apply a bandpass filter from {cutoffs} Hz.")
+        _wait_for_event(qtbot, harness.engine.generation_started)
+        harness.engine.generation_release.set()
+        qtbot.waitUntil(lambda: len(terminals) == 1, timeout=WATCHDOG_MS)
+        assert harness.engine.generation_calls == 1
+        assert len(commands) == len(submissions) == 1
+        assert commands[0][0].tool_name == "apply_bandpass_filter"
+        assert commands[0][0].ok is True
+        assert terminals[0][0].outcome == "completed"
+        assert terminals[0][0].correlation == submissions[0][0].correlation
+        assert service.get_state().pipeline_stage == "preprocessed"
+        actual = harness.study.preprocessed_data_list[0].get_mne()
+        assert actual.info["highpass"] == 4
+        assert actual.info["lowpass"] == 18
+        np.testing.assert_allclose(actual.get_data(), expected.get_data())
+        np.testing.assert_array_equal(
+            harness.study.loaded_data_list[0].get_mne().get_data(),
+            original.get_data(),
+        )
 
 
 def _install_host_turn_lease(harness: _RuntimeHarness) -> AssistantTurnCorrelation:

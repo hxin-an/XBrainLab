@@ -15,6 +15,7 @@ from XBrainLab.backend.application.resource_preflight import (
     ResourceConfirmationChallenge,
 )
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.training_state_contract import TrainingRunIdentity
 from XBrainLab.llm.agent.assembler import ContextAssembler, PromptToolPublication
 from XBrainLab.llm.agent.assistant_activity import (
     AssistantAttentionKind,
@@ -2568,49 +2569,49 @@ class TestExecuteDebugTool:
 
         ctrl.panel_navigation_requested.emit.assert_not_called()
 
-    def test_parameter_origin_response_has_no_execution_side_effect(self, ctrl):
-        ctrl._append_history("user", "Resample the EEG data.")
+    def test_method_origin_response_has_no_execution_side_effect(self, ctrl):
+        ctrl._append_history("user", "Set the EEG reference.")
         ctrl._finalize_turn = MagicMock()
         ctrl._handle_tool_attempt_blocked = MagicMock()
         decision = ToolAttemptDecision(
             ToolAttemptAction.RESPOND,
-            "resample_data",
-            {"rate": 128},
-            context=_enabled_tool_context("resample_data", generation=17),
-            message="What resampling rate should I use?",
+            "set_reference",
+            {"method": "average"},
+            context=_enabled_tool_context("set_reference", generation=17),
+            message="What EEG reference method should I use?",
         )
 
         assert ctrl._present_tool_attempt_boundary(decision) is True
 
         ctrl._finalize_turn.assert_called_once_with(
-            "What resampling rate should I use?"
+            "What EEG reference method should I use?"
         )
         ctrl._handle_tool_attempt_blocked.assert_not_called()
         ctrl.panel_navigation_requested.emit.assert_not_called()
 
-    def test_model_invented_value_never_executes(self, ctrl):
+    def test_unprovided_reference_method_never_executes(self, ctrl):
         from XBrainLab.llm.tools import get_all_tools
 
-        ctrl._append_history("user", "Resample the EEG data.")
+        ctrl._append_history("user", "Set the EEG reference.")
         ctrl._turn_orchestrator.active_publication = PromptToolPublication(
-            tool_names=frozenset({"resample_data"}),
+            tool_names=frozenset({"set_reference"}),
             workflow_stage="data_loaded",
             backend_generation=17,
         )
         ctrl.registry.get_tool.return_value = next(
-            tool for tool in get_all_tools() if tool.name == "resample_data"
+            tool for tool in get_all_tools() if tool.name == "set_reference"
         )
         _set_context_reader(
-            ctrl, return_value=_enabled_tool_context("resample_data", generation=17)
+            ctrl, return_value=_enabled_tool_context("set_reference", generation=17)
         )
-        ctrl.current_response = _response("resample_data", {"rate": 128})
+        ctrl.current_response = _response("set_reference", {"method": "average"})
         ctrl.is_processing = True
         ctrl._turn_orchestrator.active_generation_id = 127
         ctrl._execute_tool_attempt = MagicMock()
         ctrl._on_generation_finished(127, [])
         ctrl._execute_tool_attempt.assert_not_called()
         assert (
-            "resampling rate"
+            "reference method"
             in ctrl.response_presentation_ready.emit.call_args.args[0].text
         )
 
@@ -3899,6 +3900,101 @@ class TestOnUserConfirmed:
         assert outcome.status is AgentInteractionStatus.BLOCKED
         assert outcome.request_id == request.request_id
         assert ctrl.pending_interactions.confirmation is None
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            "progress",
+            "run",
+            "trainer",
+            "terminal",
+            "stopping",
+            "unreliable",
+            "missing",
+            "missing_original",
+            "missing_request",
+            "malformed",
+            "unreliable_liveness",
+        ],
+    )
+    def test_stop_confirmation_is_bound_to_original_running_identity(
+        self, ctrl, change
+    ):
+        state = {
+            "state_reliable": True,
+            "training_liveness_reliable": True,
+            "training": {
+                "is_running": True,
+                "terminal_outcome": {
+                    "state": "running",
+                    "run": {"trainer_id": "trainer-a", "run_id": 1},
+                },
+            },
+        }
+        original = replace(
+            _enabled_tool_context("stop_training", generation=53), state=state
+        )
+        current_state = json.loads(json.dumps(state))
+        if change == "run":
+            current_state["training"]["terminal_outcome"]["run"]["run_id"] = 2
+        elif change == "trainer":
+            current_state["training"]["terminal_outcome"]["run"]["trainer_id"] = (
+                "trainer-b"
+            )
+        elif change == "terminal":
+            current_state["training"]["terminal_outcome"]["state"] = "completed"
+        elif change == "stopping":
+            current_state["training"]["terminal_outcome"]["state"] = "stop_requested"
+        elif change == "unreliable":
+            current_state["state_reliable"] = False
+        elif change == "missing":
+            current_state["training"]["terminal_outcome"]["run"] = None
+        elif change == "missing_original":
+            state["training"]["terminal_outcome"]["run"] = None
+        elif change == "malformed":
+            current_state["training"]["terminal_outcome"]["run"]["run_id"] = True
+        elif change == "unreliable_liveness":
+            current_state["training_liveness_reliable"] = False
+        current = replace(
+            original, generation=54 if change == "progress" else 53, state=current_state
+        )
+        pending = _pending_decision("stop_training", {}, context=original)
+        request = AgentConfirmationRequest.for_action(
+            command_name="stop_training",
+            params={},
+            action_label="Stop training",
+            description="Stop training",
+            destructive=False,
+            publication_generation=53,
+            expected_training_run=(
+                None
+                if change == "missing_request"
+                else TrainingRunIdentity("trainer-a", 1)
+            ),
+        )
+        _begin_confirmation(ctrl, pending, request)
+        _set_context_reader(ctrl, return_value=current)
+        ctrl._execute_tool_attempt = MagicMock()
+        ctrl._handle_tool_attempt_blocked = MagicMock()
+        ctrl.on_user_confirmation_resolved(
+            AgentConfirmationResolution.for_request(
+                request,
+                status=AgentConfirmationResolutionStatus.APPROVED,
+            )
+        )
+        if change == "progress":
+            ctrl._execute_tool_attempt.assert_called_once()
+            assert (
+                ctrl._execute_tool_attempt.call_args.kwargs["execution_context"]
+                is original
+            )
+            ctrl._handle_tool_attempt_blocked.assert_not_called()
+        else:
+            ctrl._execute_tool_attempt.assert_not_called()
+            assert (
+                ctrl._handle_tool_attempt_blocked.call_args.args[1].error_type
+                == "stale_confirmation"
+            )
 
     def test_duplicate_confirmation_cannot_execute_twice(self, ctrl):
         context = _enabled_tool_context("reset_preprocess", generation=55)

@@ -1163,3 +1163,68 @@ class TestHasTrainer:
         tm = TrainingManager()
         tm.trainer = MagicMock()
         assert tm.has_trainer() is True
+
+
+def test_run_bound_stop_releases_manager_lock_before_waiting(monkeypatch):
+    manager = TrainingManager()
+    trainer = Trainer([])
+    manager.trainer = trainer
+    started = Event()
+    finish = Event()
+
+    def job():
+        started.set()
+        assert finish.wait(timeout=5)
+        with manager._training_pipeline_lock:
+            pass
+
+    monkeypatch.setattr(trainer, "job", job)
+    trainer.run(interact=True)
+    assert started.wait(timeout=2)
+    reviewed = trainer.get_terminal_outcome().run
+    original_stop = trainer.stop
+
+    def stop(**kwargs):
+        result = original_stop(**kwargs)
+        finish.set()
+        return result
+
+    monkeypatch.setattr(trainer, "stop", stop)
+    try:
+        assert (
+            manager.stop_training_if_present(wait_timeout=2, expected_run=reviewed)
+            is True
+        )
+        assert trainer.get_terminal_outcome().state is TrainingOutcomeState.CANCELLED
+    finally:
+        finish.set()
+        assert trainer.wait_for_completion(timeout=3)
+
+
+@pytest.mark.parametrize("replace_trainer", [False, True])
+def test_run_bound_stop_rejects_restart_or_replacement(monkeypatch, replace_trainer):
+    manager = TrainingManager()
+    old = Trainer([])
+    old.run(interact=False)
+    reviewed = old.get_terminal_outcome().run
+    current = Trainer([]) if replace_trainer else old
+    manager.trainer = current
+    started = Event()
+    finish = Event()
+
+    def job():
+        started.set()
+        assert finish.wait(timeout=5)
+
+    monkeypatch.setattr(current, "job", job)
+    current.run(interact=True)
+    try:
+        assert started.wait(timeout=2)
+        before = current.get_terminal_outcome()
+        assert manager.stop_training_if_present(expected_run=reviewed) is None
+        assert current.get_terminal_outcome() == before
+        assert not current.interrupt
+    finally:
+        current.stop()
+        finish.set()
+        assert current.wait_for_completion(timeout=3)
