@@ -4,9 +4,7 @@ import gc
 import hashlib
 import json
 import logging
-import math
 import os
-import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from threading import Event, Lock, Thread
@@ -25,7 +23,6 @@ from XBrainLab.llm.core.config import LLMConfig
 from XBrainLab.llm.core.generation import ResolvedGenerationOptions
 from XBrainLab.llm.core.model_catalog import (
     BYTES_PER_GB,
-    LocalModelSpec,
     local_model_policy_error,
     local_model_spec,
 )
@@ -62,35 +59,15 @@ class LocalBackend:
 
     """
 
-    def __init__(
-        self,
-        config: LLMConfig,
-        *,
-        model_spec: LocalModelSpec | None = None,
-        template_kwargs: tuple[tuple[str, str], ...] = (),
-    ):
+    def __init__(self, config: LLMConfig):
         """Initializes the LocalBackend.
 
         Args:
             config: LLM configuration containing model name, device,
                 quantization, and generation settings.
-            model_spec: Optional immutable pin supplied by a trusted research
-                host, never by product settings or model-generated input.
-            template_kwargs: Frozen string options for the official template.
 
         """
         self.config = config
-        self._explicit_model_spec = model_spec
-        self._template_kwargs = tuple(template_kwargs)
-        if any(
-            type(key) is not str
-            or type(value) is not str
-            or key in {"tokenize", "add_generation_prompt"}
-            for key, value in self._template_kwargs
-        ) or len(dict(self._template_kwargs)) != len(self._template_kwargs):
-            raise ValueError("Chat template options must be unique string pairs.")
-        if model_spec is not None:
-            self._model_spec()
         self.model: Any = None
         self.tokenizer: Any = None
         self.is_loaded = False
@@ -99,42 +76,6 @@ class LocalBackend:
         self._unloading = False
         self._prompt_capture_session_id = uuid4().hex
         self._prompt_capture_sequence = 0
-
-    def _model_spec(self) -> LocalModelSpec | None:
-        """Resolve product policy or the trusted host's exact research pin."""
-        spec = self._explicit_model_spec
-        if spec is None:
-            return local_model_spec(self.config.model_name)
-        if (
-            type(spec) is not LocalModelSpec
-            or spec.repo_id != self.config.model_name
-            or type(spec.revision) is not str
-            or re.fullmatch(r"[0-9a-f]{40}", spec.revision) is None
-            or type(spec.runtime_context_tokens) is not int
-            or type(spec.context_tokens) is not int
-            or not 0 < spec.runtime_context_tokens <= spec.context_tokens
-            or type(spec.estimated_vram_gb) not in {int, float}
-            or not math.isfinite(spec.estimated_vram_gb)
-            or spec.estimated_vram_gb <= 0
-            or spec.preferred_cuda_dtype not in {"float16", "bfloat16", "float32"}
-        ):
-            raise ValueError(
-                "Research runtime requires a matching immutable model pin."
-            )
-        if self.config.load_in_4bit and (
-            spec.estimated_4bit_vram_gb is None
-            or type(spec.estimated_4bit_vram_gb) not in {int, float}
-            or not math.isfinite(spec.estimated_4bit_vram_gb)
-            or spec.estimated_4bit_vram_gb <= 0
-            or spec.bnb_4bit_quant_type not in {"fp4", "nf4"}
-            or spec.bnb_4bit_compute_dtype not in {"float16", "bfloat16", "float32"}
-            or not str(self.config.device).startswith("cuda")
-        ):
-            raise ValueError(
-                "Research 4-bit runtime requires an explicit CUDA "
-                "memory/precision specification."
-            )
-        return spec
 
     @staticmethod
     def _write_capture_file(path: Path, content: str) -> None:
@@ -264,19 +205,13 @@ class LocalBackend:
             Exception: If model loading fails for any reason.
 
         """
-        if self._explicit_model_spec is not None:
-            self._model_spec()
         if self.is_loaded:
             return
 
-        policy_error = (
-            local_model_policy_error(self.config.model_name)
-            if self._explicit_model_spec is None
-            else None
-        )
+        policy_error = local_model_policy_error(self.config.model_name)
         if policy_error is not None:
             raise RuntimeError(policy_error)
-        spec = self._model_spec()
+        spec = local_model_spec(self.config.model_name)
         if spec is None:
             raise RuntimeError(
                 "Configured local model has no runtime specification: "
@@ -326,20 +261,8 @@ class LocalBackend:
 
             if self.config.load_in_4bit:
                 model_kwargs["device_map"] = "auto"
-                quantization_kwargs: dict[str, Any] = {"load_in_4bit": True}
-                if self._explicit_model_spec is not None:
-                    # Research conditions must not silently offload or use defaults.
-                    model_kwargs["device_map"] = {"": self.config.device}
-                    model_kwargs["dtype"] = getattr(torch, spec.preferred_cuda_dtype)
-                    quantization_kwargs.update(
-                        bnb_4bit_quant_type=spec.bnb_4bit_quant_type,
-                        bnb_4bit_compute_dtype=getattr(
-                            torch, spec.bnb_4bit_compute_dtype
-                        ),
-                        bnb_4bit_use_double_quant=False,
-                    )
                 model_kwargs["quantization_config"] = BitsAndBytesConfig(
-                    **quantization_kwargs
+                    load_in_4bit=True
                 )
             elif str(self.config.device).startswith("cuda"):
                 model_kwargs["dtype"] = getattr(
@@ -425,7 +348,7 @@ class LocalBackend:
         if not messages:
             return messages
 
-        spec = self._model_spec()
+        spec = local_model_spec(self.config.model_name)
         filtered = [dict(message) for message in messages]
         result = [filtered[0]]
         for msg in filtered[1:]:
@@ -498,14 +421,12 @@ class LocalBackend:
             messages,
             tokenize=True,
             add_generation_prompt=True,
-            **dict(self._template_kwargs),
         )
         token_count = len(token_ids)
         prompt = tokenizer.apply_chat_template(
             messages,
             tokenize=False,
             add_generation_prompt=True,
-            **dict(self._template_kwargs),
         )
         if type(prompt) is not str:
             raise RuntimeError("Local tokenizer did not render a text chat template.")
@@ -650,7 +571,7 @@ class LocalBackend:
 
             text_iterator_streamer_cls = transformers.TextIteratorStreamer
 
-            spec = self._model_spec()
+            spec = local_model_spec(self.config.model_name)
             if spec is None:
                 raise RuntimeError(
                     "Configured local model has no runtime specification: "
