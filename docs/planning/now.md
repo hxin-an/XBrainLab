@@ -2,7 +2,12 @@
 
 最後更新：`2026-10-06`
 
-## 研究／產品分離 — 本機scope-complete，尚未送PR
+## Active — 研究／產品分離PR驗證
+
+2026-10-06使用者同意送產品PR與CI驗證。只push本task分支並開main-base產品PR，
+核對exact head的所有適用checks，修理本範圍驗證阻擋；不merge、不關閉研究PR或刪除worktree。
+Outcome／stop：PR建立且同head所有適用CI完成成功，回報產品交付界線及剩餘真人驗收。
+若需要新產品決策／外部資源則明示阻擋；不因CI pending就停止追蹤。
 
 本輪使用者同意將研究流程留在封存，產品繼續獨立開發。
 產品worktree：`D:\workspace_v2\projects\lab\XBrainLab-product`，
@@ -36,5 +41,5 @@ Ruff／format、guidance、strict docs與diff檢查通過。三位agent依職責
 Qt驗證為Windows offscreen，不是新真人手測。尚未有本分支CI／source-diverse／native手測證據，
 不稱handoff-ready，不自動merge。完整collection不是全套測試執行。
 
-Next：取得產品PR授權後送出本分支，依同head CI與適用驗收gate交付；研究PR不整批合併。
+Next：push本分支、開產品PR並追蹤同head CI；研究PR不整批合併。
 更廣泛逐模組打磨另訂目標，不藉本切片繼續擴張。原始資料、共享環境與封存都不清除。
