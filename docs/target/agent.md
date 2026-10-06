@@ -73,7 +73,9 @@ JSON就變成可信事實；schema與來源通過不證明語意正確或已准�
 `respond_to_user`不是第19個工具，不進executor；缺值回答不是等待補值state。
 移除decision／mode／changes／source_turn／quote、RequestUpdate與參數草稿DTO，
 不維護兩套runtime解析或將新契約轉入舊receipt。正常工具的required/type/enum/range仍
-由既有validator與backend擁有；五個direct工具來源只核對本輪原文。
+由既有validator與backend擁有。Bandpass／notch／resample的數值由模型解析，Host不要求
+阿拉伯數字出現在原句；reference／normalization方法仍核對本輪原文。
+RAG示例的來源檢查不隨此Host放行修理改動。
 非direct工具遵守其既有參數契約，不強迫enum字面值出現在使用者句子。
 來源匹配不是intent／否定證明，不用Host語意救援把模型錯答改判成功。
 
@@ -291,8 +293,10 @@ preprocess command owner 必須在 MNE prepare 前，從本次 source data 的�
 ### Direct-preprocess 單輪要求
 
 依[單輪理解邊界](#unified-clarification)與[模型契約](#agent-m0-contract)，五個direct工具
-只從本輪原文驗證完整實參。Host不得用歷史、RAG、預設或舊receipt補齊；bare值不是
-沿用上一操作的授權。值來源核對不取代模型對操作、否定或多步要求的理解。
+仍須完整實參。模型負責從本輪要求理解數值，Host不以原句數字membership阻擋
+bandpass／notch／resample，也不新增英文數字解析器；方法來源檢查維持既有行為。
+Host不得用歷史、RAG、預設或舊receipt補齊；bare值不是沿用上一操作的授權。
+缺值／數值是否屬於要求由模型判斷，Host仍驗參數契約和後端安全邊界，不代替語意判分。
 舊Host補值、bandpass排序、草稿與跨輪來源DTO退出產品路徑；原實驗保留歷史版本身分。
 
 ### Lifecycle tools
@@ -378,8 +382,13 @@ stage candidate，但split、model或training settings未齊時由同一publicat
 unavailable reference精確說明缺項，不能部分執行；全部ready後才成為callable。
 
 Stage、setup flags、running state與completed runs都從同一份 immutable ApplicationService
-publication產生。若 publication generation 在生成、repair、confirmation或GUI handoff期間改變，
-舊 proposal／resolution一律視為 stale。
+publication產生。若 publication generation 在生成、repair或GUI handoff期間改變，
+舊 proposal／resolution視為 stale；confirmation原則上沿用同一檢查。
+
+停止確認例外：`stop_training`確認綁定當時的trainer/run身分；同一場仍在running的
+訓練，只有進度更新不使批准失效。換run、已結束或已在停止中仍拒絕，且必須在backend
+實際執行邊界再次核對，不能自動重試、略過確認或改停另一場訓練。
+全域publication generation與其他命令的freshness契約保持不變。
 
 ## Strict model output contract
 
@@ -514,5 +523,5 @@ First raw、format recovery、Host admission與product outcome分開記錄；Hos
 Source／unit通過、歷史Stable成績或相同wire形狀都不能宣稱新版Assistant-ready；
 仍需同一候選的真模型、完整輸入獨立覆核及適用Windows真人驗收。這些是bounded
 產品要求，不是安全零容忍、任意語意正確或thesis benchmark。
-正式Development只調[研究規格](../validation/thesis_protocol.md#6)核准項目；
-RAG語料／檢索設定與模型／生成參數不是額外搜尋軸，不改寫歷史封存與原失敗。
+研究候選與調整規則由外部研究封存擁有；產品target不維護實驗排程或歷史候選。
+產品後續改動不回寫受測source與原失敗，位置見[研究封存界線](../validation/README.md#research-archive-boundary)。

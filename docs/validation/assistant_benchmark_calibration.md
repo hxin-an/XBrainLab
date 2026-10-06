@@ -1,10 +1,9 @@
-# Assistant Benchmark：第一輪判分校準
+# Assistant 判分工程校準
 
-最後更新：`2026-09-28`
+最後更新：`2026-10-06`
 
-依據[使用者的 Notion 計畫](https://app.notion.com/p/3ce4ab11187a81c0a30ade5cf08b1b52)，
-本輪以單輪操作／不操作與三層判分，驗證 scorer 能區分明定正反例。
-**目前只有離線、agent-authored、Development 校準，不是正式 Benchmark 或真人一致性結果。**
+以單輪操作／不操作與三層判分，驗證工程 scorer 能區分明定正反例。
+**只有離線、agent-authored 合成校準，不是論文評分器、正式 Benchmark 或真人一致性結果。**
 不改產品工具契約、模型、prompt、RAG、Host、GUI 或既有 acceptance gate。
 
 ## 可執行範圍與舊證據
@@ -54,10 +53,8 @@ GUI-opening Action 各有一正一反例。另有 focused tests 變更觀察欄�
 
 目前採「依題意」區分：題目只要求開啟匯入視窗，需正確視窗可見、enabled 且未改資料；
 題目要求完成匯入，則一定要讀取 backend 結果及資料狀態，不能只用視窗開啟代替。
-這是 v1 合成校準保留的歷史假設，不改寫舊 scorer 或成績。正式研究已於 2026-09-19
-確認依工具完成契約區分開窗與直接操作，缺資訊採正確不執行指標；以
-[研究規格](thesis_protocol.md)第 4 節為準，不以此處的 typed clarification／完整 Outcome
-契約覆蓋正式研究方法。它不改變目前產品工具、GUI 或 confirmation 契約。
+這是合成觀察的工程校準假設，不改變產品工具、GUI 或 confirmation 契約，
+也不能用此處的完整 Outcome 評分覆蓋外部研究所凍結的模型決策評分。
 
 ## v5 校準資料契約
 
@@ -112,20 +109,9 @@ Exit `0` 表示所有校準標註一致，`1` 表示有誤判，`2` 表示資料
 `model_executed: false`、`product_benchmark_score: null`、`human_agreement: null`。
 三題六觀察共 18 個分層標註比較，不是 18 題模型評測或產品成功率。
 
-## 後續正式 Benchmark 的必要條件（本輪未實作）
+## 宣稱界線
 
-1. **案例與凍結**：真人 seeds 明列作者／來源；先按 seed family 分 Development／Validation／
-   Sealed，再改寫，避免同源變體跨 split。正式配額與來源由[研究規格](thesis_protocol.md)
-   第 3 節擁有，舊 Notion 配額不再作為施工依據。不能為滿配額拆散 family；已接觸的題不可當未知測試。
-2. **真實收集器**：走正常 ChatPanel → Host → Command 路徑，取得 admission、確認、實際
-   呼叫參數／結果、最終狀態、GUI、errors/crash 與完整 effects；預先固定觀察終點與 timeout。
-   不能用 v12 的 synthetic publication、工具名或 mock success 充當操作結果。
-3. **人工校準與保密**：獨立人工與 evaluator 判同一份軌跡，保留歧異再修 scorer；另一次手動
-   重跑屬執行變異，不能混進同軌跡一致率。Sealed 由獨立保管者管理，開封、重跑及失敗保留
-   規則先固定；本輪未建立 Sealed，亦未讀取其內容。
-4. **正式分數**：凍結 exact source、工具／scorer／case 版本、模型 revision／quantization、
-   prompt／RAG、環境／硬體、seed／重跑數／重試預算。每類與總分保留分母、失敗、排除及變異；
-   正式主分數依研究規格的平衡決策正確率；Product Outcome 另列，不能由本輪合成觀察推估。
-
-既有 [Thesis Protocol](thesis_protocol.md) 的廣泛研究目標與歷史門檻不由這個小型校準器取代。
-正式實驗前需明定新 protocol 與舊門檻的適用關係；本文件不授權模型實驗或產品契約修改。
+此校準器只保護工程判分與觀察資料契約，不處理研究題庫、選版、重跑或正式統計。
+論文受測source、方法與原始結果由[研究封存](README.md#research-archive-boundary)保存，
+不隨產品校準器改動重評。產品交付仍依[驗證契約](README.md)，不以合成校準代替真模型、
+真Command或Windows操作證據。
