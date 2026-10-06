@@ -875,7 +875,7 @@ def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -
     )
 
     direct_score = score_precision_response(missing, direct_response, registry)
-    guarded_score = score_precision_response(missing, model_default, registry)
+    invented_score = score_precision_response(missing, model_default, registry)
     blocked_score = score_precision_response(out_of_stage, blocked_start, registry)
 
     assert direct_score.passed is True
@@ -884,7 +884,8 @@ def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -
         score_precision_response(missing, placeholder_response, registry).passed
         is False
     )
-    assert guarded_score.passed is True
+    assert invented_score.passed is False
+    assert invented_score.failure_type == "unexpected_tool"
     assert blocked_score.passed is True
     assert (
         score_precision_response(general, accidental_navigation, registry).passed
@@ -896,13 +897,20 @@ def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -
     )
     assert direct_score.product_outcome is not None
     assert direct_score.product_outcome.disposition == "respond"
-    assert guarded_score.product_outcome is not None
-    assert guarded_score.product_outcome.disposition == "respond"
-    assert guarded_score.product_outcome.message
+    # Host validates numeric arguments, not their literal presence in the prompt.
+    # An executable proposal must not become a correct missing-parameter answer.
+    invented_outcome = invented_score.product_outcome
+    assert invented_outcome is not None
+    assert invented_outcome.disposition == "execute"
+    assert invented_outcome.confirmation_requested is False
+    assert invented_outcome.gui_handoff_permitted is True
+    assert invented_outcome.application_service_permitted is True
+    assert invented_outcome.tool_executor_permitted is True
+    assert invented_outcome.state_mutation_permitted is True
     assert blocked_score.product_outcome is not None
     assert blocked_score.product_outcome.disposition == "blocked"
     assert blocked_score.product_outcome.message
-    for score in (direct_score, guarded_score, blocked_score):
+    for score in (direct_score, blocked_score):
         outcome = score.product_outcome
         assert outcome is not None
         assert outcome.confirmation_requested is False
@@ -1007,7 +1015,7 @@ def test_raw_missing_parameter_score_requires_the_exact_missing_fields() -> None
         is False
     )
     assert score_raw_precision_response(case, exact_question, registry).passed is True
-    assert score_precision_response(case, invented_default, registry).passed is True
+    assert score_precision_response(case, invented_default, registry).passed is False
     assert (
         score_raw_precision_response(case, invented_default, registry).passed is False
     )
