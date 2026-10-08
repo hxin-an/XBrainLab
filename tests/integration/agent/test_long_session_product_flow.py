@@ -232,6 +232,9 @@ class _ControllerRuntime(QObject):
     runtime_snapshot_changed = pyqtSignal(object)
     turn_finished = pyqtSignal(object)
     deactivation_finished = pyqtSignal(bool, str)
+    restart_started = pyqtSignal()
+    restart_progress = pyqtSignal(str)
+    restart_finished = pyqtSignal(bool, str)
     _turn_requested = pyqtSignal(object)
     _confirmation_requested = pyqtSignal(object)
     _navigation_resolved = pyqtSignal(object, bool)
@@ -245,6 +248,7 @@ class _ControllerRuntime(QObject):
         self.controller = controller
         self._rag_lifecycle = rag_lifecycle
         self.initialized = True
+        self.restart_in_progress = False
         self.current = AssistantRuntimeSnapshot(
             phase=AssistantRuntimePhase.READY,
             initialized=True,

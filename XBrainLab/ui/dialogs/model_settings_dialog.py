@@ -1390,7 +1390,7 @@ class ModelSettingsDialog(BaseDialog):
 
     def on_restart_assistant_clicked(self) -> None:
         """Confirm conversation loss, then delegate to the existing runtime owner."""
-        if not self.restart_assistant_btn.isEnabled():
+        if self.agent_manager is None or not self.restart_assistant_btn.isEnabled():
             return
         if not ask_confirmation(
             self,

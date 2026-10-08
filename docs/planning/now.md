@@ -35,6 +35,11 @@
 - Next：使用者於 2026-10-08 核准更新產品 PR #158 並處理 CI，通過後開啟 Windows 手測；
   提交／push 本切片，核對新 head 全部適用 CI，修理直接阻擋並保留失敗證據。
   舊 head CI 不代表新功能通過；手測接受前不 merge，不清理使用中的 worktree。
+- CI `37725549412` 的 Static Quality 偵測 Settings restart handler 未明確排除 optional manager；
+  UI 已在無 manager 時停用按鈕，但型別檢查不能由 widget 狀態推導。入口補同一依賴檢查，
+  不修改 type baseline／gate／重啟語意；驗 Settings focused tests 與新 head Static Quality。
+  同 run 的 agent integration 暴露舊 runtime 替身缺少 restart signals；同步兩個直接相關
+  integration doubles 的介面與 idle 狀態，保留原 assertion，重跑 long-session／product walkthrough。
 
 ## Candidate — 研究／產品分離 PR #158
 
