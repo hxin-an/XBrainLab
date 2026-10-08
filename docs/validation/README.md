@@ -273,6 +273,16 @@ PR #71 的 bounded baseline 與 v16 以前 81-case 報告保留原 source、sche
 
 ### Single-turn Assistant candidate
 
+#### 2026-10-08 R3 產品移植與格式恢復候選
+
+使用者核准以最新產品底層移植研究R3的模型輸入設計，並將多JSON納入既有一次格式修復。
+按Now的固定A/B/C順序比較，不改歷史研究輸入／分數；研究8個格式錯例只作已知回歸，
+不稱新holdout。原20核心、6英文與74廣度案例及tool-decision判分保持；首答／repair後、
+准入與實際副作用分列，Host擋錯不能救分。新候選不得挪用舊Development例外跳過gate。
+重試成功仍需schema／來源／capability／confirmation與publication檢查；多物件不得抽取執行。
+完整輸入獨立覆核、真模型證據及Windows正常ChatPanel流程須針對同一最終產品source。
+RAG內容／檢索設定固定，配對只比較on/off，不調參追分；推論配額與施工狀態只由Now擁有。
+
 #### 本輪Development候選交付例外（2026-09-29）
 
 使用者在已知74題工具決策65/74首答、66/74最終，以及錯誤提案可能通過Host准入的

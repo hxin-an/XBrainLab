@@ -397,9 +397,11 @@ backend publication或generation。接受裸JSON，或整份回答恰為一層`j
 Markdown fence；只能解除外框，raw output原樣保留。不從prose、任意code block或多個
 候選中抽取指令；前後prose、array、額外欄位、重複key、非標準數值與舊格式皆拒絕。
 
-只有parser證明raw含兩個以上相鄰且完整的top-level objects，才直接給可信choose-one
-terminal；不挑第一個、不format retry，也不confirmation、GUI handoff或execution。
-其他格式錯誤最多在初次生成後加一次repair，使用同一當輪要求與publication；
+2026-10-08使用者核准：parser辨認raw含兩個以上相鄰且完整top-level objects時，
+與其他格式錯誤共用初次生成後最多一次repair；模型輸出多物件不代表使用者要求多操作。
+修復前所有候選皆不執行，不挑第一個、不合併參數，也不confirmation或GUI handoff。
+修復使用同一當輪要求與publication及固定格式提示，不附標準答案；再次不合法就停止。
+真正的多操作要求仍須respond_to_user請選一件，不能藉修復部分執行。
 Host不補欄或改寫操作。來源／schema拒絕及backend執行失敗不增加模型repair loop。
 任何side effect、confirmation cancel或GUI cancel／fail後不得重送操作。
 歷史schema／scorer成績保留原身分；相同兩欄形狀不代表不同版本契約與結果等同。

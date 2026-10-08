@@ -97,6 +97,14 @@ REPORT_SCHEMA = "xbrainlab.stable_assistant_model_eval.v17"
 DEFAULT_SINGLE_TURN_CASES = (
     ROOT / "scripts/dev/stable_assistant_single_turn_cases_v1.json"
 )
+DEFAULT_ENGLISH_CASES = (
+    ROOT / "scripts/dev/stable_assistant_english_generalization_cases_v1.json"
+)
+DEFAULT_RECOVERY_CASES = (
+    ROOT / "scripts/dev/stable_assistant_format_recovery_cases_v1.json"
+)
+ENGLISH_CASES_SHA256 = "74f24fe9d8e7c17db5ee2abdafdd41b42f2a2ce6d92ffb75487eb585b9835d2b"  # pragma: allowlist secret
+RECOVERY_CASES_SHA256 = "6821e92a529ee17045a705ebf461b6e23d2ceb2a804a523b5c61656179327443"  # pragma: allowlist secret
 SINGLE_TURN_CASES_SHA256 = "5ef6bca6053b835ce1e21a68b51735e69630d0c881e28cf072fa61135abbd1a4"  # pragma: allowlist secret
 DEFAULT_ENGINEERING_CASES = (
     ROOT / "scripts" / "dev" / "stable_assistant_engineering_cases.json"
@@ -2359,6 +2367,55 @@ def load_single_turn_cases(
     return tuple(cases)
 
 
+def load_eval_profile(
+    profile: str,
+) -> tuple[TargetEvalCase | TargetChallengeCase | PrecisionCase, ...]:
+    """Select fixed engineering cases; keep historical manifests and scores intact."""
+    if profile == "core":
+        return load_single_turn_cases()
+    if profile == "r3-comparison":
+        return (
+            *load_single_turn_cases(),
+            *load_eval_profile("english"),
+            *load_eval_profile("recovery"),
+        )
+    if profile == "english":
+        path, digest = DEFAULT_ENGLISH_CASES, ENGLISH_CASES_SHA256
+    elif profile == "recovery":
+        path, digest = DEFAULT_RECOVERY_CASES, RECOVERY_CASES_SHA256
+    else:
+        raise ValueError(f"Unknown evaluation profile: {profile}")
+    content = path.read_bytes()
+    if hashlib.sha256(content).hexdigest() != digest:
+        raise ValueError(f"Frozen {profile} manifest changed")
+    cases: list[TargetEvalCase | TargetChallengeCase | PrecisionCase] = []
+    for row in json.loads(content)["cases"]:
+        if row["tool_name"] == "respond_to_user":
+            # Approved tool-decision scope: require a valid nonempty reply, without
+            # importing the old manifest's prose-quality criteria into its score.
+            cases.append(
+                TargetChallengeCase(
+                    row["id"],
+                    row["input"],
+                    row["workflow_stage"],
+                    row["category"],
+                    (),
+                    (),
+                )
+            )
+        else:
+            cases.append(
+                TargetEvalCase(
+                    row["id"],
+                    row["input"],
+                    row["workflow_stage"],
+                    row["tool_name"],
+                    row["parameters"],
+                )
+            )
+    return tuple(cases)
+
+
 def _build_report(
     *,
     model_id: str,
@@ -2548,9 +2605,20 @@ def run_eval(
     capture_request = _capture_audit_request()
     recorder = GenerationTraceRecorder()
     results = []
+    selected_cases = [asdict(case) for case in cases]
+    case_set_identity = {
+        "case_ids": [case.case_id for case in cases],
+        "case_count": len(cases),
+        "cases_sha256": hashlib.sha256(
+            json.dumps(selected_cases, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ).hexdigest(),
+        "hash_scope": "Ordered case DTOs including inputs, stages, and scoring expectations.",
+    }
 
     def snapshot(complete: bool) -> dict[str, Any]:
-        return _build_report(
+        report = _build_report(
             model_id=selection.model_id,
             results=results,
             expected_case_ids=tuple(case.case_id for case in cases),
@@ -2566,6 +2634,8 @@ def run_eval(
             rag_protocol=protocol,
             rag_retrievals=rag_messages.all_evidence() if rag_messages else [],
         )
+        report["case_set_identity"] = case_set_identity
+        return report
 
     def generate(messages: list[dict[str, str]]) -> str:
         return "".join(
@@ -2595,7 +2665,11 @@ def run_eval(
                     "case": asdict(case),
                     "first_generation_score": asdict(trajectory.raw_score),
                     "post_recovery_score": asdict(trajectory.post_recovery_score),
-                    "score_scope": "model_choice_and_historical_content_screening; independent_semantic_review_required",
+                    "score_scope": (
+                        "tool_decision_only; answer_quality_not_scored"
+                        if case.case_id.startswith("english_generalization_")
+                        else "model_choice_and_historical_content_screening; independent_semantic_review_required"
+                    ),
                     "score": asdict(trajectory.final_score),
                     "raw_response": trajectory.final_response,
                     "trajectory": _trajectory_payload(
@@ -2639,7 +2713,14 @@ def main(argv: list[str] | None = None) -> int:
         "--rag-mode", choices=("hybrid", "dense", "off"), default="hybrid"
     )
     parser.add_argument("--case-id", action="append", default=[])
-    parser.add_argument(
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
+        "--profile",
+        choices=("core", "r3-comparison", "english", "recovery"),
+        default="core",
+        help="Fixed engineering subsets: 20 core, 34 comparison, 6 English, or 8 known format regressions.",
+    )
+    selection.add_argument(
         "--breadth",
         action="store_true",
         help="Report unchanged 74 historical single-turn questions separately, excluding seven retired continuations.",
@@ -2649,7 +2730,7 @@ def main(argv: list[str] | None = None) -> int:
     cases = (
         (*load_target_cases(), *load_challenge_cases(), *load_precision_cases())
         if args.breadth
-        else load_single_turn_cases()
+        else load_eval_profile(args.profile)
     )
     if args.case_id:
         unknown = set(args.case_id) - {case.case_id for case in cases}
@@ -2686,6 +2767,12 @@ def main(argv: list[str] | None = None) -> int:
     report["invocation"] = {
         "argv": effective_argv,
         "working_directory_is_repository_root": Path.cwd().resolve() == ROOT,
+    }
+    report["evaluation_profile"] = "breadth" if args.breadth else args.profile
+    report["comparison_manifests"] = {
+        "english_sha256": ENGLISH_CASES_SHA256,
+        "known_format_regressions_sha256": RECOVERY_CASES_SHA256,
+        "claim_boundary": "Known historical format failures are regressions, not holdout evidence. English cases use tool-decision scoring; historical answer-quality criteria and scores are unchanged.",
     }
     if args.json_out is not None:
         _write_report(args.json_out, report)

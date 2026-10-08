@@ -2,26 +2,67 @@
 
 最後更新：`2026-10-08`
 
-## Active
+## Active — R3 產品移植與有界格式恢復
 
-目前沒有已授權、尚待施工的產品切片。下一輪目標待與使用者討論，不自動擴張清理範圍。
+使用者已批准完整計畫，endpoint 是同版本 CI／獨立覆核／Windows 實機驗證後集中手測，
+未授權 merge。產品基準 `8ff594b0647c365f5015579e6e055df566eae0eb`；worktree
+`D:\workspace_v2\projects\lab\XBrainLab-assistant-r3`，branch `feat/assistant-r3-recovery`。
+原研究 checkout 的未提交文件與 settings.json 不動，NAS／E槽封存與歷史分數不回寫。
 
-## 已接受的產品基線
+### 問題、目標與邊界
 
-[PR #158](https://github.com/hxin-an/XBrainLab/pull/158) 已於 2026-10-08 合併：
-使用者驗收 source `c20b8fc2381fa2dd45d202f8ed16ea286c1b58c2`，
-main merge commit `125251c2f828278f530e3a3c91461fa8eb5bc451`。
-同 head 的所有適用 CI 通過，Windows 手測通過並取得明確 merge 批准。
+研究 Granite4 R3 TEST 的27個錯例已逐題核對，Full的136次生成capture與trace一致。
+其中6題是正確操作再附reply object、1題兩個操作、1題尾端fence修復失敗；另有錯誤
+不操作、參數、缺值及替代動作。研究R3注入文字工具renderer，而產品仍為JSON catalog，
+因此舊研究分數不是本main成績。模型pin、核心工具／RAG相同不等於完整輸入相同。
 
-產品／研究分離與 Restart Assistant 的現行行為由[產品事實](../current.md)擁有；
-研究保存位置由[驗證契約](../validation/README.md#research-archive-boundary)擁有。
-本次驗收與失敗／修正證據留在 PR，未以產品合併回寫研究封存。
+- Outcome：最新產品底層承接R3提示設計，將multiple JSON納入最多一次格式修復，
+  並區分提示移植與修復政策各自的效果。只評tool decision，不追加回答文采評比。
+- Scope：規則／工具呈現與必要參數說明、既有parser/recovery接線、直接測試與工程證據。
+  單輪英文、一回合一操作、現有18工具、schema/range/source/capability/confirmation不變。
+- Non-goals：不搬研究runner、不新增模型／owner／router／semantic retry；不支援歷史補值、
+  複合操作或自動前置工作。不調RAG語料、embedding、BM25/RRF參數或評分／題庫答案。
+- UI確認：使用者批准多JSON先修復而非立即choose-one的互動變更；無layout重設。
+  既有失敗、取消與trusted結果呈現沿用，不把開窗／模型承諾當操作完成。
+- Assumptions：重用共享Windows Python與現有固定Granite/RAG cache，離線運作、無下載。
+  研究R3來源 `7dea586a:scripts/dev/frozen_dev_contexts/round_03.py.txt` 唯讀參考；
+  state/research注入不照搬，必要差異逐项核對。缺環境明示，不silent fallback。
 
-## 保留限制
+### 步驟與直接驗證
 
-Assistant 匯入確認後曾間歇卡住，後續實機與使用者重測成功，但根因仍未證實。
-Restart Assistant 是恢復入口，不宣稱修好該匯入問題。若再發生，先保留現場證據定位，
-不自行增加重試、重送操作或更改 EEG／後端取消語意。
+1. 固定20核心＋6英文＋8已知格式案例及oracle，再量A（產品基準）34題。
+2. 在現有ContextAssembler／工具定義／prompt policy內移植R3，保留舊retry；
+   無第二catalog、無動態研究profile，刪被替代提示。量B同34題。
+3. 先寫multiple-object zero-side-effect／one-retry／exhausted失敗測試，再接既有recovery。
+   不抽第一個object、不反射錯誤答案作指令、不提供oracle；合法錯工具不semantic retry。
+   驗原始要求、publication freshness、confirmation、Stop/New Chat/Restart/Close隔離。
+4. 量C同34題，最終74廣度＋26題RAG off配對＋約8真模型GUI流程；沿用產品assembler、
+   template、budget與現有工程runner，不建立研究平台。所有首答／retry／raw分開保存。
+5. 獨立完整模型輸入覆核（先不看oracle）及recovery/執行邊界覆核，主agent看實際diff／證據。
+   applicable同head CI完成成功；Windows正常ChatPanel走Import/Confirm、Channels、
+   direct transforms、缺值／禁止／blocked與restart，再開給使用者手測。
 
-研究分支、未提交的研究文件與使用者 settings 不屬本次產品工作樹清理範圍；
-原始資料、研究封存與共用環境／模型快取保留。
+Owners前後相同：backend publication/capability、ContextAssembler、既有recovery policy、
+turn orchestrator與execution coordinator各守原職；純renderer不是新owner。
+Deletion candidates：JSON工具呈現與新文字呈現的重複、舊multiple-object專屬直出分支及
+不再成立的專屬測試，保留parser多物件分類與拒絕執行保護。production LOC施工後實算；
+觸發repo complexity門檻時先覆核，不以拆檔或增加abstraction掩蓋複雜度。
+小commit分別承擔文件／A證據準備、B移植、C恢復；可逐片revert，最後同一PR集中手測。
+
+### 成功、資源與停止條件
+
+- 預計最多210主要請求／420生成，含warmup與少量核對硬上限450次；不是用完配額的目標。
+  相同source/input有效證據重用；每次真推論前核對已用數，額度不足先提決策，禁止silent超額。
+- 舊TEST8題明列已知回歸，不冒稱新holdout。首答、修復後、Host准入、真副作用分開報；
+  Host擋錯不救模型分數。原20題gate不降標、不改oracle，廣度錯誤與退步逐題列出。
+- 須證明新修復實測受益，不能用別題加分抵銷新增嚴重誤操作；仍失敗則保留證據，
+  不放寬parser或無限提示調優。若需改範圍／預算／驗收條件，明示阻擋並取得決策。
+- scope-complete不是handoff-ready；所有applicable同版本gate完成才開正式手測。
+  不因compaction、commit、CI pending停工；使用者批准手測後另取得merge同意。
+- 收尾按產品、測試/fixtures、scripts、docs、設定/其他分列新增/刪除/淨量與限制。
+
+### 目前進度
+
+已建立乾淨worktree；正在固化契約與凍結工程案例。真模型生成已用0／450。
+Next：核對現有runner／Windows cache與R3內容；先完成A，才修改產品提示。
+已知Assistant偶發匯入卡住根因未證實，Restart只是恢復入口；不宣稱本輪修好。
