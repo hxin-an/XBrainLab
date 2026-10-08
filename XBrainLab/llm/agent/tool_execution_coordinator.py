@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, NoReturn, Protocol
 
-from XBrainLab.backend.application import get_application_service
+from XBrainLab.backend.application import StopTrainingCommand, get_application_service
+from XBrainLab.backend.training_state_contract import TrainingRunIdentity
 from XBrainLab.backend.utils.public_diagnostics import (
     PUBLIC_DIAGNOSTIC_TRUNCATED_MARKER,
     PUBLIC_DIAGNOSTIC_UNSUPPORTED_MARKER,
@@ -37,6 +38,7 @@ from XBrainLab.llm.tools.result_contract import (
 )
 from XBrainLab.llm.tools.tool_registry import ToolRegistry
 
+from .confirmation import running_training_identity
 from .metrics import AgentMetricsTracker
 from .tool_feedback import summarize_tool_result
 
@@ -76,14 +78,26 @@ class ToolExecutionOutcome:
 class _ExpectedPublicationApplicationRuntime:
     """Immutable tool runtime binding execution to one reviewed publication."""
 
-    def __init__(self, service: Any, generation: int) -> None:
+    def __init__(
+        self,
+        service: Any,
+        generation: int,
+        expected_training_run: TrainingRunIdentity | None = None,
+    ) -> None:
         self._service = service
         self._generation = generation
+        self._expected_training_run = expected_training_run
 
     def get_view_publication(self) -> Any:
         return self._service.get_view_publication()
 
     def execute(self, command: Any) -> Any:
+        if isinstance(command, StopTrainingCommand):
+            if self._expected_training_run is None:
+                raise ValueError(
+                    "A verified training run is required for assistant stop."
+                )
+            command = replace(command, expected_run=self._expected_training_run)
         return self._service.execute(
             command,
             expected_publication_generation=self._generation,
@@ -133,7 +147,11 @@ class ToolExecutionCoordinator:
         command_name = _public_tool_name(command_name)
         runtime = (
             _ExpectedPublicationApplicationRuntime(
-                get_application_service(self.study), expected_publication_generation
+                get_application_service(self.study),
+                expected_publication_generation,
+                running_training_identity(context.state)
+                if command_name == "stop_training"
+                else None,
             )
             if expected_publication_generation is not None
             else None

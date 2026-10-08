@@ -1,4 +1,5 @@
 import threading
+import time
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +11,7 @@ from XBrainLab.backend.training.record import RecordKey, TrainRecord, TrainRecor
 from XBrainLab.backend.training.state_tracker import TrainingStateTracker
 from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
+    TrainingRunIdentity,
     TrainingStateToken,
     read_training_terminal_outcome,
 )
@@ -182,6 +184,57 @@ def test_training_state_tracker_nested_exception_restores_stability():
 
     token = tracker.token()
     assert token == TrainingStateToken(generation=2, stable=True)
+
+
+def test_stable_training_read_does_not_wait_when_already_stable(monkeypatch):
+    tracker = TrainingStateTracker()
+
+    def unexpected_wait(*_args, **_kwargs):
+        pytest.fail("Stable reads must not wait")
+
+    monkeypatch.setattr(tracker._stable, "wait", unexpected_wait)
+    with tracker.stable_read():
+        assert tracker.token().stable is True
+
+
+def test_same_thread_busy_snapshot_times_out_without_claiming_stability():
+    tracker = TrainingStateTracker()
+    with tracker.mutation():
+        started = time.monotonic()
+        with tracker.stable_read():
+            assert tracker.token().stable is False
+        assert time.monotonic() - started < 0.5
+    assert tracker.token().stable is True
+
+
+@pytest.mark.parametrize("failure", [RuntimeError, KeyboardInterrupt])
+def test_training_snapshot_wait_exception_releases_tracker_lock(monkeypatch, failure):
+    tracker = TrainingStateTracker()
+
+    def interrupted_wait(*_args, **_kwargs):
+        raise failure("wait interrupted")
+
+    monkeypatch.setattr(tracker._stable, "wait", interrupted_wait)
+    with (
+        tracker.mutation(),
+        pytest.raises(failure, match="wait interrupted"),
+        tracker.stable_read(),
+    ):
+        pytest.fail("Interrupted acquisition must not enter a snapshot")
+
+    lock_available = []
+
+    def check_lock():
+        acquired = tracker._lock.acquire(timeout=0.2)
+        lock_available.append(acquired)
+        if acquired:
+            tracker._lock.release()
+
+    checker = threading.Thread(target=check_lock)
+    checker.start()
+    checker.join(timeout=1.0)
+    assert not checker.is_alive()
+    assert lock_available == [True]
 
 
 def test_training_state_tracker_concurrent_overlap_stays_unstable():
@@ -708,6 +761,77 @@ def test_stop_after_terminal_completion_preserves_completed_truth(
     assert stopped is True
     assert trainer.get_terminal_outcome() == completed
     assert trainer.get_progress_text() == "Pending"
+
+
+def test_run_bound_stop_accepts_progress_but_rejects_a_second_stop(
+    training_plan_holders,
+):
+    trainer = Trainer(training_plan_holders)
+    started = threading.Event()
+    release = threading.Event()
+
+    def train():
+        started.set()
+        assert release.wait(timeout=5)
+
+    training_plan_holders[0].train = train
+    trainer.run(interact=True)
+    try:
+        assert started.wait(timeout=2)
+        reviewed = trainer.get_terminal_outcome()
+        with trainer._state_tracker.mutation():
+            training_plan_holders[0].train_record_list[0].epoch = 1
+        assert trainer.stop(expected_run=reviewed.run) is False
+        assert (
+            trainer.get_terminal_outcome().state is TrainingOutcomeState.STOP_REQUESTED
+        )
+        assert trainer.stop(expected_run=reviewed.run) is None
+    finally:
+        trainer.stop()
+        release.set()
+        assert trainer.wait_for_completion(timeout=3)
+
+
+@pytest.mark.parametrize("replacement", [False, True])
+def test_run_bound_stop_cannot_interrupt_a_different_running_run(
+    training_plan_holders, replacement
+):
+    trainer = Trainer(training_plan_holders)
+    started = threading.Event()
+    release = threading.Event()
+
+    def train():
+        started.set()
+        assert release.wait(timeout=5)
+
+    training_plan_holders[0].train = train
+    trainer.run(interact=True)
+    try:
+        assert started.wait(timeout=2)
+        current = trainer.get_terminal_outcome()
+        wrong_run = TrainingRunIdentity(
+            trainer_id="replaced-trainer" if replacement else current.run.trainer_id,
+            run_id=current.run.run_id if replacement else current.run.run_id + 1,
+        )
+        assert trainer.stop(expected_run=wrong_run) is None
+        assert trainer.get_terminal_outcome() == current
+        assert not trainer.interrupt
+        assert not training_plan_holders[0].interrupt
+    finally:
+        trainer.stop()
+        release.set()
+        assert trainer.wait_for_completion(timeout=3)
+
+
+def test_run_bound_stop_rejects_a_completed_run(training_plan_holders):
+    trainer = Trainer(training_plan_holders)
+    for holder in training_plan_holders:
+        holder.train = MagicMock()
+    trainer.run(interact=False)
+    completed = trainer.get_terminal_outcome()
+    assert trainer.stop(expected_run=completed.run) is None
+    assert trainer.get_terminal_outcome() == completed
+    assert not trainer.interrupt
 
 
 def test_trainer_force_clean_joins_running_job(training_plan_holders):

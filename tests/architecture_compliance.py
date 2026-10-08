@@ -240,6 +240,13 @@ UI_CONTROLLER_DIRECT_CALL_ALLOWLIST = {
         ),
     ),
     Path("XBrainLab/ui/components/assistant_runtime_lifecycle.py"): (
+        # An unbound startup failure has no dispatcher owner; unload retains
+        # the same narrow controller cleanup responsibility as terminal close.
+        ControllerDirectCallAllowance(
+            "_request_unload",
+            "self._controller",
+            frozenset({"close"}),
+        ),
         ControllerDirectCallAllowance(
             "_rollback_failed_start",
             "controller",

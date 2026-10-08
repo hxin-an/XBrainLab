@@ -61,8 +61,7 @@ nav:
       - Assistant 現況: architecture/agent.md
   - 驗證:
       - 驗證策略: validation/README.md
-      - Thesis Protocol: validation/thesis_protocol.md
-      - 人工出題委託說明: validation/assistant_question_authoring_guide.md
+      - Assistant 判分工程校準: validation/assistant_benchmark_calibration.md
   - 產品方向:
       - Roadmap: planning/roadmap.md
       - 目標總覽: target/README.md

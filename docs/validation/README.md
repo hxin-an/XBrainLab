@@ -1,6 +1,6 @@
 # XBrainLab Validation Contract
 
-最後更新：`2026-09-29`
+最後更新：`2026-10-06`
 
 驗證回答「哪個exact source，在什麼環境，觀察到什麼」，不能把單一PASS放大成產品、科學或真人
 驗收結論。日常與PR交付按下表選證據；CI routing由既有workflow擁有。明確要求完整dossier時，
@@ -85,7 +85,7 @@ Git／CI identity、exit code、counts、widget可見／enabled、geometry與pix
 
 ## Evidence levels
 
-Assistant 的三決策／三層離線判分入口見
+Assistant 的兩種決策／三層離線判分入口見
 [Benchmark scorer calibration](assistant_benchmark_calibration.md)。它只校準 agent-authored
 Development 合成觀察，不執行模型／工具，也不取代本頁的單輪 candidate gate 或產品驗收。
 
@@ -305,6 +305,7 @@ Windows手測。模型與native原始證據仍綁定原source；僅文件變動�
 
 1. 18-tool registry、嚴格兩欄 parser、current-turn 參數來源、backend publication／stage／
    capability、confirmation、GUI correlation、取消及非同步 lifecycle 的直接測試。
+   數值由模型解析並驗schema／range，不要求原句阿拉伯數字membership；方法來源仍驗當輪原文。
    缺值後只給裸數字不能沿用舊值；完整重述須能經真 Command 執行。Mock 生成不證明模型理解。
 2. `run_stable_assistant_model_eval.py` v17 預設固定 20 題，題目／oracle 由
    `scripts/dev/stable_assistant_single_turn_cases_v1.json` 與程式內固定 SHA 擁有：
@@ -343,13 +344,30 @@ Windows手測。模型與native原始證據仍綁定原source；僅文件變動�
 本輪固定案例先於生成封存；初次互通比較後只有具體根因才容許一次有界呈現修理，再驗
 相同案例。仍不合格則不發布為可靠基線、不放寬分母、不無限調 prompt／語料／門檻，
 也不要求使用者替不合格版本做驗收。這是本輪收斂界線，不是零缺陷或論文準確率宣稱。
-研究的 frozen source、Development／Validation／Test 及 repeats 仍由 thesis protocol 擁有。
+研究的frozen source、DEV／VALID／TEST及repeats由外部封存擁有，不由產品gate改寫。
 
 2026-09-28 後續核准的英文呈現候選另固定6個新問法（完整／缺值／否定各2），由
 `stable_assistant_english_generalization_cases_v1.json` 擁有；與固定20題分開記錄，不用6題
 替代原gate，不宣稱統計或論文holdout。26題各off/on一次（52首答），只允許既有格式
 修復，不追加語意重試；模型錯答不能因Host擋錯救分。完整輸入覆核通過才生成，
 所有首答／修復另保留，新增題不得猜缺值或違反否定等契約。不以RAG換字算受益。
+
+### 研究封存界線 { #research-archive-boundary }
+
+產品repository保留運作中的產品與必要工程gate，不再承載研究候選切換、歷史prompt重播、
+研究題庫／評分／批次排程與報表工具。這些程式及專屬測試隨受測source留在研究封存；
+研究期間修好的實際產品缺陷與仍有效的工程驗證繼續維護，不因來源是實驗就刪除。
+
+- NAS完整實驗：`/mnt/home/2025/hxin/XBrainLab-experiments`。`snapshot/manifest.json`與
+  `snapshot/sources/`綁定原始受測程式及執行入口；不得改用最新產品main重評歷史結果。
+- NAS固定模型與環境：`/mnt/home/2025/hxin/XBrainLab-resources`。
+- 外接備份：`E:\XBrainLabBackups\research-20261005-162606`，保存實驗、資源及本機研究文件封裝。
+  2026-10-06補充的選版理由在NAS另存`research-notes/20261006-valid-selection`，
+  E槽另存`documentation-addenda/20261006-valid-selection`，不改原封裝。
+
+研究方法、選版時序、原始答案／分數及重現性限制由上述研究紀錄擁有，不在產品文件維護
+第二份實驗進度表。NAS及E槽是此研究的保存位置，不是一般使用者安裝產品的依賴。
+產品重構不回寫封存；相同題庫或重現相同分數不等於研究設計無偏，也不等於產品驗收。
 
 ### Braindecode catalog candidate
 

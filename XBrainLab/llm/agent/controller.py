@@ -47,6 +47,7 @@ from .assistant_activity import (
 from .confirmation import (
     AgentConfirmationResolution,
     AgentConfirmationResolutionStatus,
+    running_training_identity,
 )
 from .conversation import ConversationHistory
 from .decision_contract import MODEL_RESPONSE_TOOL_NAME
@@ -1402,7 +1403,24 @@ class LLMController(QObject):
             return
 
         current_context = self._tool_attempt_coordinator.context_for(cmd)
-        if current_context.generation != request.publication_generation:
+        stale = current_context.generation != request.publication_generation
+        if cmd == "stop_training":
+            original_context = pending.context
+            original_run = (
+                running_training_identity(original_context.state)
+                if isinstance(original_context, ToolAvailabilityContext)
+                and original_context.availability.enabled
+                and original_context.policy_error is None
+                else None
+            )
+            stale = (
+                original_run is None
+                or request.expected_training_run != original_run
+                or running_training_identity(current_context.state) != original_run
+                or not current_context.availability.enabled
+                or current_context.policy_error is not None
+            )
+        if stale:
             message = (
                 "Workflow state changed while this confirmation was open. "
                 "Review the action again before continuing."
@@ -1451,7 +1469,9 @@ class LLMController(QObject):
             after_confirmation=True,
             request_id=request.request_id,
             execution_params=confirmed_params,
-            execution_context=current_context,
+            execution_context=(
+                pending.context if cmd == "stop_training" else current_context
+            ),
             expected_publication_generation=request.publication_generation,
         )
 

@@ -7,6 +7,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from XBrainLab.backend.training_contract import DEFAULT_TRAINING_OUTPUT_DIR
+from XBrainLab.backend.training_state_contract import TrainingRunIdentity
 
 if TYPE_CHECKING:
     from .dataset_split_preview import DatasetSplitPreviewReceipt
@@ -332,6 +333,13 @@ class StopTrainingCommand:
     """Stop an active training run."""
 
     wait_timeout: float | None = None
+    expected_run: TrainingRunIdentity | None = None
+
+    def __post_init__(self) -> None:
+        if self.expected_run is not None and not isinstance(
+            self.expected_run, TrainingRunIdentity
+        ):
+            raise TypeError("Expected training run must use the typed identity.")
 
     @property
     def name(self) -> CommandName:

@@ -279,6 +279,18 @@ class WorkflowUiHandoffHost:
         )
         self._active = None
 
+    def detach_assistant(self) -> None:
+        """Retire the Assistant consumer without cancelling Desktop completion.
+
+        Already scheduled commands and their continuation leases still own their
+        callbacks. Their old request ids cannot settle a later Assistant handoff.
+        Deferred surfaces not yet opened must not appear after a restart.
+        """
+        self._invalidate_pending_navigation()
+        if self._active is not None:
+            self._active.on_terminal = None
+        self._active = None
+
     def _finish_active(
         self,
         active: _ActiveWorkflowUiHandoff,

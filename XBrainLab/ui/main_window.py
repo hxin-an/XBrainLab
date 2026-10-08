@@ -288,9 +288,7 @@ class MainWindow(QMainWindow):
     ASSISTANT_CENTRAL_WIDGET_MINIMUM_WIDTH = 436
     ASSISTANT_DOCK_CENTRAL_MINIMUM_WIDTH = 440
 
-    def __init__(
-        self, study, *, agent_manager_factory: Callable[..., Any] | None = None
-    ):
+    def __init__(self, study):
         """Initialize the main window.
 
         Args:
@@ -300,7 +298,6 @@ class MainWindow(QMainWindow):
         """
         super().__init__()
         self.study = study
-        self._agent_manager_factory = agent_manager_factory
         cast(Any, self._close_retry_requested.connect)(
             self._arm_close_retry,
             Qt.ConnectionType.QueuedConnection,
@@ -1160,7 +1157,7 @@ class MainWindow(QMainWindow):
                 )
             return
 
-        agent_manager_class = self._agent_manager_factory or _load_agent_manager_class()
+        agent_manager_class = _load_agent_manager_class()
         self.agent_manager = agent_manager_class(
             self,
             self.study,

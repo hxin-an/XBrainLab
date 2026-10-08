@@ -156,12 +156,16 @@ class _ReadyTestRuntime(QObject):
     runtime_snapshot_changed = pyqtSignal(object)
     turn_finished = pyqtSignal(object)
     deactivation_finished = pyqtSignal(bool, str)
+    restart_started = pyqtSignal()
+    restart_progress = pyqtSignal(str)
+    restart_finished = pyqtSignal(bool, str)
     _turn_requested = pyqtSignal(object)
 
     def __init__(self, controller: Any):
         super().__init__()
         self.controller = controller
         self.initialized = True
+        self.restart_in_progress = False
         self.current = AssistantRuntimeSnapshot(
             phase=AssistantRuntimePhase.READY,
             initialized=True,
@@ -300,6 +304,87 @@ def agent_mgr(qtbot) -> Any:
 
 
 class TestAgentManagerInit:
+    def test_restart_request_delegates_to_existing_runtime(self, agent_mgr):
+        expected = RuntimeCommandAdmissionResult(
+            command_name="restart",
+            status=RuntimeCommandAdmissionStatus.ACCEPTED,
+        )
+        agent_mgr._assistant_runtime.request_restart = MagicMock(return_value=expected)
+        assert agent_mgr.request_assistant_restart() is expected
+        agent_mgr._assistant_runtime.request_restart.assert_called_once_with()
+
+    @pytest.mark.parametrize("retired", [False, True])
+    @pytest.mark.parametrize("destroyed", [False, True])
+    @pytest.mark.parametrize("cleanup_failed", [False, True])
+    def test_restart_fences_queued_controller_commands_and_navigation(
+        self, agent_mgr, qtbot, retired, destroyed, cleanup_failed
+    ):
+        controller = _FakeAgentController("normal")
+        agent_mgr._assistant_runtime.controller = controller
+        agent_mgr._assistant_runtime.restart_in_progress = (
+            not retired and not cleanup_failed
+        )
+        agent_mgr._assistant_runtime.initialized = not cleanup_failed
+        agent_mgr._begin_assistant_training_watch = MagicMock()
+        agent_mgr._open_assistant_panel_target = MagicMock()
+        controller.application_command_started.connect(
+            agent_mgr._on_controller_command_started,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        controller.application_command_completed.connect(
+            agent_mgr._on_controller_command_completed,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        controller.panel_navigation_requested.connect(
+            agent_mgr._on_controller_navigation,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        controller.application_command_started.emit()
+        controller.application_command_completed.emit(object())
+        controller.panel_navigation_requested.emit(
+            AssistantPanelNavigationRequest(target=AssistantPanelTarget.DATASET)
+        )
+        if retired:
+            agent_mgr._assistant_runtime.controller = _FakeAgentController("normal")
+        if destroyed:
+            sip.delete(controller)
+        delivered = []
+        from PyQt6.QtCore import QTimer
+
+        QTimer.singleShot(0, lambda: delivered.append(True))
+        qtbot.waitUntil(lambda: bool(delivered))
+        assert not agent_mgr._application_command_in_flight
+        agent_mgr._begin_assistant_training_watch.assert_not_called()
+        agent_mgr._open_assistant_panel_target.assert_not_called()
+
+    def test_restart_started_clears_only_assistant_after_turn_terminal(self, qtbot):
+        from XBrainLab.backend.study import Study
+        from XBrainLab.ui.components.agent_manager import AgentManager
+
+        window = QMainWindow()
+        qtbot.addWidget(window)
+        manager = AgentManager(window, Study())
+        manager.init_ui()
+        manager.chat_controller.add_user_message("Import EEG data.")
+        correlation = _admit_ui_turn(manager)
+        before = manager.application_service.get_view_publication()
+        try:
+            manager._on_assistant_turn_finished(
+                AssistantTurnTerminal(
+                    correlation=correlation, outcome="restart_cancelled"
+                )
+            )
+            manager._assistant_runtime.restart_started.emit()
+            assert not manager.chat_controller.messages
+            assert manager._assistant_turn_state.phase is AssistantUiTurnPhase.IDLE
+            after = manager.application_service.get_view_publication()
+            assert after.state == before.state
+            assert after.generation == before.generation
+            next_correlation = _admit_ui_turn(manager, turn_id=2)
+            assert next_correlation.generation > correlation.generation
+        finally:
+            manager.close()
+
     @pytest.mark.parametrize("succeeded", [False, True])
     def test_runtime_deactivation_signal_preserves_workflow_and_updates_transcript(
         self, qtbot, succeeded

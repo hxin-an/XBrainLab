@@ -111,12 +111,16 @@ class _ReadyAssistantIntegrationRuntime(QObject):
     runtime_snapshot_changed = pyqtSignal(object)
     turn_finished = pyqtSignal(object)
     deactivation_finished = pyqtSignal(bool, str)
+    restart_started = pyqtSignal()
+    restart_progress = pyqtSignal(str)
+    restart_finished = pyqtSignal(bool, str)
     _turn_requested = pyqtSignal(object)
 
     def __init__(self, controller: LLMController) -> None:
         super().__init__()
         self.controller = controller
         self.initialized = True
+        self.restart_in_progress = False
         self.current = AssistantRuntimeSnapshot(
             phase=AssistantRuntimePhase.READY,
             initialized=True,

@@ -228,6 +228,21 @@ def _ready_lifecycle(
     return lifecycle, controller
 
 
+def test_direct_snapshot_admits_turn_without_qt_sender_context(monkeypatch) -> None:
+    def unexpected_sender(_self):
+        raise AssertionError("Direct snapshot delivery has no Qt signal sender")
+
+    monkeypatch.setattr(AssistantRuntimeLifecycle, "sender", unexpected_sender)
+    dispatcher = _DeliveryDispatcher()
+    lifecycle, _controller = _ready_lifecycle(dispatcher)
+    try:
+        assert lifecycle.accepts_commands
+        assert lifecycle.submit("inspect current state").accepted
+        assert len(dispatcher.turn_requests) == 1
+    finally:
+        lifecycle.close()
+
+
 @pytest.mark.parametrize(
     "command_name",
     ["stop", "reset", "confirm", "resolve_ui_handoff", "debug"],

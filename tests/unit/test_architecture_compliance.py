@@ -5187,6 +5187,31 @@ def _select_response_action(self, presentation_id):
     assert "controller.consume_response_actions" in violations[0]
 
 
+@pytest.mark.parametrize(
+    ("callsite", "receiver", "method", "allowed"),
+    [
+        ("_request_unload", "self._controller", "close", True),
+        ("_request_unload", "self.training_controller", "close", False),
+        ("_request_unload", "self._controller", "apply_filter", False),
+        ("forged_callsite", "self._controller", "close", False),
+    ],
+)
+def test_restart_cleanup_allowance_is_exact(
+    tmp_path, callsite, receiver, method, allowed
+):
+    _write_product_file(
+        tmp_path,
+        "XBrainLab/ui/components/assistant_runtime_lifecycle.py",
+        f"def {callsite}(self):\n    return {receiver}.{method}()\n",
+    )
+    violations = check_ui_direct_controller_mutations(tmp_path)
+    if allowed:
+        assert violations == []
+    else:
+        assert len(violations) == 1
+        assert f"controller.{method}" in violations[0]
+
+
 def test_direct_controller_mutation_allowlist_rejects_wrong_callsite(tmp_path):
     _write_product_file(
         tmp_path,

@@ -63,7 +63,12 @@ def test_valid_wrong_decision_never_retries_or_gets_host_rescued():
     assert not result.raw_score.passed
     assert not result.post_recovery_score.passed
     assert not result.final_score.passed
-    assert not result.product_terminal["execution_boundary_reached"]
+    assert result.product_terminal["execution_boundary_reached"]
+    assert result.product_terminal["execution_suppressed"]
+    assert not result.product_terminal["gui_handoff_reached"]
+    assert not result.product_terminal["application_service_called"]
+    assert not result.product_terminal["tool_executor_called"]
+    assert not result.product_terminal["state_mutation_observed"]
 
 
 def test_one_format_repair_keeps_wrong_raw_separate_from_correct_final():

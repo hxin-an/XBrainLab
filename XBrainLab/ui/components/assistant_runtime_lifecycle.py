@@ -226,6 +226,9 @@ class AssistantRuntimeLifecycle(QObject):
     turn_finished = pyqtSignal(object)
     cleanup_finished = pyqtSignal(bool, str)
     deactivation_finished = pyqtSignal(bool, str)
+    restart_started = pyqtSignal()
+    restart_progress = pyqtSignal(str)
+    restart_finished = pyqtSignal(bool, str)
     _terminal_handoff_delivery_failed = pyqtSignal(object)
     _CLOSED_MESSAGE = "Assistant runtime is closed. Restart XBrainLab to use it."
     _START_FAILURE_MESSAGE = (
@@ -315,7 +318,8 @@ class AssistantRuntimeLifecycle(QObject):
         self._stop_requested_for: AssistantTurnCorrelation | None = None
         self._delivery_timeout_for: AssistantTurnCorrelation | None = None
         self._close_requested = False
-        self._deactivation_requested = False
+        self._unload_intent: str | None = None
+        self._restart_in_progress = False
         self._deactivation_config: LLMConfig | None = None
         self._controller_lifecycle_connections: tuple[tuple[Any, Any], ...] = ()
         self._terminal_handoff_fallback_bound = False
@@ -327,6 +331,10 @@ class AssistantRuntimeLifecycle(QObject):
     @property
     def initialized(self) -> bool:
         return self._initialized
+
+    @property
+    def restart_in_progress(self) -> bool:
+        return self._restart_in_progress
 
     @property
     def state(self) -> AssistantRuntimeLifecycleState:
@@ -401,18 +409,13 @@ class AssistantRuntimeLifecycle(QObject):
         """Resolve asynchronous ownership for shutdown or startup rollback."""
         if self._state is AssistantRuntimeLifecycleState.CLOSED:
             return
+        if self.sender() is not self._dispatcher:
+            return
         detail = str(message or "")
         if not ok:
             controller = self._controller
-            if self._deactivation_requested:
-                self._deactivation_requested = False
-                self._deactivation_config = None
-                self._state = AssistantRuntimeLifecycleState.CLEANUP_PENDING
-                self._coordinator.mark_unavailable(self._CLEANUP_PENDING_MESSAGE)
-                self.deactivation_finished.emit(
-                    False,
-                    detail or "Assistant could not be disabled safely.",
-                )
+            if self._unload_intent is not None:
+                self._fail_unload(detail)
                 return
             if self._close_requested and bool(
                 getattr(controller, "shutdown_in_progress", False)
@@ -424,8 +427,8 @@ class AssistantRuntimeLifecycle(QObject):
 
         if self._close_requested:
             self._complete_close()
-        elif self._deactivation_requested:
-            self._complete_deactivation()
+        elif self._unload_intent is not None:
+            self._complete_unload()
         elif (
             self._state is AssistantRuntimeLifecycleState.CLEANUP_PENDING
             and self._startup_cleanup_via_dispatcher is True
@@ -640,6 +643,7 @@ class AssistantRuntimeLifecycle(QObject):
         operation = "start" if activation_request is not None else "start_diagnostics"
         try:
             controller = self._controller_factory(self._study)
+            self._controller = controller
             self._bind_controller_lifecycle_signals(controller)
             self._dispatcher.bind(controller)
             dispatcher_bound = True
@@ -665,12 +669,13 @@ class AssistantRuntimeLifecycle(QObject):
         self._initialized = True
         self._diagnostic_only = activation_request is None
         self.controller_created.emit(controller)
+        self._finish_restart_if_ready()
         return True
 
     def _bind_controller_lifecycle_signals(self, controller: object) -> None:
         """Bind the required runtime-state and turn-terminal signal contract."""
         bindings = (
-            ("runtime_state_changed", self.accept_runtime_snapshot),
+            ("runtime_state_changed", self._accept_controller_snapshot),
             ("turn_finished", self._release_turn),
         )
         resolved: list[tuple[Any, Any]] = []
@@ -901,6 +906,7 @@ class AssistantRuntimeLifecycle(QObject):
             return
         if self._watchdog_activation_id == activation_id:
             self._stop_activation_watchdog()
+        self._finish_restart(False, self._ACTIVATION_TIMEOUT_MESSAGE)
 
     def _rollback_failed_start(
         self,
@@ -956,8 +962,8 @@ class AssistantRuntimeLifecycle(QObject):
         self._stop_activation_watchdog()
         self._coordinator.clear_active_runtime(self._START_FAILURE_MESSAGE)
 
-    @pyqtSlot(object)
     def accept_runtime_snapshot(self, payload: object) -> None:
+        """Apply a snapshot; controller signals are fenced at their Qt ingress."""
         if not self._lifecycle_is_open:
             logger.warning(
                 "Ignoring assistant runtime snapshot while lifecycle is %s",
@@ -966,6 +972,25 @@ class AssistantRuntimeLifecycle(QObject):
             return
         if self._coordinator.accept_worker_snapshot(payload):
             self._stop_activation_watchdog()
+            if self.current.phase is AssistantRuntimePhase.FAILED:
+                self._finish_restart(False, self.current.error)
+            else:
+                self._finish_restart_if_ready()
+
+    @pyqtSlot(object)
+    def _accept_controller_snapshot(self, payload: object) -> None:
+        # Qt can lose sender() after disconnect even for already queued delivery.
+        if self.sender() is not None and self.sender() is self._controller:
+            self.accept_runtime_snapshot(payload)
+
+    def _finish_restart_if_ready(self) -> None:
+        if self.accepts_commands:
+            self._finish_restart(True, "Assistant restarted.")
+
+    def _finish_restart(self, ok: bool, message: str) -> None:
+        if self._restart_in_progress:
+            self._restart_in_progress = False
+            self.restart_finished.emit(ok, redact_public_text(message))
 
     def replay_runtime_snapshot(self) -> None:
         self._coordinator.replay()
@@ -1315,6 +1340,8 @@ class AssistantRuntimeLifecycle(QObject):
         if self._state is AssistantRuntimeLifecycleState.CLOSING:
             return self._SHUTTING_DOWN_MESSAGE
         if self._state is AssistantRuntimeLifecycleState.DEACTIVATING:
+            if self._unload_intent == "restart":
+                return "Assistant runtime is restarting."
             return self._DEACTIVATING_MESSAGE
         if self.current.phase is AssistantRuntimePhase.LOADING:
             return self._LOADING_MESSAGE
@@ -1329,7 +1356,7 @@ class AssistantRuntimeLifecycle(QObject):
         config: LLMConfig,
     ) -> RuntimeCommandAdmissionResult:
         """Unload and persist disabled state without terminally closing the app."""
-        if self.turn_in_flight:
+        if self.turn_in_flight or self._restart_in_progress:
             return RuntimeCommandAdmissionResult(
                 command_name="deactivate",
                 status=RuntimeCommandAdmissionStatus.BUSY,
@@ -1351,53 +1378,153 @@ class AssistantRuntimeLifecycle(QObject):
                 message="Assistant cannot be restarted safely in this session.",
             )
 
-        self._deactivation_requested = True
+        return self._request_unload("deactivate", config)
+
+    def request_restart(self) -> RuntimeCommandAdmissionResult:
+        """Retire this conversation and reload saved settings after full cleanup."""
+        if self._restart_in_progress:
+            return RuntimeCommandAdmissionResult(
+                "restart",
+                RuntimeCommandAdmissionStatus.BUSY,
+                "Assistant is already restarting.",
+            )
+        if self._close_requested or self._state not in {
+            AssistantRuntimeLifecycleState.OPEN,
+            AssistantRuntimeLifecycleState.CLEANUP_PENDING,
+        }:
+            return RuntimeCommandAdmissionResult(
+                "restart",
+                RuntimeCommandAdmissionStatus.REJECTED,
+                self._admission_failure_message(),
+            )
+        if self._dispatcher_factory is None:
+            return RuntimeCommandAdmissionResult(
+                "restart",
+                RuntimeCommandAdmissionStatus.REJECTED,
+                "Assistant cannot be restarted safely in this session.",
+            )
+        return self._request_unload("restart")
+
+    def _request_unload(
+        self,
+        intent: str,
+        config: LLMConfig | None = None,
+    ) -> RuntimeCommandAdmissionResult:
+        """Share dispatcher ownership release for disable and restart."""
+        self._unload_intent = intent
         self._deactivation_config = config
         self._state = AssistantRuntimeLifecycleState.DEACTIVATING
         self._initialized = False
         self._stop_activation_watchdog()
         self._stop_turn_delivery_watchdog()
-        self._coordinator.mark_unavailable(self._DEACTIVATING_MESSAGE)
+        if intent == "restart":
+            self._restart_in_progress = True
+            active = self._active_turn
+            if active is not None:
+                self._release_turn(
+                    AssistantTurnTerminal(
+                        correlation=active,
+                        outcome="restart_cancelled",
+                    )
+                )
+            self.restart_started.emit()
+            self.restart_progress.emit("Stopping Assistant…")
+        self._coordinator.mark_unavailable(self._admission_failure_message())
+        dispatcher = self._dispatcher
         try:
-            closed = bool(self._dispatcher.close())
+            if self._startup_cleanup_via_dispatcher is False:
+                close = getattr(self._controller, "close", None)
+                closed = bool(close()) if callable(close) else True
+                if not closed:
+                    # No dispatcher owns this unbound startup failure or its
+                    # completion signal. Keep ownership and allow a later retry.
+                    message = self._fail_unload("")
+                    return RuntimeCommandAdmissionResult(
+                        intent, RuntimeCommandAdmissionStatus.REJECTED, message
+                    )
+            else:
+                closed = bool(dispatcher.close())
         except Exception as exc:
             safe_unexpected_failure(
                 logger,
                 exc,
                 boundary="assistant_runtime_lifecycle",
-                operation="deactivate",
+                operation=intent,
             )
-            self._deactivation_requested = False
-            self._deactivation_config = None
-            self._state = AssistantRuntimeLifecycleState.CLEANUP_PENDING
-            self._coordinator.mark_unavailable(self._CLEANUP_PENDING_MESSAGE)
-            message = "Assistant could not be disabled safely."
-            self.deactivation_finished.emit(False, message)
+            message = self._fail_unload("")
             return RuntimeCommandAdmissionResult(
-                command_name="deactivate",
+                command_name=intent,
                 status=RuntimeCommandAdmissionStatus.REJECTED,
                 message=message,
             )
-        if closed:
-            self._complete_deactivation()
+        if closed and self._dispatcher is dispatcher:
+            if self._close_requested:
+                self._complete_close()
+            elif self._unload_intent == intent:
+                self._complete_unload()
         return RuntimeCommandAdmissionResult(
-            command_name="deactivate",
+            command_name=intent,
             status=RuntimeCommandAdmissionStatus.ACCEPTED,
         )
 
-    def _complete_deactivation(self) -> None:
-        """Release runtime ownership, persist disabled, and reopen transport."""
+    def _fail_unload(self, detail: str) -> str:
+        intent = self._unload_intent
+        self._unload_intent = None
+        self._deactivation_config = None
+        self._state = AssistantRuntimeLifecycleState.CLEANUP_PENDING
+        self._coordinator.mark_unavailable(self._CLEANUP_PENDING_MESSAGE)
+        message = detail or "Assistant could not finish cleanup safely."
+        if intent == "restart":
+            self._finish_restart(False, message)
+        else:
+            self.deactivation_finished.emit(False, message)
+        return message
+
+    def _complete_unload(self) -> None:
+        """Release the old runtime before replacing its command transport."""
+        intent = self._unload_intent
         config = self._deactivation_config
         factory = self._dispatcher_factory
-        if not self._deactivation_requested or config is None or factory is None:
+        if intent is None or factory is None or self._close_requested:
             return
-        self._deactivation_requested = False
-        self._deactivation_config = None
         self._disconnect_controller_lifecycle_signals()
         self._controller = None
         self._diagnostic_only = False
         self._startup_cleanup_via_dispatcher = None
-        self._replace_dispatcher(factory())
+        try:
+            self._replace_dispatcher(factory())
+        except Exception as exc:
+            safe_unexpected_failure(
+                logger,
+                exc,
+                boundary="assistant_runtime_lifecycle",
+                operation="replace_dispatcher",
+            )
+            self._fail_unload(self._START_FAILURE_MESSAGE)
+            return
+        self._unload_intent = None
+        self._deactivation_config = None
+        self._state = AssistantRuntimeLifecycleState.OPEN
+        self._coordinator.clear_active_runtime("Assistant runtime stopped.")
+        if intent == "restart":
+            self.restart_progress.emit("Loading saved model…")
+            try:
+                result = self.activate_persisted()
+            except Exception as exc:
+                safe_unexpected_failure(
+                    logger,
+                    exc,
+                    boundary="assistant_runtime_lifecycle",
+                    operation="restart_load",
+                )
+                self.mark_unavailable(self._START_FAILURE_MESSAGE)
+                self._finish_restart(False, self._START_FAILURE_MESSAGE)
+            else:
+                if not result.available:
+                    self._finish_restart(False, result.message)
+            return
+        if config is None:  # pragma: no cover - deactivation admission invariant
+            raise RuntimeError("Assistant deactivation requires its saved config.")
         previous_enabled = bool(config.local_model_enabled)
         previous_acknowledged = bool(config.local_runtime_notice_acknowledged)
         config.local_model_enabled = False
@@ -1420,16 +1547,21 @@ class AssistantRuntimeLifecycle(QObject):
             return True
         if self._state is AssistantRuntimeLifecycleState.CLOSING:
             return False
+        self._close_requested = True
+        self._finish_restart(
+            False, "Application shutdown replaced the restart request."
+        )
         if self._state is AssistantRuntimeLifecycleState.DEACTIVATING:
-            self._close_requested = True
-            self._deactivation_requested = False
+            intent = self._unload_intent
+            self._unload_intent = None
             self._deactivation_config = None
             self._state = AssistantRuntimeLifecycleState.CLOSING
             self._coordinator.mark_unavailable(self._SHUTTING_DOWN_MESSAGE)
-            self.deactivation_finished.emit(
-                False,
-                "Application shutdown replaced the disable request.",
-            )
+            if intent == "deactivate":
+                self.deactivation_finished.emit(
+                    False,
+                    "Application shutdown replaced the disable request.",
+                )
             return False
         self._close_requested = True
         self._state = AssistantRuntimeLifecycleState.CLOSING
@@ -1475,6 +1607,6 @@ class AssistantRuntimeLifecycle(QObject):
         self._controller = None
         self._diagnostic_only = False
         self._startup_cleanup_via_dispatcher = None
-        self._deactivation_requested = False
+        self._unload_intent = None
         self._deactivation_config = None
         self._coordinator.clear_active_runtime(self._CLOSED_MESSAGE)

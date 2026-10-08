@@ -85,8 +85,6 @@ class LocalModelSpec:
     source_url: str = ""
     notes: str = ""
     estimated_4bit_vram_gb: float | None = None
-    bnb_4bit_quant_type: str = "fp4"
-    bnb_4bit_compute_dtype: str = "float32"
 
 
 @dataclass(frozen=True)

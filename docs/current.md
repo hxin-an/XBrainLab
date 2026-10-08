@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-09-28`
+最後更新：`2026-10-07`
 
 ## 一句話
 
@@ -46,7 +46,7 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 | Model catalog | Pinned Braindecode 1.6.1提供61個可搜尋contracts，其中54個符合目前classification workflow而可選；provider失效時改列distinct `legacy.braindecode.*` recovery IDs。Model Selection使用catalog reviewed defaults。 | 不可選contracts會顯示license、task或resource reason；桌面UI不提供model constructor調參；upstream與legacy禁止silent fallback，catalog execution不代表科學品質。 |
 | Evaluation | Individual fold/run支援Train、Validation、Test；Evaluation／Visualization選單只列完成的run（含正常Early Stop），不列中途停止的run，保留原始編號與歷史；cross-fold Summary只pool同一training round的disjoint Test masks。已完成結果的讀取綁定所選結果與trainer／split來源，不因其他fold的訓練進度失效，也不計算saliency producer SHA。 | 真正的來源或所選結果替換仍拒絕過期讀取；完成訓練但未計算saliency的run仍可選取Compute；`All Folds`的Split只有Test是刻意的統計邊界。 |
 | Saliency | 桌面Compute／Recompute只執行Settings選定的方法，一次涵蓋目前訓練結果中所有subject的已完成fold／run，排除未完成者；Fold／Run／Method選單只控制顯示。未選的相容既有方法直接保留，不加入重算；所選方法僅保留最新成功結果，整批成功才發布。沿用exact Fold／Evaluation-admitted Fold Set publication；尚未計算者顯示Compute要求，舊結果可刻意回看；單一class selector可切all-class比較與single-class細看，3D控制使用epoch-relative time並在重複render維持單一orientation widget。 | 不代表attribution具科學有效性或腦內source localisation，不把epoch time冒充已審查event marker，也不保證所有模型梯度相容。 |
-| Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；per-user settings保留上次確認的supported model，已退役selection會靜默正規化為recommended model。18-action stage surface、parameter provenance、capability、confirmation及GUI handoff存在；施工中的完整單輪兩欄契約見下節，不保存對話草稿。 | PR #71 的exact 3B bounded baseline為36/36 positive、10/10 explicit parameter origin、5/5 missing guard、22/24 product no-action與6/7 clarification execution boundary；frozen 81-case保留原source／契約的歷史回歸身分。舊結果不是新單輪契約已通過，也不是24/24、7/7 Stable promotion或安全零容忍。 |
+| Assistant | Local catalog以Granite 4.0 Micro 3B作recommended primary、Granite 3.3 2B作lower-memory選項；per-user settings保留上次確認的supported model，已退役selection會靜默正規化為recommended model。18-action stage surface、parameter provenance、capability、confirmation及GUI handoff存在；完整單輪兩欄契約見下節，不保存對話草稿。 | 模型仍可能漏執行、提錯工具或誤切panel；工程驗證與已知限制見下節，不宣稱Stable或安全零容忍。 |
 | MCP | Executable package、transport、CLI、capture、schema projection與tests已退役；provenance只留在Git history。 | 不是release能力；未來若要恢復，必須另開public contract、security與validation decision。 |
 | Packaging | Windows source bootstrap 經確認後準備生成模型與固定版本 RAG embedding，離線檢索驗證通過才完成／啟動；重跑重用完整 cache。入口與路徑見[本機環境](developer/local-setup.md)。 | 沒有 signed installer；流程回歸與既有 cache 離線驗證不代表全新 Windows 整機安裝已實測。 |
 
@@ -64,426 +64,52 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 - 任何產品行為變更都必須由使用者手測通過並明確同意merge；product source變更後須重新批准。
 - Repo-root `settings.json`是本機設定，不屬於release tree。
 
-## Assistant research baseline
+## Assistant product boundary
 
-### 已接受的Development基線（2026-09-29）
+Assistant Settings 提供需確認的 `Restart Assistant`：清除對話並以已保存設定重載模型，
+保留 EEG 與已提交後端工作、不自動重送要求；完整清理後才建立新 runtime，READY 才報成功。
+這是恢復入口，不代表已定位或修復偶發的 Assistant 匯入卡住；本切片尚待同版本 CI／真人驗收。
 
-以下source已透過[PR #149](https://github.com/hxin-an/XBrainLab/pull/149)合併至main。
-使用者完成Windows手測並明示同意merge；驗收head為`ec646126`，merge為`97a76f7a`。
-這是接受已知限制的Development基線，不代表74題全對、Stable或任意要求可靠。
-產品基線以`main`為準，下一步由[Now](planning/now.md)擁有；歷史證據仍綁定各自source。
-使用者後續將本輪驗收明確限於tool-call正確性，不審自然語言回答品質；完整回答語意的
-歷史失敗保留，但不再自動阻擋此範圍的整合驗證。Tool選擇／參數／是否應操作與實際副作用
-仍須驗證；固定20＋6題的自動分數不替代獨立tool-decision覆核、真GUI或同版本CI。
-模型只輸出恰好兩欄`tool_name / parameters`；一個既有工具名表示完整單一操作，
-`respond_to_user`的parameters只能含非空message，是非執行回答標記，不是第19個工具。
-不接受舊五欄／三欄格式；每次要求獨立，不保存或合併跨輪參數。缺值時回答缺少什麼並
-請重新提供完整要求；裸值、指涉更正與「照剛才」不能借用先前操作參數。
-模型輸入不附先前user／Assistant對話，連上一則Assistant回覆也不附；畫面聊天與診斷
-紀錄仍保留。模型只取得當輪原文、必要後端狀態／工具／規則及可選參考，不支援依聊天
-歷史理解「你剛才說的」。此刪除不是已知模型漏答的修復或新的模型成績。
-Host不解析自然語言意圖、不排序bandpass值，也沒有零LLM補值捷徑；五個direct工具仍
-依當輪原文驗證參數來源。確認及GUI handoff保留既有typed回呼、取消與freshness邊界。
-來源匹配不證明理解正確；執行仍須通過完整schema、capability與確認。格式錯誤最多
-一次修復，多個完整JSON操作要求選一件，不執行其中任何一個。
-完整契約見[Agent target](target/agent.md)，責任分工見[Agent架構](architecture/agent.md)。
-新固定20個基本單輪案例位於`scripts/dev/stable_assistant_single_turn_cases_v1.json`；
-早期20題真模型RAG開／關自動各13/20；英文候選開／關自動20/20與14/20，
-獨立完整語意16/20與9/20。後續一次回答完整性修正只改policy，明分禁止與要求執行、
-要求自己組織回覆及完整重述；原20題自動分數不變，完整語意開／關為17/20與8/20。
-既有另6題語意開／關仍5/6與2/6，不併入原分母。關閉RAG的解釋內容有改善也有新錯誤；
-開啟RAG時reference禁止回覆改善，但仍漏解釋、缺完整重述提醒及normalize複誦；這些是
-已知回答品質限制，不是後續批准的tool-call驗收阻擋。整體是否ready仍依Now的整合證據判定。
-2026-09-29追加的固定74題廣度獨立tool-decision為65/74首答、66/74修復後：發現複合操作
-部分提案、不可用操作替代及漏執行等工具決策問題。4題錯誤提案通過准入但被evaluator
-抑制執行；沒有實際資料變更，亦不能宣稱安全不操作通過。真模型Windows四步操作及
-確認／取消邊界檢查通過，source覆核亦通過，但上述模型問題不支持可靠基線／Stable宣稱。
-使用者於2026-09-29接受保留這些限制的Development候選版進行集中手測，並重申本輪
-只支援完整、單一英文要求，不包含複合需求。非複合的漏執行、誤切panel及不可用工具
-提案仍是已知錯誤，不因此變成scope外或通過；原判分、分母與失敗證據保留。
-此廣度集含語料重合及重複prompt，不是獨立holdout；明細及後續決策由Now擁有。
-所有數字各自綁定凍結source；規則更清楚不代表模型已遵守，也不以局部改善抵銷退步。
-Host擋錯、合法JSON與部件測試均不能代替模型語意成功；舊81題／跨輪實驗結果也不能
-當作本契約通過。實際artifact、比較限制與後續決策由Now擁有。
+模型只輸出恰好兩欄 `tool_name / parameters`。一個既有工具名表示完整單一操作；
+`respond_to_user` 的 parameters 只能含非空 message，是非執行回答標記，不是第 19 個工具。
+不接受舊五欄／三欄格式。每次要求獨立，不保存或合併跨輪參數；缺值時請使用者重新
+提供完整要求，裸值與「照剛才」不能借用先前操作參數。
 
-### RAG 部件邊界（2026-09-28）
+模型輸入不附先前 user／Assistant 對話；畫面聊天與診斷紀錄仍保留。模型取得當輪原文、
+必要後端狀態／可用工具／規則及可選 RAG 參考。Host 不猜自然語言意圖、不排序 bandpass
+值，也不以歷史、RAG 或預設補值。Bandpass／notch／resample 數值由模型解析，Host 不要求
+相同阿拉伯數字出現在原句；仍驗完整 schema／range 與後端 admission。
+Reference／normalization 方法來源仍核對當輪原文，RAG 示範的來源檢查保持不變。
+來源匹配不證明模型理解正確。
 
-RAG改為在已發布action及合法response示範內檢索，不再先以手寫語句分流。
-目前共161筆英文單輪示範：前一版157筆再補4筆純否定示範；7筆缺值／部分值改為
-直接操作用語並指出精確缺項與完整重述。原正向／純說明示範保留，兩筆跨輪示範已移除。
-解釋＋操作的四筆問題仍請使用者選擇先做哪一件，不示範部分執行。
-當前施工source使用固定MiniLM、獨立dense／BM25召回及RRF融合，最多三例；
-語料使用兩欄tool_name／parameters，索引schema為6，語料hash由`RAGConfig`固定，
-舊索引不可混用；prior_turn不再接受，缺值示範請使用者重新提供完整要求。
-最終prompt按同一份當前publication
-重新確認範例資格，僅加入完整範例；不擴大tool、權限、confirmation或參數來源。
-細節由[目前架構](architecture/agent.md)擁有。此為source行為，不表示語料數量已證明
-模型收益、Stable promotion或正式論文效果；本輪比較與交付進度見[Now](planning/now.md)。
-舊dense候選池內重排無法補回cosine漏例；早先獨立召回聯集候選曾因真模型退步撤回，
-該歷史失敗保留，不等於本輪RRF已驗收。新准入的原分數門檻漏掉短句必要例；
-後續v2至少兩詞／IDF query覆蓋0.5規則仍漏掉長句必要例，另有dense分路候選超出
-預定相關集合；分路候選不等於最後送出的範例。對稱覆蓋與最終送例相關性gate沿用；
-目前v5沿用v4的20題（10＋10）、原相關標註、required IDs與無關反例，僅為新語料
-版本補四個新示範的同主題標註；主題相關不是決策等效。v4及更早fixture／失敗證據
-保留歷史身分，新範例標註在觀測前固定。
-實際驗證尚不在此宣稱通過；契約由[Agent target](target/agent.md)
-擁有。檢索准入與模型收益分開判定，最新證據見[Now](planning/now.md)；已有固定案例下
-的模型受益，整體基線與交付仍未成立，不能把檢索／索引／生命週期驗證當作整體品質通過。
+確認與 GUI handoff 保留 typed identity、取消與 freshness 邊界。停止訓練確認綁定原本的
+training run；同場進度更新不使確認失效，換 run、已結束或已停止中仍拒絕，實際執行前
+再次核對。其他命令的 publication freshness 規則不變。
+格式錯誤最多一次修復；多個完整 JSON 操作要求選一件，不執行其中任何一個。
+完整契約見 [Agent target](target/agent.md)，責任分工見 [Agent 架構](architecture/agent.md)。
 
-### DEV逐輪工具候選（2026-09-29） { #dev-round-tooling }
+產品支援完整、單一英文要求，不支援複合需求或聊天歷史補值。已接受版本仍有漏執行、
+誤切 panel 及不可用工具提案等已知模型限制；Host 驗證與合法 JSON 不等於工具決策正確。
+不宣稱任意要求可靠、Stable promotion、安全零容忍或自然語言回答品質已通過。
+現行工程案例、真模型／GUI 證據要求及歷史證據的適用限制由
+[驗證契約](validation/README.md) 擁有，不用論文分數替代產品 gate。
 
-工具候選[PR #151](https://github.com/hxin-an/XBrainLab/pull/151)尚未合併。Source
-`7a2fc9ed`新增封存包v2的`compare.sh`：唯讀比較兩份已存run，分開首次／最終、
-工具／參數一致與正誤變化，明列缺失、版本／scorer差異及各模型／repeat時間。
-不重新推論、改原分數或使用新版scorer重評；v1歷史包保持可讀。使用方式由
-[研究協定](validation/thesis_protocol.md)擁有，不宣稱已進main。
+### RAG 部件邊界
 
-該source的137固定五模型×四題工程驗證已完成：20筆有效、首次及最終15對5錯、
-無格式重試；真RAG與capture完整、無fallback、cleanup通過。報告重建、原版audit、
-自比及獨立artifact覆核通過，原始179項raw／inputs指紋不變。五個錯答保留，不調參
-或補跑；20題不是正式DEV成績。Windows比較17案、Linux封存／比較40案及相鄰runner／
-audit／report117案通過；初次合跑逾時與拆開驗證的限制記錄於Now。
-產品UI／Agent／RAG程式與已驗收基線相同；第1輪完整1320次只prepare、尚未執行。
+RAG 在已發布 action 及合法 response 示範內檢索，不先以手寫語句分流。
+語料為 161 筆英文單輪示範，使用兩欄工具回覆；缺值示範要求重新提供完整要求，不接受
+prior_turn。固定 MiniLM、獨立 dense／BM25 召回及等權 RRF 融合，最多三例。
+索引 schema 為 6，語料 hash 由 `RAGConfig` 固定，舊索引不可混用。
+最終 prompt 依同一份當前 publication 重新確認範例資格，只加入完整範例；
+不擴大工具、權限、confirmation 或參數來源。檢索准入與模型受益分開驗證，
+不能以召回成功或語料數量宣稱產品可靠。
 
-Source `33f4d3fa`另加入於137驗證的Linux可搬移包v3：內含固定模型／embedding與154個
-離線wheel，包內相對路徑；首次建立副本私有環境，之後重用，不下載、不自動換模型。
-19個可搬移包測試與既有封存／比較40案通過，獨立安全覆核通過。137真NAS不同路徑
-（含空白／非ASCII）複製後，首次離線安裝388.16秒、重複檢查0.62秒；直接執行
-`./run.sh --check-environment`也成功，66初始情境／264 oracle預檢通過。完整模型hash與
-1320-job prepare-only通過，所有runtime資源及私有Python均位於副本；未建立研究run。
-這些是環境／工程證據，不是新環境的模型生成或正式DEV成績。使用者於2026-09-29
-接受以此包供環境相容的實驗室工作站使用，不再追加跨機／跨帳號或新環境推論驗證；
-未測項不再阻擋本輪收尾，但不改標已實測。啟動器沒有hostname／IP限制，仍核對固定
-Python／平台條件；NAS可見性不代表私人目錄讀取權限，未變更ACL，不承諾任意OS可用。
-使用者隨後批准合併PR並啟動正式DEV第1輪；要求僅確認啟動／初始有效案例，不監控到
-整輪結束。這是執行授權，不是已開跑或已完成的證據；版本／執行位置依Now及run manifest。
+### 產品與研究封存
 
-### 共同工程基線：PR #147 已合併（2026-09-27） { #assistant-integration-baseline }
-
-研究 clean `293f1890` 與產品 checkpoint `8c50bee9` 已合成於 PR #147，於 2026-09-27
-經使用者 Windows 手測及明確批准後合併到 `main`。最終候選 source 為 `e4ba5282`；實驗封裝、
-執行、判分、報告與稽核程式和產品程式同在這個共同基線，原施工／手測 worktree 已移除。
-之後先在單一 `main` 基線穩定化，再決定何時從同一精確版本分出產品與實驗兩線；這不表示
-正式研究起始配置或模型品質已獲批准。原產品 checkpoint 曾修復最新真人要求被 `System:`／
-`Tool Output:` 前綴誤當內部feedback的缺陷：history producer明確標示 `internal`，
-模型context與參數來源仍使用真正最新user；331案直接回歸、22案runner回歸及獨立review通過。
-這是model-free工程證據，不是模型accuracy或正式研究成績。
-
-共用source與文件內容衝突已合成並通過獨立工程覆核；歷史整合候選不再與 `main` 分開宣稱。
-Typed observer以真request的generation
-profile重建既有artifact欄位，未恢復產品dead欄位或更改scorer；GUI研究driver沿正式
-decision fields接合既有dialog，不恢復suggestions路徑。
-
-整合期 model-free 工程證據分組如下，組間可能重疊，不加總成coverage或全專案通過：
-
-- Controller直接整合438通過；core227通過，另4案重疊量化回歸通過；observer122通過。
-- Research廣組初次356通過、1失敗、9錯誤、12跳過；修理上述真dialog observer及以短
-  臨時路徑排除Windows MAX_PATH測試限制後，受影響RAG／UI組33通過。不把初次廣組改標全綠。
-- Linux package19通過；background11通過、1跳過，該Windows子程序案例另以明確環境
-  補驗1案通過。Source-diverse4案通過；不是native GUI人工接受或CI結果。
-- Architecture258通過；真MainWindow送出 → runtime／dispatcher／Controller → 實際64Hz
-  Command → trace → 未修改scorer的補測通過，同檔lifecycle17案通過。驗證完整輸入、
-  生成事件、恰一次command結果、資料副作用及相關聯terminal；模型程序、RAG與設定資源
-  使用受控測試邊界，不冒充真模型執行。
-上述接合經獨立覆核，最終 PR #147 另以同 source 的 CI、Windows 原生流程、真 Assistant、
-137 fixed20 工程量測及使用者手測驗收。137 的 20 筆均有有效量測，最終 14 筆答對、6 筆答錯；
-這不是模型排名、Stable promotion 或正式 DEV／VALID／TEST。六個 Agent 部件的設計／內容亦未
-因合併而自動打磨完成。舊 B0、d0 及 Linux 量測保有各自的 source／模型／配置身分；
-後續穩定化與分線時機由 [Now](planning/now.md) 擁有。這輪工程 smoke 的本機暫存可重跑，
-不作正式研究證據的持久保存要求。
-
-後續正式非 TEST 題庫已在來源移除 `ground_truth.review_status`；runner 維持原樣複製與
-原始位元組指紋核對，不含匯出轉換。歷史 d0 不變，沒有重跑模型或更改判分。
-Windows focused 100 tests、實際題庫的題目／答案保留核對及獨立 review 通過。
-正式來源及版本見[研究規格](validation/thesis_protocol.md)；指定舊題庫時仍原樣複製，不隱式刪欄。
-
-目前量測腳本將啟動／暖機的UI觀測留在condition輸出，實際開始題目才建立case目錄。
-因此啟動失敗且cleanup已認證時，不會由預先占用的空case目錄阻擋同source缺題續跑；
-已開始／未知目錄、未認證cleanup及有效錯答的保護不放寬。原失敗condition證據保留，
-source或配置改變仍須另開run，不能用新程式接續舊版結果。此修理本身不表示量測通過；
-最終 PR #147 同 source 的 137 五模型 fixed20 工程 smoke 已完成，正式研究宣稱邊界如上。
-
-### Linux 封存包與 evaluator 工程驗證（2026-09-23）
-
-2026-09-26使用者更正後續獲分配的工作站為137（`ws-4090-03`），不是134。
-本節及下方2026-09-22預檢均保留實際執行於134的歷史身分，不代表137驗收。
-137可讀共用NAS的既有環境／模型／工程包；實際GPU及模型驗證進度由
-[Now](planning/now.md#integrated-functional-acceptance)擁有。
-
-封存量測來源為 clean `b42cd81ee874d3054f5e1b1f69c045eb1bcf0157`，實際包位於
-`hxin@140.113.193.134:/mnt/home/2025/hxin/XBrainLab-experiments/engineering/工程 smoke b42cd81e`。
-`runs/20260922-171022-8ea4496e/index.html` 是本次結果；用法與設定由
-[研究規格](validation/thesis_protocol.md#devvalid) 擁有。本機閱讀副本為
-`D:\XBrainLabRuns\linux-engineering-b42cd81e\index.html`。
-
-- 五模型各固定四題，20筆均為第一次量測；無替代重跑、cleanup全部完成，六筆有效錯答保留。
-  每模型 Action／Clarification／No-call 分母為2／1／1，不是完整 DEV，不能用來排名或調參。
-- 五模型實際 CUDA、精確選版且無 fallback；Gemma沿固定NF4政策。22次決策生成及5次暖機
-  capture完整；RAG20題啟用且無錯誤，其中10題有內容、10題合法無匹配。決策計時不含模型載入。
-  Runner active約369秒，包含載入／暖機／案例執行；資源核對及部署不計成決策延遲。
-- SSH啟動端退出後同一自有PID持續執行並正常完成。完整程式、設定、題庫與依賴規格封存；
-  六個既有模型／embedding snapshot共34,747,319,860 bytes複製到NAS，逐檔SHA-256一致，無新下載。
-- 搬至另一中文／空白路徑，配置中的模型快取位置不存在，report-only及原候選scorer／input／
-  capture audit仍成功；系統呼叫只見cache捷徑metadata，未開啟cache或權重檔。
-  原inputs/raw不變，CSV逐位元相同，報告JSON僅run位置變更，268個HTML相對連結通過。
-- 同封存來源Linux focused 298 passed／2項Windows專屬skip；其後只補test-only的case及condition
-  子程序逾時回歸，Windows與Linux各2 passed，不更動封存量測程式。
-  三位獨立reviewer已核對實際diff、20題與搬移產物，無未解blocker。
-  這不等於任意硬關機或GPU native hang均已修復。
-- 工作站證據集中在相鄰 `engineering/evidence-b42cd81e/`，本機副本位於
-  `build/dev-artifacts/experiment-package-plan/nas-final/`；source archive保存在工作站
-  `engineering/archives/linux-smoke-b42cd81e.tar.gz`。歷史d0原始／輸入11,646項核對不變。
-
-限制：VALID三次repeat只用合成結果驗排程，未跑正式VALID／TEST／新DEV候選；跨Windows與
-Linux不直接比較速度。各包內候選身分受檢查，跨離線包的全域候選額度仍需研究紀錄管理。
-未完成run續跑仍需原runtime與絕對路徑；封存不保證任意搬移後續跑或跨平台逐位元一致。
-本輪不是桌面GUI或產品release驗收，不另增加人工盲審關卡。
-
-### Linux 工作站環境預檢（2026-09-22）
-
-依使用者選定的 `hxin@140.113.193.134`（Ubuntu 24.04、RTX 4090 24 GB），在 NAS home
-`/mnt/home/2025/hxin/XBrainLab-experiments/workstation-check` 重建獨立環境，舊 `XBrainLab` 不動。
-`source/` 為 clean `9e3e1067cc1e4e97aebf7dad93633b7320244d91`，Python 3.12.3、Poetry 2.3.4
-依該版 lock 安裝 main／llm／test；pip check、CUDA 13.0 tensor operation、Qt offscreen widget
-及 66 個 synthetic fixtures／264 題 DEV oracle 格式預檢皆通過，cleanup 全數完成。
-證據為該目錄的 `setup.log`、`environment-freeze.txt`、`runtime-check.json`、
-`preflight-001/preflight.json`；工作根目錄 `README.md` 保存用途與重建指令。
-這不是正式 v1／DEV／VALID 量測；沒有複製或下載模型，也未驗證模型載入／量化、RAG 或完整
-Assistant 推論。不是歷史 Windows d0 的等同重現或桌面 GUI 驗收。GPU 空閒不代表已預約。
-
-### 完整 DEV 起始基準（2026-09-22）
-
-2026-09-23 封存工程的歷史保護核對：在原 clean `67dd8bf9` 與原 Windows runtime 離線
-重播1,320筆，判分／輸入／1,436 captures相符，原326筆未重跑，原失敗及一次替代保留。
-新證據為 `D:\XBrainLabRuns\d0-validation\package-preparation-frozen-replay.json`；
-這不是使用新 scorer 回改歷史分數，也沒有重新推論。
-
-新研究方法的 initial candidate 已在 clean
-`67dd8bf9155124296b0d9863f2db9a74c103cbbc` 完成五模型 × 264 題，全部 RAG on、repeat 0。
-每模型 Action／Clarification／No-call 分母為 144／48／72；1,320 筆有效量測均有
-完整終態、cleanup、判分、輸入與輸出證據。這是每模型最多五套 DEV 設定中的第一套，
-不另計額外 baseline，也沒有執行 RAG off、VALID 或 TEST。下方歷史 B0 不改寫。
-
-| 模型 | First macro | Final macro | P50（秒） | P95（秒） | 最大值（秒） |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Granite 4.0 Micro | 0.6273 | 0.6273 | 1.518 | 4.299 | 8.324 |
-| Granite 3.3 2B | 0.5255 | 0.5301 | 2.151 | 5.196 | 10.839 |
-| Phi-4 Mini | 0.6597 | 0.6736 | 4.405 | 11.149 | 29.439 |
-| Llama 3.2 3B | 0.3171 | 0.3889 | 1.801 | 5.429 | 11.254 |
-| Gemma 3 4B | 0.4884 | 0.5231 | 4.843 | 16.225 | 50.954 |
-
-Macro 為三種決策的等權平均；不是一般逐題正確率或完整操作成功率。
-等待時間含 RAG、生成、解析／驗證及格式修復，計入所有有效成功／失敗決策終態，
-不含模型載入、暖機、工具執行或事後 scorer。載入／暖機及逐題成功／失敗組另列報告。
-此次 selected 的 1,320 個終態皆 completed，沒有有效決策逾時；不能因此宣稱無原始失敗。
-累計 charged active time 為 5,872.203 秒（約 97.9 分），包括原失敗與恢复成本，
-不含使用者／診斷間隔的等待，也不是純 GPU 運算時間。
-
-原次 Granite3.3 的 `DEV-A08-02-V2` 決策逾時，模型子程序被結束後 capture metadata
-仍為 prepared，正確判為無效量測。326 筆原有效結果保持未重跑，只以同 source／環境／
-題庫／配置補一筆 attempt-2，並繼續 993 個未執行案例；共保留 1,321 份 attempts。
-恢復成功不證明原 native 卡住根因已修好。報告 `dev_complete` 與
-`presentation-audit.selected_complete` 為 true；整體 presentation audit 仍列出唯一
-superseded capture 未完成，不抹除原始失敗或把無效量測判成模型正確。
-
-報告入口：`D:\XBrainLabRuns\d0\index.html`，提供可查詢逐題頁面；目錄保留 CSV、JSON、
-固定 inputs、raw／manifest／journal、保留的 reports 與完整 launches。
-報告介面提供模型比較、模型／題型／正誤交集篩選、搜尋及分頁；逐題呈現預期與
-既存 observed 欄位，產品執行證據與決策分數分開。入口只呈現實驗資訊與四張表：
-模型總表、題型正確率、題組正確率、逐題結果（模型／題號／題型／正誤）；
-題目文字仍可搜尋，點題號查看完整證據。
-分組表呈現最終決策的正確數／有效題數（百分比），missing／invalid 另標 unavailable；
-不是任務執行成功率或回應文字品質。題型沿用三類 aggregate；題組沿用 case ID 的
-A01–A18、C01–C06、N01–N03，不合併類別、不依實際模型工具呼叫分組。僅 Action
-可附一致的封存 expected tool；未知／分類不一致的 ID 另列 Unclassified，不漏算。
-沒有成功提示、CSV 下載、技術／歷史區塊；未解決的缺漏／執行失敗仍醒目提示。
-CSV、JSON、README 技術統計、歷史嘗試檔案全部保留。這是離線呈現更新，
-不重新判分或推論；正式研究主張不因此增加。
-首頁與內頁以實驗目錄名稱、DEV 階段及模型／RAG 條件辨識同一實驗，不用「Latest report」
-代稱；同列列出題數，正確率明列首次與格式修復後（皆沿用等權 macro）；交錯列及數字
-對齊改善閱讀。頁面不列 SHA，CSV／JSON／audit 的原始指紋與驗證仍保留。
-程式分工為 bounded evidence readers、統計呈現、逐題／CSV 輸出和組裝入口；
-CSS／JavaScript 在 `scripts/dev/assistant_report_assets/` 以可讀原始碼維護，產出時內嵌，
-不依賴 CDN。既有 presentation audit 另記錄兩個資源的 SHA-256。
-分組版 `reports/20260922-141028-e4303564` 的 report JSON／CSV 與原版一致，
-11,646 個 raw／inputs 項目保持不變；Windows Edge 離線雙尺寸、篩選交錯列、鍵盤、
-無 JS fallback 與題目文字搜尋已驗證。證據在
-`build/report-group-verification.json` 及 `build/report-browser-groups*`／`build/report-browser-group-section`；
-長表格容器的原整體可視探測不適用，另以真 Tab／方向鍵證明可見焦點與橫捲，
-見 `build/report-browser-table-keyboard`；保留原失敗，未放寬其他控制項的檢查。
-150 個分組表格值另以封存題庫人類標籤及逐題分數核對，見 `build/report-group-cells-audit.json`。
-這是自動瀏覽器證據，不代表使用者已接受設計。
-`D:\XBrainLabRuns\d0-validation\final1320-audit.json` 獨立核對全部 selected 題目，
-1,436 組 generation capture 的實際 bytes／hash／trace、同一 frozen scorer 與 input-audit
-重播、完整分母及獨立 P50／P95 計算均一致。Scorer 重播證明紀錄一致；
-精確 decision 起算 clock 未另存，不能事後重建該 timestamp。
-歷史預檢 pf2 的 66 fixtures／264 oracles 與 sm1 的 15 題五模型 smoke 不混入正式分母；
-依2026-09-23使用者明確授權，舊預檢／試跑完整檔案已退役，只留摘要，不再提供其capture重播。
-
-同凍結 source 的 report-only 已重建完成：11,646 個 raw／input 項目保持不變，
-完整 report JSON 與 CSV bytes 一致；1,320 筆 CSV、1,323 個 HTML 頁面及 8,169 個
-本機連結通過。證據在 `d0-validation/report-rebuild-verification.json`；
-原成功報告 `reports/20260922-061343-96c61481` 與重建的
-`reports/20260922-074043-c9a89d4b` 均保留；後續介面版另存新 reports，
-不可把新 renderer 身分當成原始量測 source。
-經使用者授權，7 個已被取代的純 UI 中間報告已刪除；`reports/` 現保留原失敗
-`20260922-050603-5db90de2`、上述原成功／同源重建及現行分組版，共 4 版。
-這是衍生呈現清理，不刪原始量測、失敗 attempts、inputs、launches 或來源封存。
-`pf0`、`pf1`、`pf2`、`sm0`、`sm1` 已永久刪除，包含舊試跑獨有capture，不只是搬移。
-小型摘要保存在 `d0-validation/retired-prechecks.json`；正式d0與B0入口結果不變。
-舊預檢source `f0421d87`壓縮包及退役的smoke／watch helper亦移除；正式`67dd8bf9`來源包保留。
-背景與啟動旁檔歸入 `d0-validation/preparation-history/`，原失敗與完成證據仍完整。
-
-source snapshot 保存在 `D:\XBrainLabRuns\d0-validation\source-67dd8bf9.zip`，SHA-256
-`8f7235d1b1cf05518f3e5af93f3e79bc5cdc2422e109e0dd65af1cd50747fbbd`；
-環境／模型／語料身分由 retained manifest 保存，共享 native Windows 環境與受控模型 cache
-未複製或升級。還原需同一 Git source／環境與本機 cache，不宣稱全離線安裝包。
-
-背景喚醒原本使用 `exec resume`，因開啟的互動會話持有 writer 而失敗。
-現改為單次 `codex queue`：12 項 subprocess 回歸、獨立 review、真 live-TUI smoke，
-以及本次實驗完成後實際接回原會話均有證據。`preparation-history/d0-bg` 的原失敗保留，
-同目錄的 `d0-bg-queue` 只觀察既有 recovery，不重新啟動推論。Queue receipt 只代表排入；
-`d0-validation/queue-receiving-turn.json` 才核對本次相同會話的新 turn 與精確接續訊息。
-本機 Codex 0.155.1 的開啟 TUI 路徑已觀察成功，不保證關閉、重啟或所有客戶端皆可喚醒。
-
-這仍是單次 DEV initial 系統比較，不是正式排名、穩定尾延遲或產品 native GUI 驗收。
-Gemma 使用已核准 NF4，其餘 BF16，不能當成同精度的純模型比較。
-缺資訊澄清仍是明顯弱點：Final 正確數為 Granite4／Granite3.3 各 1/48、Llama 2/48、
-Phi／Gemma 各 15/48；
-決策正確也不代表 Command 已執行完成，產品 outcome 必須分開閱讀。
-後续調優／VALID／TEST 仍需使用者決策，不因基準完成而自行追加。
-
-### 正式 B0 — 共通修理後的完整 Pilot
-
-Tag `assistant-b0-formal-20260921-926d90ea` 固定
-`926d90ea80b0fa66322238d7914fde07cde26af3`，已完成同一 30 題 DEV、五模型 × RAG on/off
-的 300/300 Pilot。十條件 cleanup 通過、沒有缺題／timeout／無效量測，active time
-1,225.047 秒。報告在 `build/dev-artifacts/p0-926d90ea-report/index.html`；durable 目錄為
-`E:\XBrainLabData\evidence\assistant-b0-formal-20260921-926d90ea`，入口是
-`results/report/index.html`、`README.md`。封存含完整歷史 bundle／tracked source、環境鎖定／清單、
-固定輸入、原始結果與先前診斷；6,216 個檔案逐檔校驗通過，總計 1,924,819,267 bytes。
-`manifest.sha256` 本身的 SHA-256 為
-`63c62e517656e2ec4c947460fa441f06455a0ad8faa5394a2bd4c2e0152dbded`。
-
-共用 parser 現接受整份回答單一 JSON fence，保留原 schema／admission 邊界；預設只允許
-初次加一次格式修復。新 Pilot 暴露並修復 scorer 對非法 typed clarification 的假陽性：
-可選工具／missing fields 仍須符合既有 direct-tool、stage 與 schema 契約，不把 Host 拒絕
-算成正確回答，也不新增問句內容評分。產品 owner 沒有新增；未做 prompt／RAG 調優。
-
-| 條件（RAG off / on） | First macro | Final macro | Invalid output（任一次） |
-| --- | ---: | ---: | ---: |
-| Granite 4 | 0.556 / 0.611 | 0.556 / 0.611 | 0 / 0 |
-| Granite 3.3 | 0.463 / 0.500 | 0.463 / 0.519 | 0 / 1 |
-| Phi-4 | 0.648 / 0.685 | 0.648 / 0.685 | 0 / 0 |
-| Llama 3.2 | 0.370 / 0.370 | 0.463 / 0.407 | 6 / 6 |
-| Gemma 3 | 0.463 / 0.519 | 0.537 / 0.519 | 5 / 3 |
-
-Macro 等權計算 Action／Clarification／No-call，不是完整操作成功率。300 題完整判分
-重播一致、320 次生成 capture hash／trace 對照通過，每題最多兩次生成／一次修復。
-Gemma 的 68 次輸出仍全帶 fence；對應輸入以精確 tokenizer／模板重渲染一致，無 optional context 丟棄。
-靜態合法的外框不再造成零分，但最後仍有 off 2／on 3 題格式／typed 契約失敗。
-
-已從新 tag 的 bundle 在全新鎖定 Windows 環境實跑 Granite 4 RAG-off 30 題：
-first／final 分數、repair 次數與核對的五項 product-outcome 欄位均與原條件一致，
-真 bandpass 2–35 Hz Command 與 after-state 通過，capture／input／cleanup 通過。
-這不是全五模型重驗或逐 byte 軌跡一致的保證。還原的 163 個套件版本與共享環境相同，
-沒有安裝共享環境另外 33 個文件／資料／開發工具；完整差異在 `environment/comparison.json`。
-模型與 embedding 全檔 hash 相符；生成模型沿用 D 槽受控 cache、不複製大型權重，
-各 RAG raw 目錄的 embedding junction 在封存時實體化並校驗，不冒稱零資源複本。環境還原仍依賴
-既有 Windows Python、Poetry 與套件來源／cache，不是可完全離線安裝的備份。
-本輪臨時 checkout／環境約 5.4 GB 已移除，可依封存 README 重建；共享環境、模型與
-舊封存保留。README 提供全部／指定條件重跑指令及已驗證的路徑限制，不需留著臨時環境。
-
-本輪採 Windows Python＋Qt offscreen，Gemma 仍用已核准 NF4、其餘四模型維持 BF16。
-先前的啟動變數傳遞問題、Windows 長輸出目錄的 WinError 206，以及 `ae482c41` 的 246 題
-scorer 缺口 partial 均保留，不混入新結果。短 output root 可避開已重現的目錄限制，
-沒有藉本輪重寫 training filesystem。前後同時改變格式、repair budget、scorer 與 Qt 平台，
-不能把耗時或分數差異歸因單一因素；單次小樣本不支撐正式排名、穩定 P95 或 Test 結論。
-缺資訊時自行補參數、不應操作卻提出操作、動態 publication 下的拒絕仍會出現。
-七個 unexpected-action flags 包含四次導覽、兩次被拒絕的 set-reference，以及一次經測試
-driver 確認後成功清除合成 fixture 的 training history；不是七次成功的破壞性執行，
-但也不能只描述成開窗問題。Clarification 正確率僅判決策／結構，不代表詢問內容切題，
-不得把完整量測或可還原研究基線說成產品零錯誤、native GUI 驗收或 handoff-ready。
-
-### B0 單一入口驗證（2026-09-21）
-
-`baseline.cmd` 已把固定 B0 的 source 還原／檢查、選條件、真實執行和報告串接。
-用法與資料夾契約由[研究規格第 5 節](validation/thesis_protocol.md) 擁有；
-它只支援固定 30 DEV 題／十條件，不是正式 Development／Validation／Test 通用 runner。
-入口 `78908640`（script SHA-256 `d3c8a4aac3b332915b1ab3e97e530383d1d0a141fc84b35d4399099b4f0677e5`）
-載入 clean frozen `926d90ea`，沿用共享 Windows 環境與既有模型，沒有新增環境或下載。
-
-`D:\XBrainLabRuns\b0-entry-78908640\index.html` 是本次入口驗證結果；
-首輪 `reports/20260921-130913-6df16d95` 保存原始完整測量。300/300、十條件 cleanup
-通過，沒有缺題／逾時／無效量測；active time 1,283.531 秒，不包含入口前置校驗和報告。
-300 題 decision／product-outcome／input audit 重播一致；319 次逐題生成加十次暖機的
-metadata／prompt／raw hash 及模型身分核對通過。HTML／CSV／JSON 一致，302 頁 HTML、
-1,851 個相對連結通過。73 項直接相鄰 focused tests、Windows preflight、重複入口排他
-及獨立邊界覆核通過。report-only 未改 raw；完成後 resume 未新增模型子程序、未改原有
-case／報告。整個資料夾複製到中文／空白 Windows 路徑後，全 300 題讀回、相對連結及
-重新產生報告通過；證據在結果根目錄 `recovery-verification.json`，臨時複本驗完清除。
-不將這些證據稱為產品 CI／native UI handoff-ready。
-
-這是入口工程驗證，不新增正式 repeat，也不替換上節封存分數。Gemma 本次 final macro
-off/on 為 0.463/0.574，與原次不同；不可挑較高成績。固定 case／source／seed 不表示
-逐次 model input 完全相同：233 題 first prompt 完全相同，另 67 題僅有 training 的匿名
-subject reference／`backend_generation` 差異；只正規化這兩欄後全部相同。兩輪合計
-600 個題前邊界均為空 stage、零對話／pending／active jobs，未觀察到資料或對話殘留。
-這是凍結 harness 原有的執行期資訊變動，不是新入口修改題目／RAG；其影響不能全歸因於
-GPU 不確定性。兩輪原始輸入與結果均保留；控制非任務資訊對正式比較的影響仍需後續決策，
-不在凍結 B0 上追改 prompt、scorer 或產品 publication。
-
-### 前期快照與原始證據（不追改）
-
-前期 Pilot 快照保留於 tag `assistant-b0-20260921-ac8af81d`／commit
-`ac8af81d87d3c88a32455dd0ce0e91996767f38a`。2026-09-21 使用者同意其不作正式 B0：
-先修共用格式相容與無效重複重試，再跑相同矩陣並另凍結基線；舊 tag、封存及分數不改寫。
-下列均為該前期版本的證據。DEV Pilot 使用 30 題、五模型 × RAG on/off，
-共 300/300 題 recorded；10 個 condition cleanup、300 個 case boundary、prompt capture 與
-input audit 全數通過，沒有 missing、timeout、無效量測或 product outcome 缺失。總 active time
-為 1,876.047 秒。這是研究可行性與成本證據，不是正式模型排名、Validation／Test、穩定 P95
-或產品 handoff。
-
-| 條件 | First macro | Final macro | Invalid model output |
-| --- | ---: | ---: | ---: |
-| Granite 4 RAG off / on | 0.556 / 0.611 | 0.556 / 0.611 | 0 / 0 |
-| Granite 3.3 RAG off / on | 0.463 / 0.500 | 0.463 / 0.519 | 0 / 1 |
-| Phi-4 RAG off / on | 0.648 / 0.685 | 0.648 / 0.685 | 0 / 0 |
-| Llama 3.2 RAG off / on | 0.370 / 0.370 | 0.463 / 0.407 | 6 / 6 |
-| Gemma 3 RAG off / on | 0.000 / 0.000 | 0.000 / 0.000 | 30 / 30 |
-
-表中 Invalid model output 是「任一次生成曾格式錯誤」的題數，不等於最終仍錯誤；
-Granite 3.3 on 的該題已修復，Llama off/on 最終格式錯誤分別為 2／3 題。
-2026-09-21 離線覆核全部 300 題：既有 scorer 的完整判分 object 與原紀錄一致，436 次
-生成的 capture 雜湊／trace 對照通過。Gemma 180 次輸入以 pinned tokenizer／模板重新
-渲染完全一致，2,116–3,196 tokens，沒有丟棄 optional context；全部生成含 code fence，
-由產品與 scorer 共用的 strict parser 拒絕。60 題的兩次修復輸出均相同，其中 58 題輸入也
-完全相同；其餘兩題僅 backend generation 更新。這支持目前格式遵循與重複修復的限制，
-不能推論 Gemma 在其他系統的能力，也沒有隔離量化的因果影響。原始零分不覆寫。
-同一 scorer 重播只證明紀錄一致，不取代題目／oracle 的獨立語意覆核。
-
-本機 durable archive 位於
-`E:\XBrainLabData\evidence\assistant-b0-20260921-ac8af81d`：約 1.4 GB、3,136 個檔案，
-逐檔 SHA-256 驗證通過。它含完整 Git bundle／source snapshot、非 Test 題庫、環境鎖定、
-原始軌跡、報表與重跑 wrapper，不含 root settings、密鑰、個人設定或封存 Test。五模型與
-embedding 維持 D 槽單一受控 cache，archive 保存並實際重算其完整 hash，不複製 35 GB 權重。
-從 bundle 的隔離 checkout 以全新 Windows venv 還原成功：PyTorch 三件套皆為 `+cu130`、
-`pip check` 通過、非 Test prepare 重建 300 jobs 且所有 frozen identity 相符。第一次錯誤的
-環境方法及 PowerShell 中文路徑失敗亦保留，不算成功證據。
-
-後續在 `E:\XBrainLabData\evidence\assistant-b0-restore-validation-20260921` 補足實際測量：
-再次從封存 bundle 還原 clean B0 與全新鎖定 Windows 環境，核對 Granite 4 的 14 個 cache
-檔後，離線跑完固定 RAG-off 30 題。逐題 first／final 分數與修復次數和原 run 相同，包含
-真實 bandpass 2–35 Hz command 與後端 publication；capture、input audit 及 cleanup 通過。
-一題 stop-training 的產品結果因動態 publication 由原先等待確認改為阻擋，差異如實保留，
-不能宣稱所有軌跡／操作終態逐字重現。此為 Windows Qt offscreen 執行，不取代 native
-視覺驗收；只有單模型 RAG-off 補驗，不是全矩陣重跑，也不是完全離線安裝包。
-
-可讀報告入口為 `E:\XBrainLabData\evidence\assistant-pilot-review-20260921\report\index.html`。
-它從原始 E 槽封存重建，保留原分數與來源身分，新增分類分母、成功／失敗延遲中位數及
-最大值、獨立載入／暖機成本、修復與失敗、可搜尋逐題軌跡及 Excel CSV。
-呈現前重新核對 request／result／capture 雜湊；缺失不冒充模型回答。
-衍生報告與診斷另存追加目錄，原 B0 封存不覆寫；報告可讀性不等於新增科學效度。
+產品 main 只維護實際產品及必要工程驗證。研究候選、歷史提示、DEV／VALID／TEST 排程、
+評分與報表、原始輸入輸出由研究封存保存；產品不提供研究重跑入口，也不回寫封存版本。
+研究資料位置與證據界線見 [驗證契約](validation/README.md#research-archive-boundary)。
+研究期間修好的實際產品缺陷仍保留，後續產品重構不改變論文受測版本。
 
 ## Dataset storage boundary
 

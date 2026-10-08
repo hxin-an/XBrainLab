@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QPushButton
 
 from XBrainLab.llm.agent.runtime_state import (
@@ -125,6 +126,8 @@ class _FakeDownloadLifecycle(QObject):
 
 class _FakeAgentManager(QObject):
     assistant_deactivation_finished = pyqtSignal(bool, str)
+    assistant_restart_progress = pyqtSignal(str)
+    assistant_restart_finished = pyqtSignal(bool, str)
 
     def __init__(
         self,
@@ -137,6 +140,19 @@ class _FakeAgentManager(QObject):
         self.deactivation_configs: list[LLMConfig] = []
         self.assistant_runtime = runtime
         self.deletion_checks = 0
+        self.assistant_restart_in_progress = False
+        self.restart_requests = 0
+
+    def request_assistant_restart(self) -> RuntimeCommandAdmissionResult:
+        self.restart_requests += 1
+        if self.result.accepted:
+            self.assistant_restart_in_progress = True
+            self.assistant_restart_progress.emit("Stopping Assistant…")
+        return self.result
+
+    def finish_restart(self, ok: bool, message: str) -> None:
+        self.assistant_restart_in_progress = False
+        self.assistant_restart_finished.emit(ok, message)
 
     def request_assistant_deactivation(
         self,
@@ -222,6 +238,136 @@ def dialog(qtbot, config):
         )
         qtbot.addWidget(dlg)
         yield dlg
+
+
+class TestAssistantRestartSettings:
+    @pytest.fixture
+    def restart_dialog(self, qtbot, config):
+        from XBrainLab.ui.dialogs.model_settings_dialog import ModelSettingsDialog
+
+        manager = _FakeAgentManager(
+            RuntimeCommandAdmissionResult(
+                command_name="restart",
+                status=RuntimeCommandAdmissionStatus.ACCEPTED,
+            ),
+        )
+        lifecycle = _FakeDownloadLifecycle()
+        created = ModelSettingsDialog(
+            config=config,
+            agent_manager=manager,
+            download_lifecycle=lifecycle,
+        )
+        qtbot.addWidget(created)
+        created.show()
+        qtbot.waitUntil(lambda: bool(lifecycle.inspection_requests))
+        lifecycle.complete_inspection(
+            installed=True,
+            runtime_ready=True,
+            runtime_message="Local runtime ready.",
+        )
+        return created, manager, lifecycle
+
+    def test_cancel_restart_preserves_settings_and_makes_no_request(
+        self, restart_dialog
+    ):
+        dialog, manager, _ = restart_dialog
+        assert dialog.restart_assistant_btn.isEnabled()
+        assert not dialog.advanced_content.isVisible()
+        with patch(
+            "XBrainLab.ui.dialogs.model_settings_dialog.ask_confirmation",
+            return_value=False,
+        ):
+            dialog.restart_assistant_btn.click()
+        assert manager.restart_requests == 0
+        assert dialog.config.local_model_enabled
+        assert dialog.btn_activate.isEnabled()
+
+    @pytest.mark.parametrize("ok", [True, False])
+    def test_pending_restart_blocks_duplicate_and_settings_actions(
+        self, restart_dialog, ok
+    ):
+        dialog, manager, lifecycle = restart_dialog
+        with patch(
+            "XBrainLab.ui.dialogs.model_settings_dialog.ask_confirmation",
+            return_value=True,
+        ):
+            dialog.restart_assistant_btn.click()
+            dialog.restart_assistant_btn.click()
+        assert manager.restart_requests == 1
+        assert not dialog.restart_assistant_btn.isEnabled()
+        assert not dialog.btn_activate.isEnabled()
+        assert not dialog.disable_assistant_btn.isEnabled()
+        assert not dialog.local_action_btn.isEnabled()
+        assert dialog.btn_cancel.isEnabled()
+        manager.assistant_restart_progress.emit("Loading saved model…")
+        lifecycle.complete_inspection(
+            installed=True,
+            runtime_ready=True,
+            runtime_message="Local runtime ready.",
+        )
+        assert not dialog.btn_activate.isEnabled()
+        assert not dialog.local_action_btn.isEnabled()
+        assert dialog.restart_status_label.text() == "Loading saved model…"
+        message = (
+            "Assistant restarted." if ok else "Assistant could not restart. Try again."
+        )
+        manager.finish_restart(ok, message)
+        assert dialog.restart_status_label.text() == message
+        assert dialog.restart_assistant_btn.isEnabled()
+        assert dialog.btn_activate.isEnabled()
+        assert dialog.config.local_model_enabled
+
+    def test_rejected_restart_does_not_claim_progress(self, restart_dialog):
+        dialog, manager, _ = restart_dialog
+        manager.result = RuntimeCommandAdmissionResult(
+            command_name="restart",
+            status=RuntimeCommandAdmissionStatus.REJECTED,
+            message="Assistant cleanup is still pending.",
+        )
+        with patch(
+            "XBrainLab.ui.dialogs.model_settings_dialog.ask_confirmation",
+            return_value=True,
+        ):
+            dialog.restart_assistant_btn.click()
+        assert dialog.restart_status_label.text() == manager.result.message
+        assert dialog.restart_assistant_btn.isEnabled()
+
+    def test_closed_dialog_detaches_restart_observers(self, restart_dialog):
+        dialog, manager, _ = restart_dialog
+        dialog.reject()
+        before = dialog.restart_status_label.text()
+        manager.assistant_restart_progress.emit("Stopping Assistant…")
+        manager.finish_restart(False, "A late result")
+        assert dialog.restart_status_label.text() == before
+
+    def test_queued_restart_update_cannot_mutate_closed_dialog(
+        self, restart_dialog, qtbot
+    ):
+        dialog, manager, _ = restart_dialog
+        manager.assistant_restart_progress.disconnect(
+            dialog._on_assistant_restart_progress
+        )
+        manager.assistant_restart_progress.connect(
+            dialog._on_assistant_restart_progress,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        manager.assistant_restart_progress.emit("Stopping Assistant…")
+        dialog.reject()
+        delivered = []
+        QTimer.singleShot(0, lambda: delivered.append(True))
+        qtbot.waitUntil(lambda: bool(delivered))
+        assert dialog.restart_status_label.text() == ""
+
+    def test_footer_buttons_fit_at_minimum_width(self, restart_dialog, qtbot):
+        dialog, _, _ = restart_dialog
+        dialog.resize(dialog.minimumWidth(), dialog.height())
+        qtbot.waitUntil(lambda: dialog.restart_assistant_btn.isVisible())
+        buttons = (dialog.restart_assistant_btn, dialog.btn_cancel, dialog.btn_activate)
+        for button in buttons:
+            assert dialog.footer_widget.rect().contains(button.geometry())
+            assert button.width() >= button.sizeHint().width()
+        for left, right in pairwise(buttons):
+            assert left.geometry().right() < right.geometry().left()
 
 
 class TestModelSettingsInit:

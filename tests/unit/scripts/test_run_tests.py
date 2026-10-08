@@ -450,18 +450,6 @@ def test_daily_launcher_is_required_only_on_windows() -> None:
     )
 
 
-@pytest.mark.parametrize(
-    "node",
-    [
-        "tests/unit/scripts/test_assistant_pilot_report.py::test_cross_drive_evidence_links_remain_openable",
-        "tests/unit/scripts/test_run_assistant_baseline.py::test_second_entry_rejected_before_reading_archive",
-    ],
-)
-def test_windows_research_entry_contracts_have_native_platform_coverage(node) -> None:
-    paths = dict(run_tests.PLATFORM_SHARDS)["process-and-launcher-contracts"]
-    assert (node in paths) == (sys.platform == "win32")
-
-
 def test_platform_ci_groups_partition_focused_platform_gate_exactly_once() -> None:
     grouped_shards = [
         shard for _command, shards in run_tests.PLATFORM_CI_GROUPS for shard in shards

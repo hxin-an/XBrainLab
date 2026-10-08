@@ -145,7 +145,7 @@ Qt processing／closing admission。這些內部責任移交不新增工具或�
 - 初次生成最多加一次既有格式修復；同一修復仍失敗即停止，不重送第二次相同策略。
   多個完整物件維持 choose-one terminal，已交付操作、確認取消與執行失敗不由格式重試重送。
 - `respond_to_user`只呈現回答；其他工具由`ToolAttemptCoordinator`核對publication、
-  當輪參數來源與`VerificationLayer`的完整required/type/enum/range，再進執行admission。
+  適用的方法來源與`VerificationLayer`的完整required/type/enum/range，再進執行admission。
 - 套用 ApplicationService capability gate，避免 assistant 在錯誤 backend state 呼叫不該開放的工具。
 - 將已驗證的單一 tool 交給 `ToolExecutionCoordinator`；mapped workflow tool 透過
   `execute_application_tool_command(...)` 執行 ApplicationService command，直接取得
@@ -198,6 +198,15 @@ RuntimeLifecycle 只消費 dispatcher 的 cleanup 結果，不再同時旁聽 co
 close。真 walkthrough controller 允許同步 close、沒有 shutdown signal；正常 Controller 的
 非同步 shutdown 仍先釋放 worker、還原 affinity、關閉 command thread 後才完成。
 
+Assistant Settings 的 `Restart Assistant` 是明確確認後的恢復入口，與 Save／Disable 分開。
+它清除當前對話、以已保存設定重新載入模型；不自動重送要求，不取消已提交的後端工作，
+不改 EEG 或 root settings.json。RuntimeLifecycle 共用既有 unload／dispatcher cleanup，
+舊 runtime 完整釋放後才建立新 controller；只有新模型 READY 才顯示成功。清理失敗保留
+ownership、拒絕舊 controller 回報並允許安全重試；App close 優先，不再建立替代 runtime。
+Manager 的 Qt signal ingress 核對 live controller 身分與 initialized 狀態，拒收已銷毀 sender
+或舊 generation 的晚到回報。WorkflowUiHandoffHost 只 detach Assistant consumer，保留
+Desktop command completion，避免重啟吞掉既有 GUI 工作結果。Settings 只呈現 owner 進度。
+
 UI 不可直接讀 `AgentWorker.engine` 或 generation thread。worker 發出 model id、backend mode、
 initialized 與 cleanup_pending 的 snapshot；後者是已不 ready 但仍持有待清理 runtime 的投影，
 不是另一份 process owner。`AgentManager`、VRAM conflict check 和 model deletion preflight
@@ -214,8 +223,10 @@ command 仍由同一個 Study-scoped ApplicationService lock 序列化，避免 
 
 每次普通要求獨立；缺值只回答並請使用者重新提供完整要求，不保存草稿或合併歷史值。
 一般說明、裸值與指涉文字仍交同一模型路徑理解；沒有Host intent router、bandpass排序
-或免生成補值捷徑。五個direct preprocess工具的參數來源只核對最近user原文，
-不接受history、RAG或backend state補值。數值／方法匹配不證明語意、否定或操作意圖正確。
+或免生成補值捷徑。Bandpass／notch／resample數值由模型解析；Host不再要求原句
+含相同阿拉伯數字，也不另做英文數字解析。完整schema／range與後端admission仍必須通過。
+Reference／normalization方法來源仍只核對最近user原文；Host不以history、RAG或backend
+state補值。來源匹配不證明語意、否定或操作意圖正確；RAG示例來源helper未隨Host放行改動。
 
 `PendingInteractionCoordinator`只保存blocking confirmation／GUI handoff。這些互動仍按
 typed request identity消費一次；確認後重讀publication，取消、Stop、New Chat與Close不
@@ -384,13 +395,13 @@ Runtime policy：
   `Assistant Settings`入口；不再建立first-run modal，app startup也不會自動載入大型local model。
 - runtime resolver 只啟動設定中明確選定且可用的 exact model；若不可用就回 typed unavailable，
   不靜默改用另一個 catalog model。
-- 產品 `LocalBackend` 預設只接受 product catalog 的repo id；研究runner可明確注入固定
-  `LocalModelSpec`，經同一backend驗精確model identity，不擴張Settings產品清單或silent fallback。
+- `LocalBackend`只接受product catalog的repo id及固定spec；產品不提供研究模型pin或
+  template kwargs注入。研究模型配置隨受測source保存在外部封存，不擴張Settings清單。
 - `LocalBackend` 固定 `trust_remote_code=False`；CUDA dtype 與 runtime context budget 來自
-  immutable spec，本機 settings不能放寬remote-code trust。現行產品與固定研究模型皆支援
+  immutable spec，本機 settings不能放寬remote-code trust。現行產品模型皆支援
   system role，不再有 `supports_system_role` 欄位或system→user legacy merge。
-  Pinned template接受連續user時保留untrusted context與request分訊息；研究Gemma template
-  不接受時由既有backend合併相鄰user內容，保留context delimiters與原文順序，不偽造assistant回覆。
+  Pinned template接受連續user時保留untrusted context與request分訊息；template不接受時
+  由既有backend合併相鄰user內容，保留context delimiters與原文順序，不偽造assistant回覆。
   每次 generation 都使用實際 HuggingFace stopping criterion 連到取消
   event；未結束的 generation lease 不因停止 streamer 或 UI turn 結束就釋放。
 - `LLMConfig` 會把舊 `INFERENCE_MODE=api` 或 settings 裡的 Gemini/API mode 讀成 `local`。
@@ -416,8 +427,8 @@ Host 來源驗證／format recovery 不等於模型自主正確，也不取代�
 歷史兩欄／Host receipt及五欄累積契約成績保留原source與report schema身分，不改標為本輪基線。
 4-bit loading 仍是 optional path；`accelerate` / `bitsandbytes` 不是預設產品啟動硬需求。
 
-Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。若歷史研究需要遠端
-fixture，必須放在明確 optional legacy path，不能被 product code import。
+Gemini/API 不再列為產品驗證目標；default dependencies 不包含 remote SDK。
+歷史研究的source與fixture由外部研究封存保存，不在產品新增legacy path。
 
 ### Response and presentation boundary
 
@@ -552,7 +563,12 @@ admission。若 state publication 不可靠，prompt stage 固定為 `unavailabl
 模型輸出採前述兩欄response，不回填 `workflow_stage`。Stage 在 required
 `application_state`／backend publication 中，system 亦保留同一 publication 的簡短 stage
 事實；Host 以保存的 generation 驗證 proposal、confirmation 及 execution，不從模型 JSON
-取得 state。舊五欄／三欄提案不被產品parser接受，沒有雙格式相容路徑。
+取得 state。停止確認綁定原publication的`TrainingRunIdentity`，同場running進度
+更新不失效；既有確認DTO同步投影此身分供失效提示使用。批准後由可信執行adapter寫入
+`StopTrainingCommand.expected_run`，manager／Trainer在既有鎖內核對相同run仍為RUNNING
+才提交interrupt；換run／terminal／stopping拒絕，等待worker在manager鎖外。
+GUI無綁定的即時停止仍沿用既有控制路徑；不新增模型參數、確認重試或全域generation例外。
+舊五欄／三欄提案不被產品parser接受，沒有雙格式相容路徑。
 
 RAG操作示範都受同一條18-tool與stage publication邊界約束；非執行回答示範以
 `respond_to_user`分類，不能授予執行權限。
