@@ -89,7 +89,21 @@ core20/20、english6/6；recovery8首答1/8，repair後5/8，四題獲救，三�
 依既有驗證契約的一次有界呈現修理，獨立覆核建議移除新加的相鄰完整JSON形狀示例；
 D已刪除55 production行，保留R3文字工具／decision steps與所有recovery/parser保護。
 先取得wire-only呈現測試red，再224相關測試green；完整170輸入最長1915tokens。
-Next：獨立覆核D輸入delta後固定source，重跑core20／english6／recovery8全部要求。
-這是待驗的示例模仿假設，
-不是已證實根因；不改RAG／oracle／retry次數，不無限迭代。修理前後證據分開留存。
+D獨立覆核確認170輸入只刪示例，user/state/RAG/repair原文不變。
+乾淨 `2f7e0e52` 完成所有34題：core20/20、english6/6、recovery5/8，首答與最終均31/34。
+三個失敗為TEST-A02-01-V0、A02-01-V1、A04-02-V1：合法respond_to_user承諾開窗，
+卻未呼叫select_channels/create_epochs；是語意漏操作，不是可重試的格式错误。
+歷史positive scorer將NO_TOOL標作output_format，其raw/parser事實不能因此混為格式修復。
+34份實際prompt hash符合獨立review export；案例/oracle與A相同、capture verified、
+engine closed、source clean。D消除多JSON但未消除R3移植退步，不能宣稱改善或交付。
+真模型累計143/450；尚未跑74廣度、26 off配對、Windows native、CI或開PR。
+
+### Blocked — 需要基線取捨，不再增加提示變體
+
+唯一有界呈現修理已用完，候選仍比A少3題。不能沿用舊Development例外或調低門檻
+直接交手測，也不因額度尚有剩餘繼續試prompt。所有A/B/C/D成功與失敗證據留在
+`build/r3-evidence/`，對應source以各report擁有，不改歷史研究結果。
+建議使用者決策：退回原產品prompt，保留本輪獨立覆核通過的有界多JSON恢復與直接測試，
+重新固定產品候選再完成其相關模型／native／CI驗證。這是產品基線取捨，不宣稱此組合
+已測或R3沒有研究價值；R3施工commit與比較證據保留。未獲此決策前不做第二輪提示調整。
 已知Assistant偶發匯入卡住根因未證實，Restart只是恢復入口；不宣稱本輪修好。
