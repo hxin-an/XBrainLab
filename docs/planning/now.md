@@ -1,8 +1,42 @@
 # XBrainLab Now
 
-最後更新：`2026-10-06`
+最後更新：`2026-10-08`
 
-## Active — 研究／產品分離PR驗證
+## Active — Restart Assistant 功能驗證與交付
+
+使用者明確核准在 Assistant Settings 加入 Restart Assistant，重建 Agent／模型、清除對話，
+保留設定、EEG 與已提交後端工作；不自動重送操作。Windows 隔離 UI 預覽已展示，使用者於
+2026-10-07 明確接受並要求功能實作；設定元件 focused tests 67 passed，未以模擬進度冒充重啟證據。
+既有 PR #158 head `55068515` CI 已通過；使用者回報 Assistant 匯入確認後曾卡住，後續實機與
+使用者重測均成功，根因仍未定位。Restart 是恢復入口，不宣稱修好該匯入問題。
+
+- Scope：設定視窗的明確操作／確認／進度／失敗提示，重用 runtime lifecycle 與 dispatcher
+  的完整清理，再啟動已保存的模型設定；舊 handoff／turn 回報不得進入新對話。
+- Non-goals：不改 prompt／RAG／模型、EEG 語意或後端取消政策；不重啟整個 App、不加全域 kill、
+  不清模型快取、不寫 root settings.json；不合併 PR 或清理研究 worktree。
+- 假設／complexity：已有 lifecycle owner 可承擔 restart，dialog 只呈現狀態、manager 只接線。
+  owner 前後不變；deletion candidate 是共用 unload／cleanup 的重複邏輯，不建第二套控制器。
+  若需要新 owner／狀態機或超出複雜度門檻，先重審。LOC 與實際 diff 於施工後核對。
+- Steps：查明 cleanup／turn 邊界 → 失敗保護測試 → UI 與既有 owner 最小 coherent extension →
+  focused tests／獨立 async 覆核 → 隔離 Windows 元件預覽 → 接受設計後正式整合驗證。
+- Focused validation：確認取消不改狀態；重複點擊不重啟兩次；舊 cleanup 未完成不啟新 runtime；
+  cleanup／load 失敗明示；背景 Command 繼續且不重送；舊回報隔離；關閉設定或 App 不留下新程序。
+- Stop：完整 restart focused／native evidence 與獨立 async review 通過後交付手測；不自動 merge。
+  若資源／權限或新的產品決策阻擋則明示。不因一次成功宣稱原匯入 bug 消失。
+- 已實作：既有 lifecycle 共用 unload／cleanup、真 READY 才完成；只 detach Assistant consumer，
+  保留 Desktop completion。Qt ingress 拒絕被替換／銷毀／清理失敗的舊 sender；App close 優先。
+  334 項直接相關 tests 通過，獨立 async reviewer 最終無程式碼阻擋；未宣稱全專案重審。
+- Windows 真模型驗證：Granite CUDA、真 Settings 操作，閒置與生成途中重啟均完成；
+  舊子程序退出、設定不變、對話清空、新模型可再次回答。最後一次等待既有 montage／owned work
+  settled 後比較完整 backend state／generation，均不變；沒有放寬狀態一致性斷言。
+  第一輪曾 full-state mismatch，但未記錄差異欄位，不能宣稱已證明原因。後續完整快照記錄確有
+  匯入後 montage pending→ready 更新，既有 regression 也通過；這支持修正驗證基線的等待條件，
+  不把後續成功抹去首次失敗。原始測試輸出與 build/restart-native-validation 的隔離證據保留。
+- Next：使用者於 2026-10-08 核准更新產品 PR #158 並處理 CI，通過後開啟 Windows 手測；
+  提交／push 本切片，核對新 head 全部適用 CI，修理直接阻擋並保留失敗證據。
+  舊 head CI 不代表新功能通過；手測接受前不 merge，不清理使用中的 worktree。
+
+## Candidate — 研究／產品分離 PR #158
 
 2026-10-06使用者同意送產品PR與CI驗證。只push本task分支並開main-base產品PR，
 核對exact head的所有適用checks，修理本範圍驗證阻擋；不merge、不關閉研究PR或刪除worktree。
@@ -38,8 +72,8 @@ Ruff／format、guidance、strict docs與diff檢查通過。三位agent依職責
 最後找到的背景研究入口已刪除並重審，範圍內無阻擋項；不宣稱其他模組已全盤審查。
 
 產品模型／prompt／RAG、可見UI與EEG語意不變；未追加模型推論或改分。
-Qt驗證為Windows offscreen，不是新真人手測。尚未有本分支CI／source-diverse／native手測證據，
-不稱handoff-ready，不自動merge。完整collection不是全套測試執行。
+Qt單元驗證為Windows offscreen。其後 head `55068515` 的 CI 已完成，使用者已完成該版本
+GUI／Assistant 匯入重測；新 Restart 變更須另驗，不挪用舊 head 證據。完整collection不是全套執行。
 
 ### PR #158 CI 修正
 
@@ -52,5 +86,5 @@ Windows Git不能解析WSL worktree指標造成的兩項環境失敗，僅用測
 GIT_DIR／GIT_WORK_TREE解決；無Git metadata、共用環境或scorer改動。push後重驗同head CI。
 本修正無可見UI變更，無新owner。停止條件仍為所有適用CI成功；不merge。
 
-Next：追蹤產品PR #158修正後同head CI；研究PR不整批合併。
+產品PR #158 head `55068515` 適用 CI 已通過；研究PR不整批合併。
 更廣泛逐模組打磨另訂目標，不藉本切片繼續擴張。原始資料、共享環境與封存都不清除。

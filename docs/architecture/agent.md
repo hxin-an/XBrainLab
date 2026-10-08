@@ -198,6 +198,15 @@ RuntimeLifecycle 只消費 dispatcher 的 cleanup 結果，不再同時旁聽 co
 close。真 walkthrough controller 允許同步 close、沒有 shutdown signal；正常 Controller 的
 非同步 shutdown 仍先釋放 worker、還原 affinity、關閉 command thread 後才完成。
 
+Assistant Settings 的 `Restart Assistant` 是明確確認後的恢復入口，與 Save／Disable 分開。
+它清除當前對話、以已保存設定重新載入模型；不自動重送要求，不取消已提交的後端工作，
+不改 EEG 或 root settings.json。RuntimeLifecycle 共用既有 unload／dispatcher cleanup，
+舊 runtime 完整釋放後才建立新 controller；只有新模型 READY 才顯示成功。清理失敗保留
+ownership、拒絕舊 controller 回報並允許安全重試；App close 優先，不再建立替代 runtime。
+Manager 的 Qt signal ingress 核對 live controller 身分與 initialized 狀態，拒收已銷毀 sender
+或舊 generation 的晚到回報。WorkflowUiHandoffHost 只 detach Assistant consumer，保留
+Desktop command completion，避免重啟吞掉既有 GUI 工作結果。Settings 只呈現 owner 進度。
+
 UI 不可直接讀 `AgentWorker.engine` 或 generation thread。worker 發出 model id、backend mode、
 initialized 與 cleanup_pending 的 snapshot；後者是已不 ready 但仍持有待清理 runtime 的投影，
 不是另一份 process owner。`AgentManager`、VRAM conflict check 和 model deletion preflight

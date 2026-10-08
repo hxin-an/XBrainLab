@@ -338,6 +338,7 @@ class ModelSettingsDialog(BaseDialog):
         self._download_observers_attached = False
         self._deactivation_observer_attached = False
         self._runtime_observer_attached = False
+        self._restart_observers_attached = False
         self._assistant_runtime_snapshot: AssistantRuntimeSnapshot | None = None
 
         super().__init__(
@@ -370,6 +371,16 @@ class ModelSettingsDialog(BaseDialog):
         if callable(connect_deactivation):
             connect_deactivation(self.on_assistant_deactivation_finished)
             self._deactivation_observer_attached = True
+        restart_progress = getattr(
+            self.agent_manager, "assistant_restart_progress", None
+        )
+        restart_finished = getattr(
+            self.agent_manager, "assistant_restart_finished", None
+        )
+        if restart_progress is not None and restart_finished is not None:
+            restart_progress.connect(self._on_assistant_restart_progress)
+            restart_finished.connect(self._on_assistant_restart_finished)
+            self._restart_observers_attached = True
         assistant_runtime = getattr(self.agent_manager, "assistant_runtime", None)
         runtime_signal = getattr(
             assistant_runtime,
@@ -683,9 +694,23 @@ class ModelSettingsDialog(BaseDialog):
         self.save_error_label.setVisible(False)
         footer_layout.addWidget(self.save_error_label)
 
+        self.restart_status_label = QLabel(self.footer_widget)
+        self.restart_status_label.setObjectName("AssistantSettingsMuted")
+        self.restart_status_label.setWordWrap(True)
+        self.restart_status_label.setVisible(False)
+        footer_layout.addWidget(self.restart_status_label)
+
         btn_layout = QHBoxLayout()
         btn_layout.setContentsMargins(0, 0, 0, 0)
         btn_layout.setSpacing(10)
+        self.restart_assistant_btn = QPushButton("Restart Assistant")
+        self.restart_assistant_btn.setObjectName("AssistantSecondaryButton")
+        self.restart_assistant_btn.setToolTip(
+            "Reload the saved Assistant settings and clear this conversation. "
+            "EEG data and running analysis are kept."
+        )
+        self.restart_assistant_btn.clicked.connect(self.on_restart_assistant_clicked)
+        btn_layout.addWidget(self.restart_assistant_btn)
         btn_layout.addStretch()
         self.btn_cancel = QPushButton("Cancel")
         self.btn_cancel.setObjectName("AssistantSecondaryButton")
@@ -956,7 +981,9 @@ class ModelSettingsDialog(BaseDialog):
         self.local_action_btn.setText("Delete" if state.installed else "Install Model")
         self._set_model_action_destructive(state.installed)
         self.local_action_btn.setEnabled(
-            not self.is_downloading and not state.diagnostic_message
+            not self.is_downloading
+            and not self._assistant_is_restarting()
+            and not state.diagnostic_message
         )
 
     def _selected_model_is_loading(self) -> bool:
@@ -1333,10 +1360,83 @@ class ModelSettingsDialog(BaseDialog):
             if self.config.local_model_enabled
             else "Assistant is disabled"
         )
-        self.btn_activate.setEnabled(not self.is_downloading and runtime_ready)
-        self.disable_assistant_btn.setEnabled(
-            bool(self.config.local_model_enabled) and not self.is_downloading
+        restarting = self._assistant_is_restarting()
+        self.btn_activate.setEnabled(
+            not self.is_downloading and not restarting and runtime_ready
         )
+        self.disable_assistant_btn.setEnabled(
+            bool(self.config.local_model_enabled)
+            and not self.is_downloading
+            and not restarting
+        )
+        self.restart_assistant_btn.setEnabled(
+            bool(self.config.local_model_enabled)
+            and not self.is_downloading
+            and not restarting
+            and callable(getattr(self.agent_manager, "request_assistant_restart", None))
+        )
+        self.restart_assistant_btn.setText(
+            "Restarting…" if restarting else "Restart Assistant"
+        )
+        self.local_model_combo.setEnabled(not restarting)
+        if restarting:
+            self.local_action_btn.setEnabled(False)
+
+    def _assistant_is_restarting(self) -> bool:
+        """Read ownership from the manager, never infer it from visible copy."""
+        return (
+            getattr(self.agent_manager, "assistant_restart_in_progress", False) is True
+        )
+
+    def on_restart_assistant_clicked(self) -> None:
+        """Confirm conversation loss, then delegate to the existing runtime owner."""
+        if not self.restart_assistant_btn.isEnabled():
+            return
+        if not ask_confirmation(
+            self,
+            severity=AlertSeverity.WARNING,
+            title="Restart Assistant",
+            message=(
+                "Restart Assistant and clear this conversation? Saved settings, "
+                "EEG data, and running analysis will be kept. No requests will "
+                "be sent again automatically."
+            ),
+            confirm_text="Restart Assistant",
+        ):
+            return
+        result = self.agent_manager.request_assistant_restart()
+        if not isinstance(result, RuntimeCommandAdmissionResult):
+            self._on_assistant_restart_finished(
+                False, "Assistant returned an invalid restart result."
+            )
+        elif not result.accepted:
+            self._on_assistant_restart_finished(
+                False, result.message or "Assistant could not restart."
+            )
+        else:
+            self.update_validation_state()
+
+    def _on_assistant_restart_progress(self, message: str) -> None:
+        if not self._restart_observers_attached:
+            return
+        self.restart_status_label.setText(message)
+        self._set_status_text_color(self.restart_status_label, Theme.TEXT_SECONDARY)
+        self.restart_status_label.setVisible(True)
+        self.update_validation_state()
+        self._schedule_fit()
+
+    def _on_assistant_restart_finished(self, ok: bool, message: str) -> None:
+        if not self._restart_observers_attached:
+            return
+        self.restart_status_label.setText(message)
+        self._set_status_text_color(
+            self.restart_status_label, Theme.LOG_INFO if ok else Theme.LOG_ERROR
+        )
+        self.restart_status_label.setVisible(True)
+        self.update_validation_state()
+        if self._current_local_model_state is not None:
+            self._render_local_model_action(self._current_local_model_state)
+        self._schedule_fit()
 
     def on_activate_clicked(self):
         """Save settings, persist configuration, and accept the dialog."""
@@ -1528,6 +1628,14 @@ class ModelSettingsDialog(BaseDialog):
                 signal.disconnect(slot)
         self._download_observers_attached = False
         self._pending_inspection_request_id = None
+        if self._restart_observers_attached:
+            for name, slot in (
+                ("assistant_restart_progress", self._on_assistant_restart_progress),
+                ("assistant_restart_finished", self._on_assistant_restart_finished),
+            ):
+                with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+                    getattr(self.agent_manager, name).disconnect(slot)
+            self._restart_observers_attached = False
         if self._deactivation_observer_attached:
             signal = getattr(
                 self.agent_manager,

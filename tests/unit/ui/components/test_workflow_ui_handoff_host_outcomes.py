@@ -99,6 +99,65 @@ class _SynchronouslyFailedWindow(_DeferredWindow):
         return False
 
 
+def test_restart_detaches_assistant_without_losing_desktop_command_result() -> None:
+    callbacks = []
+    desktop_results = []
+
+    def open_epoching():
+        completion = current_interaction_completion()
+        assert completion is not None
+        command = completion.prepare_command(
+            context=object(),
+            on_result=desktop_results.append,
+            on_error=None,
+        )
+        command.mark_started(True)
+        callbacks.append(command)
+        return InteractionOutcome.accepted("Scheduled")
+
+    window = _DeferredWindow(open_epoching)
+    host = WorkflowUiHandoffHost(window)
+    old = WorkflowUiHandoffRequest.for_decision(
+        "create_epoch", decision_fields=("epoch_window",)
+    )
+    old_results = []
+    host.open(old, on_terminal=old_results.append)
+    window.deliver_ready()
+    host.detach_assistant()
+    assert host.active_request is None
+
+    new = WorkflowUiHandoffRequest.for_decision(
+        "create_epoch", decision_fields=("epoch_window",)
+    )
+    new_results = []
+    host.open(new, on_terminal=new_results.append)
+    result = CommandResult.success_result(
+        command_name="create_epoch",
+        message="Completed",
+        state={},
+        changed_state=ChangedState(epoch_changed=True),
+    )
+    callbacks[0].on_result(result)
+    callbacks[0].on_result(result)
+    assert desktop_results == [result]
+    assert old_results == []
+    assert new_results == []
+    assert host.active_request is new
+
+
+def test_restart_detach_prevents_unstarted_deferred_dialog_from_opening() -> None:
+    window = _DeferredWindow(lambda: InteractionOutcome.cancelled())
+    host = WorkflowUiHandoffHost(window)
+    request = WorkflowUiHandoffRequest.for_decision(
+        "create_epoch", decision_fields=("epoch_window",)
+    )
+    host.open(request)
+    host.detach_assistant()
+    window.deliver_ready()
+    window.preprocess_panel.sidebar.open_epoching.assert_not_called()
+    assert host.active_request is None
+
+
 def test_deferred_modal_rebinds_original_session_until_async_terminal() -> None:
     scheduled_callbacks: list[Any] = []
     bound_sessions: list[Any] = []

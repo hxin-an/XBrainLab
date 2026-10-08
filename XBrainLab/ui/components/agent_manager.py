@@ -7,6 +7,7 @@ from PyQt6.QtCore import (
     QObject,
     Qt,
     pyqtSignal,
+    pyqtSlot,
 )
 from PyQt6.QtWidgets import QDockWidget
 
@@ -79,6 +80,7 @@ from XBrainLab.ui.components.assistant_runtime_lifecycle import (
     RuntimeActivationResult,
     RuntimeActivationStatus,
     RuntimeCommandAdmissionResult,
+    RuntimeCommandAdmissionStatus,
     RuntimeSetupAction,
 )
 from XBrainLab.ui.components.assistant_status_projection import (
@@ -170,6 +172,8 @@ class AgentManager(QObject):
     """
 
     assistant_deactivation_finished = pyqtSignal(bool, str)
+    assistant_restart_progress = pyqtSignal(str)
+    assistant_restart_finished = pyqtSignal(bool, str)
 
     def __init__(
         self,
@@ -228,6 +232,15 @@ class AgentManager(QObject):
         )
         self._assistant_runtime.deactivation_finished.connect(
             self._on_assistant_deactivation_finished
+        )
+        self._assistant_runtime.restart_started.connect(
+            self._on_assistant_restart_started
+        )
+        self._assistant_runtime.restart_progress.connect(
+            self.assistant_restart_progress
+        )
+        self._assistant_runtime.restart_finished.connect(
+            self.assistant_restart_finished
         )
         self._model_download_lifecycle = (
             model_download_lifecycle or ModelDownloadLifecycle(parent=self)
@@ -483,6 +496,31 @@ class AgentManager(QObject):
         """Delegate Disable admission to the existing runtime owner."""
         return self._assistant_runtime.request_deactivation(config)
 
+    @property
+    def assistant_restart_in_progress(self) -> bool:
+        return self._assistant_runtime.restart_in_progress
+
+    def request_assistant_restart(self) -> RuntimeCommandAdmissionResult:
+        """Restart only the Assistant through the existing lifecycle owner."""
+        if not self._model_download_lifecycle.is_idle():
+            return RuntimeCommandAdmissionResult(
+                command_name="restart",
+                status=RuntimeCommandAdmissionStatus.BUSY,
+                message=(
+                    "Wait for model installation or cleanup to finish "
+                    "before restarting."
+                ),
+            )
+        return self._assistant_runtime.request_restart()
+
+    def _on_assistant_restart_started(self) -> None:
+        """Retire presentation only after the runtime releases its old turn."""
+        self._workflow_ui_handoff_host.detach_assistant()
+        self._application_command_in_flight = False
+        self._clear_conversation_presentation()
+        self._runtime_unavailable_notice = None
+        self.refresh_backend_status()
+
     def _on_assistant_deactivation_finished(self, ok: bool, message: str) -> None:
         """Clear Assistant-only presentation after runtime ownership is released."""
         if ok:
@@ -552,22 +590,58 @@ class AgentManager(QObject):
     def _wire_assistant_controller(self, controller) -> None:
         """Connect one newly created runtime controller to product UI slots."""
         self._validate_assistant_controller_contract(controller)
-        controller.response_presentation_ready.connect(
-            self._handle_response_presentation
-        )
-        controller.status_update.connect(self.on_agent_status_update)
-        controller.activity_changed.connect(self.on_assistant_activity_changed)
-        controller.confirmation_requested.connect(self._show_action_confirmation)
-        controller.panel_navigation_requested.connect(self.handle_panel_navigation)
-        controller.workflow_ui_handoff_requested.connect(
-            self.handle_workflow_ui_handoff
-        )
+        controller.response_presentation_ready.connect(self._on_controller_response)
+        controller.status_update.connect(self._on_controller_status)
+        controller.activity_changed.connect(self._on_controller_activity)
+        controller.confirmation_requested.connect(self._on_controller_confirmation)
+        controller.panel_navigation_requested.connect(self._on_controller_navigation)
+        controller.workflow_ui_handoff_requested.connect(self._on_controller_handoff)
         controller.application_command_completed.connect(
-            self._on_application_command_completed
+            self._on_controller_command_completed
         )
         controller.application_command_started.connect(
-            self._on_application_command_started
+            self._on_controller_command_started
         )
+
+    @pyqtSlot(object)
+    def _on_controller_response(self, payload: object) -> None:
+        if self._controller_signal_is_current():
+            self._handle_response_presentation(payload)
+
+    @pyqtSlot(str)
+    def _on_controller_status(self, message: str) -> None:
+        if self._controller_signal_is_current():
+            self.on_agent_status_update(message)
+
+    @pyqtSlot(object)
+    def _on_controller_activity(self, payload: object) -> None:
+        if self._controller_signal_is_current():
+            self.on_assistant_activity_changed(payload)
+
+    @pyqtSlot(object)
+    def _on_controller_confirmation(self, payload: object) -> None:
+        if self._controller_signal_is_current():
+            self._show_action_confirmation(payload)
+
+    @pyqtSlot(object)
+    def _on_controller_navigation(self, payload: object) -> None:
+        if self._controller_signal_is_current():
+            self.handle_panel_navigation(payload)
+
+    @pyqtSlot(object)
+    def _on_controller_handoff(self, payload: object) -> None:
+        if self._controller_signal_is_current():
+            self.handle_workflow_ui_handoff(payload)
+
+    @pyqtSlot()
+    def _on_controller_command_started(self) -> None:
+        if self._controller_signal_is_current():
+            self._on_application_command_started()
+
+    @pyqtSlot(object)
+    def _on_controller_command_completed(self, payload: object) -> None:
+        if self._controller_signal_is_current():
+            self._on_application_command_completed(payload)
 
     def _on_application_command_started(self) -> None:
         """Mark one Assistant command as in flight and render its activity."""
@@ -593,6 +667,15 @@ class AgentManager(QObject):
         """Release command ownership and track asynchronous training completion."""
         self._application_command_in_flight = False
         self._begin_assistant_training_watch(result)
+
+    def _controller_signal_is_current(self) -> bool:
+        """Reject retired or destroyed Qt senders; direct helpers remain separate."""
+        sender = self.sender()
+        return sender is not None and (
+            sender is self.agent_controller
+            and self._assistant_runtime.initialized
+            and not self.assistant_restart_in_progress
+        )
 
     def _begin_assistant_training_watch(self, result: object) -> None:
         """Track only an asynchronous training run started by this Assistant."""

@@ -1,6 +1,6 @@
 # XBrainLab 目前狀態
 
-最後更新：`2026-10-06`
+最後更新：`2026-10-07`
 
 ## 一句話
 
@@ -65,6 +65,10 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 - Repo-root `settings.json`是本機設定，不屬於release tree。
 
 ## Assistant product boundary
+
+Assistant Settings 提供需確認的 `Restart Assistant`：清除對話並以已保存設定重載模型，
+保留 EEG 與已提交後端工作、不自動重送要求；完整清理後才建立新 runtime，READY 才報成功。
+這是恢復入口，不代表已定位或修復偶發的 Assistant 匯入卡住；本切片尚待同版本 CI／真人驗收。
 
 模型只輸出恰好兩欄 `tool_name / parameters`。一個既有工具名表示完整單一操作；
 `respond_to_user` 的 parameters 只能含非空 message，是非執行回答標記，不是第 19 個工具。

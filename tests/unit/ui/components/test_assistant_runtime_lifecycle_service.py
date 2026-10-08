@@ -51,6 +51,293 @@ TEST_ACTIVE_MODEL_ID = "test/runtime-active"
 TEST_TARGET_MODEL_ID = "test/runtime-target"
 
 
+@pytest.fixture
+def restart_runtime(monkeypatch, qtbot):
+    config = _ready_config()
+    saves = []
+    monkeypatch.setattr(config, "save_to_file", lambda: saves.append(True) or True)
+    controllers = []
+    dispatchers = [_SignalledCleanupDispatcher()]
+
+    def create_controller(_study):
+        controller = _Controller()
+        controllers.append(controller)
+        return controller
+
+    def create_dispatcher():
+        dispatcher = _Dispatcher()
+        dispatchers.append(dispatcher)
+        return dispatcher
+
+    lifecycle = AssistantRuntimeLifecycle(
+        object(),
+        controller_factory=create_controller,
+        dispatcher=dispatchers[0],
+        dispatcher_factory=create_dispatcher,
+        config_loader=lambda: config,
+    )
+    assert lifecycle.start()
+    _publish_restart_ready(lifecycle)
+    finished = []
+    progress = []
+    lifecycle.restart_finished.connect(
+        lambda ok, message: finished.append((ok, message))
+    )
+    lifecycle.restart_progress.connect(progress.append)
+    yield lifecycle, controllers, dispatchers, config, saves, finished, progress
+    lifecycle.close()
+    dispatchers[0].cleanup_finished.emit(True, "")
+
+
+def _publish_restart_ready(lifecycle, *, activation_id=None):
+    lifecycle.accept_runtime_snapshot(
+        AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.READY,
+            initialized=True,
+            backend_mode="local",
+            model_id=LLMConfig.default_local_model_id(),
+            activation_id=activation_id or lifecycle.expected_activation_id,
+        )
+    )
+
+
+def test_restart_waits_for_cleanup_and_actual_ready_without_saving(restart_runtime):
+    lifecycle, controllers, dispatchers, config, saves, finished, progress = (
+        restart_runtime
+    )
+    old_id = lifecycle.current.activation_id
+    assert lifecycle.request_restart().accepted
+    assert lifecycle.restart_in_progress
+    assert not lifecycle.accepts_commands
+    assert not lifecycle.submit("blocked").accepted
+    assert not lifecycle.request_restart().accepted
+    assert len(controllers) == len(dispatchers) == 1
+    assert progress == ["Stopping Assistant…"]
+
+    dispatchers[0].cleanup_finished.emit(True, "")
+    assert len(controllers) == len(dispatchers) == 2
+    assert lifecycle.expected_activation_id > old_id
+    assert progress == ["Stopping Assistant…", "Loading saved model…"]
+    assert finished == []
+    _publish_restart_ready(lifecycle, activation_id=old_id)
+    assert not lifecycle.accepts_commands
+    _publish_restart_ready(lifecycle)
+    assert lifecycle.accepts_commands
+    assert not lifecycle.restart_in_progress
+    assert len(finished) == 1 and finished[0][0]
+    assert config.local_model_enabled and saves == []
+
+
+def test_restart_retires_active_turn_before_start_signal_and_keeps_ids(restart_runtime):
+    lifecycle, controllers, dispatchers, _, _, _, _ = restart_runtime
+    turn = lifecycle.submit("running", generation=19)
+    events = []
+    lifecycle.turn_finished.connect(lambda terminal: events.append(terminal))
+    lifecycle.restart_started.connect(lambda: events.append("restart"))
+    assert lifecycle.request_restart().accepted
+    assert events == [_terminal(turn, outcome="restart_cancelled"), "restart"]
+    assert not lifecycle.turn_in_flight
+    controllers[0].turn_finished.emit(_terminal(turn))
+    assert len(events) == 2
+    dispatchers[0].cleanup_finished.emit(True, "")
+    _publish_restart_ready(lifecycle)
+    replacement = lifecycle.submit("new", generation=20)
+    assert replacement.accepted and replacement.turn_id > turn.turn_id
+    assert dispatchers[0].submissions == ["running"]
+    assert dispatchers[1].submissions == ["new"]
+
+
+def test_restart_failed_cleanup_retains_owner_and_retry_waits(restart_runtime):
+    lifecycle, controllers, dispatchers, _, _, finished, _ = restart_runtime
+    assert lifecycle.request_restart().accepted
+    dispatchers[0].cleanup_finished.emit(False, "cleanup failed")
+    assert finished == [(False, "cleanup failed")]
+    assert not lifecycle.restart_in_progress
+    assert lifecycle.controller is controllers[0]
+    assert not lifecycle.activate_persisted().available
+    assert lifecycle.request_restart().accepted
+    assert len(controllers) == len(dispatchers) == 1
+    dispatchers[0].cleanup_finished.emit(True, "")
+    _publish_restart_ready(lifecycle)
+    assert len(controllers) == 2 and finished[-1][0]
+
+
+@pytest.mark.parametrize("during_load", [False, True])
+def test_close_replaces_restart_without_respawn(restart_runtime, during_load):
+    lifecycle, controllers, dispatchers, _, _, finished, _ = restart_runtime
+    assert lifecycle.request_restart().accepted
+    if during_load:
+        dispatchers[0].cleanup_finished.emit(True, "")
+    count_before = len(controllers)
+    lifecycle.close()
+    dispatchers[0].cleanup_finished.emit(True, "")
+    assert lifecycle.state is AssistantRuntimeLifecycleState.CLOSED
+    assert len(controllers) == count_before
+    assert not lifecycle.restart_in_progress
+    assert len(finished) == 1 and not finished[0][0]
+
+
+@pytest.mark.parametrize("failure", ["snapshot", "watchdog", "config"])
+def test_restart_reports_load_failures_once(restart_runtime, monkeypatch, failure):
+    lifecycle, _, dispatchers, _, _, finished, _ = restart_runtime
+    if failure == "config":
+
+        def fail_load():
+            raise OSError("cannot read config")
+
+        monkeypatch.setattr(lifecycle, "load_config", fail_load)
+    assert lifecycle.request_restart().accepted
+    dispatchers[0].cleanup_finished.emit(True, "")
+    if failure == "snapshot":
+        lifecycle.accept_runtime_snapshot(
+            AssistantRuntimeSnapshot(
+                phase=AssistantRuntimePhase.FAILED,
+                initialized=False,
+                error="model failed",
+                activation_id=lifecycle.expected_activation_id,
+            )
+        )
+    elif failure == "watchdog":
+        lifecycle._on_activation_timeout(lifecycle.expected_activation_id)
+    assert len(finished) == 1 and not finished[0][0]
+    assert not lifecycle.restart_in_progress
+    assert not lifecycle.accepts_commands
+
+
+def test_restart_synchronous_cleanup_does_not_replace_new_dispatcher_twice(
+    restart_runtime,
+    monkeypatch,
+):
+    lifecycle, controllers, dispatchers, _, _, finished, _ = restart_runtime
+
+    def close():
+        dispatchers[0].cleanup_finished.emit(True, "")
+        return True
+
+    monkeypatch.setattr(dispatchers[0], "close", close)
+    assert lifecycle.request_restart().accepted
+    assert len(controllers) == len(dispatchers) == 2
+    assert finished == []
+    _publish_restart_ready(lifecycle)
+    assert len(finished) == 1 and finished[0][0]
+
+
+def test_restart_ignores_queued_old_controller_snapshot(restart_runtime, qtbot):
+    lifecycle, controllers, dispatchers, _, _, finished, _ = restart_runtime
+    old_controller = controllers[0]
+    # Force worker-like queued delivery for this same-thread controller fixture.
+    _, callback = lifecycle._controller_lifecycle_connections[0]
+    old_controller.runtime_state_changed.disconnect(callback)
+    old_controller.runtime_state_changed.connect(
+        callback,
+        Qt.ConnectionType.QueuedConnection,
+    )
+    old_controller.runtime_state_changed.emit(
+        AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.FAILED,
+            initialized=False,
+            error="old failure",
+        )
+    )
+    assert lifecycle.request_restart().accepted
+    dispatchers[0].cleanup_finished.emit(True, "")
+    _publish_restart_ready(lifecycle)
+    qtbot.wait(1)
+    assert lifecycle.accepts_commands
+    assert len(finished) == 1 and finished[0][0]
+
+
+def test_restart_dispatcher_factory_failure_is_reported_and_retryable(
+    restart_runtime,
+    monkeypatch,
+):
+    lifecycle, controllers, dispatchers, _, _, finished, _ = restart_runtime
+    factory = lifecycle._dispatcher_factory
+
+    def fail_factory():
+        raise RuntimeError("cannot construct dispatcher")
+
+    monkeypatch.setattr(lifecycle, "_dispatcher_factory", fail_factory)
+    assert lifecycle.request_restart().accepted
+    dispatchers[0].cleanup_finished.emit(True, "")
+    assert len(finished) == 1 and not finished[0][0]
+    assert not lifecycle.restart_in_progress
+    assert not lifecycle.accepts_commands
+    assert len(controllers) == 1
+    monkeypatch.setattr(lifecycle, "_dispatcher_factory", factory)
+    assert lifecycle.request_restart().accepted
+    dispatchers[0].cleanup_finished.emit(True, "")
+    _publish_restart_ready(lifecycle)
+    assert lifecycle.accepts_commands
+
+
+def test_restart_rejects_disable_during_replacement_load(restart_runtime):
+    lifecycle, _, dispatchers, config, saves, finished, _ = restart_runtime
+    assert lifecycle.request_restart().accepted
+    dispatchers[0].cleanup_finished.emit(True, "")
+    assert not lifecycle.request_deactivation(config).accepted
+    _publish_restart_ready(lifecycle)
+    assert finished[-1][0]
+    assert saves == []
+
+
+@pytest.mark.parametrize("trigger", ["started", "loading"])
+def test_restart_observer_can_close_without_respawn(restart_runtime, trigger):
+    lifecycle, controllers, dispatchers, _, _, finished, _ = restart_runtime
+    if trigger == "started":
+        lifecycle.restart_started.connect(lifecycle.close)
+    else:
+        lifecycle.restart_progress.connect(
+            lambda message: lifecycle.close()
+            if message == "Loading saved model…"
+            else None
+        )
+    assert lifecycle.request_restart().accepted
+    dispatchers[0].cleanup_finished.emit(True, "")
+    assert lifecycle.state is AssistantRuntimeLifecycleState.CLOSED
+    assert len(controllers) == 1
+    assert len(finished) == 1 and not finished[0][0]
+    assert not lifecycle.restart_in_progress
+
+
+def test_restart_real_dispatcher_waits_for_controller_shutdown(qtbot):
+    controllers = []
+
+    def factory(_study):
+        controller = (
+            _SignalDrivenShutdownController() if not controllers else _Controller()
+        )
+        controllers.append(controller)
+        return controller
+
+    lifecycle = AssistantRuntimeLifecycle(
+        object(),
+        controller_factory=factory,
+        config_loader=_ready_config,
+    )
+    try:
+        assert lifecycle.start()
+        assert lifecycle.request_restart().accepted
+        qtbot.waitUntil(lambda: controllers[0].shutdown_in_progress)
+        assert lifecycle.controller is controllers[0]
+        assert len(controllers) == 1
+        QMetaObject.invokeMethod(
+            controllers[0],
+            "complete_shutdown",
+            Qt.ConnectionType.QueuedConnection,
+        )
+        qtbot.waitUntil(lambda: len(controllers) == 2)
+        assert controllers[0].closed
+        assert lifecycle.restart_in_progress
+        _publish_restart_ready(lifecycle)
+        assert lifecycle.accepts_commands and not lifecycle.restart_in_progress
+    finally:
+        lifecycle.close()
+        qtbot.waitUntil(
+            lambda: lifecycle.state is AssistantRuntimeLifecycleState.CLOSED
+        )
+
+
 def test_first_run_save_failure_does_not_enable_or_acknowledge_runtime(monkeypatch):
     config = LLMConfig(device="cpu", local_model_enabled=False)
     monkeypatch.setattr(config, "save_to_file", lambda: False)
