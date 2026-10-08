@@ -99,8 +99,7 @@ asked and which values were supplied; do not copy its answer or values into this
     )
 
     _TOOL_BLOCK_TEMPLATE = """
-Action Contract Catalog (input definitions, never an output array):
-Each parameters schema describes the complete arguments needed to execute an action.
+Available choices (guidance, not output):
 {tools_str}
 {availability_note}
 """
@@ -158,71 +157,149 @@ Each parameters schema describes the complete arguments needed to execute an act
         *,
         unavailable_actions: dict[str, str] | None = None,
     ) -> str:
-        """Format request-scoped contracts without resembling model output.
-
-        Args:
-            allowed_names: Tool name strings permitted by the current
-                pipeline stage.
-            unavailable_actions: Stable target action IDs mapped to bounded
-                explanatory reasons; these entries never receive schemas.
-
-        Returns:
-            Labeled JSON definitions for callable actions and the structured
-            no-action fallback. Definitions are deliberately not wrapped in an
-            array because the model must emit exactly one top-level object.
-
-        """
-        allowed_set = set(allowed_names)
-        active_tools = [
-            t for t in self.registry.get_all_tools() if t.name in allowed_set
-        ]
-
-        reply_parameters = model_proposal_schema()["allOf"][0]["then"]["properties"][
+        """Render the published tool schemas as readable, lossless guidance."""
+        reply_schema = model_proposal_schema()["allOf"][0]["then"]["properties"][
             "parameters"
         ]
-        sections: list[str] = [
-            "Reply contract (no action):",
-            json.dumps(
-                {
-                    "name": MODEL_RESPONSE_TOOL_NAME,
-                    "description": (
-                        "Answer, acknowledge a prohibition, ask for missing values "
-                        "or explain a blocker. This only displays your message."
-                    ),
-                    "parameters": reply_parameters,
-                },
-                indent=2,
-            ),
+        sections = [
+            "\n".join(
+                [
+                    "Reply: respond_to_user (no action)",
+                    "Answer, acknowledge a prohibition, ask for missing values "
+                    "or explain a blocker.",
+                    *self._parameter_lines(reply_schema),
+                ]
+            )
         ]
-        for tool in active_tools:
-            tool_def = tool_contract_for_llm(tool)
-            sections.extend(
-                (
-                    "Callable action contract:",
-                    json.dumps(tool_def, indent=2),
+        for tool in self.registry.get_all_tools():
+            if tool.name not in allowed_names:
+                continue
+            contract = tool_contract_for_llm(tool)
+            sections.append(
+                "\n".join(
+                    [
+                        f"Action: {contract['name']}",
+                        f"Category: {contract['taxonomy']}. {contract['description']}",
+                        *self._parameter_lines(contract["parameters"]),
+                    ]
                 )
             )
-
-        if not active_tools:
-            sections.append("No callable action contract is available.")
-
+        if len(sections) == 1:
+            sections.append("No callable action is available.")
         if unavailable_actions:
-            sections.extend(
-                (
-                    "Unavailable Action Reference (not callable):",
-                    json.dumps(
-                        unavailable_actions,
-                        indent=2,
-                        ensure_ascii=False,
-                    ),
-                    "These entries are informational status, not callable action "
-                    "contracts. If the user asks for one, reply with "
-                    "its listed blocker reason.",
+            sections.append(
+                "Unavailable (not callable):\n"
+                + "\n".join(
+                    f"- {name}: {reason}"
+                    for name, reason in unavailable_actions.items()
                 )
             )
+        sections.append("\n".join(self._final_output_reminder()))
+        sections.append(self._output_illustrations(allowed_names))
+        return "\n\n".join(sections)
 
-        sections.extend(self._final_output_reminder())
-        return "\n".join(sections)
+    @staticmethod
+    def _parameter_lines(schema: dict) -> list[str]:
+        """Render the current schemas losslessly; new constraints require review."""
+        unknown = set(schema) - {
+            "type",
+            "properties",
+            "required",
+            "additionalProperties",
+        }
+        if unknown:
+            raise ValueError(
+                f"Unsupported parameter schema keywords: {sorted(unknown)}"
+            )
+        if (
+            schema.get("type") != "object"
+            or schema.get("additionalProperties") is not False
+        ):
+            raise ValueError("Unsupported parameter object boundary")
+        properties = schema["properties"]
+        required = schema.get("required", [])
+        if not set(required) <= set(properties):
+            raise ValueError("Required parameter missing from properties")
+        if not properties:
+            return ["No parameters: parameters must be {}. No extra fields."]
+        lines = ["Parameters (object; no extra fields):"]
+        for name, definition in properties.items():
+            unknown = set(definition) - {"type", "enum", "description", "pattern"}
+            if unknown:
+                raise ValueError(
+                    f"Unsupported {name} schema keywords: {sorted(unknown)}"
+                )
+            kind = definition.get("type")
+            if kind not in ("string", "number", "integer", "boolean", "null"):
+                raise ValueError(f"Unsupported parameter type: {kind!r}")
+            line = f"- {name}: {'required' if name in required else 'optional'} {kind}"
+            if "enum" in definition:
+                line += "; allowed values: " + ", ".join(
+                    json.dumps(value, ensure_ascii=False)
+                    for value in definition["enum"]
+                )
+            if "pattern" in definition:
+                if definition["pattern"] != r"\S" or kind != "string":
+                    raise ValueError("Unsupported parameter pattern")
+                line += "; must contain a non-whitespace character"
+            if "description" in definition:
+                line += ". " + definition["description"]
+            lines.append(line)
+        return lines
+
+    def _output_illustrations(self, allowed_names) -> str:
+        """Illustrate wire shapes from callable contracts, never case answers."""
+        lines = [
+            "Complete output illustrations:",
+            "These show format and effect, not values or permission for this request. "
+            "Choose one response using the rules above; never copy example values.",
+        ]
+        active_tools = [
+            tool for tool in self.registry.get_all_tools() if tool.name in allowed_names
+        ]
+        zero_argument = next(
+            (tool for tool in active_tools if not tool.parameters.get("properties")),
+            None,
+        )
+        if zero_argument is not None:
+            lines.extend(
+                (
+                    "Action with no arguments: requests the named action, "
+                    "not a text reply.",
+                    json.dumps({"tool_name": zero_argument.name, "parameters": {}}),
+                )
+            )
+        panel_tool = next(
+            (tool for tool in active_tools if tool.name == "switch_panel"), None
+        )
+        if panel_tool is not None:
+            panel = panel_tool.parameters["properties"]["panel_name"]["enum"][0]
+            lines.extend(
+                (
+                    "Action with arguments: requests a panel change only "
+                    "when the user asks for it.",
+                    json.dumps(
+                        {
+                            "tool_name": "switch_panel",
+                            "parameters": {"panel_name": panel},
+                        }
+                    ),
+                )
+            )
+        lines.extend(
+            (
+                "Reply: displays an answer or question; executes no action.",
+                json.dumps(
+                    {
+                        "tool_name": "respond_to_user",
+                        "parameters": {
+                            "message": "Which operation would you like help with?"
+                        },
+                    }
+                ),
+            )
+        )
+        return "\n".join(lines)
 
     @staticmethod
     def _final_output_reminder() -> tuple[str, ...]:

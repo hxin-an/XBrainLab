@@ -20,8 +20,8 @@ class BaseBandPassFilterTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "low_freq": {"type": "number"},
-                "high_freq": {"type": "number"},
+                "low_freq": {"type": "number", "description": "Low cutoff in Hz."},
+                "high_freq": {"type": "number", "description": "High cutoff in Hz."},
             },
             "required": ["low_freq", "high_freq"],
         }
@@ -43,7 +43,9 @@ class BaseNotchFilterTool(BaseTool):
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
-            "properties": {"freq": {"type": "number"}},
+            "properties": {
+                "freq": {"type": "number", "description": "Notch frequency in Hz."},
+            },
             "required": ["freq"],
         }
 
@@ -64,7 +66,9 @@ class BaseResampleTool(BaseTool):
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
-            "properties": {"rate": {"type": "integer"}},
+            "properties": {
+                "rate": {"type": "integer", "description": "Sampling rate in Hz."},
+            },
             "required": ["rate"],
         }
 

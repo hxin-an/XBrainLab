@@ -352,7 +352,7 @@ def test_each_positive_case_is_callable_from_its_production_fixture() -> None:
     for case in load_target_cases(DEFAULT_CASES):
         messages = build_case_messages(case, registry)
 
-        assert f'"name": "{case.expected_tool}"' in messages[0]["content"]
+        assert f"Action: {case.expected_tool}" in messages[0]["content"].splitlines()
 
 
 def test_target_case_loader_rejects_duplicate_normalized_inputs(tmp_path: Path) -> None:
@@ -1251,9 +1251,9 @@ def test_case_messages_publish_stage_tools_without_retired_surface() -> None:
     system = messages[0]["content"]
 
     assert case.workflow_stage == "data_loaded"
-    assert '"name": "create_epochs"' in system
-    assert '"name": "switch_panel"' in system
-    assert '"name": "query_state"' not in system
+    assert "Action: create_epochs" in system.splitlines()
+    assert "Action: switch_panel" in system.splitlines()
+    assert "Action: query_state" not in system.splitlines()
     assert json.loads(messages[-1]["content"])["current_user"] == {
         "text": case.user_input,
     }
@@ -1270,16 +1270,14 @@ def test_precision_messages_project_backend_unavailable_actions_without_schemas(
     epochs_system = build_case_messages(epochs, registry)[0]["content"]
     model_system = build_case_messages(model, registry)[0]["content"]
 
-    assert "Unavailable Action Reference (not callable):" in epochs_system
+    assert "Unavailable (not callable):" in epochs_system
+    assert "- create_epochs: Load raw data before creating EEG epochs." in epochs_system
+    assert "Action: create_epochs" not in epochs_system.splitlines()
     assert (
-        '"create_epochs": "Load raw data before creating EEG epochs."' in epochs_system
+        "- select_model: This action is not callable in workflow stage "
+        "'data_loaded'." in model_system
     )
-    assert '"name": "create_epochs"' not in epochs_system
-    assert (
-        '"select_model": "This action is not callable in workflow stage '
-        "'data_loaded'.\"" in model_system
-    )
-    assert '"name": "select_model"' not in model_system
+    assert "Action: select_model" not in model_system.splitlines()
 
 
 def test_precision_first_turn_messages_use_the_product_context_projection() -> None:

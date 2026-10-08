@@ -40,6 +40,12 @@ class _FakeTool(BaseTool):
 
     @property
     def parameters(self):
+        if self.name == "switch_panel":
+            from XBrainLab.llm.tools.definitions.ui_control_def import (
+                BaseSwitchPanelTool,
+            )
+
+            return BaseSwitchPanelTool().parameters
         return {"type": "object", "properties": {}}
 
     def execute(self, study, **kwargs):
@@ -94,18 +100,18 @@ class TestStageBasedFiltering:
                 "apply_bandpass_filter",
             ],
         )
-        assert '"name": "import_eeg_data"' in prompt
-        assert '"name": "switch_panel"' in prompt
-        assert '"name": "apply_bandpass_filter"' not in prompt
+        assert "Action: import_eeg_data\n" in prompt
+        assert "Action: switch_panel\n" in prompt
+        assert "Action: apply_bandpass_filter\n" not in prompt
 
     def test_data_loaded_shows_preprocess_not_training(self):
         prompt = self._build(
             PipelineStage.DATA_LOADED,
             ["select_channels", "apply_bandpass_filter", "start_training"],
         )
-        assert '"name": "select_channels"' in prompt
-        assert '"name": "apply_bandpass_filter"' in prompt
-        assert '"name": "start_training"' not in prompt
+        assert "Action: select_channels\n" in prompt
+        assert "Action: apply_bandpass_filter\n" in prompt
+        assert "Action: start_training\n" not in prompt
 
     def test_dataset_ready_shows_training_not_preprocess(self):
         prompt = self._build(
@@ -117,18 +123,18 @@ class TestStageBasedFiltering:
                 "apply_bandpass_filter",
             ],
         )
-        assert '"name": "select_model"' in prompt
-        assert '"name": "start_training"' in prompt
-        assert '"name": "apply_bandpass_filter"' not in prompt
+        assert "Action: select_model\n" in prompt
+        assert "Action: start_training\n" in prompt
+        assert "Action: apply_bandpass_filter\n" not in prompt
 
     def test_training_only_switch_panel(self):
         prompt = self._build(
             PipelineStage.TRAINING,
             ["switch_panel", "select_model", "stop_training"],
         )
-        assert '"name": "switch_panel"' in prompt
-        assert '"name": "stop_training"' in prompt
-        assert '"name": "select_model"' not in prompt
+        assert "Action: switch_panel\n" in prompt
+        assert "Action: stop_training\n" in prompt
+        assert "Action: select_model\n" not in prompt
 
     def test_trained_allows_retraining(self):
         prompt = self._build(
@@ -141,9 +147,9 @@ class TestStageBasedFiltering:
                 "switch_panel",
             ],
         )
-        assert '"name": "select_model"' in prompt
-        assert '"name": "start_training"' in prompt
-        assert '"name": "clear_training_history"' in prompt
+        assert "Action: select_model\n" in prompt
+        assert "Action: start_training\n" in prompt
+        assert "Action: clear_training_history\n" in prompt
 
     def test_no_tools_registered_shows_fallback(self):
         prompt = self._build(PipelineStage.EMPTY, [])
@@ -172,8 +178,8 @@ class TestStageBasedFiltering:
                 "apply_bandpass_filter",
             ],
         )
-        assert '"name": "select_channels"' in prompt
-        assert '"name": "apply_bandpass_filter"' in prompt
+        assert "Action: select_channels\n" in prompt
+        assert "Action: apply_bandpass_filter\n" in prompt
         assert "scan_source" not in prompt
         assert "preview_interpretation" not in prompt
 
@@ -203,8 +209,8 @@ class TestStageBasedFiltering:
         ):
             prompt = ContextAssembler(registry, Study()).build_system_prompt()
 
-        assert '"name": "import_eeg_data"' in prompt
-        assert '"name": "switch_panel"' in prompt
+        assert "Action: import_eeg_data\n" in prompt
+        assert "Action: switch_panel\n" in prompt
         for tool_name in retired:
             assert tool_name not in prompt
 

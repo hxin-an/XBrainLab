@@ -64,7 +64,7 @@ def _context_item(payload: dict, item_type: str) -> dict:
 
 
 def _unavailable_action_reference(prompt: str) -> str:
-    start = prompt.index("Unavailable Action Reference (not callable):")
+    start = prompt.index("Unavailable (not callable):")
     end = prompt.index("Final output reminder:", start)
     return prompt[start:end]
 
@@ -87,9 +87,9 @@ def test_generation_request_keeps_concept_question_on_strict_response_contract(
     assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
     system_prompt = " ".join(request.to_model_messages()[0]["content"].split())
     assert '"tool_name"' in system_prompt
-    assert "Tool names are internal" in system_prompt
+    assert "plain English instead of internal tool names" in system_prompt
     assert "respond_to_user" in system_prompt
-    assert "restate the complete request" in system_prompt
+    assert "ask for the complete request again" in system_prompt
     messages = request.to_model_messages()
     assert _current_user_message(messages) == {"role": "user", "content": question}
 
@@ -107,10 +107,10 @@ def test_reply_completeness_instructions_reach_normal_and_recovery_requests(
         format_recovery=format_recovery,
     ).to_model_messages()
 
-    policy = messages[0]["content"]
-    assert "Write your own reply, not a copy of the user's request" in policy
-    assert "If the user also asks a question, answer it" in policy
-    assert "A prohibited action is not a requested action" in policy
+    policy = " ".join(messages[0]["content"].split())
+    assert "Write your own English reply, not a copy of the request" in policy
+    assert "Explaining a prohibited action is one answer: answer the question" in policy
+    assert "acknowledge the prohibition without treating it as an action" in policy
     assert "including values already supplied" in policy
     assert _current_user_message(messages) == {"role": "user", "content": user_text}
 
@@ -167,11 +167,11 @@ def test_compound_request_rule_is_published_even_without_rag() -> None:
     ).to_model_messages()
 
     assert (
-        "For multiple requested actions or an explanation plus a requested action"
-        in (messages[0]["content"])
+        "For multiple requested actions, or an explanation plus a requested action"
+        in " ".join(messages[0]["content"].split())
     )
     assert "ask which to do first" in messages[0]["content"]
-    assert "Never partially execute" in messages[0]["content"]
+    assert "never partially execute" in messages[0]["content"]
     assert _current_user_message(messages) == {"role": "user", "content": request}
     assert len(messages) == 2  # No optional context survives invalid/absent RAG.
 
@@ -234,7 +234,7 @@ def test_missing_value_history_does_not_become_current_action_context() -> None:
     request = _required_context(messages)
     assert set(request) == {"application_state", "current_user"}
     assert request["current_user"] == {"text": "30 Hz"}
-    assert "Never fill values from examples, history" in messages[0]["content"]
+    assert "no draft or history supplies missing values" in messages[0]["content"]
     assert messages == assembler.get_messages([history[-1]])
 
 
@@ -368,20 +368,19 @@ def test_empty_stage_separates_callable_schemas_from_unavailable_reference() -> 
         {"import_eeg_data", "switch_panel"}
     )
     assert assembler.latest_tool_publication.backend_generation == 82
-    assert '"name": "import_eeg_data"' in prompt
-    assert '"name": "switch_panel"' in prompt
-    assert '"name": "create_epochs"' not in prompt
-    assert '"name": "start_training"' not in prompt
-    assert '"name": "select_model"' not in prompt
-    assert '"create_epochs": "Load raw data before creating EEG epochs."' in reference
-    assert '"start_training": "Load raw data before training.;' in reference
+    assert "Action: import_eeg_data\n" in prompt
+    assert "Action: switch_panel\n" in prompt
+    assert "Action: create_epochs\n" not in prompt
+    assert "Action: start_training\n" not in prompt
+    assert "Action: select_model\n" not in prompt
+    assert "- create_epochs: Load raw data before creating EEG epochs." in reference
+    assert "- start_training: Load raw data before training.;" in reference
     assert (
-        '"select_model": "This action is not callable in workflow stage \'empty\'."'
+        "- select_model: This action is not callable in workflow stage 'empty'."
         in reference
     )
     assert '"parameters"' not in reference
-    assert "informational status, not callable action contracts" in reference
-    assert "reply with its listed blocker reason" in reference
+    assert "Unavailable (not callable)" in reference
     assert assembler.latest_tool_publication.blocked_reason("create_epochs") == (
         "Load raw data before creating EEG epochs."
     )
@@ -427,8 +426,8 @@ def test_confirmation_required_enabled_action_remains_callable() -> None:
     assert (
         assembler.latest_tool_publication.blocked_reason("reset_preprocessing") is None
     )
-    assert '"name": "reset_preprocessing"' in prompt
-    assert "Unavailable Action Reference (not callable):" not in prompt
+    assert "Action: reset_preprocessing\n" in prompt
+    assert "Unavailable (not callable):" not in prompt
 
 
 def test_rag_scope_reads_backend_publication_without_intent_shortcut() -> None:
@@ -579,7 +578,7 @@ def test_generation_request_marks_workflow_action_as_structured():
     )
 
     assert request.generation_profile is GenerationProfile.STRUCTURED_DECISION
-    assert "Return one JSON object" in request.to_model_messages()[0]["content"]
+    assert "Return exactly one JSON object" in request.to_model_messages()[0]["content"]
 
 
 def test_rag_examples_follow_backend_stage_not_request_heuristics():
@@ -599,38 +598,31 @@ def test_prompt_action_contracts_do_not_resemble_an_output_array():
     contracts = assembler._format_tools([])
 
     assert not contracts.lstrip().startswith("[")
-    assert "No callable action contract is available." in contracts
+    assert "No callable action is available." in contracts
     assert "Final output reminder:" in contracts
     assert '"tool_name"' in contracts
 
 
 @pytest.mark.parametrize("with_action", [False, True])
 def test_reply_contract_is_explicit_without_becoming_an_executable_tool(with_action):
-    """Deliver an equally explicit reply option, never another backend action."""
-    from XBrainLab.llm.agent.decision_contract import model_proposal_schema
-
+    """The readable reply option is a constrained message, never a backend action."""
     registry = ToolRegistry()
     if with_action:
         registry.register(_NamedTool("import_eeg_data"))
     assembler = ContextAssembler(registry, Study())
     contracts = assembler.build_system_prompt()
 
-    reply_text = contracts.split("Reply contract (no action):\n", 1)[1]
-    reply = json.JSONDecoder().raw_decode(reply_text)[0]
-    assert reply["name"] == "respond_to_user"
+    assert "Reply: respond_to_user (no action)" in contracts
     assert (
-        reply["parameters"]
-        == model_proposal_schema()["allOf"][0]["then"]["properties"]["parameters"]
+        "- message: required string; must contain a non-whitespace character"
+        in contracts
     )
     assert "respond_to_user" not in {tool.name for tool in registry.get_all_tools()}
     assert not assembler.latest_tool_publication.permits("respond_to_user")
     assert assembler.latest_tool_publication.permits("import_eeg_data") is with_action
     if with_action:
-        action = json.JSONDecoder().raw_decode(
-            contracts.split("Callable action contract:\n", 1)[1]
-        )[0]
-        assert action["name"] == "import_eeg_data"
-        assert action["parameters"] == _NamedTool("import_eeg_data").parameters
+        assert "Action: import_eeg_data\n" in contracts
+        assert "No parameters: parameters must be {}. No extra fields." in contracts
 
 
 def test_zero_parameter_action_contract_has_one_final_output_reminder():
@@ -640,28 +632,15 @@ def test_zero_parameter_action_contract_has_one_final_output_reminder():
 
     contracts = assembler._format_tools(["start_training"])
 
-    assert "Callable action contract:" in contracts
-    assert "Exact zero-parameter output shape:" not in contracts
+    assert "Action: start_training\n" in contracts
     assert contracts.count("Final output reminder:") == 1
-    assert "Generic action envelope:" not in contracts
     assert "Use only parameters in the current user request" in contracts
     assert not contracts.lstrip().startswith("[")
 
 
-def test_single_action_contract_ends_with_both_response_choices() -> None:
-    registry = ToolRegistry()
-    registry.register(BaseStartTrainingTool())
-    assembler = ContextAssembler(registry, Study())
-
-    contracts = assembler._format_tools(["start_training"])
-
-    assert contracts.rstrip().endswith(
-        "Choose respond_to_user for an answer or question; choose a callable "
-        "action only for a requested, complete, enabled operation."
-    )
-
-
-def test_action_catalog_ends_with_one_short_output_reminder() -> None:
+def test_output_illustrations_use_only_callable_schema_valid_actions() -> None:
+    from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
+    from XBrainLab.llm.agent.verifier import ToolSchemaValidator
     from XBrainLab.llm.tools import get_all_tools
 
     registry = ToolRegistry()
@@ -669,44 +648,96 @@ def test_action_catalog_ends_with_one_short_output_reminder() -> None:
         registry.register(tool)
     assembler = ContextAssembler(registry, Study())
 
-    contracts = assembler._format_tools(
-        ["configure_training", "apply_bandpass_filter"],
+    for allowed in ([], ["start_training"], ["switch_panel", "select_channels"]):
+        contracts = assembler._format_tools(allowed)
+        illustration_text = contracts.split("Complete output illustrations:\n")[1]
+        examples = [
+            json.loads(line)
+            for line in illustration_text.splitlines()
+            if line.startswith("{")
+        ]
+        assert examples[-1]["tool_name"] == "respond_to_user"
+        assert len(examples) == (1 if not allowed else 2 if len(allowed) == 1 else 3)
+        for example in examples:
+            parsed = CommandParser.parse_product(json.dumps(example))
+            assert parsed.status in (
+                ToolEnvelopeStatus.VALID,
+                ToolEnvelopeStatus.NO_TOOL,
+            )
+            name = example["tool_name"]
+            if name != "respond_to_user":
+                assert name in allowed
+                tool = next(t for t in registry.get_all_tools() if t.name == name)
+                assert (
+                    ToolSchemaValidator({name: tool.parameters})
+                    .validate(name, example["parameters"])
+                    .is_valid
+                )
+        assert "never copy example values" in illustration_text
+
+
+def test_readable_catalog_retains_current_parameter_constraints() -> None:
+    from XBrainLab.llm.tools import get_all_tools
+
+    registry = ToolRegistry()
+    for tool in get_all_tools():
+        registry.register(tool)
+    assembler = ContextAssembler(registry, Study())
+    allowed = [tool.name for tool in registry.get_all_tools()]
+
+    contracts = assembler._format_tools(allowed)
+
+    assert contracts.count("\nAction: ") == 18
+    assert "- low_freq: required number. Low cutoff in Hz." in contracts
+    assert "- high_freq: required number. High cutoff in Hz." in contracts
+    assert "- freq: required number. Notch frequency in Hz." in contracts
+    assert "- rate: required integer. Sampling rate in Hz." in contracts
+    assert (
+        '- method: required string; allowed values: "z-score", "min-max"' in contracts
     )
-
-    definitions = [
-        json.JSONDecoder().raw_decode(section)[0]
-        for section in contracts.split("Callable action contract:\n")[1:]
-    ]
-    assert {
-        definition["name"]: definition["parameters"] for definition in definitions
-    } == {
-        "configure_training": {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-        },
-        "apply_bandpass_filter": {
-            "type": "object",
-            "properties": {
-                "low_freq": {"type": "number"},
-                "high_freq": {"type": "number"},
-            },
-            "required": ["low_freq", "high_freq"],
-            "additionalProperties": False,
-        },
-    }
-
-    reminder = contracts.rsplit("Final output reminder:\n", maxsplit=1)[1]
+    assert "- panel_name: required string; allowed values:" in contracts
+    assert "- view_mode: optional string; allowed values:" in contracts
+    assert '"saliency_map", "spectrogram", "topographic_map", "3d_plot"' in contracts
+    assert "Parameters (object; no extra fields):" in contracts
+    for tool in registry.get_all_tools():
+        assert f"Action: {tool.name}\n" in contracts
+        assert tool.description in contracts
+    assert '"name":' not in contracts
+    reminder = contracts.split("Final output reminder:\n")[1]
     output_schema = json.loads(reminder.splitlines()[1])
-    assert set(output_schema["required"]) == {
-        "tool_name",
-        "parameters",
-    }
-    assert "request" not in output_schema["properties"]
-    assert "Use only parameters in the current user request" in reminder
-    assert "Omitted saved parameters are retained" not in reminder
+    assert set(output_schema["required"]) == {"tool_name", "parameters"}
+    assert output_schema["additionalProperties"] is False
     assert "Examples never supply values" in reminder
-    assert "Decision checkpoint" not in reminder
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [
+        {"type": "object", "properties": {}, "oneOf": []},
+        {"type": "object", "properties": {"value": {"type": "number", "minimum": 0}}},
+        {"type": "object", "properties": {"value": {"type": "array", "items": {}}}},
+        {
+            "type": "object",
+            "properties": {"value": {"type": "string", "pattern": "^a"}},
+        },
+        {"type": "object", "properties": {}, "additionalProperties": True},
+        {"type": "object", "properties": {}, "required": ["missing"]},
+    ],
+)
+def test_unsupported_callable_schema_cannot_silently_lose_constraints(schema) -> None:
+    class UnsupportedTool(_NamedTool):
+        @property
+        def parameters(self):
+            return schema
+
+    registry = ToolRegistry()
+    registry.register(UnsupportedTool("import_eeg_data"))
+    assembler = ContextAssembler(registry, Study())
+
+    with pytest.raises(ValueError):
+        assembler.get_messages([{"role": "user", "content": "Import EEG data."}])
+
+    assert not assembler.latest_tool_publication.tool_names
 
 
 @pytest.mark.parametrize(
@@ -760,11 +791,10 @@ def test_operation_choice_guidance_follows_published_tools_not_stage(
     assert (
         "apply_bandpass_filter" in assembler.latest_tool_publication.tool_names
     ) is publish_preprocessing
-    assert "Requested action with missing or unclear required values" in prompt
+    assert "If any required\n   value is missing or unclear" in prompt
     assert '"tool_name"' in prompt
-    assert "Information or explanation: respond_to_user" in prompt
-    assert "Prohibition: respond_to_user" in prompt
-    assert "Unavailable action: respond_to_user with its listed blocker" in prompt
+    assert "Information or explanation requests and prohibitions" in prompt
+    assert "choose respond_to_user and explain why" in prompt
 
 
 def test_prompt_policy_consolidation_preserves_publication_and_decision_contracts() -> (
@@ -797,16 +827,15 @@ def test_prompt_policy_consolidation_preserves_publication_and_decision_contract
     assert assembler.latest_tool_publication.tool_names == frozenset(
         {"select_channels", "switch_panel"}
     )
-    assert prompt.count("Callable action contract:") == 2
-    assert '"name": "select_channels"' in prompt
-    assert '"name": "switch_panel"' in prompt
+    assert prompt.count("\nAction: ") == 2
+    assert "Action: select_channels\n" in prompt
+    assert "Action: switch_panel\n" in prompt
     assert '"tool_name"' in prompt
     assert "tool_input_clarification" not in prompt
     assert prompt.rstrip().endswith(
-        "action only for a requested, complete, enabled operation.\n"
         "Only the listed workflow actions are available at this stage."
     )
-    assert "never report completion without a trusted tool result" in prompt
+    assert "Never report completion\nwithout a trusted tool result" in prompt
 
 
 @pytest.mark.parametrize(
@@ -886,7 +915,7 @@ class ValidTool(BaseTool):
 
     @property
     def parameters(self):
-        return {"p": "v"}
+        return {"type": "object", "properties": {}}
 
     def is_valid(self, study):
         return True
@@ -906,7 +935,7 @@ class InvalidTool(BaseTool):
 
     @property
     def parameters(self):
-        return {}
+        return {"type": "object", "properties": {}}
 
     def is_valid(self, study):
         return False
@@ -929,7 +958,13 @@ class _NamedTool(BaseTool):
 
     @property
     def parameters(self):
-        return {}
+        if self.name == "switch_panel":
+            from XBrainLab.llm.tools.definitions.ui_control_def import (
+                BaseSwitchPanelTool,
+            )
+
+            return BaseSwitchPanelTool().parameters
+        return {"type": "object", "properties": {}}
 
     def execute(self, study, **kwargs):
         return ""
@@ -981,7 +1016,7 @@ def test_system_prompt_uses_exactly_one_publication_for_all_workflow_sections():
     }
     assert "No data loaded" not in prompt
     assert "recommended_next_step" not in prompt
-    assert "STRICT RESPONSE CONTRACT" in prompt
+    assert "Choose one response for current_user.text" in prompt
     assert "Operation policy" not in prompt
     assert '"unavailable_operations"' not in prompt
     assert "No executable workflow actions are available" in prompt
@@ -1024,7 +1059,7 @@ def test_preprocessed_publication_aligns_model_and_decision_context() -> None:
         "preprocessed_count": 1,
     }
     assert "recommended_next_step" not in prompt
-    assert '"name": "create_epochs"' in prompt
+    assert "Action: create_epochs\n" in prompt
     assert "unique description for create_epochs" in prompt
 
 
@@ -1132,7 +1167,7 @@ def test_explanatory_no_tool_turn_publishes_no_workflow_tools() -> None:
         [{"role": "user", "content": "Explain what EEG preprocessing prepares for."}]
     )[0]["content"]
 
-    assert "STRICT RESPONSE CONTRACT" in prompt
+    assert "Choose one response for current_user.text" in prompt
     assert "Final no-action envelope" not in prompt
     assert '"tool_name"' in prompt
     assert "unique description for epoch_data" not in prompt
@@ -1498,7 +1533,7 @@ def test_real_service_prompt_reads_one_committed_publication_generation():
     assert "unique description for import_eeg_data" in prompt
     assert "unique description for apply_bandpass_filter" not in prompt
     reference = _unavailable_action_reference(prompt)
-    assert '"apply_bandpass_filter": "Load raw data before preprocessing."' in reference
+    assert "- apply_bandpass_filter: Load raw data before preprocessing." in reference
 
 
 def test_stale_publication_allows_only_navigation_and_redacts_failure_details():
@@ -1546,9 +1581,7 @@ def test_stale_publication_allows_only_navigation_and_redacts_failure_details():
         "Workflow state is temporarily unavailable."
     )
     reference = _unavailable_action_reference(prompt)
-    assert (
-        '"import_eeg_data": "Workflow state is temporarily unavailable."' in reference
-    )
+    assert "- import_eeg_data: Workflow state is temporarily unavailable." in reference
     assert "## Workflow Status Unavailable" not in prompt
     assert "## Current Stage: Empty (No Data)" not in prompt
     assert "unique description for import_eeg_data" not in prompt
@@ -1644,9 +1677,9 @@ def test_model_facing_channel_and_montage_schema_obeys_pre_epoch_stage_projectio
     }
     assert callable_tools == expected_callable
     for tool_name in expected_callable:
-        assert f'"name": "{tool_name}"' in prompt
+        assert f"Action: {tool_name}\n" in prompt
     for tool_name in {"select_channels", "set_montage"} - expected_callable:
-        assert f'"name": "{tool_name}"' not in prompt
+        assert f"Action: {tool_name}\n" not in prompt
 
 
 def test_assembler_filtering():

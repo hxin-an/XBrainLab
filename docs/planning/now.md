@@ -63,6 +63,17 @@ Deletion candidates：JSON工具呈現與新文字呈現的重複、舊multiple-
 
 ### 目前進度
 
-已建立乾淨worktree；正在固化契約與凍結工程案例。真模型生成已用0／450。
-Next：核對現有runner／Windows cache與R3內容；先完成A，才修改產品提示。
+固定案例／loader tests 137通過，原提示／工具／context characterization 126通過。
+新multi-object政策測試已取得red（舊CHOOSE_ONE不重試），不是環境失敗；原取消／stale
+publication保護通過。RAG離線gate通過，重用Windows CUDA／既有cache，未下載模型。
+A已在乾淨 `b2dd15508fc90b97df26581a46f3f9f4ba036b3d` 完成，產品與main相同：
+34/34首答通過、無repair，34份capture verified、engine closed，RAG30 retrieved／4 empty。
+證據 `build/r3-evidence/A/report.json`；這是工程stage fixture，不是研究TEST重現或真人GUI。
+34題composite報表刻意不冒充exact20 gate；最終C拆core20／english6／recovery8執行，
+總題數不增加。真模型生成已用34／450。單機共用cache已有29.58GB歷史模型，未增下載／刪除。
+B移植三個產品檔，production +175/-97/net+78，無新owner；148項直接測試通過。
+獨立blind input覆核170份正常/repair完整prompt（85要求、7 stages），1425–2045 tokens，
+未見阻擋；repair保留user/state/RAG。這不涵蓋unreliable/error/overflow的實機推論。
+保留example照搬及負向要求召回正例的advisory，靠B/C raw與配對證據檢查，不擅調RAG。
+Next：固定B source並量同34題，完成後才改C政策。禁止挪用A宣稱B改善。
 已知Assistant偶發匯入卡住根因未證實，Restart只是恢復入口；不宣稱本輪修好。
