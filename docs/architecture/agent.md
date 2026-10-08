@@ -247,7 +247,7 @@ Assistant 已移除曾經重複保存這些資訊的 `decision_context`／turn-a
 送出時轉為required application_state，不作optional state_card。工具catalog的required
 約束完整執行參數；缺值不能從歷史或範例填入。工具以同一schema生成可讀文字，保留
 required/type/enum等限制；不支援的schema約束直接拒絕，不靜默省略。固定policy沒有跨輪
-靜態示範；單輪輸出形狀示例只引用本回合可呼叫工具，不提供本次要求的參數或授權。
+靜態示範；catalog只保留wire schema，不另外排列多個完整action/reply輸出示例。
 
 模型不接收先前 user／Assistant 對話，也不產生conversation_history參考。
 ConversationHistory仍保存畫面／診斷所需內容；assembler只從有界紀錄選出最新有效user

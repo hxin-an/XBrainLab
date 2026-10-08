@@ -195,7 +195,6 @@ Available choices (guidance, not output):
                 )
             )
         sections.append("\n".join(self._final_output_reminder()))
-        sections.append(self._output_illustrations(allowed_names))
         return "\n\n".join(sections)
 
     @staticmethod
@@ -246,60 +245,6 @@ Available choices (guidance, not output):
                 line += ". " + definition["description"]
             lines.append(line)
         return lines
-
-    def _output_illustrations(self, allowed_names) -> str:
-        """Illustrate wire shapes from callable contracts, never case answers."""
-        lines = [
-            "Complete output illustrations:",
-            "These show format and effect, not values or permission for this request. "
-            "Choose one response using the rules above; never copy example values.",
-        ]
-        active_tools = [
-            tool for tool in self.registry.get_all_tools() if tool.name in allowed_names
-        ]
-        zero_argument = next(
-            (tool for tool in active_tools if not tool.parameters.get("properties")),
-            None,
-        )
-        if zero_argument is not None:
-            lines.extend(
-                (
-                    "Action with no arguments: requests the named action, "
-                    "not a text reply.",
-                    json.dumps({"tool_name": zero_argument.name, "parameters": {}}),
-                )
-            )
-        panel_tool = next(
-            (tool for tool in active_tools if tool.name == "switch_panel"), None
-        )
-        if panel_tool is not None:
-            panel = panel_tool.parameters["properties"]["panel_name"]["enum"][0]
-            lines.extend(
-                (
-                    "Action with arguments: requests a panel change only "
-                    "when the user asks for it.",
-                    json.dumps(
-                        {
-                            "tool_name": "switch_panel",
-                            "parameters": {"panel_name": panel},
-                        }
-                    ),
-                )
-            )
-        lines.extend(
-            (
-                "Reply: displays an answer or question; executes no action.",
-                json.dumps(
-                    {
-                        "tool_name": "respond_to_user",
-                        "parameters": {
-                            "message": "Which operation would you like help with?"
-                        },
-                    }
-                ),
-            )
-        )
-        return "\n".join(lines)
 
     @staticmethod
     def _final_output_reminder() -> tuple[str, ...]:

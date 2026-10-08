@@ -638,9 +638,7 @@ def test_zero_parameter_action_contract_has_one_final_output_reminder():
     assert not contracts.lstrip().startswith("[")
 
 
-def test_output_illustrations_use_only_callable_schema_valid_actions() -> None:
-    from XBrainLab.llm.agent.parser import CommandParser, ToolEnvelopeStatus
-    from XBrainLab.llm.agent.verifier import ToolSchemaValidator
+def test_catalog_explains_wire_schema_without_competing_complete_outputs() -> None:
     from XBrainLab.llm.tools import get_all_tools
 
     registry = ToolRegistry()
@@ -650,30 +648,15 @@ def test_output_illustrations_use_only_callable_schema_valid_actions() -> None:
 
     for allowed in ([], ["start_training"], ["switch_panel", "select_channels"]):
         contracts = assembler._format_tools(allowed)
-        illustration_text = contracts.split("Complete output illustrations:\n")[1]
-        examples = [
-            json.loads(line)
-            for line in illustration_text.splitlines()
-            if line.startswith("{")
+        json_values = [
+            json.loads(line) for line in contracts.splitlines() if line.startswith("{")
         ]
-        assert examples[-1]["tool_name"] == "respond_to_user"
-        assert len(examples) == (1 if not allowed else 2 if len(allowed) == 1 else 3)
-        for example in examples:
-            parsed = CommandParser.parse_product(json.dumps(example))
-            assert parsed.status in (
-                ToolEnvelopeStatus.VALID,
-                ToolEnvelopeStatus.NO_TOOL,
-            )
-            name = example["tool_name"]
-            if name != "respond_to_user":
-                assert name in allowed
-                tool = next(t for t in registry.get_all_tools() if t.name == name)
-                assert (
-                    ToolSchemaValidator({name: tool.parameters})
-                    .validate(name, example["parameters"])
-                    .is_valid
-                )
-        assert "never copy example values" in illustration_text
+        assert len(json_values) == 1
+        assert set(json_values[0]["required"]) == {"tool_name", "parameters"}
+        assert json_values[0]["additionalProperties"] is False
+        assert not any("tool_name" in value for value in json_values)
+        for name in allowed:
+            assert f"Action: {name}\n" in contracts
 
 
 def test_readable_catalog_retains_current_parameter_constraints() -> None:

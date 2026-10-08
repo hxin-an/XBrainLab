@@ -82,6 +82,14 @@ B完成於乾淨 `aceab2a5de5634ecab59416a78ae7fe93bce43a3`：27/34首答及最�
 真模型生成累計68/450。C接線完成：production +3/-24/net-21，無新owner或提示調整。
 直接375項測試中374通過，1項舊B標題斷言遷移後單項通過；runner相關146通過。
 腳本不再把多物件偽裝為一般format_error，也不給Host choose-one模型加分。
-Next：C獨立覆核後固定source，分別量core20／english6／recovery8；
-即使C修好也分列B新增首答失敗與等待成本，不以最終通過掩蓋。
+C獨立邊界覆核無阻擋；乾淨 `cabbb37fb26e3b09a155347445f972291dd24567` 實測：
+core20/20、english6/6；recovery8首答1/8，repair後5/8，四題獲救，三題仍多JSON。
+合計27/34首答、31/34最終，41次生成，captures verified且engine closed；累計109/450。
+不以修復救分掩蓋相對A的退步。目前不符合交付。
+依既有驗證契約的一次有界呈現修理，獨立覆核建議移除新加的相鄰完整JSON形狀示例；
+D已刪除55 production行，保留R3文字工具／decision steps與所有recovery/parser保護。
+先取得wire-only呈現測試red，再224相關測試green；完整170輸入最長1915tokens。
+Next：獨立覆核D輸入delta後固定source，重跑core20／english6／recovery8全部要求。
+這是待驗的示例模仿假設，
+不是已證實根因；不改RAG／oracle／retry次數，不無限迭代。修理前後證據分開留存。
 已知Assistant偶發匯入卡住根因未證實，Restart只是恢復入口；不宣稱本輪修好。
