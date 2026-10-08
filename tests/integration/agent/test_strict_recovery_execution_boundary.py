@@ -298,14 +298,16 @@ def test_malformed_tool_envelopes_stop_after_one_repair_without_execution(
 
 def test_multiple_objects_never_reach_execution_or_create_pending_request(qtbot):
     action = _IMPORT_PROPOSAL
-    controller, worker, coordinator = _controller_with_script([f"{action}\n{action}"])
+    controller, worker, coordinator = _controller_with_script(
+        [f"{action}\n{action}"] * 2
+    )
 
     try:
         _submit_user_turn(controller, "Import EEG data.")
         qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
 
-        assert worker.generation_count == 1
-        assert controller._tool_attempt_session.retry_count == 0
+        assert worker.generation_count == 2
+        assert controller._tool_attempt_session.retry_count == 1
         assert controller._tool_attempt_session.execution_count == 0
         assert coordinator.commands == []
         assert not controller.pending_interactions.has_pending
@@ -374,7 +376,7 @@ def test_multiple_requested_actions_can_recover_to_reply_without_partial_executi
 
         assert worker.generation_count == 2
         assert worker.messages[1][-1] == worker.messages[0][-1]
-        assert controller._tool_attempt_session.retry_count == 1
+        assert controller._tool_attempt_session.retry_count == 0
         assert controller._tool_attempt_session.execution_count == 0
         assert coordinator.commands == []
         assert not controller.pending_interactions.has_pending
@@ -486,17 +488,17 @@ def test_adjacent_objects_never_execute_even_inside_one_fence(qtbot, fenced):
     multiple = f"{action}\n{action}"
     if fenced:
         multiple = f"```json\n{multiple}\n```"
-    controller, worker, coordinator = _controller_with_script([multiple])
+    controller, worker, coordinator = _controller_with_script([multiple, multiple])
     responses = []
     controller.response_presentation_ready.connect(responses.append)
     try:
         _submit_user_turn(controller, "Import EEG data.")
         qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
-        assert worker.generation_count == 1
-        assert controller._tool_attempt_session.retry_count == 0
+        assert worker.generation_count == 2
+        assert controller._tool_attempt_session.retry_count == 1
         assert coordinator.commands == []
         assert controller.pending_interactions.workflow_handoff is None
         assert len(responses) == 1
-        assert "one action at a time" in responses[0].text
+        assert "could not produce a valid assistant action" in responses[0].text
     finally:
         close_controller_and_wait(controller, qtbot)

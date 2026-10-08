@@ -12,9 +12,6 @@ STRICT_ENVELOPE_EXHAUSTED_MESSAGE = (
     "The assistant could not produce a valid assistant action. Try again "
     "or describe one workflow step more specifically."
 )
-STRICT_ENVELOPE_MULTIPLE_OBJECTS_MESSAGE = (
-    "I can do one action at a time. Please tell me which action to do first."
-)
 
 
 class StrictEnvelopeRecoveryAction(str, Enum):
@@ -22,7 +19,6 @@ class StrictEnvelopeRecoveryAction(str, Enum):
 
     ACCEPT_TOOL = "accept_tool"
     ACCEPT_NO_TOOL = "accept_no_tool"
-    CHOOSE_ONE = "choose_one"
     RETRY_FORMAT = "retry_format"
     EXHAUSTED = "exhausted"
 
@@ -36,7 +32,6 @@ class StrictEnvelopeRecoveryTaxonomy(str, Enum):
     RECOVERED_PLAIN_TEXT = "recovered_plain_text"
     FORMAT_ERROR_RETRY = "format_error_retry"
     FORMAT_RECOVERY_EXHAUSTED = "format_recovery_exhausted"
-    MULTIPLE_OBJECTS = "multiple_objects"
 
 
 @dataclass(frozen=True)
@@ -108,16 +103,6 @@ class StrictEnvelopeRecoveryPolicy:
                 action=StrictEnvelopeRecoveryAction.ACCEPT_NO_TOOL,
                 taxonomy=taxonomy,
                 recovery_attempts_after=attempts_used,
-            )
-
-        if status is ToolEnvelopeStatus.MULTIPLE_OBJECTS:
-            return StrictEnvelopeRecoveryDecision(
-                action=StrictEnvelopeRecoveryAction.CHOOSE_ONE,
-                taxonomy=StrictEnvelopeRecoveryTaxonomy.MULTIPLE_OBJECTS,
-                recovery_attempts_after=attempts_used,
-                message=StrictEnvelopeRecoveryMessage(
-                    content=STRICT_ENVELOPE_MULTIPLE_OBJECTS_MESSAGE
-                ),
             )
 
         if attempts_used >= self.max_recovery_attempts:

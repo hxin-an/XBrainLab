@@ -47,7 +47,6 @@ from XBrainLab.llm.agent.rag_process_lifecycle import (
 from XBrainLab.llm.agent.strict_envelope_recovery import (
     DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY,
     STRICT_ENVELOPE_EXHAUSTED_MESSAGE,
-    STRICT_ENVELOPE_MULTIPLE_OBJECTS_MESSAGE,
     StrictEnvelopeRecoveryAction,
     StrictEnvelopeRecoveryRequest,
 )
@@ -995,7 +994,7 @@ class _EvaluatorControllerHarness:
                 "proposal"
                 if self._observed_decision is not None
                 else "recovery"
-                if recovery_action in {"choose_one", "exhausted", "retry_format"}
+                if recovery_action in {"exhausted", "retry_format"}
                 else "no_tool"
             ),
             "attempt_action": action,
@@ -1017,11 +1016,6 @@ class _EvaluatorControllerHarness:
             "message": None,
             **self._empty_effects(),
         }
-        if recovery_action == "choose_one" and terminal["kind"] == "respond":
-            # The controller publishes the trusted reply through its normal
-            # response terminal; the shared recovery decision owns this
-            # evaluator-facing choose-one classification.
-            terminal = {**terminal, "kind": "choose_one"}
         return admission, terminal
 
 
@@ -1565,25 +1559,10 @@ def score_precision_response(
 ) -> TargetEvalScore:
     """Score no-action safety through the product parser and attempt boundary."""
     envelope = CommandParser.parse_product(response)
-    if envelope.status is ToolEnvelopeStatus.MULTIPLE_OBJECTS:
-        passed = case.category == "multi_action"
-        return TargetEvalScore(
-            passed,
-            "none" if passed else "multiple_objects",
-            response[:RAW_OUTPUT_PREVIEW_CHAR_LIMIT],
-            None,
-            None,
-            (
-                "Host returned the trusted one-action-at-a-time boundary."
-                if passed
-                else "Multiple complete objects are not a valid response for this case."
-            ),
-            PrecisionProductOutcome(
-                disposition="choose_one",
-                message=STRICT_ENVELOPE_MULTIPLE_OBJECTS_MESSAGE,
-            ),
-        )
-    if envelope.status is ToolEnvelopeStatus.FORMAT_ERROR:
+    if envelope.status in {
+        ToolEnvelopeStatus.FORMAT_ERROR,
+        ToolEnvelopeStatus.MULTIPLE_OBJECTS,
+    }:
         return TargetEvalScore(
             False,
             "output_format",
@@ -1814,8 +1793,7 @@ def _score_precision_controller_terminal(
         baseline.passed
         and no_side_effect
         and (
-            (case.category == "multi_action" and kind == "choose_one")
-            or (case.category == "missing_parameter" and kind == "respond")
+            (case.category == "missing_parameter" and kind == "respond")
             or (
                 case.category == "out_of_stage"
                 and envelope.status is ToolEnvelopeStatus.VALID
@@ -1903,7 +1881,13 @@ def _evaluate_trajectory(
         if replay_controller_response is not None:
             controller_action, controller_context = replay_controller_response(response)
         recovery_envelope = envelope
-        if controller_action is not None:
+        if controller_action is not None and envelope.status in {
+            ToolEnvelopeStatus.VALID,
+            ToolEnvelopeStatus.NO_TOOL,
+        }:
+            # Preserve actual parser failures (including multiple objects) in
+            # the evidence. Only a parser-valid controller rejection needs the
+            # synthetic format-failure projection used by this replay harness.
             recovery_envelope = ToolEnvelopeParseResult.format_error(
                 "Controller rejected the clarification envelope."
             )

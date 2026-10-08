@@ -68,7 +68,7 @@ DPI 或下游流程都經此次真人驗收。後續純文件收尾不改該產�
 
 Assistant Settings 提供需確認的 `Restart Assistant`：清除對話並以已保存設定重載模型，
 保留 EEG 與已提交後端工作、不自動重送要求；完整清理後才建立新 runtime，READY 才報成功。
-這是恢復入口，不代表已定位或修復偶發的 Assistant 匯入卡住；本切片尚待同版本 CI／真人驗收。
+這是恢復入口，不代表已定位或修復偶發的 Assistant 匯入卡住；已隨 PR #158 驗收合併。
 
 模型只輸出恰好兩欄 `tool_name / parameters`。一個既有工具名表示完整單一操作；
 `respond_to_user` 的 parameters 只能含非空 message，是非執行回答標記，不是第 19 個工具。
@@ -85,7 +85,8 @@ Reference／normalization 方法來源仍核對當輪原文，RAG 示範的來�
 確認與 GUI handoff 保留 typed identity、取消與 freshness 邊界。停止訓練確認綁定原本的
 training run；同場進度更新不使確認失效，換 run、已結束或已停止中仍拒絕，實際執行前
 再次核對。其他命令的 publication freshness 規則不變。
-格式錯誤最多一次修復；多個完整 JSON 操作要求選一件，不執行其中任何一個。
+格式錯誤含多個完整 JSON 物件最多共用一次修復；原始物件全部不執行、不抽取第一個。
+修復後仍須通過既有驗證；使用者真正要求多項操作時，模型仍應請其選一件而非部分執行。
 完整契約見 [Agent target](target/agent.md)，責任分工見 [Agent 架構](architecture/agent.md)。
 
 產品支援完整、單一英文要求，不支援複合需求或聊天歷史補值。已接受版本仍有漏執行、

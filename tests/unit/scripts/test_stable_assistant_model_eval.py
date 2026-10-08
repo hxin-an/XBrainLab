@@ -920,7 +920,9 @@ def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -
         assert outcome.state_mutation_permitted is False
 
 
-def test_multi_object_precision_uses_choose_one_without_retry_or_side_effect() -> None:
+def test_multi_object_precision_retries_once_then_exhausts_without_side_effect() -> (
+    None
+):
     registry = target_tool_registry()
     case = next(
         item
@@ -942,24 +944,99 @@ def test_multi_object_precision_uses_choose_one_without_retry_or_side_effect() -
 
     trajectory = evaluate_case_trajectory(case, registry, generate)
 
-    assert calls == 1
+    assert calls == 2
     assert trajectory.raw_score.passed is False
     assert trajectory.final_score.passed is False
-    assert trajectory.attempts[0].envelope_status == "multiple_objects"
-    assert trajectory.attempts[0].recovery_action == "choose_one"
+    assert [attempt.envelope_status for attempt in trajectory.attempts] == [
+        "multiple_objects",
+        "multiple_objects",
+    ]
+    assert [attempt.recovery_action for attempt in trajectory.attempts] == [
+        "retry_format",
+        "exhausted",
+    ]
     outcome = trajectory.final_score.product_outcome
     assert outcome is not None
-    assert outcome.disposition == "choose_one"
+    assert outcome.disposition == "format_recovery_exhausted"
     assert trajectory.product_terminal is not None
-    assert trajectory.product_terminal["kind"] == "choose_one"
-    assert outcome.message == (
-        "I can do one action at a time. Please tell me which action to do first."
-    )
+    assert trajectory.product_terminal["kind"] == "format_recovery_exhausted"
+    assert "could not produce a valid assistant action" in outcome.message
     assert outcome.confirmation_requested is False
     assert outcome.gui_handoff_permitted is False
     assert outcome.application_service_permitted is False
     assert outcome.tool_executor_permitted is False
     assert outcome.state_mutation_permitted is False
+
+
+@pytest.mark.parametrize("repair", ["action", "reply", "wrong_action"])
+def test_multi_object_recovery_keeps_raw_classification_and_scores_separate(repair):
+    registry = target_tool_registry()
+    if repair == "reply":
+        case = next(
+            case for case in load_precision_cases() if case.case_id == "multi_en"
+        )
+        action = _model_response(
+            "apply_bandpass_filter", {"low_freq": 4, "high_freq": 38}
+        )
+        repaired = _model_response(
+            "respond_to_user", {"message": "Which operation should I do first?"}
+        )
+    else:
+        case = next(
+            case for case in load_target_cases() if case.case_id == "select_channels_01"
+        )
+        action = _model_response("select_channels", {})
+        repaired = (
+            action
+            if repair == "action"
+            else _model_response("switch_panel", {"panel_name": "dataset"})
+        )
+    first = (
+        "  "
+        + action
+        + _model_response("respond_to_user", {"message": "UNTRUSTED_TAIL_MARKER"})
+        + "\n"
+    )
+    outputs = iter([first, repaired])
+    sent = []
+
+    def generate(messages):
+        sent.append(messages)
+        return next(outputs)
+
+    recorder = GenerationTraceRecorder()
+    trajectory = evaluate_case_trajectory(
+        case, registry, generate, generation_recorder=recorder
+    )
+    assert len(sent) == len(recorder.entries) == 2
+    assert sent[0][-1] == sent[1][-1]
+    assert case.user_input in sent[1][-1]["content"]
+    assert "UNTRUSTED_TAIL_MARKER" not in str(sent[1])
+    assert (
+        recorder.entries[0].raw_output_sha256
+        == hashlib.sha256(first.encode()).hexdigest()
+    )
+    assert trajectory.attempts[0].envelope_status == "multiple_objects"
+    assert trajectory.attempts[0].recovery_action == "retry_format"
+    assert trajectory.raw_score.passed is False
+    assert trajectory.post_recovery_score.passed is (repair != "wrong_action")
+    assert trajectory.final_score.passed is (repair != "wrong_action")
+    assert trajectory.final_response == repaired
+    terminal = trajectory.product_terminal
+    assert not terminal["application_service_called"]
+    assert not terminal["tool_executor_called"]
+    assert not terminal["state_mutation_observed"]
+    assert terminal["execution_boundary_reached"] is (repair != "reply")
+
+
+def test_multi_action_product_scoring_cannot_rescue_multiple_objects():
+    case = next(case for case in load_precision_cases() if case.case_id == "multi_en")
+    response = _model_response(
+        "apply_bandpass_filter", {"low_freq": 4, "high_freq": 38}
+    ) + _model_response("resample_data", {"rate": 128})
+    score = score_precision_response(case, response, target_tool_registry())
+    assert not score.passed
+    assert score.failure_type == "output_format"
 
 
 def test_import_precision_score_does_not_restore_host_intent_rescue() -> None:

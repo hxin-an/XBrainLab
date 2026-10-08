@@ -75,5 +75,13 @@ B移植三個產品檔，production +175/-97/net+78，無新owner；148項直接
 獨立blind input覆核170份正常/repair完整prompt（85要求、7 stages），1425–2045 tokens，
 未見阻擋；repair保留user/state/RAG。這不涵蓋unreliable/error/overflow的實機推論。
 保留example照搬及負向要求召回正例的advisory，靠B/C raw與配對證據檢查，不擅調RAG。
-Next：固定B source並量同34題，完成後才改C政策。禁止挪用A宣稱B改善。
+B完成於乾淨 `aceab2a5de5634ecab59416a78ae7fe93bce43a3`：27/34首答及最終通過，
+7個新增失敗全為正確action後附reply的MULTIPLE_OBJECTS；原core20及english6通過。
+34 captures verified、engine closed；這是R3首答退步，不是產品改善。B原始失敗不覆寫。
+完整prompt另外以產品實際8192 runtime budget核對，170份bytes/hash與原export完全一致。
+真模型生成累計68/450。C接線完成：production +3/-24/net-21，無新owner或提示調整。
+直接375項測試中374通過，1項舊B標題斷言遷移後單項通過；runner相關146通過。
+腳本不再把多物件偽裝為一般format_error，也不給Host choose-one模型加分。
+Next：C獨立覆核後固定source，分別量core20／english6／recovery8；
+即使C修好也分列B新增首答失敗與等待成本，不以最終通過掩蓋。
 已知Assistant偶發匯入卡住根因未證實，Restart只是恢復入口；不宣稱本輪修好。

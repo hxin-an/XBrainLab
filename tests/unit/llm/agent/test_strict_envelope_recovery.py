@@ -118,7 +118,7 @@ def test_explicit_two_repair_policy_preserves_its_custom_budget():
     ]
 
 
-def test_adjacent_complete_objects_choose_one_without_a_format_retry() -> None:
+def test_adjacent_complete_objects_use_the_same_format_recovery_instructions() -> None:
     policy = StrictEnvelopeRecoveryPolicy(max_recovery_attempts=2)
     envelope = CommandParser.parse_product(
         '{"tool_name":"resample_data",'
@@ -134,10 +134,14 @@ def test_adjacent_complete_objects_choose_one_without_a_format_retry() -> None:
         )
     )
 
-    assert decision.action is StrictEnvelopeRecoveryAction.CHOOSE_ONE
-    assert decision.taxonomy is StrictEnvelopeRecoveryTaxonomy.MULTIPLE_OBJECTS
-    assert decision.recovery_attempts_after == 0
+    assert decision.action is StrictEnvelopeRecoveryAction.RETRY_FORMAT
+    assert decision.taxonomy is StrictEnvelopeRecoveryTaxonomy.FORMAT_ERROR_RETRY
+    assert decision.recovery_attempts_after == 1
     assert decision.message is not None
+    format_error = policy.decide(
+        StrictEnvelopeRecoveryRequest(CommandParser.parse_product('{"tool_name":'), 0)
+    )
+    assert decision.message == format_error.message
 
 
 def test_recovery_message_never_reflects_model_controlled_duplicate_key_text():

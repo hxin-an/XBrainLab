@@ -2641,7 +2641,7 @@ class TestExecuteDebugTool:
         ctrl.panel_navigation_requested.emit.assert_not_called()
         assert ctrl.pending_interactions.workflow_handoff is None
 
-    def test_multiple_strict_envelopes_choose_one_without_side_effects(self, ctrl):
+    def test_multiple_strict_envelopes_retry_without_side_effects(self, ctrl):
         ctrl._append_history("user", "Resample then apply a notch filter.")
         ctrl._turn_orchestrator.active_publication = PromptToolPublication(
             tool_names=frozenset({"resample_data", "apply_notch_filter"}),
@@ -2664,8 +2664,8 @@ class TestExecuteDebugTool:
 
         ctrl._on_generation_finished(17, [])
 
-        assert ctrl._tool_attempt_session.retry_count == 0
-        ctrl._generate_response.assert_not_called()
+        assert ctrl._tool_attempt_session.retry_count == 1
+        ctrl._generate_response.assert_called_once_with()
         ctrl._process_tool_call.assert_not_called()
         ctrl._tool_attempt_coordinator.evaluate.assert_not_called()
         ctrl._execute_tool_attempt.assert_not_called()
