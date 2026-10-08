@@ -1435,6 +1435,13 @@ class AssistantRuntimeLifecycle(QObject):
             if self._startup_cleanup_via_dispatcher is False:
                 close = getattr(self._controller, "close", None)
                 closed = bool(close()) if callable(close) else True
+                if not closed:
+                    # No dispatcher owns this unbound startup failure or its
+                    # completion signal. Keep ownership and allow a later retry.
+                    message = self._fail_unload("")
+                    return RuntimeCommandAdmissionResult(
+                        intent, RuntimeCommandAdmissionStatus.REJECTED, message
+                    )
             else:
                 closed = bool(dispatcher.close())
         except Exception as exc:

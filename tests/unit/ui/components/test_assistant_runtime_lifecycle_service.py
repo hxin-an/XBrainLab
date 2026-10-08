@@ -1959,6 +1959,51 @@ def test_start_rolls_back_bind_failure_without_publishing_controller(qtbot) -> N
     assert created == []
 
 
+def test_restart_unbound_cleanup_failure_is_retryable_without_replacement(qtbot):
+    class PendingController(_Controller):
+        allow_close = False
+
+        def close(self):
+            self.closed = self.allow_close
+            return self.closed
+
+    old = PendingController()
+    replacement = _Controller()
+    controllers = iter((old, replacement))
+    lifecycle = AssistantRuntimeLifecycle(
+        object(),
+        controller_factory=lambda _study: next(controllers),
+        dispatcher=_FailingDispatcher("bind"),
+        dispatcher_factory=_Dispatcher,
+        config_loader=_ready_config,
+    )
+    created = []
+    finished = []
+    lifecycle.controller_created.connect(created.append)
+    lifecycle.restart_finished.connect(lambda ok, message: finished.append(ok))
+    try:
+        assert not lifecycle.start()
+        assert lifecycle.controller is old
+        assert not lifecycle.request_restart().accepted
+        assert lifecycle.state is AssistantRuntimeLifecycleState.CLEANUP_PENDING
+        assert not lifecycle.restart_in_progress
+        assert finished == [False]
+        assert lifecycle.controller is old
+        assert created == []
+
+        old.allow_close = True
+        assert lifecycle.request_restart().accepted
+        assert old.closed
+        assert lifecycle.controller is replacement
+        assert created == [replacement]
+        _publish_restart_ready(lifecycle)
+        assert lifecycle.accepts_commands
+        assert finished == [False, True]
+    finally:
+        old.allow_close = True
+        lifecycle.close()
+
+
 def test_start_rolls_back_initialize_failure_and_closes_bound_dispatcher(
     qtbot,
 ) -> None:

@@ -45,6 +45,14 @@
   保留唯一 signal adapter 的 sender fence 與 activation ID 驗證；補無 sender context 的准入測試，
   並重驗 delivery／lifecycle／worker supervision 與獨立 async review。Linux integration-ui 的
   GC abort 另待修正後同組 CI 核對，不先推定已解決；不跳過任何 gate。
+- 第二輪 Static Quality 的型別檢查已清零，architecture guard 指出新 `_request_unload`
+  的未綁定 controller 清理入口尚未登錄。此路徑與既有 close／startup rollback 同屬 runtime
+  owner，dispatcher 尚未取得它；只登錄 exact method／receiver 的 `close`，不放行一般 UI
+  mutation。補准許與錯誤 receiver／method／callsite 拒絕測試，獨立覆核後跑完整 architecture gate。
+  覆核並找到未綁定 controller.close 回 False 時無 dispatcher callback、會永久 restarting 的
+  邊界；補 failed-bind → cleanup pending → restart 失敗 → 清理成功後重試的 red/green，
+  未清理成功前不得建立新 controller。第二輪 Linux unit-ui／integration-ui 已通過，原 abort
+  原因不據此宣稱證實；最後 head 仍須完整 CI。
 
 ## Candidate — 研究／產品分離 PR #158
 
