@@ -962,10 +962,8 @@ class AssistantRuntimeLifecycle(QObject):
         self._stop_activation_watchdog()
         self._coordinator.clear_active_runtime(self._START_FAILURE_MESSAGE)
 
-    @pyqtSlot(object)
     def accept_runtime_snapshot(self, payload: object) -> None:
-        if self.sender() is not None and self.sender() is not self._controller:
-            return
+        """Apply a snapshot; controller signals are fenced at their Qt ingress."""
         if not self._lifecycle_is_open:
             logger.warning(
                 "Ignoring assistant runtime snapshot while lifecycle is %s",

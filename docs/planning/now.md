@@ -40,6 +40,11 @@
   不修改 type baseline／gate／重啟語意；驗 Settings focused tests 與新 head Static Quality。
   同 run 的 agent integration 暴露舊 runtime 替身缺少 restart signals；同步兩個直接相關
   integration doubles 的介面與 idle 狀態，保留原 assertion，重跑 long-session／product walkthrough。
+- 同 run 的 Linux unit-ui 在直接 snapshot 呼叫的 `sender()` 原生查詢發生 SIGSEGV；
+  Windows 單測未重現崩潰。直接 snapshot helper 不應依賴 Qt signal context，移除重複查詢，
+  保留唯一 signal adapter 的 sender fence 與 activation ID 驗證；補無 sender context 的准入測試，
+  並重驗 delivery／lifecycle／worker supervision 與獨立 async review。Linux integration-ui 的
+  GC abort 另待修正後同組 CI 核對，不先推定已解決；不跳過任何 gate。
 
 ## Candidate — 研究／產品分離 PR #158
 
