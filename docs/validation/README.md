@@ -278,7 +278,9 @@ PR #71 的 bounded baseline 與 v16 以前 81-case 報告保留原 source、sche
 使用者核准撤回R3提示移植，正常首答維持原產品A；多JSON一次格式修復候選亦依已核准
 停止條件撤回。Seeded repair雖修好7份歷史action＋reply，兩個真雙操作probe卻被修成
 第一個action，新增部分操作風險；不以7/9當自然準確率，也不無限調prompt。
-產品source回復原A：一般FORMAT_ERROR一次修復、多JSON直接choose-one零執行。原A/B/C/D保留；
+決策prompt／catalog／parser／recovery回復原A：一般FORMAT_ERROR一次修復、多JSON直接choose-one零執行。
+後續另修Restart舊snapshot接收競態；此lifecycle差異須有新source的queued／thread／native證據，
+不能宣稱全部product bytes仍與A相同。原A/B/C/D保留；
 不改歷史研究輸入／分數；研究8個格式錯例只作已知回歸，
 不稱新holdout。原20核心、6英文與74廣度案例及tool-decision判分保持；首答／repair後、
 准入與實際副作用分列，Host擋錯不能救分。新候選不得挪用舊Development例外跳過gate。

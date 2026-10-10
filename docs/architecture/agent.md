@@ -204,6 +204,8 @@ Assistant Settings 的 `Restart Assistant` 是明確確認後的恢復入口，�
 不改 EEG 或 root settings.json。RuntimeLifecycle 共用既有 unload／dispatcher cleanup，
 舊 runtime 完整釋放後才建立新 controller；只有新模型 READY 才顯示成功。清理失敗保留
 ownership、拒絕舊 controller 回報並允許安全重試；App close 優先，不再建立替代 runtime。
+Lifecycle 的 runtime snapshot 接線固定來源 controller 的 Python 身分；排隊回呼先檢查
+native receiver 仍存在，再核對目前 controller，不依賴斷線後可能失效的 Qt `sender()`。
 Manager 的 Qt signal ingress 核對 live controller 身分與 initialized 狀態，拒收已銷毀 sender
 或舊 generation 的晚到回報。WorkflowUiHandoffHost 只 detach Assistant consumer，保留
 Desktop command completion，避免重啟吞掉既有 GUI 工作結果。Settings 只呈現 owner 進度。
