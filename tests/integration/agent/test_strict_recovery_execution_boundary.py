@@ -283,20 +283,41 @@ def test_malformed_tool_envelopes_stop_after_one_repair_without_execution(
         close_controller_and_wait(controller, qtbot)
 
 
-def test_multiple_objects_never_reach_execution_or_create_pending_request(qtbot):
-    action = _IMPORT_PROPOSAL
-    controller, worker, coordinator = _controller_with_script([f"{action}\n{action}"])
+@pytest.mark.parametrize("after_format_retry", (False, True))
+@pytest.mark.parametrize(
+    "user_text", ("Import EEG data.", "Import EEG data and then resample it to 128 Hz.")
+)
+@pytest.mark.parametrize(
+    "second",
+    (
+        _IMPORT_PROPOSAL,
+        '{"tool_name":"respond_to_user","parameters":{"message":"Ready."}}',
+    ),
+)
+def test_multiple_objects_never_reach_execution_or_create_pending_request(
+    qtbot, after_format_retry, user_text, second
+):
+    outputs = ['{"tool_name":'] if after_format_retry else []
+    outputs.extend([f"{_IMPORT_PROPOSAL}\n{second}", _IMPORT_PROPOSAL])
+    controller, worker, coordinator = _controller_with_script(outputs)
+    responses = []
+    controller.response_presentation_ready.connect(responses.append)
 
     try:
-        _submit_user_turn(controller, "Import EEG data.")
-        qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
+        _submit_user_turn(controller, user_text)
+        qtbot.waitUntil(
+            lambda: not controller.is_processing or coordinator.commands != [],
+            timeout=3_000,
+        )
 
-        assert worker.generation_count == 1
+        assert worker.generation_count == 1 + int(after_format_retry)
         assert controller._tool_attempt_session.retry_count == 0
         assert controller._tool_attempt_session.execution_count == 0
         assert coordinator.commands == []
         assert not controller.pending_interactions.has_pending
         assert controller.pending_interactions.workflow_handoff is None
+        assert len(responses) == 1
+        assert "one action at a time" in responses[0].text
     finally:
         close_controller_and_wait(controller, qtbot)
 
@@ -317,6 +338,8 @@ def test_recovered_valid_envelope_reaches_real_execution_coordinator(
 
         assert worker.generation_count == 2
         assert worker.profiles == [GenerationProfile.STRUCTURED_DECISION] * 2
+        assert worker.messages[1][-1] == worker.messages[0][-1]
+        assert malformed not in str(worker.messages[1])
         assert controller._tool_attempt_session.execution_count == 1
         assert coordinator.commands == ["import_eeg_data"]
         handoff = controller.pending_interactions.workflow_handoff

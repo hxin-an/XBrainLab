@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
-from PyQt6.QtCore import QMetaObject, QObject, Qt, pyqtSignal, pyqtSlot
+from PyQt6 import sip
+from PyQt6.QtCore import QMetaObject, QObject, Qt, QThread, pyqtSignal, pyqtSlot
 
 from XBrainLab.chat_contract import MAX_CHAT_MESSAGE_CONTENT_LENGTH
 from XBrainLab.llm.agent.confirmation import (
@@ -245,6 +246,121 @@ def test_restart_ignores_queued_old_controller_snapshot(restart_runtime, qtbot):
     qtbot.wait(1)
     assert lifecycle.accepts_commands
     assert len(finished) == 1 and finished[0][0]
+
+
+def test_queued_retired_snapshot_never_queries_disconnected_sender(
+    restart_runtime, qtbot, monkeypatch
+):
+    lifecycle, controllers, dispatchers, _, _, finished, _ = restart_runtime
+    old = controllers[0]
+    _, callback = lifecycle._controller_lifecycle_connections[0]
+    old.runtime_state_changed.disconnect(callback)
+    old.runtime_state_changed.connect(callback, Qt.ConnectionType.QueuedConnection)
+    old.runtime_state_changed.emit(
+        AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.FAILED, initialized=False, error="retired"
+        )
+    )
+    assert lifecycle.request_restart().accepted
+    dispatchers[0].cleanup_finished.emit(True, "")
+    _publish_restart_ready(lifecycle)
+    sender_queries = []
+
+    def disconnected_sender():
+        # CI segfaulted inside the native call itself, before a None check.
+        # Model that unsafe Qt seam without crashing this pytest process.
+        sender_queries.append(True)
+
+    monkeypatch.setattr(lifecycle, "sender", disconnected_sender)
+    qtbot.wait(1)
+    assert sender_queries == []
+    assert lifecycle.accepts_commands
+    assert len(finished) == 1 and finished[0][0]
+    # A current controller update must still work: dropping all snapshots is
+    # not a valid repair of the stale-message boundary.
+    controllers[-1].runtime_state_changed.emit(
+        AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.FAILED,
+            initialized=False,
+            error="current failure",
+            activation_id=lifecycle.expected_activation_id or 0,
+        )
+    )
+    qtbot.waitUntil(lambda: lifecycle.current.error == "current failure")
+    assert not lifecycle.accepts_commands
+    assert sender_queries == []
+    assert len(finished) == 1
+
+
+def test_worker_snapshot_is_applied_on_lifecycle_thread(qtbot, monkeypatch):
+    snapshot = AssistantRuntimeSnapshot(
+        phase=AssistantRuntimePhase.FAILED, initialized=False, error="worker failure"
+    )
+    emitted_threads = []
+
+    class PublishingController(_Controller):
+        @pyqtSlot()
+        def publish_snapshot(self):
+            emitted_threads.append(QThread.currentThread())
+            self.runtime_state_changed.emit(snapshot)
+
+    controller = PublishingController()
+    lifecycle = AssistantRuntimeLifecycle(
+        object(), controller_factory=lambda _: controller, config_loader=_ready_config
+    )
+    received_threads = []
+    accept = lifecycle.accept_runtime_snapshot
+
+    def observe(payload):
+        received_threads.append(QThread.currentThread())
+        accept(payload)
+
+    monkeypatch.setattr(lifecycle, "accept_runtime_snapshot", observe)
+    assert lifecycle.start_diagnostics()
+    try:
+        QMetaObject.invokeMethod(
+            controller, "publish_snapshot", Qt.ConnectionType.QueuedConnection
+        )
+        qtbot.waitUntil(lambda: lifecycle.current.error == "worker failure")
+        assert emitted_threads == [lifecycle.dispatcher.command_thread]
+        assert received_threads == [lifecycle.thread()]
+        assert not lifecycle.accepts_commands
+    finally:
+        lifecycle.close()
+        qtbot.waitUntil(
+            lambda: lifecycle.state is AssistantRuntimeLifecycleState.CLOSED
+        )
+
+
+def test_queued_snapshot_after_receiver_destruction_is_ignored(qtbot, monkeypatch):
+    parent = QObject()
+    controller = _Controller()
+    lifecycle = AssistantRuntimeLifecycle(
+        object(),
+        controller_factory=lambda _: controller,
+        dispatcher=_Dispatcher(),
+        config_loader=_ready_config,
+        parent=parent,
+    )
+    assert lifecycle.start_diagnostics()
+    _, callback = lifecycle._controller_lifecycle_connections[0]
+    controller.runtime_state_changed.disconnect(callback)
+    controller.runtime_state_changed.connect(
+        callback, Qt.ConnectionType.QueuedConnection
+    )
+    applied = []
+    monkeypatch.setattr(lifecycle, "accept_runtime_snapshot", applied.append)
+    controller.runtime_state_changed.emit(
+        AssistantRuntimeSnapshot(
+            phase=AssistantRuntimePhase.FAILED, initialized=False, error="late failure"
+        )
+    )
+    # Parent destruction invalidates the native receiver even while Python
+    # callbacks still retain its wrapper. No real worker is owned by this fixture.
+    sip.delete(parent)
+    assert sip.isdeleted(lifecycle)
+    qtbot.wait(1)
+    assert applied == []
 
 
 def test_restart_dispatcher_factory_failure_is_reported_and_retryable(

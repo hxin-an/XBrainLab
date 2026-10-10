@@ -945,6 +945,7 @@ def test_multi_object_precision_uses_choose_one_without_retry_or_side_effect() -
     assert calls == 1
     assert trajectory.raw_score.passed is False
     assert trajectory.final_score.passed is False
+    assert len(trajectory.attempts) == 1
     assert trajectory.attempts[0].envelope_status == "multiple_objects"
     assert trajectory.attempts[0].recovery_action == "choose_one"
     outcome = trajectory.final_score.product_outcome
@@ -960,6 +961,69 @@ def test_multi_object_precision_uses_choose_one_without_retry_or_side_effect() -
     assert outcome.application_service_permitted is False
     assert outcome.tool_executor_permitted is False
     assert outcome.state_mutation_permitted is False
+
+
+@pytest.mark.parametrize("suite", ["positive", "precision"])
+def test_multi_object_terminal_keeps_raw_classification_without_retry(suite):
+    registry = target_tool_registry()
+    if suite == "precision":
+        case = next(
+            case for case in load_precision_cases() if case.case_id == "multi_en"
+        )
+        action = _model_response(
+            "apply_bandpass_filter", {"low_freq": 4, "high_freq": 38}
+        )
+    else:
+        case = next(
+            case for case in load_target_cases() if case.case_id == "select_channels_01"
+        )
+        action = _model_response("select_channels", {})
+    first = (
+        "  "
+        + action
+        + _model_response("respond_to_user", {"message": "UNTRUSTED_TAIL_MARKER"})
+        + "\n"
+    )
+    outputs = iter([first])
+    sent = []
+
+    def generate(messages):
+        sent.append(messages)
+        return next(outputs)
+
+    recorder = GenerationTraceRecorder()
+    trajectory = evaluate_case_trajectory(
+        case, registry, generate, generation_recorder=recorder
+    )
+    assert len(sent) == len(recorder.entries) == len(trajectory.attempts) == 1
+    assert (
+        recorder.entries[0].raw_output_sha256
+        == hashlib.sha256(first.encode()).hexdigest()
+    )
+    assert trajectory.attempts[0].envelope_status == "multiple_objects"
+    assert trajectory.attempts[0].recovery_action == "choose_one"
+    assert trajectory.raw_score.passed is False
+    assert trajectory.post_recovery_score.passed is False
+    assert trajectory.final_score.passed is False
+    assert trajectory.final_response == first.strip()
+    terminal = trajectory.product_terminal
+    assert terminal["kind"] == "choose_one"
+    assert not terminal["confirmation_observed"]
+    assert not terminal["gui_handoff_reached"]
+    assert not terminal["application_service_called"]
+    assert not terminal["tool_executor_called"]
+    assert not terminal["state_mutation_observed"]
+    assert not terminal["execution_boundary_reached"]
+
+
+def test_multi_action_product_scoring_cannot_rescue_multiple_objects():
+    case = next(case for case in load_precision_cases() if case.case_id == "multi_en")
+    response = _model_response(
+        "apply_bandpass_filter", {"low_freq": 4, "high_freq": 38}
+    ) + _model_response("resample_data", {"rate": 128})
+    score = score_precision_response(case, response, target_tool_registry())
+    assert not score.passed
+    assert score.failure_type == "output_format"
 
 
 def test_import_precision_score_does_not_restore_host_intent_rescue() -> None:
@@ -1396,6 +1460,45 @@ def test_precision_exact_unavailable_call_uses_backend_reason_at_attempt_boundar
     assert score.product_outcome.disposition == "blocked"
     assert score.product_outcome.message is not None
     assert "Load raw data before creating EEG epochs." in score.product_outcome.message
+
+
+def test_positive_score_classifies_legal_reply_as_wrong_tool_selection() -> None:
+    case = next(
+        item for item in load_target_cases() if item.case_id == "select_channels_01"
+    )
+    message = "I will open the channel selector for you."
+    response = _model_response("respond_to_user", {"message": message})
+
+    score = score_model_response(case, response, target_tool_registry())
+
+    assert score.passed is False
+    assert score.failure_type == "tool_selection"
+    assert score.parsed_tool == "respond_to_user"
+    assert score.parsed_parameters == {"message": message}
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        '{"tool_name":"respond_to_user",',
+        '{"tool_name":"respond_to_user","parameters":{"message":123}}',
+        (
+            '{"tool_name":"select_channels","parameters":{}}'
+            '{"tool_name":"respond_to_user","parameters":{"message":"Opened."}}'
+        ),
+    ],
+)
+def test_positive_score_keeps_invalid_envelopes_as_format_failures(response) -> None:
+    case = next(
+        item for item in load_target_cases() if item.case_id == "select_channels_01"
+    )
+
+    score = score_model_response(case, response, target_tool_registry())
+
+    assert score.passed is False
+    assert score.failure_type == "output_format"
+    assert score.parsed_tool is None
+    assert score.parsed_parameters is None
 
 
 def test_score_accepts_only_two_field_envelope_exact_tool_and_schema() -> None:

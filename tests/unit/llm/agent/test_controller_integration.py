@@ -414,9 +414,11 @@ def test_controller_verification_flow_rejection(controller: LLMController) -> No
     assert "Safety Violation" in last_msg["content"]
 
 
+@pytest.mark.parametrize("during_format_recovery", (False, True))
 def test_late_generation_events_cannot_mutate_the_next_host_turn(
     controller: LLMController,
     qtbot,
+    during_format_recovery: bool,
 ) -> None:
     """A queued native turn-A terminal cannot attach itself to active turn B."""
     controller._sig_dispatch_generation.disconnect()
@@ -432,6 +434,13 @@ def test_late_generation_events_cannot_mutate_the_next_host_turn(
         )
     )
     qtbot.waitUntil(lambda: len(generation_requests) == 1, timeout=2_000)
+    if during_format_recovery:
+        controller.current_response = '{"tool_name":"import_eeg_data"}'
+        controller._on_generation_finished(generation_requests[0].generation_id, [])
+        assert len(generation_requests) == 2
+        assert controller._tool_attempt_session.execution_count == 0
+        assert controller.pending_interactions.has_pending is False
+    turn_a_generations = len(generation_requests)
     generation_a = generation_requests[-1].generation_id
 
     release_late_a = Event()
@@ -456,7 +465,10 @@ def test_late_generation_events_cannot_mutate_the_next_host_turn(
                 text="Compare alpha and beta EEG rhythms",
             )
         )
-        qtbot.waitUntil(lambda: len(generation_requests) == 2, timeout=2_000)
+        qtbot.waitUntil(
+            lambda: len(generation_requests) == turn_a_generations + 1,
+            timeout=2_000,
+        )
         generation_b = generation_requests[-1].generation_id
         assert generation_b > generation_a
 

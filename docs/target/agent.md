@@ -382,8 +382,8 @@ stage candidate，但split、model或training settings未齊時由同一publicat
 unavailable reference精確說明缺項，不能部分執行；全部ready後才成為callable。
 
 Stage、setup flags、running state與completed runs都從同一份 immutable ApplicationService
-publication產生。若 publication generation 在生成、repair或GUI handoff期間改變，
-舊 proposal／resolution視為 stale；confirmation原則上沿用同一檢查。
+publication產生。各次生成（含repair）開始後，若其 publication generation 在生成或
+GUI handoff期間改變，對應 proposal／resolution視為 stale；confirmation原則上沿用同一檢查。
 
 停止確認例外：`stop_training`確認綁定當時的trainer/run身分；同一場仍在running的
 訓練，只有進度更新不使批准失效。換run、已結束或已在停止中仍拒絕，且必須在backend
@@ -397,9 +397,17 @@ backend publication或generation。接受裸JSON，或整份回答恰為一層`j
 Markdown fence；只能解除外框，raw output原樣保留。不從prose、任意code block或多個
 候選中抽取指令；前後prose、array、額外欄位、重複key、非標準數值與舊格式皆拒絕。
 
-只有parser證明raw含兩個以上相鄰且完整的top-level objects，才直接給可信choose-one
-terminal；不挑第一個、不format retry，也不confirmation、GUI handoff或execution。
-其他格式錯誤最多在初次生成後加一次repair，使用同一當輪要求與publication；
+Parser辨認raw含兩個以上相鄰且完整top-level objects時，直接回覆請選一件，零repair、
+零執行、不挑第一個、不合併參數，也不confirmation或GUI handoff。
+2026-10-08曾核准試驗多物件一次repair；2026-10-10依事先核准的停止條件撤回：seeded
+真雙操作要求被修成部分操作，不能以模型提醒當作可靠保護。保留原產品契約，不追加意圖分類。
+模型輸出多物件不等於使用者要求多操作；直接拒絕可能放棄可修好的單操作輸出，是目前保守邊界。
+一般FORMAT_ERROR仍最多一次repair。
+修復保留同一當輪要求，重新取得backend publication，一致投影state與工具，再加固定格式
+提示，不附標準答案、不重用無效proposal。修復proposal仍須通過其生成時publication的
+freshness檢查；再次不合法就停止。這是既有每次生成的狀態刷新，不是跨重試鎖住snapshot。
+2026-10-10收尾確認：正常首答與一般格式修復均沿用原產品提示；不新增語意重試或要求使用者提供JSON。
+真正的多操作要求仍須respond_to_user請選一件，不能藉修復部分執行。
 Host不補欄或改寫操作。來源／schema拒絕及backend執行失敗不增加模型repair loop。
 任何side effect、confirmation cancel或GUI cancel／fail後不得重送操作。
 歷史schema／scorer成績保留原身分；相同兩欄形狀不代表不同版本契約與結果等同。

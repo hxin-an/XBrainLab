@@ -1,27 +1,16 @@
 # XBrainLab Now
 
-最後更新：`2026-10-08`
+最後更新：`2026-10-10`
 
-## Active
+## 本輪施工完成 — 待執行已批准的 PR 合併與清理
 
-目前沒有已授權、尚待施工的產品切片。下一輪目標待與使用者討論，不自動擴張清理範圍。
+PR #160 的 Restart queued-snapshot 修正已完成；產品版本 `cd3d28cf` 經同版本 CI、
+Windows 真模型流程與獨立覆核，使用者於 2026-10-10 補測交付後明確同意 merge。
+本次僅收束計畫，不再更改已接受的產品 source；合併／清理結果由 PR #160 擁有。
+沒有待施工的 active slice；下一個產品目標另行討論，不自動延伸本輪。
 
-## 已接受的產品基線
-
-[PR #158](https://github.com/hxin-an/XBrainLab/pull/158) 已於 2026-10-08 合併：
-使用者驗收 source `c20b8fc2381fa2dd45d202f8ed16ea286c1b58c2`，
-main merge commit `125251c2f828278f530e3a3c91461fa8eb5bc451`。
-同 head 的所有適用 CI 通過，Windows 手測通過並取得明確 merge 批准。
-
-產品／研究分離與 Restart Assistant 的現行行為由[產品事實](../current.md)擁有；
-研究保存位置由[驗證契約](../validation/README.md#research-archive-boundary)擁有。
-本次驗收與失敗／修正證據留在 PR，未以產品合併回寫研究封存。
-
-## 保留限制
-
-Assistant 匯入確認後曾間歇卡住，後續實機與使用者重測成功，但根因仍未證實。
-Restart Assistant 是恢復入口，不宣稱修好該匯入問題。若再發生，先保留現場證據定位，
-不自行增加重試、重送操作或更改 EEG／後端取消語意。
-
-研究分支、未提交的研究文件與使用者 settings 不屬本次產品工作樹清理範圍；
-原始資料、研究封存與共用環境／模型快取保留。
+一般格式錯誤保留一次修復；多物件重試候選因安全回歸撤回，維持 choose-one 零執行。
+契約見 [Agent architecture](../architecture/agent.md)、[Agent target](../target/agent.md)；
+原始失敗、已知模型限制與證據界線見 [Validation](../validation/README.md) 及 PR #160。
+歷史計畫保留於 Git，不再作為 active 指令。保留必要證據後清除本 PR worktree 與暫存，
+不動研究 checkout、使用者設定、原始資料、共用環境及 cache。

@@ -1,0 +1,81 @@
+{
+  "schema_version": "xbrainlab.assistant_format_recovery_cases.v1",
+  "claim_boundary": "Eight known historical format failures selected after observing TEST results. Engineering regressions, not an unseen holdout. Inputs and action oracles are copied unchanged; current product stage fixtures are used, not the historical research fixture runtime.",
+  "source_run": "20261003-073134-fc4822b9",
+  "source_head": "7dea586a8624a83707b12e0f2791aa824d36464e",
+  "source_condition": "granite4-full__candidate-3__TEST__repeat-0",
+  "cases": [
+    {
+      "id": "TEST-A02-01-V0",
+      "input": "I'd like to keep C3 and C4. Open the channel selector so I can set that up.",
+      "workflow_stage": "data_loaded",
+      "tool_name": "select_channels",
+      "parameters": {},
+      "source_artifact": "raw/cases/granite4-full__candidate-3__TEST__repeat-0__TEST-A02-01-V0/result.json",
+      "source_sha256": "02a61782e3334dc90bf4635cd8f510f2fdfc18c31ee076e938a463a0c00b41e9"
+    },
+    {
+      "id": "TEST-A02-01-V1",
+      "input": "Open channel selection; I will configure it to retain C3 and C4 myself.",
+      "workflow_stage": "data_loaded",
+      "tool_name": "select_channels",
+      "parameters": {},
+      "source_artifact": "raw/cases/granite4-full__candidate-3__TEST__repeat-0__TEST-A02-01-V1/result.json",
+      "source_sha256": "f9efe5d675f0c8bd57ecc8aa71aec0283477a31b87efa592f2e8cef2ca0845c6"
+    },
+    {
+      "id": "TEST-A02-02-V1",
+      "input": "Show the channel selection window so I can pick a smaller set for this run.",
+      "workflow_stage": "data_loaded",
+      "tool_name": "select_channels",
+      "parameters": {},
+      "source_artifact": "raw/cases/granite4-full__candidate-3__TEST__repeat-0__TEST-A02-02-V1/result.json",
+      "source_sha256": "881c0c31b3ab6b63fed43a09428230e1009365019f5d6fe333cad698ebdc15da"
+    },
+    {
+      "id": "TEST-A03-01-V1",
+      "input": "Let me inspect the montage choices against the electrode names myself, without applying a layout yet.",
+      "workflow_stage": "data_loaded",
+      "tool_name": "set_montage",
+      "parameters": {},
+      "source_artifact": "raw/cases/granite4-full__candidate-3__TEST__repeat-0__TEST-A03-01-V1/result.json",
+      "source_sha256": "65060e34c81170f2b21229f1a74414c8e9cfd343e7c96e4576880b5e4c173483"
+    },
+    {
+      "id": "TEST-A04-02-V1",
+      "input": "Show the epoch settings so I can review the options before deciding on the time boundaries.",
+      "workflow_stage": "data_loaded",
+      "tool_name": "create_epochs",
+      "parameters": {},
+      "source_artifact": "raw/cases/granite4-full__candidate-3__TEST__repeat-0__TEST-A04-02-V1/result.json",
+      "source_sha256": "1b15f9ed8c00a6d7d22a9c1128574847a03e8f76ac1851d4dbbcc90685bd880f"
+    },
+    {
+      "id": "TEST-A12-02-V0",
+      "input": "I want min-max scaling on the re-referenced EEG. Apply it now.",
+      "workflow_stage": "preprocessed",
+      "tool_name": "normalize_data",
+      "parameters": {"method": "min-max"},
+      "source_artifact": "raw/cases/granite4-full__candidate-3__TEST__repeat-0__TEST-A12-02-V0/result.json",
+      "source_sha256": "3b844890361482b57e050d4348224450c6ebbf2404fa7ce695c80e6170aaa47f"
+    },
+    {
+      "id": "TEST-A15-02-V0",
+      "input": "Clear the applied preprocessing so I can try a completely different sequence.",
+      "workflow_stage": "preprocessed",
+      "tool_name": "reset_preprocessing",
+      "parameters": {},
+      "source_artifact": "raw/cases/granite4-full__candidate-3__TEST__repeat-0__TEST-A15-02-V0/result.json",
+      "source_sha256": "f88894794ee64bbf1a7f3513af256f3407f05cf5b31e2a158077db12810831fc"
+    },
+    {
+      "id": "TEST-A15-02-V1",
+      "input": "Reset the preprocessing already applied; I want to try a different sequence afterward.",
+      "workflow_stage": "preprocessed",
+      "tool_name": "reset_preprocessing",
+      "parameters": {},
+      "source_artifact": "raw/cases/granite4-full__candidate-3__TEST__repeat-0__TEST-A15-02-V1/result.json",
+      "source_sha256": "ed173396d97847ba129e50ca6d3f134e3bd3331d8129dba54958063d53d4ba90"
+    }
+  ]
+}

@@ -6,9 +6,11 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from enum import Enum
+from functools import partial
 from itertools import count
 from typing import Any, Protocol, cast
 
+from PyQt6 import sip
 from PyQt6.QtCore import QObject, QTimer, pyqtBoundSignal, pyqtSignal, pyqtSlot
 
 from XBrainLab.backend.utils.logger import logger
@@ -675,7 +677,10 @@ class AssistantRuntimeLifecycle(QObject):
     def _bind_controller_lifecycle_signals(self, controller: object) -> None:
         """Bind the required runtime-state and turn-terminal signal contract."""
         bindings = (
-            ("runtime_state_changed", self._accept_controller_snapshot),
+            (
+                "runtime_state_changed",
+                partial(self._accept_controller_snapshot, controller),
+            ),
             ("turn_finished", self._release_turn),
         )
         resolved: list[tuple[Any, Any]] = []
@@ -977,11 +982,13 @@ class AssistantRuntimeLifecycle(QObject):
             else:
                 self._finish_restart_if_ready()
 
-    @pyqtSlot(object)
-    def _accept_controller_snapshot(self, payload: object) -> None:
-        # Qt can lose sender() after disconnect even for already queued delivery.
-        if self.sender() is not None and self.sender() is self._controller:
-            self.accept_runtime_snapshot(payload)
+    @pyqtSlot(object, object)
+    def _accept_controller_snapshot(self, controller: object, payload: object) -> None:
+        # Queued callbacks can outlive disconnect and native receiver destruction.
+        # Capture Python identity at binding; Qt sender() is unsafe after disconnect.
+        if sip.isdeleted(self) or controller is not self._controller:
+            return
+        self.accept_runtime_snapshot(payload)
 
     def _finish_restart_if_ready(self) -> None:
         if self.accepts_commands:

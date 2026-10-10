@@ -273,6 +273,22 @@ PR #71 的 bounded baseline 與 v16 以前 81-case 報告保留原 source、sche
 
 ### Single-turn Assistant candidate
 
+#### 2026-10-10 有界多物件修復試驗與安全回退
+
+使用者核准撤回R3提示移植，正常首答維持原產品A；多JSON一次格式修復候選亦依已核准
+停止條件撤回。Seeded repair雖修好7份歷史action＋reply，兩個真雙操作probe卻被修成
+第一個action，新增部分操作風險；不以7/9當自然準確率，也不無限調prompt。
+決策prompt／catalog／parser／recovery回復原A：一般FORMAT_ERROR一次修復、多JSON直接choose-one零執行。
+後續另修Restart舊snapshot接收競態；此lifecycle差異須有新source的queued／thread／native證據，
+不能宣稱全部product bytes仍與A相同。原A/B/C/D保留；
+不改歷史研究輸入／分數；研究8個格式錯例只作已知回歸，
+不稱新holdout。原20核心、6英文與74廣度案例及tool-decision判分保持；首答／repair後、
+准入與實際副作用分列，Host擋錯不能救分。新候選不得挪用舊Development例外跳過gate。
+一般重試成功仍需schema／來源／capability／confirmation與publication檢查；多物件不得抽取執行。
+Scorer不得把Host的choose-one當作模型答對；合法reply漏操作屬tool_selection而非output_format。
+完整輸入獨立覆核、真模型證據及Windows正常ChatPanel流程須針對同一最終產品source。
+RAG內容／檢索設定固定，配對只比較on/off，不調參追分；推論配額與施工狀態只由Now擁有。
+
 #### 本輪Development候選交付例外（2026-09-29）
 
 使用者在已知74題工具決策65/74首答、66/74最終，以及錯誤提案可能通過Host准入的

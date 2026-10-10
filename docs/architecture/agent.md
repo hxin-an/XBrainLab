@@ -143,7 +143,7 @@ Qt processing／closing admission。這些內部責任移交不新增工具或�
 - 用`CommandParser`接受 exact 兩欄 JSON response（`tool_name`、`parameters`），可有整份回答單一 `json`／無語言 code fence；
   只解除外框，原始輸出照存，不做散文抽取、寬鬆 schema 或 legacy fallback。
 - 初次生成最多加一次既有格式修復；同一修復仍失敗即停止，不重送第二次相同策略。
-  多個完整物件維持 choose-one terminal，已交付操作、確認取消與執行失敗不由格式重試重送。
+  多個完整物件維持choose-one terminal，零重試、零執行；已交付操作、確認取消與執行失敗不由格式重試重送。
 - `respond_to_user`只呈現回答；其他工具由`ToolAttemptCoordinator`核對publication、
   適用的方法來源與`VerificationLayer`的完整required/type/enum/range，再進執行admission。
 - 套用 ApplicationService capability gate，避免 assistant 在錯誤 backend state 呼叫不該開放的工具。
@@ -172,7 +172,8 @@ Controller 保留 missing-generation 拒絕與 Qt delivery。有效 proposal 只
 「重試」有三個不同邊界，不能統稱 Agent 自動修復：
 
 - 模型輸出格式錯誤：預設最多額外生成一次（加上首次共兩次），只修正 strict JSON envelope；
-  多個 action 直接要求使用者選一個，不執行或重試其中任何一個。
+  多個完整物件直接要求使用者選一件，不重試、不抽取其中任何一個。
+  曾試驗多物件重試，但真雙操作seed可被修成部分操作，因此未納入產品。
 - 工具／backend 執行失敗：回報結果並結束 turn，不把錯誤再交模型重新規劃或自動執行。
   既有確認／GUI handoff 是等待使用者的相關聯回覆；確認後仍重查 publication，不是模型重試。
 - 停止／關閉失敗：既有 lifecycle 保留 runtime ownership 並重試資源清理，不代表重跑工具。
@@ -203,6 +204,8 @@ Assistant Settings 的 `Restart Assistant` 是明確確認後的恢復入口，�
 不改 EEG 或 root settings.json。RuntimeLifecycle 共用既有 unload／dispatcher cleanup，
 舊 runtime 完整釋放後才建立新 controller；只有新模型 READY 才顯示成功。清理失敗保留
 ownership、拒絕舊 controller 回報並允許安全重試；App close 優先，不再建立替代 runtime。
+Lifecycle 的 runtime snapshot 接線固定來源 controller 的 Python 身分；排隊回呼先檢查
+native receiver 仍存在，再核對目前 controller，不依賴斷線後可能失效的 Qt `sender()`。
 Manager 的 Qt signal ingress 核對 live controller 身分與 initialized 狀態，拒收已銷毀 sender
 或舊 generation 的晚到回報。WorkflowUiHandoffHost 只 detach Assistant consumer，保留
 Desktop command completion，避免重啟吞掉既有 GUI 工作結果。Settings 只呈現 owner 進度。
@@ -244,7 +247,9 @@ Assistant 已移除曾經重複保存這些資訊的 `decision_context`／turn-a
 最後一則必要user-role JSON只含`application_state`與`current_user: {text}`，
 保留當輪原文，不含source ID或pending。State card仍是assembler內部投影，
 送出時轉為required application_state，不作optional state_card。工具catalog的required
-約束完整執行參數；缺值不能從歷史或範例填入。固定policy沒有跨輪靜態示範。
+約束完整執行參數；缺值不能從歷史或範例填入。工具沿用原產品JSON catalog，不採用研究R3
+文字呈現或完整action/reply示意。固定policy沒有跨輪靜態示範，格式修復沿用原提示。
+真正多操作要求須回覆請選一件，不能只執行第一項；此語意仍由模型判斷，並非Host意圖分類。
 
 模型不接收先前 user／Assistant 對話，也不產生conversation_history參考。
 ConversationHistory仍保存畫面／診斷所需內容；assembler只從有界紀錄選出最新有效user
