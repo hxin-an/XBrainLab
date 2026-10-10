@@ -2553,7 +2553,8 @@ def report_automated_model_checks_passed(report: object) -> bool:
             or len(attempts) != len(entries)
             or (
                 len(entries) == 2
-                and attempts[0].get("envelope_status") != "format_error"
+                and attempts[0].get("envelope_status")
+                not in ("format_error", "multiple_objects")
             )
             or trajectory.get("format_recovery_attempts") != len(entries) - 1
         ):

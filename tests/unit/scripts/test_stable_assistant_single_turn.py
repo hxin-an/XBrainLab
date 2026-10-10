@@ -138,6 +138,12 @@ def test_run_report_does_not_promote_any_reply_to_semantic_pass(monkeypatch):
         "null_attempts",
         "null_score",
         "null_trajectory",
+        "format_retry",
+        "multiple_object_retry",
+        "valid_retry",
+        "reply_retry",
+        "unknown_retry",
+        "missing_retry_status",
     ],
 )
 def test_automatic_gate_is_independent_of_semantic_review_and_fails_closed(defect):
@@ -206,8 +212,37 @@ def test_automatic_gate_is_independent_of_semantic_review_and_fails_closed(defec
         rows[0]["post_recovery_score"] = None
     elif defect == "null_trajectory":
         rows[0]["trajectory"] = None
+    elif defect in {
+        "format_retry",
+        "multiple_object_retry",
+        "valid_retry",
+        "reply_retry",
+        "unknown_retry",
+        "missing_retry_status",
+    }:
+        first_status = {
+            "format_retry": "format_error",
+            "multiple_object_retry": "multiple_objects",
+            "valid_retry": "valid",
+            "reply_retry": "no_tool",
+            "unknown_retry": "unknown",
+            "missing_retry_status": None,
+        }[defect]
+        rows[-1]["first_generation_score"]["passed"] = False
+        rows[-1]["trajectory"] = {
+            "format_recovery_attempts": 1,
+            "actual_generation_call_indices": [20, 21],
+            "policy_attempts": [
+                {"envelope_status": first_status},
+                {"envelope_status": "valid"},
+            ],
+        }
+        report["generation_trace"].append(
+            {"global_call_index": 21, "case_id": cases[-1].case_id}
+        )
+        report["capture_integrity"]["artifact_count"] = 21
     assert runner.report_automated_model_checks_passed(report) is (
-        defect in {None, "candidate_gate"}
+        defect in {None, "candidate_gate", "format_retry", "multiple_object_retry"}
     )
     assert not runner.report_candidate_passed(report)
 

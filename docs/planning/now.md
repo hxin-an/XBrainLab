@@ -33,9 +33,22 @@
 Windows直接controller／policy／assembler／取消與lifecycle 402項、evaluator 80項通過，
 changed Python lint與diff check通過。接線重用固定格式提示，無新reason state；正常首答不附。
 170份無推論input export（85要求、7 stages），最長2494 tokens；34份正常prompt hash與A全相同。
-獨立邊界覆核未發現執行缺陷；校正文案：每次repair刷新publication、各次proposal檢查freshness，
-並非跨retry鎖住snapshot。這不更改runtime；完整input獨立覆核進行中。
-Next：凍結clean候選、34／74／26 off真模型驗證、同head CI與Windows正常ChatPanel。
+獨立邊界與完整input覆核無阻擋；校正文案：每次repair刷新publication、各次proposal檢查freshness，
+並非跨retry鎖住snapshot。Channel Selection的preprocessed target/source差異為既有advisory，
+本輪不擴工具契約。獨立覆核不替代實測。
+
+Clean e2333155真模型34題全部首答通過、raw與A全相同；74廣度獨立tool-decision覆核
+65/74首答、66/74最終，仍有既有漏操作／部分複合操作／錯誤替代／不可用工具提案。
+原report含兩題回答內容扣分，保留63/64不改寫；4筆錯提案到測試器抑制執行邊界，
+不能說是Host擋住。無同期A74配對，不宣稱所有raw全面等價。
+RAG off固定26題已完成（27生成），待獨立tool-decision覆核。所有capture verified、engine closed。
+累計279/450次生成。自然案例未產生多JSON，另用B的7份既存錯誤與2個固定真雙操作probe
+作最多9次單一修復重播（不追加候選），明列seed非本候選自然首答，不混入準確率。
+Verifier兩次生成只接受format_error的舊斷言已red→green修正：multiple_objects可通過，
+valid/no_tool/未知/缺分類仍不得冒充格式重試；既有gate測試node22項通過。
+僅修檢查器，不改模型評分／產品／舊報表；e2333155產品／prompt source保持相同。
+Next：凍結final source、9次repair replay、Windows正常ChatPanel、同head CI；
+均閉合後直接開Windows正式版與PowerShell log交集中手測。
 
 ## Historical — R3 產品移植與有界格式恢復
 
