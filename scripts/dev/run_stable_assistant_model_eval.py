@@ -1354,6 +1354,15 @@ def score_model_response(
 ) -> TargetEvalScore:
     """Require exact JSON, target tool, parameters, and registered schema."""
     envelope = CommandParser.parse_product(response)
+    if envelope.status is ToolEnvelopeStatus.NO_TOOL:
+        return TargetEvalScore(
+            False,
+            "tool_selection",
+            response[:1000],
+            "respond_to_user",
+            {"message": envelope.message},
+            "Model replied instead of selecting the required action.",
+        )
     if envelope.status is not ToolEnvelopeStatus.VALID:
         return TargetEvalScore(
             False,

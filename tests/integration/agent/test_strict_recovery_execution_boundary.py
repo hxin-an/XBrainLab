@@ -351,6 +351,10 @@ def test_recovered_valid_envelope_reaches_real_execution_coordinator(
         assert retry_boundaries == [([], False)]
         assert worker.messages[1][-1] == worker.messages[0][-1]
         assert malformed not in str(worker.messages[1])
+        correction = worker.messages[1][0]["content"]
+        assert "Do not output both an action and a reply" in correction
+        assert "If the user requests multiple actions" in correction
+        assert "do not choose or execute just the first" in correction
         assert controller._tool_attempt_session.execution_count == 1
         assert coordinator.commands == ["import_eeg_data"]
         handoff = controller.pending_interactions.workflow_handoff

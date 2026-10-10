@@ -1,8 +1,43 @@
 # XBrainLab Now
 
-最後更新：`2026-10-08`
+最後更新：`2026-10-10`
 
-## Active — R3 產品移植與有界格式恢復
+## Active — 原產品提示與一次多物件格式修復收尾
+
+使用者已批准：撤回 R3 提示／catalog／Hz 呈現移植，以原產品 A（8ff594b0）加一次
+多 JSON 修復完成回歸、独立覆核、CI、Windows 真實流程與集中手測；未批准 merge。
+原 A/B/C/D 證據與提交保留；E/F 診斷不再執行。原研究 checkout／settings／NAS 不動。
+
+- 問題與證據：B→C 首答34份相同，27/34→31/34是修復收益；D剩三題是合法reply漏操作。
+  舊positive scorer誤標output_format，須修診斷、不改通過標準或歷史報表。
+- Outcome：正常首答的prompt、工具schema與RAG維持A；parser辨識多頂層物件後零副作用，
+  提醒模型只回傳一個action或reply。真正多操作要求須reply請選一件，不能選第一個執行。
+- Scope：撤回三個產品檔的R3呈現及專屬測試；沿既有policy固定格式提示提醒單一物件，
+  不新增session分類狀態或第二提示傳遞鏈；scorer錯因更正、直接測試、文件與既有驗證runner。
+  非目標：不改模型、RAG、案例oracle、UI layout、語意重試、跨輪草稿或研究封存。
+- Owners不變：既有parser、recovery policy、attempt session、assembler、controller各司其職。
+  不新增owner／控制層。Deletion：R3文字renderer、decision reminder及專屬斷言；
+  正常產品源碼回復A經apply_patch，不重寫Git歷史。小切片提交、必要時PR revert。
+- UI確認：使用者批准無效多物件一次重試、再失敗終止；無layout或工具membership改動。
+- 步驟：補red（specific recovery提示、有效reply錯因）→撤回R3／實作→focused green及
+  取消／stale／exact-once→獨立實際diff与完整input覆核→clean exact-source模型回歸
+  →同head CI／Windows正常ChatPanel→直接開正式Windows版本及log交集中手測。
+- 模型驗證：34是回歸非排名；74廣度含真雙操作／缺值／禁止／blocked，26 off配對沿既定
+  計畫。保留原34 A對照並核對首答輸入等價；廣度必要時與原A作有界同題比較，不拼接分數。
+  既有143次生成；原450硬上限不增加。每次新推論前盤點餘額；不為追分調提示或改題。
+- 停止條件：自動與独立覆核無新增阻擋、同head適用CI成功、Windows流程可用後才交手測。
+  若新增重試不通過回歸，不追加提示候選或放寬門檻；依使用者批准放棄此新增能力並確認
+  原基準可交付。遇需新行為決策或必要環境不可得才明示阻擋，不以checkpoint結束。
+
+已取得red→green：四種malformed→合法重試提醒、合法reply漏操作的scorer分類。
+Windows直接controller／policy／assembler／取消與lifecycle 402項、evaluator 80項通過，
+changed Python lint與diff check通過。接線重用固定格式提示，無新reason state；正常首答不附。
+170份無推論input export（85要求、7 stages），最長2494 tokens；34份正常prompt hash與A全相同。
+獨立邊界覆核未發現執行缺陷；校正文案：每次repair刷新publication、各次proposal檢查freshness，
+並非跨retry鎖住snapshot。這不更改runtime；完整input獨立覆核進行中。
+Next：凍結clean候選、34／74／26 off真模型驗證、同head CI與Windows正常ChatPanel。
+
+## Historical — R3 產品移植與有界格式恢復
 
 使用者已批准完整計畫，endpoint 是同版本 CI／獨立覆核／Windows 實機驗證後集中手測，
 未授權 merge。產品基準 `8ff594b0647c365f5015579e6e055df566eae0eb`；worktree
@@ -98,12 +133,64 @@ D獨立覆核確認170輸入只刪示例，user/state/RAG/repair原文不變。
 engine closed、source clean。D消除多JSON但未消除R3移植退步，不能宣稱改善或交付。
 真模型累計143/450；尚未跑74廣度、26 off配對、Windows native、CI或開PR。
 
-### Blocked — 需要基線取捨，不再增加提示變體
+### Historical — 先分析錯誤，診斷比較未開跑（由上方收尾決策取代）
 
 唯一有界呈現修理已用完，候選仍比A少3題。不能沿用舊Development例外或調低門檻
 直接交手測，也不因額度尚有剩餘繼續試prompt。所有A/B/C/D成功與失敗證據留在
 `build/r3-evidence/`，對應source以各report擁有，不改歷史研究結果。
-建議使用者決策：退回原產品prompt，保留本輪獨立覆核通過的有界多JSON恢復與直接測試，
-重新固定產品候選再完成其相關模型／native／CI驗證。這是產品基線取捨，不宣稱此組合
-已測或R3沒有研究價值；R3施工commit與比較證據保留。未獲此決策前不做第二輪提示調整。
+使用者要求先分析錯誤再決定下一輪，已同意此順序。退回原產品prompt加新recovery只是
+保守候選，不是已選定方案。本步只核對現有source/capture與整理文件，不改產品或追加推論。
 已知Assistant偶發匯入卡住根因未證實，Restart只是恢復入口；不宣稱本輪修好。
+
+#### 逐題事實與證據限制
+
+下表只列固定34題中的8個已知回歸；其餘26題在A/B/C/D都首答通過。A/B欄為首答，
+C/D欄為最多一次修復後結果。通過指工具與參數選擇，非回答文采或真GUI完成。
+
+| 案例（TEST-前綴省略） | A | B | C | D |
+| --- | --- | --- | --- | --- |
+| A02-01-V0：開channel selector，之後選C3/C4 | 通過 | 雙JSON | 雙JSON | 回答代替操作 |
+| A02-01-V1：開channel selection，由使用者設定 | 通過 | 雙JSON | 通過 | 回答代替操作 |
+| A02-02-V1：開channel window，之後選較小集合 | 通過 | 雙JSON | 雙JSON | 通過 |
+| A03-01-V1：開montage供檢視，尚不套用 | 通過 | 雙JSON | 通過 | 通過 |
+| A04-02-V1：開epoch settings供檢視 | 通過 | 雙JSON | 通過 | 回答代替操作 |
+| A12-02-V0：執行min-max | 通過 | 通過 | 通過 | 通過 |
+| A15-02-V0：清除既有preprocessing | 通過 | 雙JSON | 通過 | 通過 |
+| A15-02-V1：reset後使用者再試其他流程 | 通過 | 雙JSON | 雙JSON | 通過 |
+
+- C→D最終同為31/34，但修好A02-02-V1/A15-02-V1、退步A02-01-V1/A04-02-V1；
+  不能只看相同總分，或把目前三題當成始終未修好的同三題。
+- B→C首答保持相同，格式repair救回四題；C→D僅移除system完整輸出示例，雙JSON在
+  本34題中消失，但部分操作改為合法reply。這支持示例影響此批輸出，不證明模型內部機制。
+- D三個漏操作的工具均callable、零參數。兩個channel案例RAG為正常empty（非error），
+  epoch案例已有create_epochs_01/02兩個正確開窗示例仍失敗。RAG內容各版保持一致，
+  不能直接歸因RAG不足；這也不能證明RAG永遠無影響。
+- 三題輸入分別1524/1519/1693 tokens，未觸及8192 runtime bound；實際prompt/raw hash、
+  題目/oracle、model revision與生成設定已對照。沒有發現截斷、漏工具或source混用。
+- 合法NO_TOOL卻應操作是語意漏操作。舊positive scorer的output_format標籤不精確；分析
+  依parser分類與expected/actual action區分，不改歷史分數，也不因此觸發semantic retry。
+- A→B同時改decision instructions、catalog呈現、Hz說明與輸出示例，不能據此單獨否定
+  文字catalog或R3規則。34題含事後選出的8個已知錯例，不是新holdout或全面產品能力排名。
+
+#### 待確認的最小診斷比較（不是新一輪自由調prompt）
+
+尚待區分：D的漏操作主要受decision instructions、catalog呈現，或兩者交互影響。
+不從模型承諾開窗就推論其內部思考；先列兩個可區分因素的局部替換，但本次只提議E：
+
+| 對照 | decision instructions | catalog呈現 | 相對D唯一替換 |
+| --- | --- | --- | --- |
+| D（既有證據） | R3 | 文字 | 無 |
+| E（未跑） | 原產品A | 文字 | decision_instructions整塊，含移除R3 reminder |
+| F（備案，未排入執行） | R3 | 原產品A的JSON renderer | catalog呈現整塊 |
+
+E/F均維持D的工具schema與Hz說明、無system完整輸出示例、同一RAG/state/user、
+model/revision/decoding、parser與一次recovery。不將A的舊Hz內容差異偷偷帶入F。
+E直接針對回答/操作決策規則，保持文字catalog不動。先用完整prompt diff確認只替換
+指定區塊，再分core20/english6/recovery8跑固定34題（含負向保護），不只重跑三題。
+E最多68次生成；現有143加E68加後續74廣度/26off/8native的216次最壞上限為427，
+尚留23次餘裕，總450不增加。沒有新增推論。若兩個對照都跑則最壞495，不應先執行
+才發現額度不足；因此F不是自動下一輪，需要另行決策，不能犧牲交付gate給它騰額度。
+E只說明在D條件下替換規則的局部影響，不是完整factorial、交互作用證明或最佳提示搜尋。
+成功與退步逐題列出；若E不成立，回報原因仍未隔離，不追加臨時提示變體。
+選定候選後才完成既定廣度/off配對/native/CI與手測；診斷勝出不等於handoff-ready。
+Next：與使用者確認上述診斷比較及額度後才實作／開跑，不自動採納回退方案。

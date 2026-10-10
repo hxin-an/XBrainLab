@@ -352,7 +352,7 @@ def test_each_positive_case_is_callable_from_its_production_fixture() -> None:
     for case in load_target_cases(DEFAULT_CASES):
         messages = build_case_messages(case, registry)
 
-        assert f"Action: {case.expected_tool}" in messages[0]["content"].splitlines()
+        assert f'"name": "{case.expected_tool}"' in messages[0]["content"]
 
 
 def test_target_case_loader_rejects_duplicate_normalized_inputs(tmp_path: Path) -> None:
@@ -1328,9 +1328,9 @@ def test_case_messages_publish_stage_tools_without_retired_surface() -> None:
     system = messages[0]["content"]
 
     assert case.workflow_stage == "data_loaded"
-    assert "Action: create_epochs" in system.splitlines()
-    assert "Action: switch_panel" in system.splitlines()
-    assert "Action: query_state" not in system.splitlines()
+    assert '"name": "create_epochs"' in system
+    assert '"name": "switch_panel"' in system
+    assert '"name": "query_state"' not in system
     assert json.loads(messages[-1]["content"])["current_user"] == {
         "text": case.user_input,
     }
@@ -1347,14 +1347,16 @@ def test_precision_messages_project_backend_unavailable_actions_without_schemas(
     epochs_system = build_case_messages(epochs, registry)[0]["content"]
     model_system = build_case_messages(model, registry)[0]["content"]
 
-    assert "Unavailable (not callable):" in epochs_system
-    assert "- create_epochs: Load raw data before creating EEG epochs." in epochs_system
-    assert "Action: create_epochs" not in epochs_system.splitlines()
+    assert "Unavailable Action Reference (not callable):" in epochs_system
     assert (
-        "- select_model: This action is not callable in workflow stage "
-        "'data_loaded'." in model_system
+        '"create_epochs": "Load raw data before creating EEG epochs."' in epochs_system
     )
-    assert "Action: select_model" not in model_system.splitlines()
+    assert '"name": "create_epochs"' not in epochs_system
+    assert (
+        '"select_model": "This action is not callable in workflow stage '
+        "'data_loaded'.\"" in model_system
+    )
+    assert '"name": "select_model"' not in model_system
 
 
 def test_precision_first_turn_messages_use_the_product_context_projection() -> None:
@@ -1471,6 +1473,45 @@ def test_precision_exact_unavailable_call_uses_backend_reason_at_attempt_boundar
     assert score.product_outcome.disposition == "blocked"
     assert score.product_outcome.message is not None
     assert "Load raw data before creating EEG epochs." in score.product_outcome.message
+
+
+def test_positive_score_classifies_legal_reply_as_wrong_tool_selection() -> None:
+    case = next(
+        item for item in load_target_cases() if item.case_id == "select_channels_01"
+    )
+    message = "I will open the channel selector for you."
+    response = _model_response("respond_to_user", {"message": message})
+
+    score = score_model_response(case, response, target_tool_registry())
+
+    assert score.passed is False
+    assert score.failure_type == "tool_selection"
+    assert score.parsed_tool == "respond_to_user"
+    assert score.parsed_parameters == {"message": message}
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        '{"tool_name":"respond_to_user",',
+        '{"tool_name":"respond_to_user","parameters":{"message":123}}',
+        (
+            '{"tool_name":"select_channels","parameters":{}}'
+            '{"tool_name":"respond_to_user","parameters":{"message":"Opened."}}'
+        ),
+    ],
+)
+def test_positive_score_keeps_invalid_envelopes_as_format_failures(response) -> None:
+    case = next(
+        item for item in load_target_cases() if item.case_id == "select_channels_01"
+    )
+
+    score = score_model_response(case, response, target_tool_registry())
+
+    assert score.passed is False
+    assert score.failure_type == "output_format"
+    assert score.parsed_tool is None
+    assert score.parsed_parameters is None
 
 
 def test_score_accepts_only_two_field_envelope_exact_tool_and_schema() -> None:

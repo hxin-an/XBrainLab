@@ -273,10 +273,11 @@ PR #71 的 bounded baseline 與 v16 以前 81-case 報告保留原 source、sche
 
 ### Single-turn Assistant candidate
 
-#### 2026-10-08 R3 產品移植與格式恢復候選
+#### 2026-10-10 原產品提示與一次多物件格式修復收尾
 
-使用者核准以最新產品底層移植研究R3的模型輸入設計，並將多JSON納入既有一次格式修復。
-按Now的固定A/B/C順序比較，不改歷史研究輸入／分數；研究8個格式錯例只作已知回歸，
+使用者核准撤回R3提示移植，正常首答維持原產品A；僅將多JSON納入既有一次格式修復並
+提醒一個action或reply二選一，真正多操作要求須reply請選一件。原A/B/C/D保留；
+不改歷史研究輸入／分數；研究8個格式錯例只作已知回歸，
 不稱新holdout。原20核心、6英文與74廣度案例及tool-decision判分保持；首答／repair後、
 准入與實際副作用分列，Host擋錯不能救分。新候選不得挪用舊Development例外跳過gate。
 重試成功仍需schema／來源／capability／confirmation與publication檢查；多物件不得抽取執行。

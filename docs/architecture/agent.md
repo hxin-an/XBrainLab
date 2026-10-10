@@ -245,9 +245,9 @@ Assistant 已移除曾經重複保存這些資訊的 `decision_context`／turn-a
 最後一則必要user-role JSON只含`application_state`與`current_user: {text}`，
 保留當輪原文，不含source ID或pending。State card仍是assembler內部投影，
 送出時轉為required application_state，不作optional state_card。工具catalog的required
-約束完整執行參數；缺值不能從歷史或範例填入。工具以同一schema生成可讀文字，保留
-required/type/enum等限制；不支援的schema約束直接拒絕，不靜默省略。固定policy沒有跨輪
-靜態示範；catalog只保留wire schema，不另外排列多個完整action/reply輸出示例。
+約束完整執行參數；缺值不能從歷史或範例填入。工具沿用原產品JSON catalog，不採用研究R3
+文字呈現或完整action/reply示意。固定policy沒有跨輪靜態示範；格式修復另外提醒只輸出
+一個action或reply，真正多操作要求須回覆請選一件，不能只執行第一項。
 
 模型不接收先前 user／Assistant 對話，也不產生conversation_history參考。
 ConversationHistory仍保存畫面／診斷所需內容；assembler只從有界紀錄選出最新有效user

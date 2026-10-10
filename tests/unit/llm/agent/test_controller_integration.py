@@ -179,7 +179,10 @@ def test_controller_prompt_generation(controller: LLMController) -> None:
 
     msgs = controller.assembler.get_messages(controller.history)
     assert [message["role"] for message in msgs] == ["system", "user"]
-    assert "Available choices (guidance, not output):" in msgs[0]["content"]
+    assert (
+        "Action Contract Catalog (input definitions, never an output array):"
+        in msgs[0]["content"]
+    )
     context = json.loads(msgs[-1]["content"])
     assert context["application_state"]["workflow_stage"] == "empty"
     assert context["application_state"]["state_reliable"] is True
