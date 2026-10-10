@@ -994,7 +994,7 @@ class _EvaluatorControllerHarness:
                 "proposal"
                 if self._observed_decision is not None
                 else "recovery"
-                if recovery_action in {"exhausted", "retry_format"}
+                if recovery_action in {"choose_one", "exhausted", "retry_format"}
                 else "no_tool"
             ),
             "attempt_action": action,
@@ -1016,6 +1016,11 @@ class _EvaluatorControllerHarness:
             "message": None,
             **self._empty_effects(),
         }
+        if recovery_action == "choose_one" and terminal["kind"] == "respond":
+            # The controller publishes the trusted reply through its normal
+            # response terminal; the shared recovery decision owns this
+            # evaluator-facing choose-one classification.
+            terminal = {**terminal, "kind": "choose_one"}
         return admission, terminal
 
 
@@ -2553,8 +2558,7 @@ def report_automated_model_checks_passed(report: object) -> bool:
             or len(attempts) != len(entries)
             or (
                 len(entries) == 2
-                and attempts[0].get("envelope_status")
-                not in ("format_error", "multiple_objects")
+                and attempts[0].get("envelope_status") != "format_error"
             )
             or trajectory.get("format_recovery_attempts") != len(entries) - 1
         ):

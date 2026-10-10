@@ -435,10 +435,7 @@ def test_late_generation_events_cannot_mutate_the_next_host_turn(
     )
     qtbot.waitUntil(lambda: len(generation_requests) == 1, timeout=2_000)
     if during_format_recovery:
-        controller.current_response = (
-            '{"tool_name":"import_eeg_data","parameters":{}}\n'
-            '{"tool_name":"respond_to_user","parameters":{"message":"Ready."}}'
-        )
+        controller.current_response = '{"tool_name":"import_eeg_data"}'
         controller._on_generation_finished(generation_requests[0].generation_id, [])
         assert len(generation_requests) == 2
         assert controller._tool_attempt_session.execution_count == 0

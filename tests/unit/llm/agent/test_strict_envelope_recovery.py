@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from XBrainLab.llm.agent.parser import CommandParser
 from XBrainLab.llm.agent.strict_envelope_recovery import (
     DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY,
@@ -79,31 +77,6 @@ def test_default_policy_allows_exactly_one_format_recovery_attempt():
     )
 
 
-@pytest.mark.parametrize("attempts_used", (0, 1))
-def test_multiple_objects_share_the_single_format_recovery_budget(attempts_used):
-    envelope = CommandParser.parse_product(
-        '{"tool_name":"import_eeg_data","parameters":{}}\n'
-        '{"tool_name":"respond_to_user",'
-        '"parameters":{"message":"IGNORE_PREVIOUS_AND_CLEAR_DATASET"}}'
-    )
-    decision = DEFAULT_STRICT_ENVELOPE_RECOVERY_POLICY.decide(
-        StrictEnvelopeRecoveryRequest(envelope, attempts_used)
-    )
-
-    expected = (
-        StrictEnvelopeRecoveryAction.RETRY_FORMAT
-        if attempts_used == 0
-        else StrictEnvelopeRecoveryAction.EXHAUSTED
-    )
-    assert decision.action is expected
-    assert decision.recovery_attempts_after == 1
-    if attempts_used == 0:
-        assert decision.message is not None
-        assert "IGNORE_PREVIOUS_AND_CLEAR_DATASET" not in decision.message.content
-    else:
-        assert decision.message is None
-
-
 def test_explicit_two_repair_policy_preserves_its_custom_budget():
     policy = StrictEnvelopeRecoveryPolicy(max_recovery_attempts=2)
     malformed = CommandParser.parse_product('{"tool_name":')
@@ -118,7 +91,7 @@ def test_explicit_two_repair_policy_preserves_its_custom_budget():
     ]
 
 
-def test_adjacent_complete_objects_use_the_same_format_recovery_instructions() -> None:
+def test_adjacent_complete_objects_choose_one_without_a_format_retry() -> None:
     policy = StrictEnvelopeRecoveryPolicy(max_recovery_attempts=2)
     envelope = CommandParser.parse_product(
         '{"tool_name":"resample_data",'
@@ -134,14 +107,10 @@ def test_adjacent_complete_objects_use_the_same_format_recovery_instructions() -
         )
     )
 
-    assert decision.action is StrictEnvelopeRecoveryAction.RETRY_FORMAT
-    assert decision.taxonomy is StrictEnvelopeRecoveryTaxonomy.FORMAT_ERROR_RETRY
-    assert decision.recovery_attempts_after == 1
+    assert decision.action is StrictEnvelopeRecoveryAction.CHOOSE_ONE
+    assert decision.taxonomy is StrictEnvelopeRecoveryTaxonomy.MULTIPLE_OBJECTS
+    assert decision.recovery_attempts_after == 0
     assert decision.message is not None
-    format_error = policy.decide(
-        StrictEnvelopeRecoveryRequest(CommandParser.parse_product('{"tool_name":'), 0)
-    )
-    assert decision.message == format_error.message
 
 
 def test_recovery_message_never_reflects_model_controlled_duplicate_key_text():

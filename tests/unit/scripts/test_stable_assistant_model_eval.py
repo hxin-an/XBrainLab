@@ -920,9 +920,7 @@ def test_precision_scoring_uses_parser_and_host_attempt_outcome_not_keywords() -
         assert outcome.state_mutation_permitted is False
 
 
-def test_multi_object_precision_retries_once_then_exhausts_without_side_effect() -> (
-    None
-):
+def test_multi_object_precision_uses_choose_one_without_retry_or_side_effect() -> None:
     registry = target_tool_registry()
     case = next(
         item
@@ -944,23 +942,20 @@ def test_multi_object_precision_retries_once_then_exhausts_without_side_effect()
 
     trajectory = evaluate_case_trajectory(case, registry, generate)
 
-    assert calls == 2
+    assert calls == 1
     assert trajectory.raw_score.passed is False
     assert trajectory.final_score.passed is False
-    assert [attempt.envelope_status for attempt in trajectory.attempts] == [
-        "multiple_objects",
-        "multiple_objects",
-    ]
-    assert [attempt.recovery_action for attempt in trajectory.attempts] == [
-        "retry_format",
-        "exhausted",
-    ]
+    assert len(trajectory.attempts) == 1
+    assert trajectory.attempts[0].envelope_status == "multiple_objects"
+    assert trajectory.attempts[0].recovery_action == "choose_one"
     outcome = trajectory.final_score.product_outcome
     assert outcome is not None
-    assert outcome.disposition == "format_recovery_exhausted"
+    assert outcome.disposition == "choose_one"
     assert trajectory.product_terminal is not None
-    assert trajectory.product_terminal["kind"] == "format_recovery_exhausted"
-    assert "could not produce a valid assistant action" in outcome.message
+    assert trajectory.product_terminal["kind"] == "choose_one"
+    assert outcome.message == (
+        "I can do one action at a time. Please tell me which action to do first."
+    )
     assert outcome.confirmation_requested is False
     assert outcome.gui_handoff_permitted is False
     assert outcome.application_service_permitted is False
@@ -968,36 +963,28 @@ def test_multi_object_precision_retries_once_then_exhausts_without_side_effect()
     assert outcome.state_mutation_permitted is False
 
 
-@pytest.mark.parametrize("repair", ["action", "reply", "wrong_action"])
-def test_multi_object_recovery_keeps_raw_classification_and_scores_separate(repair):
+@pytest.mark.parametrize("suite", ["positive", "precision"])
+def test_multi_object_terminal_keeps_raw_classification_without_retry(suite):
     registry = target_tool_registry()
-    if repair == "reply":
+    if suite == "precision":
         case = next(
             case for case in load_precision_cases() if case.case_id == "multi_en"
         )
         action = _model_response(
             "apply_bandpass_filter", {"low_freq": 4, "high_freq": 38}
         )
-        repaired = _model_response(
-            "respond_to_user", {"message": "Which operation should I do first?"}
-        )
     else:
         case = next(
             case for case in load_target_cases() if case.case_id == "select_channels_01"
         )
         action = _model_response("select_channels", {})
-        repaired = (
-            action
-            if repair == "action"
-            else _model_response("switch_panel", {"panel_name": "dataset"})
-        )
     first = (
         "  "
         + action
         + _model_response("respond_to_user", {"message": "UNTRUSTED_TAIL_MARKER"})
         + "\n"
     )
-    outputs = iter([first, repaired])
+    outputs = iter([first])
     sent = []
 
     def generate(messages):
@@ -1008,25 +995,25 @@ def test_multi_object_recovery_keeps_raw_classification_and_scores_separate(repa
     trajectory = evaluate_case_trajectory(
         case, registry, generate, generation_recorder=recorder
     )
-    assert len(sent) == len(recorder.entries) == 2
-    assert sent[0][-1] == sent[1][-1]
-    assert case.user_input in sent[1][-1]["content"]
-    assert "UNTRUSTED_TAIL_MARKER" not in str(sent[1])
+    assert len(sent) == len(recorder.entries) == len(trajectory.attempts) == 1
     assert (
         recorder.entries[0].raw_output_sha256
         == hashlib.sha256(first.encode()).hexdigest()
     )
     assert trajectory.attempts[0].envelope_status == "multiple_objects"
-    assert trajectory.attempts[0].recovery_action == "retry_format"
+    assert trajectory.attempts[0].recovery_action == "choose_one"
     assert trajectory.raw_score.passed is False
-    assert trajectory.post_recovery_score.passed is (repair != "wrong_action")
-    assert trajectory.final_score.passed is (repair != "wrong_action")
-    assert trajectory.final_response == repaired
+    assert trajectory.post_recovery_score.passed is False
+    assert trajectory.final_score.passed is False
+    assert trajectory.final_response == first.strip()
     terminal = trajectory.product_terminal
+    assert terminal["kind"] == "choose_one"
+    assert not terminal["confirmation_observed"]
+    assert not terminal["gui_handoff_reached"]
     assert not terminal["application_service_called"]
     assert not terminal["tool_executor_called"]
     assert not terminal["state_mutation_observed"]
-    assert terminal["execution_boundary_reached"] is (repair != "reply")
+    assert not terminal["execution_boundary_reached"]
 
 
 def test_multi_action_product_scoring_cannot_rescue_multiple_objects():

@@ -143,7 +143,7 @@ Qt processing／closing admission。這些內部責任移交不新增工具或�
 - 用`CommandParser`接受 exact 兩欄 JSON response（`tool_name`、`parameters`），可有整份回答單一 `json`／無語言 code fence；
   只解除外框，原始輸出照存，不做散文抽取、寬鬆 schema 或 legacy fallback。
 - 初次生成最多加一次既有格式修復；同一修復仍失敗即停止，不重送第二次相同策略。
-  多個完整物件也共用這一次修復；所有原始候選皆不執行。已交付操作、確認取消與執行失敗不由格式重試重送。
+  多個完整物件維持choose-one terminal，零重試、零執行；已交付操作、確認取消與執行失敗不由格式重試重送。
 - `respond_to_user`只呈現回答；其他工具由`ToolAttemptCoordinator`核對publication、
   適用的方法來源與`VerificationLayer`的完整required/type/enum/range，再進執行admission。
 - 套用 ApplicationService capability gate，避免 assistant 在錯誤 backend state 呼叫不該開放的工具。
@@ -172,8 +172,8 @@ Controller 保留 missing-generation 拒絕與 Qt delivery。有效 proposal 只
 「重試」有三個不同邊界，不能統稱 Agent 自動修復：
 
 - 模型輸出格式錯誤：預設最多額外生成一次（加上首次共兩次），只修正 strict JSON envelope；
-  多個完整物件保留 parser 分類，但同樣最多一次重新生成，不抽取其中任何一個。
-  使用者真正要求多操作時，模型應回覆請選一件；格式修復不授權部分執行。
+  多個完整物件直接要求使用者選一件，不重試、不抽取其中任何一個。
+  曾試驗多物件重試，但真雙操作seed可被修成部分操作，因此未納入產品。
 - 工具／backend 執行失敗：回報結果並結束 turn，不把錯誤再交模型重新規劃或自動執行。
   既有確認／GUI handoff 是等待使用者的相關聯回覆；確認後仍重查 publication，不是模型重試。
 - 停止／關閉失敗：既有 lifecycle 保留 runtime ownership 並重試資源清理，不代表重跑工具。
@@ -246,8 +246,8 @@ Assistant 已移除曾經重複保存這些資訊的 `decision_context`／turn-a
 保留當輪原文，不含source ID或pending。State card仍是assembler內部投影，
 送出時轉為required application_state，不作optional state_card。工具catalog的required
 約束完整執行參數；缺值不能從歷史或範例填入。工具沿用原產品JSON catalog，不採用研究R3
-文字呈現或完整action/reply示意。固定policy沒有跨輪靜態示範；格式修復另外提醒只輸出
-一個action或reply，真正多操作要求須回覆請選一件，不能只執行第一項。
+文字呈現或完整action/reply示意。固定policy沒有跨輪靜態示範，格式修復沿用原提示。
+真正多操作要求須回覆請選一件，不能只執行第一項；此語意仍由模型判斷，並非Host意圖分類。
 
 模型不接收先前 user／Assistant 對話，也不產生conversation_history參考。
 ConversationHistory仍保存畫面／診斷所需內容；assembler只從有界紀錄選出最新有效user

@@ -104,11 +104,6 @@ class StrictToolResponsePromptPolicy:
             "tool_name and parameters. Follow the same response choices above: "
             "respond_to_user for questions, prohibitions or missing values; "
             "call an action only when requested, complete and enabled. "
-            "Do not output both an action and a reply, or several action objects. "
-            "For one requested action, return only its action object, without "
-            "a separate acknowledgement. If the user requests multiple actions, "
-            "return one respond_to_user object asking which to do first; "
-            "do not choose or execute just the first. "
             "No prose, wrappers or code fences."
         )
 

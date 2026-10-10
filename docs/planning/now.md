@@ -2,7 +2,24 @@
 
 最後更新：`2026-10-10`
 
-## Active — 原產品提示與一次多物件格式修復收尾
+## Active — 多物件修復未過安全回歸，依核准條件回退並收尾
+
+2026-10-10停止條件已觸發：clean c8057171的9次seeded repair實測，7份B歷史
+action＋reply可修成正確action，但2個真雙操作probe均修成第一個action；獨立review
+確認這會把原本多JSON零執行終止轉成可准入的部分操作。Seed不是candidate自然首答，
+不宣稱自然失敗率；原始9份capture／hash／report全留存。RAG正常、engine／RAG皆已關閉。
+依本節既有使用者批准的失敗回退，不再調prompt或加owner：全部production恢復8ff594b0，
+多JSON保留直接choose-one零retry／零執行，一般FORMAT_ERROR保留原一次格式修復。
+保留有用的測試、scorer錯因修正及模型原始多JSON不得被Host回覆救分的修正；撤掉
+僅服務被放棄能力的測試／驗證邏輯。歷史A–D及失敗candidate提交不改写。
+回退已完成：production與8ff594b0逐檔相同；直接回退保護8項先red，再product相關281項green，
+evaluator兩檔127項green。新增測試保護多JSON出現在首答或一般修復後皆不執行；
+保留一般格式修復中的取消／stale回呼保護。沒有新增產品owner或行為。
+Next：獨立diff review→clean freeze；只補受影響的舊格式修復實測、
+Windows正常ChatPanel與同head CI，再開給使用者集中手測。正常34題產品輸入/raw等價證據
+沿用但註明原SHA；不重複跑不受影響的模型推論。累計288/450，禁止因餘額尚有而試新提示。
+
+### 本輪原候選及其驗證（已被上述回退決策取代）
 
 使用者已批准：撤回 R3 提示／catalog／Hz 呈現移植，以原產品 A（8ff594b0）加一次
 多 JSON 修復完成回歸、独立覆核、CI、Windows 真實流程與集中手測；未批准 merge。

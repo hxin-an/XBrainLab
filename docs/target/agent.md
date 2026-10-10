@@ -397,14 +397,16 @@ backend publication或generation。接受裸JSON，或整份回答恰為一層`j
 Markdown fence；只能解除外框，raw output原樣保留。不從prose、任意code block或多個
 候選中抽取指令；前後prose、array、額外欄位、重複key、非標準數值與舊格式皆拒絕。
 
-2026-10-08使用者核准：parser辨認raw含兩個以上相鄰且完整top-level objects時，
-與其他格式錯誤共用初次生成後最多一次repair；模型輸出多物件不代表使用者要求多操作。
-修復前所有候選皆不執行，不挑第一個、不合併參數，也不confirmation或GUI handoff。
+Parser辨認raw含兩個以上相鄰且完整top-level objects時，直接回覆請選一件，零repair、
+零執行、不挑第一個、不合併參數，也不confirmation或GUI handoff。
+2026-10-08曾核准試驗多物件一次repair；2026-10-10依事先核准的停止條件撤回：seeded
+真雙操作要求被修成部分操作，不能以模型提醒當作可靠保護。保留原產品契約，不追加意圖分類。
+模型輸出多物件不等於使用者要求多操作；直接拒絕可能放棄可修好的單操作輸出，是目前保守邊界。
+一般FORMAT_ERROR仍最多一次repair。
 修復保留同一當輪要求，重新取得backend publication，一致投影state與工具，再加固定格式
 提示，不附標準答案、不重用無效proposal。修復proposal仍須通過其生成時publication的
 freshness檢查；再次不合法就停止。這是既有每次生成的狀態刷新，不是跨重試鎖住snapshot。
-2026-10-10收尾確認：正常首答沿用原產品提示；修復提醒一個action或reply二選一，
-不可額外附第二物件。此提示只在格式修復出現，不新增語意重試或要求使用者提供JSON。
+2026-10-10收尾確認：正常首答與一般格式修復均沿用原產品提示；不新增語意重試或要求使用者提供JSON。
 真正的多操作要求仍須respond_to_user請選一件，不能藉修復部分執行。
 Host不補欄或改寫操作。來源／schema拒絕及backend執行失敗不增加模型repair loop。
 任何side effect、confirmation cancel或GUI cancel／fail後不得重送操作。

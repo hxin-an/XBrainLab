@@ -242,7 +242,7 @@ def test_automatic_gate_is_independent_of_semantic_review_and_fails_closed(defec
         )
         report["capture_integrity"]["artifact_count"] = 21
     assert runner.report_automated_model_checks_passed(report) is (
-        defect in {None, "candidate_gate", "format_retry", "multiple_object_retry"}
+        defect in {None, "candidate_gate", "format_retry"}
     )
     assert not runner.report_candidate_passed(report)
 

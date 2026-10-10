@@ -37,18 +37,6 @@ from XBrainLab.llm.agent.ui_handoff import (
 from XBrainLab.llm.core.generation import GenerationProfile
 
 _IMPORT_PROPOSAL = '{"tool_name":"import_eeg_data","parameters":{}}'
-_REPLY_PROPOSAL = (
-    '{"tool_name":"respond_to_user",'
-    '"parameters":{"message":"Please choose one action to do first."}}'
-)
-_MULTIPLE_ENVELOPES = [
-    pytest.param(f"{_IMPORT_PROPOSAL}\n{_REPLY_PROPOSAL}", id="action-and-reply"),
-    pytest.param(f"{_IMPORT_PROPOSAL}\n{_IMPORT_PROPOSAL}", id="two-actions"),
-    pytest.param(
-        f"```json\n{_IMPORT_PROPOSAL}\n{_REPLY_PROPOSAL}\n```",
-        id="fenced-action-and-reply",
-    ),
-]
 
 
 class _ScriptedWorker(QObject):
@@ -247,7 +235,6 @@ def _submit_user_turn(
         '```json\n{"tool_name":"import_eeg_data"}\n```',
         '{"decision":"execute","mode":"new_request",'
         '"action":"import_eeg_data","changes":{},"message":null}',
-        *_MULTIPLE_ENVELOPES,
     ],
 )
 def test_malformed_tool_envelopes_stop_after_one_repair_without_execution(
@@ -296,48 +283,51 @@ def test_malformed_tool_envelopes_stop_after_one_repair_without_execution(
         close_controller_and_wait(controller, qtbot)
 
 
-def test_multiple_objects_never_reach_execution_or_create_pending_request(qtbot):
-    action = _IMPORT_PROPOSAL
-    controller, worker, coordinator = _controller_with_script(
-        [f"{action}\n{action}"] * 2
-    )
+@pytest.mark.parametrize("after_format_retry", (False, True))
+@pytest.mark.parametrize(
+    "user_text", ("Import EEG data.", "Import EEG data and then resample it to 128 Hz.")
+)
+@pytest.mark.parametrize(
+    "second",
+    (
+        _IMPORT_PROPOSAL,
+        '{"tool_name":"respond_to_user","parameters":{"message":"Ready."}}',
+    ),
+)
+def test_multiple_objects_never_reach_execution_or_create_pending_request(
+    qtbot, after_format_retry, user_text, second
+):
+    outputs = ['{"tool_name":'] if after_format_retry else []
+    outputs.extend([f"{_IMPORT_PROPOSAL}\n{second}", _IMPORT_PROPOSAL])
+    controller, worker, coordinator = _controller_with_script(outputs)
+    responses = []
+    controller.response_presentation_ready.connect(responses.append)
 
     try:
-        _submit_user_turn(controller, "Import EEG data.")
-        qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
+        _submit_user_turn(controller, user_text)
+        qtbot.waitUntil(
+            lambda: not controller.is_processing or coordinator.commands != [],
+            timeout=3_000,
+        )
 
-        assert worker.generation_count == 2
-        assert controller._tool_attempt_session.retry_count == 1
+        assert worker.generation_count == 1 + int(after_format_retry)
+        assert controller._tool_attempt_session.retry_count == 0
         assert controller._tool_attempt_session.execution_count == 0
         assert coordinator.commands == []
         assert not controller.pending_interactions.has_pending
         assert controller.pending_interactions.workflow_handoff is None
+        assert len(responses) == 1
+        assert "one action at a time" in responses[0].text
     finally:
         close_controller_and_wait(controller, qtbot)
 
 
-@pytest.mark.parametrize(
-    "malformed",
-    ['```json\n{"tool_name":"import_eeg_data"}\n```', *_MULTIPLE_ENVELOPES],
-)
 def test_recovered_valid_envelope_reaches_real_execution_coordinator(
     qtbot,
-    malformed,
 ):
+    malformed = '```json\n{"tool_name":"import_eeg_data"}\n```'
     valid = _IMPORT_PROPOSAL
     controller, worker, coordinator = _controller_with_script([malformed, valid])
-    retry_boundaries = []
-
-    def record_retry_boundary(status: str) -> None:
-        if status == "Invalid assistant action, retrying...":
-            retry_boundaries.append(
-                (
-                    list(coordinator.commands),
-                    controller.pending_interactions.has_pending,
-                )
-            )
-
-    controller.status_update.connect(record_retry_boundary)
 
     try:
         _submit_user_turn(controller, "Import EEG data.")
@@ -348,45 +338,14 @@ def test_recovered_valid_envelope_reaches_real_execution_coordinator(
 
         assert worker.generation_count == 2
         assert worker.profiles == [GenerationProfile.STRUCTURED_DECISION] * 2
-        assert retry_boundaries == [([], False)]
         assert worker.messages[1][-1] == worker.messages[0][-1]
         assert malformed not in str(worker.messages[1])
-        correction = worker.messages[1][0]["content"]
-        assert "Do not output both an action and a reply" in correction
-        assert "If the user requests multiple actions" in correction
-        assert "do not choose or execute just the first" in correction
         assert controller._tool_attempt_session.execution_count == 1
         assert coordinator.commands == ["import_eeg_data"]
         handoff = controller.pending_interactions.workflow_handoff
         assert handoff is not None
         assert handoff.command is CommandName.SCAN_SOURCE
         assert controller.is_processing is True
-    finally:
-        close_controller_and_wait(controller, qtbot)
-
-
-def test_multiple_requested_actions_can_recover_to_reply_without_partial_execution(
-    qtbot,
-):
-    controller, worker, coordinator = _controller_with_script(
-        [f"{_IMPORT_PROPOSAL}\n{_IMPORT_PROPOSAL}", _REPLY_PROPOSAL]
-    )
-    responses = []
-    controller.response_presentation_ready.connect(responses.append)
-
-    try:
-        _submit_user_turn(controller, "Import EEG data and then resample it to 128 Hz.")
-        qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
-
-        assert worker.generation_count == 2
-        assert worker.messages[1][-1] == worker.messages[0][-1]
-        assert controller._tool_attempt_session.retry_count == 0
-        assert controller._tool_attempt_session.execution_count == 0
-        assert coordinator.commands == []
-        assert not controller.pending_interactions.has_pending
-        assert controller.pending_interactions.workflow_handoff is None
-        assert len(responses) == 1
-        assert responses[0].text == "Please choose one action to do first."
     finally:
         close_controller_and_wait(controller, qtbot)
 
@@ -492,17 +451,17 @@ def test_adjacent_objects_never_execute_even_inside_one_fence(qtbot, fenced):
     multiple = f"{action}\n{action}"
     if fenced:
         multiple = f"```json\n{multiple}\n```"
-    controller, worker, coordinator = _controller_with_script([multiple, multiple])
+    controller, worker, coordinator = _controller_with_script([multiple])
     responses = []
     controller.response_presentation_ready.connect(responses.append)
     try:
         _submit_user_turn(controller, "Import EEG data.")
         qtbot.waitUntil(lambda: not controller.is_processing, timeout=3_000)
-        assert worker.generation_count == 2
-        assert controller._tool_attempt_session.retry_count == 1
+        assert worker.generation_count == 1
+        assert controller._tool_attempt_session.retry_count == 0
         assert coordinator.commands == []
         assert controller.pending_interactions.workflow_handoff is None
         assert len(responses) == 1
-        assert "could not produce a valid assistant action" in responses[0].text
+        assert "one action at a time" in responses[0].text
     finally:
         close_controller_and_wait(controller, qtbot)

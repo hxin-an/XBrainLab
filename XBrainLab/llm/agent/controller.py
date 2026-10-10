@@ -973,9 +973,9 @@ class LLMController(QObject):
     ) -> bool:
         """Retry a model response that violates the product tool envelope.
 
-        ``FORMAT_ERROR`` and ``MULTIPLE_OBJECTS`` share one recovery budget.
-        A normal user-facing answer remains ``NO_TOOL`` and a valid envelope
-        proceeds to policy verification. Invalid output is never executed or shown.
+        Only a ``FORMAT_ERROR`` result enters this path. A normal user-facing
+        answer remains ``NO_TOOL`` and a valid envelope proceeds to policy
+        verification. The malformed response is never executed or shown.
 
         Args:
             envelope: Typed strict-parser classification for the response.
@@ -998,6 +998,12 @@ class LLMController(QObject):
             proposal=envelope.proposal_dict(),
             recovery_action=decision.action.value,
         )
+        if decision.action is StrictEnvelopeRecoveryAction.CHOOSE_ONE:
+            if decision.message is None:
+                raise RuntimeError("Choose-one decision is missing its trusted message")
+            self._tool_attempt_session.clear_format_retries()
+            self._finalize_turn(decision.message.content)
+            return True
         if decision.action not in {
             StrictEnvelopeRecoveryAction.RETRY_FORMAT,
             StrictEnvelopeRecoveryAction.EXHAUSTED,
