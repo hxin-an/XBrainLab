@@ -1,5 +1,7 @@
 """Preprocessor for resampling EEG data to a new sampling frequency."""
 
+from typing import cast
+
 import mne
 import numpy as np
 
@@ -45,7 +47,10 @@ class Resample(PreprocessBase):
             if len(events) > 0:
                 # MNE maps events jointly with the signal, including clipping
                 # rounding at the final sample to the new recording bounds.
-                mne_data, new_events = mne_data.resample(sfreq=sfreq, events=events)
+                mne_data, new_events = cast(
+                    tuple[mne.io.BaseRaw, np.ndarray],
+                    mne_data.resample(sfreq=sfreq, events=events),
+                )
                 preprocessed_data.set_mne(mne_data)
                 preprocessed_data.set_event(new_events, event_id)
             else:

@@ -69,6 +69,8 @@ Current：重審修正與交叉獨立覆核完成；final export失敗誤判完�
 先前handoff-ready已撤回；本輪還不是handoff-ready，也不宣稱完整測試覆蓋或零缺陷。
 Next：凍結實作→小commit與同版本CI/source-diverse/platform gates→原生Windows
 Training→Evaluation／Saliency與Preprocess驗證→開啟程式與PowerShell log交集中手測。
+CI `c1d77563` 發現MNE joint resample回傳型別的兩個diagnostics；沿events非None的
+既有tuple契約補明確型別，focused型別/數值測試後以新head重驗，不更動baseline。
 
 ### Earlier Training scope and reviewed decisions
 
