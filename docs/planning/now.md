@@ -17,202 +17,141 @@
 設計接受不等於最終手測／merge 批准。前期原生預覽與 focused evidence 保留於 ignored
 build；不在此重複每版施工日誌。PR #161 已合併的 Select Model 改善屬 main 基線。
 
-## Active — Training／Preprocess 行為鏈重審與收尾
+## Active — Training／Preprocess 全範圍深度清理，補齊未審分母
 
-2026-10-11 使用者核准擴充為 Training＋Preprocess 全面重審、修正與必要清理，做到
-同版本整合驗證、獨立覆核後一次集中 Windows 手測；沿目前 PR #162 整合，不自行 merge。
-本輪起點 `98bc99ac`；下列舊審查完成記錄只代表當時檢查，不代表本輪已閉合。
+2026-10-11 使用者明確要求「全面深度清理已無遺漏」。`2dc8b567` 的同版工程 gates
+通過僅是可執行候選，不能代替完整審查；前次手測交付結論撤回，不 merge。
+本段是目前唯一 active acceptance；下方施工紀錄只提供已知 evidence，不當作完成證明。
 
-### Reopened evidence and acceptance
+問題：上輪部分大型共用 production/tests 只讀相關方法或名稱清單，重要失敗路徑仍有
+未解釋的 coverage 缺口，不能稱「全部仔細重審」。本輪 outcome 是已定義分母內
+沒有未讀／未判斷項目、已確認冗餘物理刪除、已知缺陷與必要證據缺口閉合。
+不承諾未來零 bug，不用任意行數／coverage 百分比代替 senior engineering judgment。
 
-- 已重現：disabled early stopping 保留非預設 patience/min_delta 時，export 合法但 loader
-  拒絕自己的紀錄；補真 JSON/NPZ roundtrip 和 early-stop→best weights→evaluation→reload。
-- 已重現：MOABB product journey 持續 timeout 在 finally 跳過 service.close 且中斷結構化
-  回報；沿既有 shutdown owner 補持續失敗清理，不只測下次 wait 自行成功。
-- 已重現：coverage concurrency 只有 multiprocessing，漏記 Python worker threads；補
-  真 worker instrumentation regression，修正量測後才判讀各責任區缺覆蓋分支。
-- UI 已接受；唯一新可見改動為 Preprocessing history 數字去容器括弧，例如 Notch [50.0]
-  Hz→Notch 50 Hz，多值逗號分隔。保留單位、順序、有效資訊與資料語意，不全域刪括弧。
-  先原生 focused preview／截圖，不重畫 layout、配色或流程。
-- 完整新增範圍：preprocessor 全部運算、channel/montage接點、resample/rereference/
-  normalize/filter/notch、event/window epoch、history/preview/summary、command preparation /
-  publication / cancellation / rollback，連同 tests、fixtures、scripts、CI/Poe、設定與文件。
-- 三條分工：Training 核心与結果；Preprocess 資料變換与交易；scripts/coverage證據。
-  主 agent 擁有 history 顯示、整合、coverage判讀及跨模組覆核；各改動先 red 或 passing
-  characterization 再修，獨立覆核必須看實際 diff、未改責任與缺口，不只接受作者摘要。
-- 行為矩陣至少包含非預設值/開關/重開、multi-subject/fold/repeat、停止重跑、持續失敗、
-  資料/event/label/time 語意、部分失敗不發布、preprocess替換使舊training/results失效、
-  stale callback不覆蓋新狀態。真資料/模型/檔案證據與 mock 接線證據分開。
-- 結構審查要有每個責任區的真入口、owners、去留理由；查死碼/重複policy/過度轉接/
-  大檔混責任/脚本入口。無必要不新增owner、cache或control plane；性能變更先量測。
-- Non-goals：不重做 Import／Agent／Evaluation／Saliency 全模組、不改 public Command／
-  Assistant contract，不作所有模型科學認證；研究資料/封存/共用環境/settings.json不動。
-- Stop：範圍清單無未查清責任、已知defect與必要測試缺口閉合、獨立整合覆核無blocker、
-  exact-head CI/source-diverse/platform/Windows gates通過，開完整Windows程式與即時log
-  再交集中手測。不是修三個bug或讀完檔案即完成。新UI/公共契約決策另請核准。
+### 固定範圍與責任
 
-Preprocess re-audit findings：以真 MNE nonzero first_samp recording 重現 filter 在無
-meas_date時重設 annotations 重複加時間偏移、resample尾端事件落到新n_times之外。
-修正沿MNE既有event/time契約，測原始carrier不變、annotation位置及新sample範圍。
-主agent另查預覽event與signal時間原點一致性，先真MNE red再修，不改UI設計。
-Training history：真 manager 的非OOM forward failure會被顯示為Pending／Stopped；
-改用既有plan.error辨識失敗，完成的先前repeat仍維持Completed，不新增狀態。
-獨立覆核重現final artifact export失敗但eval_record已發布而誤判完成；
-在既有record完成邊界保持失敗一致性，補真訓練與故障注入，不新增owner或狀態。
-Imported epochs：相同shape但不同tmin的來源可通過loader並在合併後套最後一份時間軸；
-在Epochs既有admission於任何event mutation前拒絕不一致grid，補真MNE來源與不變性測試。
-Preprocess preview：完整refresh在query失敗顯示unavailable後又reset成No data；
-補真panel錯誤路徑，保留既有unavailable呈現，不新增UI狀態或改版。
+- Training：split/generation、model selection/config/resource admission、全部 training
+  package/manager/contracts、application lifecycle/publication/history、records/artifacts，
+  相關 panel/dialog 與直接支援的 tests/fixtures/scripts/config/docs。
+- Preprocess：全部 processors、state/application/preparation/render/epoch context、
+  channel/montage、Raw/Epochs/data manager/Study、全部 panel/dialog、直接支援的
+  tests/fixtures/scripts/config/docs。對 shared ApplicationService 與其測試完整讀取，
+  但不因 unrelated Import／Agent finding 擴大整個模組重構。
+- 以 Git tracked paths、imports/callers/dynamic registry、Poe/CI/gate/docs 入口交叉建
+  明確檔案分母；每檔記責任／入口／依賴／測試品質／去留／閱讀完成狀態。使用既有
+  ignored review notes 保存一輪性細目，不新增通用盤點平台或第二份 active plan。
+- 先前確實 full-body review 且 hash 未變的可重用，但重讀先前局部／inventory-only
+  的全部 body；修改後重審 diff 與影響邊界。不得把 coverage 檔案數當閱讀檔案數。
+- Main 擁有 UI、shared service/其共同測試、分母整合與 docs；Training worker 擁有
+  核心/application 與專屬 tests；Preprocess worker 擁有資料/transaction 與專屬 tests；
+  validation worker 擁有 scripts/CI/config 與專屬 tests。重疊處先報主 agent 分配。
 
-Current：重審修正與交叉獨立覆核完成；final export失敗誤判完成也經真訓練重現並補修。
-實作/測試/腳本盤點與保留理由在ignored `build/training-cleanup/*rereview.md`。
-先前handoff-ready已撤回；本輪還不是handoff-ready，也不宣稱完整測試覆蓋或零缺陷。
-Next：凍結實作→小commit與同版本CI/source-diverse/platform gates→原生Windows
-Training→Evaluation／Saliency與Preprocess驗證→開啟程式與PowerShell log交集中手測。
-CI `c1d77563` 發現MNE joint resample回傳型別的兩個diagnostics；沿events非None的
-既有tuple契約補明確型別，focused型別/數值測試後以新head重驗，不更動baseline。
-同輪backend gate尚有一個舊Notch含括弧期待；保留真Command/prepare/commit斷言，
-只同步已授權顯示文字，再跑該實際流程。
-Fresh Training UI覆核：成功取得的backend history也被busy-query terminal fallback覆寫，
-會將Completed early改成Completed；保留既有fallback但只用於query unavailable，
-以真early-stop結果與Qt table補測，不讓UI取代backend已提供的狀態。
-Training Settings partial proposal：只提議learning rate會重置未提議的early-stop／
-class-weight與validation可用性；補真dialog→accept測試，loader只更新明確提供的欄位，
-保留既有預設、後端validation事實及未指定設定，不新增Assistant契約。
-此補充已red→green及獨立覆核；刪除無caller/動態註冊的sidebar model-name私有helper，
-保留ResourcePreflightView既有顯示owner。Native與CI一律針對最後整合head重新核對。
+### 施工與退出条件
 
-Native `3259aece` 的 delayed cancellation 已重現 terminal log 遺失：零 epoch 的
-authoritative Pending row 重建 log 時清除先寫入的取消結果。此 repair 只修 TrainingPanel
-既有 log reconciliation；保留 backend row status，不回復無條件 terminal row 覆寫，
-不改 layout／文案／public contract，不新增 owner/state。先補 Pending＋typed terminal
-及使用者歷史選取回歸，再沿既有 terminal log helper 修正；驗證原 native cancellation、
-Training panel 與 real early-stop UI tests。既有 presentation 修正已授權，無新 UI 決策。
-獨立覆核另補「手動選中當前 run」：terminal transition 用既有 prior current-row 證據
-回到該 run 的自動顯示；舊歷史 pin 保留，不能把兩者一律抑制 terminal 訊息。
-Stop：原 native 失敗與 focused regressions 同版通過、獨立 diff 覆核；再交主 agent
-整合最後 head gates，這個修補通過本身不宣稱 handoff-ready。
-此修補六格回歸與原 native cancellation／OOM／cross-sender、real early-stop 共
-33 tests 通過，獨立覆核無 scoped blocker；已凍結，Next 為最後 commit 的 CI／native gates。
+1. 完整對帳分母及尚未 full-read 的檔案，不先宣稱可手測。逐檔比較保留、刪除、收斂、
+   拆分方案；大檔不只用「cohesive」結案，要具體責任與資料流理由。
+2. 查 reachable defects、重複 policy／state／adapter、無用途 API／腳本、historical
+   compatibility、弱／高 mock／重複 tests。刪除前查真 caller 和契約；public/UI
+   contract 決策仍不得偷改。真正缺授權另提，先完成不受阻工作。
+3. 優先補先前 coverage 識別的實質失敗組合：rollback failure、worker startup／stale
+   cleanup、未完成 futures 取消、preview 邊界與 artifact corruption；逐項給測試或
+   合理不可達／範圍外理由，不因「特殊分支」直接略過，不為數字補無意義 assertion。
+4. Bug 先 observable red，refactor 先 passing characterization；高風險修改獨立覆核。
+   focused 驗證沿既有 runner，不重建環境，不大規模重跑等價已通過 suite。
+5. 獨立 completeness reviewer 對帳 Git 分母、read evidence、保留理由、unresolved
+   list 和原始 diff/test evidence；作者摘要與綠 CI 不能自己證明無漏審。
+6. 只有分母無未查項、scope 內無未解 defect／必要測試缺口、覆核無 blocker，才凍結
+   同版本 CI/source-diverse/platform/native，開 Windows 完整程式與 PowerShell log。
+   不因 compaction／完成一個子任務／CI pending 停工；不自行 merge。
 
-### Earlier Training scope and reviewed decisions
+UI：保留全部已接受 layout／互動，只有此前核准 history 數字括弧移除；本輪不重畫。
+Non-goals：論文資料/實驗、模型科學認證、第三方 library 全審、Import／Agent／
+Evaluation／Saliency 全模組重做、環境或磁碟清理。這不免除它們與本模組的直接交界。
+Current：逐檔閱讀、去留判斷與修正已完成；獨立覆核已對帳 production／tests／scripts
+與直接支援邊界，沒有未查 source 或未解 blocker。第三方 vendor 數學與 mixed docs
+的範圍外章節另列，不冒充全文認證；`2dc8b567` evidence 僅保留為 baseline。
+Next：凍結修正、取得 exact-head CI／source-diverse／原生 Windows evidence，確認後
+開啟 Windows 完整程式與 PowerShell log，交付單次整合手測；不自行 merge。
 
-2026-10-11 使用者接受上述 UI 並核准完整 Training 功能鏈清理到獨立覆核、整合驗證後
-一次集中手測。前述預覽階段的等待回饋／不做後端工作限制已由本階段取代；後續收斂
-歷史預覽記錄，只保留已接受的 UI 基線。設計接受不是最終產品手測或 merge 批准。
-基線 main `9d542f3e`（PR #161），既有 UI diff 納入本輪；研究 checkout、settings.json、
-原始資料、研究封存與共用環境不動。Git 擁有 branch/head 真相。
+本輪已確認 slice：
+- StopTrainingCommand 在 execute 入口走 lock-independent control，serialized handler
+  中仍有不可達的第二條 stop handler／專屬 tests。核對 repo 動態／文件 caller 後，
+  先 existing public stop characterization，再刪除死註冊／內部方法與專屬測試段；
+  保留 public Command、停止確認與真正控制路徑。Main 同時刪 service 遺留未用型別 alias。
+- Public cross-source training runner 在 import service 後、try/finally 之前建立 output
+  directory；setup OSError 可能漏 close。先真 service／output 故障重現，沿既有 lifetime
+  包住 setup，對應 integration fixtures 明確 teardown，不新增 lifecycle owner。
+- Preprocess batch 使用 ALL_COMPLETED 後才讀 future.result；exception 中對同批
+  finished futures 的 cancel 是無效分支。真 thread characterization 確認 admitted
+  batch 會 drain、失敗後不提交下一批且原資料不變後刪除，不改取消契約。
+- ResetPreprocess 的 rollback 若也失敗，可能蓋掉最初的 reset／retirement error。
+  先 public command＋真 data manager 重現雙故障，再沿既有 error mapping 保留原錯誤、
+  明確標示 rollback_failed／state_preserved=False；不新增 recovery owner。
+- MOABB UI capture 使用 no-op close 的 retained-service adapter，與真正 close 確認
+  相衝突；實際 runner caller 測試先重現，明確區分 caller-owned lifetime，刪除 adapter，
+  將 journey setup 納入 caller 的既有 finally。保留獨立 runner 預設自行 close 的契約。
+- 完整讀 shared application tests 後，確認 saved-split preservation 與 explicit-empty
+  montage payload 各有一個重複案例；先同檔 baseline，再合併較強的 identity／geometry
+  assertions、刪重複案例，不減少實際保護的行為。
+- Split Preview worker constructor／start 未包住例外，可能留 Running／Calculating
+  無結果；先真 Qt dialog＋thread 故障 seam 重現，再沿既有 failed presentation 收斂，
+  驗證可重跑及 close，不新增 UI／state。完整 UI 審查另刪無 consumer 的 btn_info 空欄位、
+  不可達 train_type=None fallback、失去對象的 DataSplitTitle style 及 montage 重複設定。
+- Training 的 saliency resource admission 選 evaluation count 與實際 holder 的完整
+  class coverage split 選擇可能不一致：真小型 holder／loader 重現後重用既有 selection
+  owner，避免 test 不完整而採較大 validation 時低估 RAM，不改實際 split policy。
+  同一實際工作對帳包含 retained holder 的 batch/device/model；後續設定只影響未來 training，
+  不能拿目前較小 batch 或 CPU 設定估計仍使用歷史 GPU／較大 batch 的重算。
+- Preprocess preview 最後 sample 的浮點時間乘回 sfreq 可能 floor 到前一點；以 100／
+  250 Hz 真 MNE endpoint 重現後只修 clamp endpoint，保留一般 window floor 語意。
+- DatasetStateService 三個內部便利 adapter（get_filenames、get_data_at_assignments、
+  get_epoch_count）在 caller／protocol／動態註冊全查無使用後刪除；保留同名 retired
+  controller 的 architecture guard，不刪必要正式 command/query。
+- ResourceChecker 無 caller 的 warning-message／available-vram 便利方法與無效 monkeypatch
+  在 resource baseline 後刪除；保留有 Assistant／calibration caller 的 OOM helpers。
+- Human-like walkthrough 的 Linux after-close gate 可能把仍活著的 Python Thread 當成
+  dormant Qt dummy wrapper；先真 waiting thread 重現，再區分既有 Thread 身分，不放寬
+  thread caps。另刪已由 source identity 取代、查無 caller 的 _git_worktree_dirty helper。
+- TrainingSidebar tests 的 missing-publication 重複案例及只搜尋 binding helper 名稱的
+  弱 source assertion，已有同檔真 callback/request/generation 行為測試；baseline 後刪除。
+  真 preview worker 測試補 finally release／close，避免 assertion failure 留住執行緒。
+- UI 專屬 tests：51-fold 完整顯示案例由同範圍更強的 visible async regression 保護後
+  刪重複；刪未接入產品路徑的 controller fixture。Training Settings checkpoint label
+  可見性 assertion 改為一致座標空間，不能以錯誤 parent geometry 宣稱沒有裁切。
+- 專屬 deferred-split／split-boundary tests 補 local fixture finalizer，確保每個建立的
+  ApplicationService 都結束；不新增全域隱藏 tracker。TrainingPlan 重複 get_eval_loader
+  子集由完整 get_eval_pair matrix 保護後刪除，刪無用 fixture 值。Reviewer capture 的
+  兩個相同完整預處理截圖 setup 合併，保留原有所有 assertion。
+- 獨立 maintainability review 確認 shared 12K application tests 的 Preprocess command
+  admission／prepare／channel／epoch transaction 分散在相隔約 3,500 行的段落；抽出為
+  有明確名稱的專屬測試，保留原 test bodies／參數／案例數並核對 AST 等價。只搬必要
+  fixture，不 import 另一個 test module。Training close/sync 與共用 admission 高耦合，
+  本輪不為縮短數字拆散。Product owners 不變。
+- TrainingPlan constructor 只建立全新 TrainRecord（eval_record=None，exclusive 新目录），
+  不載入舊結果；_validate_loaded_saliency_artifacts 的唯一 constructor call 因而無作用。
+  主 agent 獨立核對實際初始化與 caller 後刪 call＋method，保留真正 load/consumer 的
+  saliency context／producer integrity checks；不把無效 guard 當安全保護保留。
+- 完整 UI sidebar body 查到 admission 已 return 後的重複 None 分支、無額外語意的
+  risk-level adapter 及失去 caller 的重新查 capability 路徑；沿既有 publication owner
+  刪冗餘，保留相同 warning、generation 與 async 行為，以 sidebar 真行為測試驗證。
+- State service 的 preprocess-history 失敗案例雖建立 capability policy，未驗證 fail-closed；
+  補 TRAIN／PREPROCESS 禁用的實際 assertion，不只驗 fixture 建立成功。
+- Teacher preflight 的共用 teardown 吞掉 close failure，可能讓 epoch handoff 宣稱成功；
+  先真 service 故障重現，再保留原 stage evidence 並使 cleanup failure 明確不通過。
+  只修直接驗證可靠性，不扩成 Import 模組審查。
+- UI baseline capture 的 timer callback 若寫圖／讀回失敗可能跳過正常 shutdown；
+  先真 Qt fault regression，沿既有 callback/close 路徑收尾並回報失敗。Visualization
+  CLI setup 的重複 exception hook 則刪除，由既有 run 函式唯一安裝／還原。
+- Windows DPI evidence 的 observed ratio 為 JSON NaN 字串時可繞過差值比較，
+  獨立 reviewer 已重現 validator 與 CI adapter 都放行；沿既有 validator 拒絕非有限值，
+  保留正常 100／125／150% 門檻，補 JSON roundtrip 與 CI 消費端回歸。
+- 同一 evidence 覆核重現 native smoke JSON 為 null 時被當作讀取失敗 sentinel 而跳過
+  malformed 檢查；有效 source provenance 仍會誤放行。沿既有 reader／validator 分清
+  讀取錯誤與合法解析的非 object 值，以真檔案＋provenance 回歸，不新增 evidence owner。
+- Native platform smoke 在 service/window 建立後的 query／panel setup failure 未經 finally；
+  真 panel-routing 故障重現後由既有 service/window close 收尾，保留原失敗與 evidence。
+  Handoff recorder 的唯一 caller pass-through parser 在 characterization 後直接呼叫既有
+  terminal parser，刪無用途 wrapper；manifest/recorder ownership 與判定不變。
 
-### Outcome / scope / principles
-
-完整範圍：Data Splitting → Model Selection / Training Settings → Start / Stop / rerun →
-history / checkpoint / Evaluation–Saliency 交界；連同 tests、fixtures、scripts、CI / Poe、
-依賴與文件入口。每個項目列責任、真入口、owner／讀寫／消費者、測試與去留理由。
-不能以幾條 happy path 或只審 diff 宣稱模組乾淨。必要功能也須比較現有組織是否合理：
-直接刪除、局部合併、重用既有 owner、責任抽離與保留，不為行數目標搬程式。
-
-Non-goals：不重畫 UI、不改 Command / Assistant 契約、EEG / split / artifact 語意或
-支援模型取捨，不重做 Evaluation / Saliency 全部，不跑論文實驗／prompt 調參。
-公共契約／可見行為變更另提決策。dead-code 檢查含動態註冊、設定、腳本與文件；
-確認無用後連同專屬測試與引用物理刪除，不搬 legacy／留空殼。有用 recovery models
-不因目錄名而刪除。取消、一致性、過期拒絕與舊結果讀取保留；性能先量測，不投機加 cache。
-
-### Coverage / execution
-
-| 群組 | 責任與入口 | 狀態 |
-| --- | --- | --- |
-| Split | dialogs → preview / saved spec → generation / audit → materialization | 讀碼、修正與跨 transaction 獨立覆核完成；待整合 gate |
-| Model / settings | GUI / Assistant handoff → ConfigureTraining → catalog / option / recommendation / resource preview | 讀碼、roundtrip／receipt／optimizer 修正與覆核完成 |
-| Execution | Train / Stop → service / runtime / manager / monitor / publication → folds / repeats / terminal | lifecycle／rollback 深審完成；停止後 repeat admission 已修 |
-| Results | records / checkpoints / history → Evaluation / Saliency | 身分／消費者邊界與檔案回復覆核完成；不宣稱 crash-atomic |
-| Tests / fixtures | 各群 unit / integration / native journey | 核心本文缺口已補讀；兩個空洞斷言已修，注入錯誤確認會失敗 |
-| Scripts / config / docs | training / resource / captures / fixtures / gates / CI callers | 用途已核對、重複已收斂；MOABB 明確 saliency 計算已實跑與覆核 |
-
-先全面清單，再按上表施工；可獨立盤點並行，寫入 ownership 分離。每個 coherent slice
-先 passing characterization，bug 先 red reproduction，再 focused checks／lint及必要相鄰整合。
-不建立通用盤點平台或每helper表單。高風險資料／跨owner／async／publication獨立覆核；
-最終 reviewer 另看整合邊界、未改責任群、保留大檔理由與測試品質。主 agent 必須驗實際證據。
-
-### Validation / endpoint
-
-重要行為：多subject / fold / repeat 全部執行、preview=materialization、train/val/test
-隔離、Validation Disable、設定保存／取消、stale拒絕、停止後重跑、失敗不污染舊結果、
-best checkpoint／early stopping／artifact重開、狀態列與 GUI/Assistant 同源。
-以可回退小 commit 累積、分組 review，最後一版集中手測，不逐切片要求手測／merge。
-complexity gates 仍適用；單切片超限需拆分或另取例外。交付走同 head applicable CI、
-source-diverse、platform／Windows UI gates；不跑等價本機全套，不降 gate 或藏失敗。
-
-Stop：全部盤點有結論、確認問題處理、無範圍內 blocker、獨立覆核及整合驗證通過後，
-開 Windows 程式與 log 並給集中手測。未查清不算完成；不因切片完成、compaction 或 CI
-pending 停工。只在此 endpoint、使用者暫停或必要新決策／資源 blocker 停止。不自行 merge。
-Adjacent findings 最多三项 follow-up，非必要依賴不擴大施工。
-
-Earlier checkpoint：UI／後端／artifact／evidence 修正已分成可回退 commits；Git 擁有精確 SHA。
-前次獨立覆核未發現上述後續重現的缺陷；其通過不作本輪完成依據。
-首輪整合 CI 抓到六個 typing diagnostics：optimizer helper 的 int 預設被推論成
-只接受 int，以及 Qt view/window/statusBar 的 nullable stub 未收窄。補明確 float 契約
-與 Qt nullable 回傳的顯式收窄，不放寬 analyzer baseline；focused typing／元件測試後
-重新驗證新 head。首輪 Windows 原生四案例與 2D／3D capture 已通過，保留原 SHA 證據。
-Next：整合 clean head／PR／CI → 補 CI 未涵蓋的原生 Windows
-真實 Training→Evaluation／Saliency walkthrough → 開啟手測版本。不改研究封存。
-細節工作證據在 ignored `build/training-cleanup/`，本文為唯一 active plan。
-
-### Reviewed implementation decisions
-
-- 補讀測試：兩個 warning absence 測試在未顯示的 parent 下檢查 isVisible，可能空集合
-  假綠；顯示真 widget 後驗證可見文案／隱藏警告，並刪除 availability matrix 未使用的
-  兩個期待欄。保留按鈕／tooltip 行為保障，不改產品 UI。
-- MOABB product walkthrough：舊路徑只在訓練前設定 saliency，訓練後 parameterless query
-  不會計算；目前 metric-only training 下永遠缺 saliency 產物。先用現行 service 契約
-  重現，再在完成訓練後明確要求既定方法並等待 terminal，query／export 仍沿既有入口。
-  修正現用工程腳本及其過強 fake，不增加 owner、不跑研究模型評測或擴張資料下載。
-
-- 結構收斂：刪除無caller的 TrainRecord matplotlib convenience methods／專屬測試，
-  繪圖仍由 MetricTab/history projection 負責；Split UI 的純 setter Holder 與重複列建構
-  收斂到既有 dialog／domain value，不加owner。Root收斂兩份capture split fixture至既有
-  training_evidence_fixture，修正示例 Validation Disable／holdout 顯示及過時強制尺寸。
-  補查 Dataset.has_set_empty／DatasetGenerator.reset 的非文字 caller／文件入口；
-  確認 tests-only 才刪除與專屬測試，constructor 初始化保留。進一步 producer／consumer
-  追查確認 trial_selection_evidence 無任何現行 producer、結果／recipe consumer 或
-  Epochs deserialization：只有 []/0 初始化、reset、snapshot/restore與專屬 tests。
-  因而物理刪除整段失效欄位／helper／preview與transaction傳遞鏈及專屬假資料測試；
-  保留真實 EEG／atomic groups／membership／RNG／Dataset.SEQ 的取消与rollback證據。
-  這不改 EEG／recipe／artifact 格式；跨transaction diff 已完成獨立覆核。
-- Artifact evidence：獨立 scripts review 發現 real-training helper／source-diverse runner
-  只確認 record 檔名存在，實際僅重開 checkpoint／EvalRecord，不能支撐完整重開宣稱。
-  用既有安全 reader／record loader 補實讀與必要語意檢查，真檔案 corruption regression
-  須能抓到壞 manifest／NPZ；同時收斂重複驗證，不增加產品 owner 或 artifact 格式。
-- 移除 dead internal API：TrainingStateService 舊 startup snapshot／restore、
-  TrainingPlanHolder 舊 evaluation convenience 與 DatasetGenerator.apply 直接套用路徑；
-  須完成動態／文件／腳本 caller核對，刪專屬 tests／mock，保留 canonical rollback、
-  history／結果及 preview→transaction 測試。Runtime / Split reviewer 分檔 ownership。
-- Resource receipt：普通 Training Settings 保存漏傳已接受的 resource preview receipt，
-  coordinator 又誤要求 command 重送 model；先真入口測 provenance，再保留 current-model
-  freshness 修正，不重寫模型、不放寬 stale receipt。Settings reviewer 負責。
-- Artifact pair：調查 NPZ 先替換、JSON後替換失敗時是否損及既有artifact；先真檔案故障
-  注入已重現 SHA mismatch。獨立安全設計覆核通過 bounded backup／ordinary OSError
-  rollback；只在 NPZ 成功後的 manifest replace 失敗回復，identity error 不追路徑。
-  回復失敗保留唯一 backup 與原始錯誤；增加相關故障／path safety tests，再覆核實際 diff。
-  不改artifact格式，不宣稱 crash-atomic／concurrent-reader atomic。
-- Panel：完整檢查 publication／history／plot／log／shutdown 後，核對未使用的
-  plan_items／run_items 與永遠 False 的 log-suppression 分支；passing baseline 後刪除，
-  保留選取、重繪、停止與 busy-query fallback 語意，不移動 UI 或新增 owner。
-- Capture gate：Windows offscreen 字型的 Test Acc「—」只有 7 個 edge pixels，
-  reference comparison 接受但 tile cutoff 8 導致 detail_tile_count=0，validator 拒絕。
-  保持全域 edge／差異／missing-detail 門檻；沒有 qualifying tile 的稀疏 glyph 以
-  整個 bounded region 檢查細節，補真像素保留／擦除 regression，不改產品 UI。
-- 設定 roundtrip：核對已有 seed 在重開 Training Settings 後保存會回到預設值；以
-  真 service → dialog → command → service 固定非預設 seed，保持隱含值及新設定預設。
-  不新增 UI 控制項，settings reviewer 擁有此對應鏈；不改其他參數語意。
-- Split close：preview publisher 註冊前關閉／reject 的第一次取消可能找不到 request，
-  close retry 只等退出不重試取消；以 Event-barrier 真 publisher 重現後，在既有等待迴圈
-  重試取消，不新增 timer／owner，不改 UI。Split reviewer 負責此檔与 lifecycle tests。
-- Optimizer：核對 UI 與 backend optimizer map 重複；合法 baseline 後補真 service invalid
-  kwargs rejection／舊設定不變，再由既有 TrainingOption admission 收斂。Owner不增加，
-  不改支援 optimizer 集合；settings reviewer 負責 production / focused tests。
-- Stop / repeat：核對 active repeat 停止後是否仍建立下一 repeat 的 model／loader／artifact；
-  real-record red test 後在既有 loop admission 修正，保留當次停止語意。Runtime reviewer
-  負責 training_plan 與 focused tests，生命週期修正後另獨立覆核。
-- Script fixture：共用固定 temp 路徑的 writer 每次會 rmtree 同一來源目錄，平行 evidence
-  可能互刪。核對唯一 capture caller 後改用 caller-owned TemporaryDirectory 與現有 raw
-  writer，刪無必要 convenience API；驗證獨立來源、清理及 capture 真實執行。
+已完成的前期施工細節留在 Git 歷史與 ignored review evidence，不再維持多份 Current／Next。
+目前尚未宣稱 scope-complete 或 handoff-ready；唯一退出條件仍是上方完整分母與同版 gates。
