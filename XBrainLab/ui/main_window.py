@@ -466,7 +466,9 @@ class MainWindow(QMainWindow):
         self._application_status_restore_timer.timeout.connect(
             self._restore_application_publication_status
         )
-        self.statusBar().messageChanged.connect(self._restore_training_status_when_idle)
+        status_bar = self.statusBar()
+        if status_bar is not None:
+            status_bar.messageChanged.connect(self._restore_training_status_when_idle)
 
         # Initialize Panels
         self.init_panels()

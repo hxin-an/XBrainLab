@@ -656,7 +656,10 @@ class DataSplittingDialog(BaseDialog):
         combo.setMinimumWidth(148)
         combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         # The popup's margins belong to a separate window, outside the item view.
-        combo.view().window().setStyleSheet("background-color: #25272a;")
+        view = combo.view()
+        popup = view.window() if view is not None else None
+        if popup is not None:
+            popup.setStyleSheet("background-color: #25272a;")
 
     def _apply_initial_values(self) -> None:
         """Prefill only choices explicitly supplied by an assistant handoff."""

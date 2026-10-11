@@ -71,6 +71,10 @@ Adjacent findings 最多三项 follow-up，非必要依賴不擴大施工。
 
 Current：UI／後端／artifact／evidence 修正已分成可回退 commits；Git 擁有精確 SHA。
 獨立整體審查及最後兩段修正覆核完成，沒有剩餘範圍內 blocker；不是零缺陷宣稱。
+首輪整合 CI 抓到六個 typing diagnostics：optimizer helper 的 int 預設被推論成
+只接受 int，以及 Qt view/window/statusBar 的 nullable stub 未收窄。補明確 float 契約
+與 Qt nullable 回傳的顯式收窄，不放寬 analyzer baseline；focused typing／元件測試後
+重新驗證新 head。首輪 Windows 原生四案例與 2D／3D capture 已通過，保留原 SHA 證據。
 Next：整合 clean head／PR／CI → 補 CI 未涵蓋的原生 Windows
 真實 Training→Evaluation／Saliency walkthrough → 開啟手測版本。不改研究封存。
 細節工作證據在 ignored `build/training-cleanup/`，本文為唯一 active plan。

@@ -85,9 +85,10 @@ class _DeviceComboBox(ElidingComboBox):
             self.setCurrentIndex(self.findData(selected))
         self.setToolTip(self.currentText())
         # The popup frame is a separate window outside the styled item view.
-        self.view().window().setStyleSheet(
-            f"background-color: {Theme.METRICS_TABLE_BG};"
-        )
+        view = self.view()
+        popup = view.window() if view is not None else None
+        if popup is not None:
+            popup.setStyleSheet(f"background-color: {Theme.METRICS_TABLE_BG};")
         super().showPopup()
 
 

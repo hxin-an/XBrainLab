@@ -195,7 +195,7 @@ def _parse_finite_float(parameter_name: str, text: str) -> float:
     return value
 
 
-def instantiate_optimizer(optimizer_class, optim_params, lr=1):
+def instantiate_optimizer(optimizer_class, optim_params, lr: float = 1):
     """Instantiate an optimizer with a dummy parameter to validate configuration.
 
     Args:
