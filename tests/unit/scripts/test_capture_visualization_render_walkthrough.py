@@ -78,8 +78,12 @@ def test_main_preserves_training_directory_on_rerun(
     output_dir = tmp_path / "capture artifacts"
     produced = training_dir / "earlier-run.bin"
     calls = []
+    sources = []
 
-    def capture(app, output, training, timeout):
+    def capture(app, output, training, timeout, *, source_path=None):
+        assert source_path is not None, "Each capture must own its EEG source"
+        assert source_path.is_file()
+        sources.append(source_path)
         assert app is qapp
         assert output == output_dir
         assert training == training_dir
@@ -123,6 +127,8 @@ def test_main_preserves_training_directory_on_rerun(
             output_dir / capture_script.MD_ARTIFACT
         ).read_text(encoding="utf-8")
     assert len(calls) == 2
+    assert sources[0] != sources[1]
+    assert all(not source.parent.exists() for source in sources)
 
 
 def test_capture_saliency_uses_explicit_panel_action_and_waits_for_terminal(

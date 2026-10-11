@@ -41,9 +41,9 @@ from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_source_identity,
     validate_source_identity,
 )
+from scripts.dev.chatpanel_training_fixture import write_training_ready_raw_fif
 from scripts.dev.training_evidence_fixture import (
     prepare_training_dataset_ready_state,
-    write_synthetic_training_raw_fif,
 )
 from scripts.dev.ui_navigation import open_workflow_panel
 from XBrainLab.backend.application import (
@@ -236,7 +236,15 @@ def main() -> int:
     training_output_dir = Path(args.training_output_dir)
     training_output_dir.mkdir(parents=True, exist_ok=True)
 
-    with isolated_capture_config():
+    with (
+        tempfile.TemporaryDirectory(
+            prefix="xbrainlab-training-evidence-"
+        ) as source_dir,
+        isolated_capture_config(),
+    ):
+        source_path = write_training_ready_raw_fif(
+            Path(source_dir) / "training_ready_raw.fif"
+        )
         app = QApplication(sys.argv)
         app.setStyle("Fusion")
         payload = run_visualization_render_walkthrough(
@@ -244,6 +252,7 @@ def main() -> int:
             output_dir,
             training_output_dir,
             args.timeout_seconds,
+            source_path=source_path,
         )
         _write_artifacts(output_dir, payload)
         print(f"Wrote {output_dir / JSON_ARTIFACT}")
@@ -256,6 +265,8 @@ def run_visualization_render_walkthrough(
     output_dir: Path,
     training_output_dir: Path,
     timeout_seconds: int,
+    *,
+    source_path: Path,
 ) -> dict[str, Any]:
     """Prepare a tiny trained state and capture real VisualizationPanel renders."""
     from XBrainLab.backend.study import Study
@@ -267,7 +278,6 @@ def run_visualization_render_walkthrough(
     _set_deterministic_capture_seed()
     started_at = time.monotonic()
     source_identity_at_start = collect_source_identity(ROOT, refresh=True)
-    source_path = write_synthetic_training_raw_fif()
     study = Study()
     service = get_application_service(study)
     dataset_preparation = prepare_training_dataset_ready_state(

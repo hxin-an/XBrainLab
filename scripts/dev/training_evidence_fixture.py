@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import shutil
-import tempfile
 from pathlib import Path
 from typing import Any
 
-from scripts.dev.chatpanel_training_fixture import write_training_ready_raw_fif
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     ConfigureTrainingCommand,
@@ -20,16 +17,6 @@ from XBrainLab.backend.application import (
     ValidateInterpretationCommand,
     get_application_service,
 )
-
-_SOURCE_DIR = Path(tempfile.gettempdir()) / "xbrainlab_training_evidence"
-_SOURCE_PATH = _SOURCE_DIR / "training_ready_raw.fif"
-
-
-def write_synthetic_training_raw_fif() -> Path:
-    """Write a deterministic EEG fixture with epoch duration suitable for EEGNet."""
-    if _SOURCE_DIR.exists():
-        shutil.rmtree(_SOURCE_DIR)
-    return write_training_ready_raw_fif(_SOURCE_PATH)
 
 
 def prepare_training_dataset_ready_state(
