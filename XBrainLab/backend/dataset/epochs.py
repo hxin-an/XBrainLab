@@ -9,7 +9,6 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
 
 import mne
 import numpy as np
@@ -41,7 +40,6 @@ class EpochWindowProvenance:
     source_coordinates_verified: bool
 
 
-MAX_TRIAL_SELECTION_EVIDENCE = 100
 SOURCE_PATH_FINGERPRINT_PREFIX = "path-sha256:"
 SOURCE_CONTENT_FINGERPRINT_PREFIX = "content-sha256:"
 UNVERIFIED_SOURCE_FINGERPRINT_PREFIX = "unverified-wrapper-sha256:"
@@ -529,8 +527,6 @@ class Epochs:
         self.idx: np.ndarray = np.array([])
         self.epoch_window_provenance: tuple[EpochWindowProvenance, ...] = ()
         self.trial_group: np.ndarray = np.array([], dtype=int)
-        self.trial_selection_evidence: list[dict[str, Any]] = []
-        self.trial_selection_evidence_dropped = 0
 
         self.data: np.ndarray = np.array([])
 
@@ -740,25 +736,6 @@ class Epochs:
         if len(groups) != self.get_data_length():
             return np.arange(self.get_data_length(), dtype=int)
         return groups.copy()
-
-    def get_trial_selection_evidence(self) -> list[dict[str, Any]]:
-        """Return bounded structured evidence from trial split selections."""
-        return deepcopy(getattr(self, "trial_selection_evidence", []))
-
-    def get_trial_selection_evidence_dropped(self) -> int:
-        """Return the number of old selection evidence records discarded."""
-        return int(getattr(self, "trial_selection_evidence_dropped", 0))
-
-    def reset_trial_selection_evidence(self) -> None:
-        """Clear trial selection evidence before a new generation run."""
-        self.trial_selection_evidence = []
-        self.trial_selection_evidence_dropped = 0
-
-    def _record_trial_selection_evidence(self, evidence: dict[str, Any]) -> None:
-        if len(self.trial_selection_evidence) >= MAX_TRIAL_SELECTION_EVIDENCE:
-            self.trial_selection_evidence.pop(0)
-            self.trial_selection_evidence_dropped += 1
-        self.trial_selection_evidence.append(deepcopy(evidence))
 
     ## get by index
     def get_subject_name(self, idx: int) -> str:

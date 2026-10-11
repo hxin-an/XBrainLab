@@ -63,18 +63,12 @@ class _EpochData:
         self.subject_names = (
             [subject_name] if isinstance(subject_name, str) else list(subject_name)
         )
-        self.trial_selection_evidence: list[dict[str, Any]] = []
-        self.trial_selection_evidence_dropped = 0
 
     def get_subject_index_list(self) -> list[int]:
         return list(range(len(self.subject_names)))
 
     def get_subject_name(self, subject_idx: int) -> str:
         return self.subject_names[subject_idx]
-
-    def reset_trial_selection_evidence(self) -> None:
-        self.trial_selection_evidence = []
-        self.trial_selection_evidence_dropped = 0
 
 
 def _record(

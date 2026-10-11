@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -22,8 +23,10 @@ from tests.unit.ui.data_split_test_support import (
     successful_preview,
 )
 from XBrainLab.backend.application.dataset_split_preview import (
+    DatasetSplitPreviewPublisher,
     DatasetSplitPreviewRow,
 )
+from XBrainLab.backend.dataset import DataSplitter
 
 _REAL_THREAD_CLASS = threading.Thread
 
@@ -139,16 +142,15 @@ class TestDataSplittingPreviewDialogSplitters:
         with patch("threading.Thread") as mock_thread:
             mock_thread.return_value.is_alive.return_value = False
             from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
-                DataSplitterHolder,
                 DataSplittingPreviewDialog,
             )
 
             val_splitters = [
-                DataSplitterHolder(is_option=True, split_type=ValSplitByType.SESSION),
-                DataSplitterHolder(is_option=False, split_type=ValSplitByType.SESSION),
+                DataSplitter(is_option=True, split_type=ValSplitByType.SESSION),
+                DataSplitter(is_option=False, split_type=ValSplitByType.SESSION),
             ]
             test_splitters = [
-                DataSplitterHolder(is_option=True, split_type=SplitByType.SUBJECT),
+                DataSplitter(is_option=True, split_type=SplitByType.SUBJECT),
             ]
 
             config = MagicMock()
@@ -210,21 +212,36 @@ class TestDataSplittingPreviewDialogSplitters:
         assert dlg.preview_debounce_timer.isActive()
         dlg.preview_debounce_timer.stop()
 
+    def test_split_control_signals_update_values_and_debounce(self, dlg):
+        for widgets, splitters in (
+            (dlg.val_widgets, dlg.val_splitter_list),
+            (dlg.test_widgets, dlg.test_splitter_list),
+        ):
+            combo, entry = widgets[0]
+            splitter = splitters[0]
+            assert splitter.split_unit.value == combo.currentText()
+            assert splitter.value_var == entry.text()
+            combo.setCurrentText("Number")
+            entry.setText("2")
+            assert splitter.split_unit.value == "Number"
+            assert splitter.value_var == "2"
+            assert dlg.preview_debounce_timer.isActive()
+            dlg.preview_debounce_timer.stop()
+
     def test_cross_validation_defaults_testing_to_kfold(self, qtbot):
         from XBrainLab.backend.dataset import SplitByType, TrainingType, ValSplitByType
 
         with patch("threading.Thread") as mock_thread:
             mock_thread.return_value.is_alive.return_value = False
             from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
-                DataSplitterHolder,
                 DataSplittingPreviewDialog,
             )
 
             val_splitters = [
-                DataSplitterHolder(is_option=True, split_type=ValSplitByType.TRIAL),
+                DataSplitter(is_option=True, split_type=ValSplitByType.TRIAL),
             ]
             test_splitters = [
-                DataSplitterHolder(is_option=True, split_type=SplitByType.TRIAL),
+                DataSplitter(is_option=True, split_type=SplitByType.TRIAL),
             ]
 
             config = MagicMock()
@@ -814,6 +831,80 @@ class TestDataSplittingPreviewDialogSplitters:
         assert dlg.result() == QDialog.DialogCode.Rejected
         assert dlg._preview_close_retry_pending is False
         assert dlg._preview_pending_close_action is None
+
+    @pytest.mark.parametrize("action", ["close", "reject"])
+    def test_close_retries_cancellation_before_publisher_registration(
+        self, dlg, qtbot, action
+    ):
+        factory_entered = threading.Event()
+        release_factory = threading.Event()
+        generation_started = threading.Event()
+        interrupted = threading.Event()
+
+        class BlockingGenerator:
+            def generate(self):
+                generation_started.set()
+                if not interrupted.wait(timeout=3):
+                    raise TimeoutError("Preview cancellation did not reach generator")
+                raise KeyboardInterrupt
+
+            def set_interrupt(self):
+                interrupted.set()
+
+        def delayed_factory(_config):
+            factory_entered.set()
+            if not release_factory.wait(timeout=3):
+                raise TimeoutError("Preview factory was not released")
+            return BlockingGenerator()
+
+        publisher = DatasetSplitPreviewPublisher(
+            dataset=SimpleNamespace(get_epoch_data=lambda: SimpleNamespace()),
+            generator_factory=delayed_factory,
+            get_publication=lambda: SimpleNamespace(
+                generation=dlg.publication_generation, usable=True
+            ),
+            config_factory=lambda payload: payload,
+        )
+        cancellation_results = []
+
+        def cancel(request_id):
+            result = publisher.cancel_preview(request_id)
+            cancellation_results.append(result)
+            return result
+
+        dlg.preview_provider = publisher.publish_preview
+        dlg.preview_canceller = cancel
+        dlg.show()
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
+            _REAL_THREAD_CLASS,
+        ):
+            dlg.preview()
+        worker = dlg.preview_worker
+        assert worker is not None
+        try:
+            assert factory_entered.wait(timeout=1)
+            # Repeated close requests must retain ownership until cancellation
+            # reaches a publisher that has not yet registered this request.
+            getattr(dlg, action)()
+            getattr(dlg, action)()
+            assert cancellation_results == [False, False]
+            assert dlg.isVisible()
+            release_factory.set()
+            assert generation_started.wait(timeout=1)
+
+            qtbot.waitUntil(interrupted.is_set, timeout=1500)
+            qtbot.waitUntil(lambda: not worker.is_alive(), timeout=1000)
+            qtbot.waitUntil(lambda: not dlg.isVisible(), timeout=1000)
+            assert dlg.get_preview_receipt() is None
+            assert dlg._preview_status == "cancelled"
+            assert not dlg.timer.isActive()
+            assert not dlg.preview_debounce_timer.isActive()
+        finally:
+            release_factory.set()
+            interrupted.set()
+            worker.join(timeout=1)
+            assert not worker.is_alive()
 
     def test_preview_close_callback_ignores_deleted_qt_wrapper(self, dlg):
         with (

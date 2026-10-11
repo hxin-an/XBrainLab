@@ -19,6 +19,7 @@ from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitSpecification,
 )
 from XBrainLab.backend.dataset import (
+    DataSplitter,
     DataSplittingConfig,
     SplitByType,
     SplitUnit,
@@ -26,7 +27,6 @@ from XBrainLab.backend.dataset import (
     ValSplitByType,
 )
 from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
-    DataSplitterHolder,
     DataSplittingPreviewDialog,
 )
 
@@ -52,32 +52,6 @@ def _window(qtbot) -> DataSplittingPreviewDialog:
         window.preview_worker.join(timeout=1)
     window.update_table()
     return window
-
-
-def test_data_splitter_holder_validation() -> None:
-    holder = DataSplitterHolder(True, SplitByType.TRIAL)
-    holder.set_entry_var("")
-    holder.set_split_unit_var(None)
-    assert not holder.is_valid()
-
-    holder.set_split_unit_var(SplitUnit.RATIO.value)
-    holder.set_entry_var("0.8")
-    assert holder.is_valid()
-    assert holder.get_value() == 0.8
-
-    holder.set_entry_var("1.2")
-    assert not holder.is_valid()
-    holder.set_entry_var("abc")
-    assert not holder.is_valid()
-
-    holder.set_split_unit_var(SplitUnit.NUMBER.value)
-    holder.set_entry_var("10")
-    assert holder.is_valid()
-    assert holder.get_value() == 10.0
-    holder.set_entry_var("10.5")
-    assert not holder.is_valid()
-    holder.set_entry_var("-5")
-    assert not holder.is_valid()
 
 
 def test_data_splitting_window_init_uses_detached_context(qtbot) -> None:
@@ -116,7 +90,9 @@ def test_data_splitting_window_preview_renders_typed_rows(qtbot) -> None:
     assert window.tree.height() <= 180
 
 
-def test_step_two_shows_epoch_trials_atomic_groups_and_class_labels(qtbot) -> None:
+def test_step_two_shows_trials_and_classes_but_keeps_atomic_counts_internal(
+    qtbot,
+) -> None:
     context = DatasetSplitContext(
         epoch_available=True,
         trial_count=12,
@@ -137,7 +113,8 @@ def test_step_two_shows_epoch_trials_atomic_groups_and_class_labels(qtbot) -> No
     labels = [label.text() for label in window.findChildren(QLabel)]
 
     assert "Trials" in labels and "12" in labels
-    assert "Atomic trial groups" in labels and "3" in labels
+    assert "Atomic trial groups" not in labels
+    assert window._split_target_count(DataSplitter(SplitByType.TRIAL)) == 3
     assert "7.50 Hz, 10.00 Hz" in labels
     classes_value = next(
         label
@@ -146,6 +123,36 @@ def test_step_two_shows_epoch_trials_atomic_groups_and_class_labels(qtbot) -> No
     )
     assert classes_value.wordWrap()
     assert classes_value.toolTip() == "7.50 Hz, 10.00 Hz"
+
+
+@pytest.mark.parametrize("validation_enabled", [False, True])
+def test_validation_card_is_visible_only_when_a_validation_rule_exists(
+    qtbot, validation_enabled
+) -> None:
+    config = DataSplittingConfig(
+        TrainingType.FULL,
+        False,
+        [DataSplitter(ValSplitByType.TRIAL)] if validation_enabled else [],
+        [DataSplitter(SplitByType.TRIAL)],
+    )
+    window = DataSplittingPreviewDialog(
+        None, "Preview", config=config, **dialog_context_kwargs()
+    )
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.wait(20)
+    title = next(
+        label
+        for label in window.findChildren(QLabel)
+        if label.text() == "Validation split"
+    )
+    assert title.isVisible() is validation_enabled
+    assert bool(window.val_widgets) is validation_enabled
+    assert bool(window.val_splitter_list) is validation_enabled
+    assert any(
+        label.isVisible() and label.text() == "Testing split"
+        for label in window.findChildren(QLabel)
+    )
 
 
 @pytest.mark.parametrize(
@@ -180,7 +187,7 @@ def test_step_two_rehydrates_saved_test_unit_and_value(
         train_type=TrainingType.FULL,
         is_cross_validation=False,
         val_splitter_list=[],
-        test_splitter_list=[DataSplitterHolder(True, SplitByType.TRIAL)],
+        test_splitter_list=[DataSplitter(SplitByType.TRIAL)],
     )
     window = DataSplittingPreviewDialog(
         None,
@@ -232,8 +239,8 @@ def test_step_two_rehydrates_saved_validation_unit_value_and_payload(
     config = DataSplittingConfig(
         train_type=TrainingType.FULL,
         is_cross_validation=False,
-        val_splitter_list=[DataSplitterHolder(True, ValSplitByType.TRIAL)],
-        test_splitter_list=[DataSplitterHolder(True, SplitByType.TRIAL)],
+        val_splitter_list=[DataSplitter(ValSplitByType.TRIAL)],
+        test_splitter_list=[DataSplitter(SplitByType.TRIAL)],
     )
     window = DataSplittingPreviewDialog(
         None,
@@ -268,8 +275,8 @@ def test_step_two_projects_split_units_from_backend_context(
     config = DataSplittingConfig(
         train_type=TrainingType.FULL,
         is_cross_validation=cross_validation,
-        val_splitter_list=[DataSplitterHolder(True, ValSplitByType.TRIAL)],
-        test_splitter_list=[DataSplitterHolder(True, SplitByType.TRIAL)],
+        val_splitter_list=[DataSplitter(ValSplitByType.TRIAL)],
+        test_splitter_list=[DataSplitter(SplitByType.TRIAL)],
     )
     window = DataSplittingPreviewDialog(
         None,
@@ -396,7 +403,7 @@ def test_preview_receipt_is_invalidated_when_a_split_control_changes(qtbot) -> N
         train_type=TrainingType.FULL,
         is_cross_validation=False,
         val_splitter_list=[],
-        test_splitter_list=[DataSplitterHolder(True, SplitByType.TRIAL)],
+        test_splitter_list=[DataSplitter(SplitByType.TRIAL)],
     )
     window = DataSplittingPreviewDialog(
         None,

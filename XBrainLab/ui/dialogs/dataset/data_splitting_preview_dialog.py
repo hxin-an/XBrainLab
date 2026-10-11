@@ -255,49 +255,6 @@ _RESULT_TREE_STYLE = f"""
 """
 
 
-class DataSplitterHolder(DataSplitter):
-    """Extended DataSplitter with mutable split parameters for UI binding.
-
-    Wraps a DataSplitter to allow dynamic updates from combo boxes and
-    text entries in the preview dialog.
-
-    Attributes:
-        is_option: Whether this splitter represents a user-configurable option.
-        split_type: The type of split (e.g., by session, trial, subject).
-
-    """
-
-    def __init__(self, is_option, split_type):
-        super().__init__(
-            split_type,
-            value_var=None,
-            split_unit=None,
-            is_option=is_option,
-        )
-
-    def set_split_unit_var(self, val):
-        """Set the split unit from a combo box string value.
-
-        Args:
-            val: String representation of the SplitUnit enum value.
-
-        """
-        self.split_unit = None
-        for unit in SplitUnit:
-            if unit.value == val:
-                self.split_unit = unit
-                break
-
-    def set_entry_var(self, val):
-        """Set the split value from a text entry.
-
-        Args:
-            val: String value representing the split amount.
-
-        """
-        self.value_var = val
-
-
 class DataSplittingPreviewDialog(BaseDialog):
     """Dialog for previewing and confirming data splitting results.
 
@@ -310,8 +267,8 @@ class DataSplittingPreviewDialog(BaseDialog):
         config: DataSplittingConfig defining the split strategy.
         preview_worker: Background thread for dataset generation.
         tree: QTreeWidget displaying dataset split information.
-        val_splitter_list: List of DataSplitterHolder for validation splits.
-        test_splitter_list: List of DataSplitterHolder for testing splits.
+        val_splitter_list: List of DataSplitter for validation splits.
+        test_splitter_list: List of DataSplitter for testing splits.
 
     """
 
@@ -498,7 +455,6 @@ class DataSplittingPreviewDialog(BaseDialog):
             ("Sessions", str(self.split_context.session_count)),
             ("Labels", str(self.split_context.label_count)),
             ("Trials", str(self.split_context.trial_count)),
-            ("Atomic trial groups", str(self.split_context.trial_group_count)),
             (
                 "Classes",
                 ", ".join(choice.label for choice in self.split_context.label_choices)
@@ -522,111 +478,23 @@ class DataSplittingPreviewDialog(BaseDialog):
         val_layout.setHorizontalSpacing(8)
         val_layout.setVerticalSpacing(8)
         val_layout.setColumnStretch(1, 1)
-        self.val_widgets = []
-
         val_splitter_list, test_splitter_list = self.config.get_splitter_option()
         self.val_splitter_list = val_splitter_list
         self.test_splitter_list = test_splitter_list
 
-        row = 0
-        idx = 0
-        for splitter in val_splitter_list:
-            if splitter.is_option:
-                idx += 1
-                lbl = QLabel(splitter.text)
-                val_layout.addWidget(lbl, row, 0, 1, 2)
-
-                combo = QComboBox()
-                combo.addItems(self._available_split_units(is_test=False))
-                default_unit = self._restored_split_unit(
-                    splitter,
-                    default=SplitUnit.RATIO,
-                )
-                combo.setCurrentText(default_unit.value)
-                val_layout.addWidget(combo, row + 1, 0)
-
-                entry = QLineEdit(
-                    self._default_split_entry_value(
-                        splitter,
-                        split_unit=default_unit,
-                        initial_key="validation_ratio",
-                    )
-                )
-                combo.currentTextChanged.connect(
-                    lambda t, s=splitter: self.on_split_type_change(s, t),
-                )
-                entry.textChanged.connect(
-                    lambda t, s=splitter: self.on_entry_change(s, t),
-                )
-                val_layout.addWidget(entry, row + 1, 1)
-
-                if hasattr(splitter, "set_split_unit_var"):
-                    splitter.set_split_unit_var(combo.currentText())
-                if hasattr(splitter, "set_entry_var"):
-                    splitter.set_entry_var(entry.text())
-
-                self.val_widgets.append((combo, entry))
-                row += 2
-            else:
-                val_layout.addWidget(QLabel(splitter.text), row, 0, 1, 2)
-                row += 1
+        self.val_widgets = self._add_split_controls(
+            val_layout, val_splitter_list, is_test=False
+        )
         right_layout.addWidget(val_group)
+        val_group.setVisible(bool(val_splitter_list))
 
         test_group, test_layout = self._panel_grid("Testing split")
         test_layout.setHorizontalSpacing(8)
         test_layout.setVerticalSpacing(8)
         test_layout.setColumnStretch(1, 1)
-        row = 0
-        if self.config.is_cross_validation:
-            test_layout.addWidget(QLabel("Cross Validation"), row, 0, 1, 2)
-            row += 1
-
-        idx = 0
-        self.test_widgets = []
-        for splitter in test_splitter_list:
-            if splitter.is_option:
-                idx += 1
-                lbl = QLabel(splitter.text)
-                test_layout.addWidget(lbl, row, 0, 1, 2)
-
-                combo = QComboBox()
-                combo.addItems(self._available_split_units(is_test=True))
-                default_unit = self._restored_split_unit(
-                    splitter,
-                    default=(
-                        SplitUnit.KFOLD
-                        if self.config.is_cross_validation and idx == 1
-                        else SplitUnit.RATIO
-                    ),
-                )
-                combo.setCurrentText(default_unit.value)
-                test_layout.addWidget(combo, row + 1, 0)
-
-                entry = QLineEdit(
-                    self._default_split_entry_value(
-                        splitter,
-                        split_unit=default_unit,
-                        initial_key="test_ratio",
-                    )
-                )
-                combo.currentTextChanged.connect(
-                    lambda t, s=splitter: self.on_split_type_change(s, t),
-                )
-                entry.textChanged.connect(
-                    lambda t, s=splitter: self.on_entry_change(s, t),
-                )
-                test_layout.addWidget(entry, row + 1, 1)
-
-                if hasattr(splitter, "set_split_unit_var"):
-                    splitter.set_split_unit_var(combo.currentText())
-                if hasattr(splitter, "set_entry_var"):
-                    splitter.set_entry_var(entry.text())
-
-                self.test_widgets.append((combo, entry))
-                row += 2
-            else:
-                test_layout.addWidget(QLabel(splitter.text), row, 0, 1, 2)
-                row += 1
+        self.test_widgets = self._add_split_controls(
+            test_layout, test_splitter_list, is_test=True
+        )
         right_layout.addWidget(test_group)
 
         content_layout.addWidget(controls_column, stretch=0)
@@ -663,6 +531,58 @@ class DataSplittingPreviewDialog(BaseDialog):
         btn_confirm.clicked.connect(self.confirm)
         footer.addWidget(btn_confirm)
         layout.addLayout(footer)
+
+    def _add_split_controls(
+        self,
+        layout: QGridLayout,
+        splitters: list[DataSplitter],
+        *,
+        is_test: bool,
+    ) -> list[tuple[QComboBox, QLineEdit]]:
+        """Build the shared validation/test rows without owning split policy."""
+        row = 0
+        if is_test and self.config.is_cross_validation:
+            layout.addWidget(QLabel("Cross Validation"), row, 0, 1, 2)
+            row += 1
+        widgets = []
+        for splitter in splitters:
+            layout.addWidget(QLabel(splitter.text), row, 0, 1, 2)
+            if not splitter.is_option:
+                row += 1
+                continue
+            combo = QComboBox()
+            combo.addItems(self._available_split_units(is_test=is_test))
+            default_unit = self._restored_split_unit(
+                splitter,
+                default=(
+                    SplitUnit.KFOLD
+                    if is_test and self.config.is_cross_validation and not widgets
+                    else SplitUnit.RATIO
+                ),
+            )
+            combo.setCurrentText(default_unit.value)
+            entry = QLineEdit(
+                self._default_split_entry_value(
+                    splitter,
+                    split_unit=default_unit,
+                    initial_key="test_ratio" if is_test else "validation_ratio",
+                )
+            )
+            combo.currentTextChanged.connect(
+                lambda text, current=splitter: self.on_split_type_change(current, text)
+            )
+            entry.textChanged.connect(
+                lambda text, current=splitter: self.on_entry_change(current, text)
+            )
+            layout.addWidget(combo, row + 1, 0)
+            layout.addWidget(entry, row + 1, 1)
+            splitter.split_unit = next(
+                (unit for unit in SplitUnit if unit.value == combo.currentText()), None
+            )
+            splitter.value_var = entry.text()
+            widgets.append((combo, entry))
+            row += 2
+        return widgets
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         """Reflow the two Step 2 columns before compact windows can clip them."""
@@ -848,12 +768,13 @@ class DataSplittingPreviewDialog(BaseDialog):
         """Handle changes to the split unit combo box.
 
         Args:
-            splitter: The DataSplitterHolder being modified.
+            splitter: The DataSplitter being modified.
             text: The newly selected split unit text.
 
         """
-        if hasattr(splitter, "set_split_unit_var"):
-            splitter.set_split_unit_var(text)
+        splitter.split_unit = next(
+            (unit for unit in SplitUnit if unit.value == text), None
+        )
         if text == SplitUnit.MANUAL.value:
             self.handle_manual_split(splitter)
         self.schedule_preview()
@@ -862,19 +783,18 @@ class DataSplittingPreviewDialog(BaseDialog):
         """Handle changes to the split value text entry.
 
         Args:
-            splitter: The DataSplitterHolder being modified.
+            splitter: The DataSplitter being modified.
             text: The new split value text.
 
         """
-        if hasattr(splitter, "set_entry_var"):
-            splitter.set_entry_var(text)
+        splitter.value_var = text
         self.schedule_preview()
 
     def handle_manual_split(self, splitter):
         """Open a manual split dialog for the given splitter.
 
         Args:
-            splitter: The DataSplitterHolder requiring manual selection.
+            splitter: The DataSplitter requiring manual selection.
 
         """
         choices = []
@@ -1370,8 +1290,9 @@ class DataSplittingPreviewDialog(BaseDialog):
         if sip.isdeleted(self):
             return
         self._preview_close_retry_pending = False
-        worker = self.preview_worker
-        if worker is not None and worker.is_alive():
+        # The first close may race the publisher's request registration. Keep
+        # requesting cancellation until the worker releases its ownership.
+        if not self._request_preview_worker_stop():
             started_at = self._preview_close_started_at
             if (
                 started_at is not None

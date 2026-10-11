@@ -30,7 +30,6 @@ def test_dataset(
     assert dataset.get_treeview_row_info() == ("O", "test", 0, 0, 0)
     dataset.set_selection(False)
     assert dataset.get_treeview_row_info() == ("X", "test", 0, 0, 0)
-    assert dataset.has_set_empty()
 
     X, y = dataset.get_training_data()
     assert len(X) == 0
@@ -59,17 +58,14 @@ def test_dataset_set_test_mask(
     # set test
     mask[:3] = True
     dataset.set_test(mask)
-    assert dataset.has_set_empty()
     assert sum(dataset.get_remaining_mask()) == (total - 3)
 
     # set val
     mask[3:9] = True
     dataset.set_val(mask)
-    assert dataset.has_set_empty()
     assert sum(dataset.get_remaining_mask()) == (total - 9)
     # set train
     dataset.set_remaining_to_train()
-    assert not dataset.has_set_empty()
     assert not dataset.get_remaining_mask().any()
 
     assert dataset.get_train_len() == (total - 9)

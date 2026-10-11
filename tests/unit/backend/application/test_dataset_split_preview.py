@@ -141,21 +141,6 @@ def _real_epoch_data() -> Epochs:
     return Epochs([raw])
 
 
-def _assert_live_split_state_unchanged(
-    epoch_data: Epochs,
-    original_evidence: list[dict[str, Any]],
-    *,
-    sequence: int,
-    dropped: int,
-) -> None:
-    assert epoch_data.trial_selection_evidence is original_evidence
-    assert epoch_data.trial_selection_evidence == [
-        {"source": "live", "details": {"selected": 3}}
-    ]
-    assert epoch_data.trial_selection_evidence_dropped == dropped
-    assert sequence == Dataset.SEQ
-
-
 class _BlockingDatasetGenerator(DatasetGenerator):
     def __init__(self, *args: Any, started: threading.Event, release: threading.Event):
         super().__init__(*args)
@@ -287,13 +272,15 @@ def test_context_publication_represents_missing_epochs_without_live_payload() ->
     assert publication.context.session_choices == ()
 
 
-def test_real_preview_success_preserves_live_epoch_evidence_and_dataset_sequence(
+def test_real_preview_success_preserves_epoch_data_and_dataset_sequence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     epoch_data = _real_epoch_data()
-    original_evidence = [{"source": "live", "details": {"selected": 3}}]
-    epoch_data.trial_selection_evidence = original_evidence
-    epoch_data.trial_selection_evidence_dropped = 2
+    original_arrays = {
+        name: getattr(epoch_data, name).copy()
+        for name in ("data", "label", "subject", "session", "idx", "trial_group")
+    }
+    original_provenance = epoch_data.epoch_window_provenance
     monkeypatch.setattr(Dataset, "SEQ", 41)
     publisher = DatasetSplitPreviewPublisher(
         dataset=_DatasetState(epoch_data),
@@ -311,12 +298,10 @@ def test_real_preview_success_preserves_live_epoch_evidence_and_dataset_sequence
     )
 
     assert publication.rows
-    _assert_live_split_state_unchanged(
-        epoch_data,
-        original_evidence,
-        sequence=41,
-        dropped=2,
-    )
+    assert Dataset.SEQ == 41
+    for name, original in original_arrays.items():
+        np.testing.assert_array_equal(getattr(epoch_data, name), original)
+    assert epoch_data.epoch_window_provenance is original_provenance
 
 
 def test_real_preview_row_exposes_allocation_and_saliency_evidence(
@@ -376,13 +361,10 @@ def test_real_preview_row_exposes_allocation_and_saliency_evidence(
     assert row.saliency_source == "test"
 
 
-def test_real_preview_failure_preserves_live_epoch_evidence_and_dataset_sequence(
+def test_real_preview_failure_preserves_dataset_sequence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     epoch_data = _real_epoch_data()
-    original_evidence = [{"source": "live", "details": {"selected": 3}}]
-    epoch_data.trial_selection_evidence = original_evidence
-    epoch_data.trial_selection_evidence_dropped = 5
     monkeypatch.setattr(Dataset, "SEQ", 73)
     publisher = DatasetSplitPreviewPublisher(
         dataset=_DatasetState(epoch_data),
@@ -415,12 +397,7 @@ def test_real_preview_failure_preserves_live_epoch_evidence_and_dataset_sequence
             )
         )
 
-    _assert_live_split_state_unchanged(
-        epoch_data,
-        original_evidence,
-        sequence=73,
-        dropped=5,
-    )
+    assert Dataset.SEQ == 73
 
 
 def test_real_preview_rejects_the_same_mixed_trial_provenance_risk_as_train(
@@ -474,13 +451,10 @@ def test_real_preview_rejects_the_same_mixed_trial_provenance_risk_as_train(
         )
 
 
-def test_real_preview_cancel_preserves_live_epoch_evidence_and_dataset_sequence(
+def test_real_preview_cancel_preserves_dataset_sequence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     epoch_data = _real_epoch_data()
-    original_evidence = [{"source": "live", "details": {"selected": 3}}]
-    epoch_data.trial_selection_evidence = original_evidence
-    epoch_data.trial_selection_evidence_dropped = 7
     monkeypatch.setattr(Dataset, "SEQ", 109)
     started = threading.Event()
     release = threading.Event()
@@ -523,12 +497,7 @@ def test_real_preview_cancel_preserves_live_epoch_evidence_and_dataset_sequence(
     assert len(errors) == 1
     assert isinstance(errors[0], PreconditionError)
     assert "cancelled" in str(errors[0]).casefold()
-    _assert_live_split_state_unchanged(
-        epoch_data,
-        original_evidence,
-        sequence=109,
-        dropped=7,
-    )
+    assert Dataset.SEQ == 109
 
 
 def test_real_preview_cancel_inside_allocator_rolls_back_generator_state(
@@ -536,9 +505,6 @@ def test_real_preview_cancel_inside_allocator_rolls_back_generator_state(
 ) -> None:
     """Cancellation at a real allocator checkpoint rolls its transaction back."""
     epoch_data = _real_epoch_data()
-    original_evidence = [{"source": "live", "details": {"selected": 3}}]
-    epoch_data.trial_selection_evidence = original_evidence
-    epoch_data.trial_selection_evidence_dropped = 8
     monkeypatch.setattr(Dataset, "SEQ", 111)
     entered_allocator = threading.Event()
     release_allocator = threading.Event()
@@ -603,14 +569,7 @@ def test_real_preview_cancel_inside_allocator_rolls_back_generator_state(
     assert "cancelled" in str(errors[0]).casefold()
     assert len(generators) == 1
     assert generators[0].datasets == []
-    assert generators[0].epoch_data.trial_selection_evidence == original_evidence
-    assert generators[0].epoch_data.trial_selection_evidence_dropped == 8
-    _assert_live_split_state_unchanged(
-        epoch_data,
-        original_evidence,
-        sequence=111,
-        dropped=8,
-    )
+    assert Dataset.SEQ == 111
 
 
 def test_real_preview_does_not_publish_when_cancelled_just_after_generation(

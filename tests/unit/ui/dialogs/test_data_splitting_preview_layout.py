@@ -15,6 +15,7 @@ from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitPreviewRow,
 )
 from XBrainLab.backend.dataset import (
+    DataSplitter,
     DataSplittingConfig,
     SplitByType,
     TrainingType,
@@ -23,7 +24,6 @@ from XBrainLab.backend.dataset import (
 from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
     PREVIEW_STATUS_SUCCEEDED,
-    DataSplitterHolder,
     DataSplittingPreviewDialog,
 )
 
@@ -63,8 +63,8 @@ def _preview_config() -> DataSplittingConfig:
     return DataSplittingConfig(
         train_type=TrainingType.FULL,
         is_cross_validation=True,
-        val_splitter_list=[DataSplitterHolder(True, ValSplitByType.TRIAL)],
-        test_splitter_list=[DataSplitterHolder(True, SplitByType.TRIAL)],
+        val_splitter_list=[DataSplitter(ValSplitByType.TRIAL)],
+        test_splitter_list=[DataSplitter(SplitByType.TRIAL)],
     )
 
 

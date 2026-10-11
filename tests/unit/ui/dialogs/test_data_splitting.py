@@ -5,13 +5,21 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QBoxLayout, QFrame, QLabel, QTreeWidgetItem, QWidget
+from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtWidgets import (
+    QApplication,
+    QBoxLayout,
+    QFrame,
+    QLabel,
+    QTreeWidgetItem,
+    QWidget,
+)
 
 from tests.unit.ui.data_split_test_support import (
     dialog_context_kwargs,
     split_context,
 )
+from XBrainLab.backend.dataset import DataSplitter
 from XBrainLab.backend.study import Study
 
 
@@ -70,6 +78,92 @@ class TestPreviewCanvas:
 
 
 class TestDataSplittingDialog:
+    def test_settings_hierarchy_fits_default_dialog_without_horizontal_clipping(
+        self, qtbot, monkeypatch
+    ):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        dialog = DataSplittingDialog(None, **dialog_context_kwargs())
+        qtbot.addWidget(dialog)
+        # Offscreen has a 800 px screen; exercise the normal desktop layout here.
+        # Separate narrow-viewport tests retain BaseDialog's screen clamp.
+        monkeypatch.setattr(dialog, "_fit_to_available_screen", lambda: None)
+        dialog.resize(860, 460)
+        dialog.show()
+        qtbot.wait(20)
+        titles = dialog.findChildren(QLabel, "DataSplitSectionTitle")
+        assert len(titles) == 2
+        assert (
+            abs(
+                titles[0].mapTo(dialog, QPoint()).y()
+                - titles[1].mapTo(dialog, QPoint()).y()
+            )
+            <= 2
+        )
+        labels = [
+            next(
+                label for label in dialog.findChildren(QLabel) if label.buddy() is combo
+            )
+            for combo in (dialog.train_type_combo, dialog.test_combo, dialog.val_combo)
+        ]
+        assert (
+            labels[0].mapTo(dialog, QPoint()).x()
+            >= titles[1].mapTo(dialog, QPoint()).x() + 12
+        )
+        assert len({label.mapTo(dialog, QPoint()).x() for label in labels}) == 1
+        assert (
+            dialog.cv_check.mapTo(dialog, QPoint()).x()
+            == labels[0].mapTo(dialog, QPoint()).x()
+        )
+        training_to_testing_gap = (
+            dialog.test_combo.y() - dialog.train_type_combo.geometry().bottom() - 1
+        )
+        testing_to_validation_gap = (
+            dialog.val_combo.y() - dialog.test_combo.geometry().bottom() - 1
+        )
+        assert training_to_testing_gap == testing_to_validation_gap == 10
+        assert 800 <= dialog.width() <= 900
+        assert dialog.height() <= 500
+        for widget in (
+            dialog.canvas,
+            dialog.train_type_combo,
+            dialog.test_combo,
+            dialog.val_combo,
+            dialog.cv_check,
+            dialog.btn_confirm,
+        ):
+            assert widget.visibleRegion().contains(widget.rect())
+
+    @pytest.mark.parametrize("name", ["train_type_combo", "test_combo", "val_combo"])
+    def test_split_popup_has_no_white_bands_and_keeps_keyboard_selection(
+        self, qtbot, name
+    ):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        dialog = DataSplittingDialog(None, **dialog_context_kwargs())
+        qtbot.addWidget(dialog)
+        dialog.show()
+        combo = getattr(dialog, name)
+        dialog.content_scroll.ensureWidgetVisible(combo)
+        combo.showPopup()
+        QApplication.processEvents()
+        image = combo.view().window().grab().toImage()
+        for y in (2, image.height() - 3):
+            near_white = sum(
+                min(image.pixelColor(x, y).getRgb()[:3]) >= 220
+                for x in range(3, image.width() - 3)
+            )
+            assert near_white / (image.width() - 6) < 0.1
+        last = combo.count() - 1
+        qtbot.keyClick(combo.view(), Qt.Key.Key_End)
+        qtbot.keyClick(combo.view(), Qt.Key.Key_Return)
+        assert combo.currentIndex() == last
+        assert not combo.view().window().isVisible()
+
     @pytest.mark.parametrize(
         ("subject_count", "session_count"),
         [(1, 1), (3, 2), (5, 3), (15, 4)],
@@ -534,15 +628,14 @@ class TestDataSplittingDialog:
             ValSplitByType,
         )
         from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
-            DataSplitterHolder,
             DataSplittingPreviewDialog,
         )
 
         config = DataSplittingConfig(
             train_type=TrainingType.FULL,
             is_cross_validation=True,
-            val_splitter_list=[DataSplitterHolder(True, ValSplitByType.TRIAL)],
-            test_splitter_list=[DataSplitterHolder(True, SplitByType.TRIAL)],
+            val_splitter_list=[DataSplitter(ValSplitByType.TRIAL)],
+            test_splitter_list=[DataSplitter(SplitByType.TRIAL)],
         )
 
         with patch("threading.Thread") as mock_thread:
@@ -643,7 +736,6 @@ class TestDataSplittingDialog:
             DataSplittingDialog,
         )
         from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
-            DataSplitterHolder,
             DataSplittingPreviewDialog,
         )
 
@@ -653,8 +745,8 @@ class TestDataSplittingDialog:
         config = DataSplittingConfig(
             train_type=TrainingType.FULL,
             is_cross_validation=True,
-            val_splitter_list=[DataSplitterHolder(True, ValSplitByType.TRIAL)],
-            test_splitter_list=[DataSplitterHolder(True, SplitByType.TRIAL)],
+            val_splitter_list=[DataSplitter(ValSplitByType.TRIAL)],
+            test_splitter_list=[DataSplitter(SplitByType.TRIAL)],
         )
         with patch("threading.Thread") as mock_thread:
             mock_thread.return_value.is_alive.return_value = False

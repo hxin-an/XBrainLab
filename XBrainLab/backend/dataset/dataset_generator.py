@@ -1,8 +1,6 @@
 """Dataset generator module for creating train/val/test splits from epoch data."""
 
 from collections.abc import Callable
-from copy import deepcopy
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import numpy as np
@@ -14,9 +12,6 @@ from .dataset import Dataset, Epochs
 from .option import SplitByType, SplitUnit, TrainingType, ValSplitByType
 
 MAX_CV_LOCAL_REPAIR_ATTEMPTS = 256
-
-if TYPE_CHECKING:  # pragma: no cover
-    from ..study import Study
 
 
 class DatasetGenerator:
@@ -787,21 +782,14 @@ class DatasetGenerator:
         committed_datasets = self.datasets
         pending_datasets: list[Dataset] = []
         initial_dataset_sequence = Dataset.SEQ
-        evidence_reference = self.epoch_data.trial_selection_evidence
-        initial_evidence = deepcopy(evidence_reference)
-        initial_evidence_dropped = self.epoch_data.trial_selection_evidence_dropped
         self.datasets = pending_datasets
         try:
             Dataset.SEQ = 0
-            self.epoch_data.reset_trial_selection_evidence()
             self._raise_if_interrupted()
             self._populate_pending_datasets()
         except BaseException:
             self.datasets = committed_datasets
             Dataset.SEQ = initial_dataset_sequence
-            evidence_reference[:] = initial_evidence
-            self.epoch_data.trial_selection_evidence = evidence_reference
-            self.epoch_data.trial_selection_evidence_dropped = initial_evidence_dropped
             self.preview_failed = True
             raise
         else:
@@ -859,28 +847,3 @@ class DatasetGenerator:
 
         """
         return self.done or (not self.interrupted and not self.preview_failed)
-
-    def reset(self) -> None:
-        """Reset the dataset generator."""
-        self.datasets = []
-        self.interrupted = False
-        self.preview_failed = False
-        Dataset.SEQ = 0
-
-    def apply(self, study: "Study") -> None:
-        """Apply the generated datasets to the study.
-
-        Args:
-            study: Study instance to receive the generated datasets.
-
-        Raises:
-            TypeError: If study is not a valid Study instance.
-            ValueError: If no valid datasets were generated.
-
-        """
-        from ..study import Study
-
-        validate_type(study, Study, "study")
-        self.prepare_result()
-        study.set_datasets(self.datasets)
-        study.dataset_generator = self
