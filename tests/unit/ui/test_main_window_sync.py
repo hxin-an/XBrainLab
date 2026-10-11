@@ -22,7 +22,13 @@ from PyQt6.QtWidgets import QDockWidget, QWidget
 
 from XBrainLab.backend.application import StopTrainingCommand
 from XBrainLab.backend.application.capabilities import build_capability_policy
-from XBrainLab.backend.application.state import ApplicationStateSnapshot
+from XBrainLab.backend.application.state import (
+    ActiveDatasetSnapshot,
+    ActiveTrainingSnapshot,
+    ApplicationStateSnapshot,
+    DatasetSplitLifecycle,
+    DatasetStateSnapshot,
+)
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.utils.observer import Observable
 from XBrainLab.ui.application_publication_renderer import (
@@ -32,7 +38,7 @@ from XBrainLab.ui.application_publication_renderer import (
 )
 from XBrainLab.ui.async_command_runner import application_command_registry
 from XBrainLab.ui.main_window import MainWindow
-from XBrainLab.ui.status import show_status_message
+from XBrainLab.ui.status import publish_owned_operation_progress, show_status_message
 
 
 @pytest.fixture
@@ -655,6 +661,123 @@ def test_publication_status_waits_for_transient_action_feedback(
         )
     finally:
         service.close()
+
+
+@pytest.mark.parametrize(
+    "split,model,settings",
+    [
+        (False, False, False),
+        (True, False, False),
+        (False, True, False),
+        (False, False, True),
+        (True, True, False),
+        (True, False, True),
+        (False, True, True),
+        (True, True, True),
+    ],
+)
+def test_training_status_reflects_saved_configuration(
+    main_window, split, model, settings
+):
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        active_dataset=ActiveDatasetSnapshot(has_saved_split=split),
+        active_training=ActiveTrainingSnapshot(
+            has_model=model, has_training_option=settings
+        ),
+    )
+    publication = ApplicationViewPublication(1, state, build_capability_policy(state))
+    for _ in range(3):
+        main_window.stack.addWidget(QWidget())
+    main_window.stack.setCurrentIndex(2)
+    assert main_window._show_application_publication_status(publication)
+    marks = ["✓" if saved else "—" for saved in (split, model, settings)]
+    assert main_window.statusBar().currentMessage() == (
+        f"Split {marks[0]}  ·  Model {marks[1]}  ·  Training settings {marks[2]}"
+    )
+    main_window.stack.setCurrentIndex(0)
+    main_window._show_application_publication_status(publication)
+    assert "Training settings" not in main_window.statusBar().currentMessage()
+
+
+def test_training_status_restores_after_message_and_marks_failed_split(
+    main_window, qtbot
+):
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        active_dataset=ActiveDatasetSnapshot(has_saved_split=True),
+        dataset=DatasetStateSnapshot(split_lifecycle=DatasetSplitLifecycle.FAILED),
+    )
+    publication = ApplicationViewPublication(1, state, build_capability_policy(state))
+    main_window._last_rendered_application_publication = publication
+    for _ in range(3):
+        main_window.stack.addWidget(QWidget())
+    main_window.stack.setCurrentIndex(2)
+    main_window._show_application_publication_status(publication)
+    expected = "Split Review  ·  Model —  ·  Training settings —"
+    assert main_window.statusBar().currentMessage() == expected
+    # Also cover native QStatusBar messages, not only our transient helper.
+    main_window.statusBar().showMessage("Settings saved", 60)
+    assert main_window.statusBar().currentMessage() == "Settings saved"
+    qtbot.waitUntil(lambda: main_window.statusBar().currentMessage() == expected)
+    main_window.stack.setCurrentIndex(0)
+    main_window.statusBar().showMessage("Opening another page", 60)
+    qtbot.wait(100)
+    assert "Training settings" not in main_window.statusBar().currentMessage()
+
+
+def test_training_status_does_not_replace_owned_progress(main_window, qtbot):
+    state = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(1, state, build_capability_policy(state))
+    main_window._last_rendered_application_publication = publication
+    for _ in range(3):
+        main_window.stack.addWidget(QWidget())
+    main_window.stack.setCurrentIndex(2)
+    publish_owned_operation_progress(
+        main_window,
+        operation_id="split-preview",
+        stage="Preparing data split",
+        phase="running",
+    )
+    progress = main_window.statusBar().currentMessage()
+    main_window._show_application_publication_status(publication)
+    assert main_window.statusBar().currentMessage() == progress
+    publish_owned_operation_progress(
+        main_window,
+        operation_id="split-preview",
+        stage="Preparing data split",
+        phase="completed",
+    )
+    qtbot.waitUntil(
+        lambda: main_window.statusBar().currentMessage()
+        == "Split —  ·  Model —  ·  Training settings —"
+    )
+
+
+@pytest.mark.parametrize("condition", ["running", "failed", "stale"])
+def test_training_status_retains_non_summary_priority(condition):
+    from XBrainLab.backend.training_state_contract import (
+        TrainingOutcomeState,
+        TrainingTerminalOutcome,
+    )
+
+    state = ApplicationStateSnapshot.empty()
+    if condition == "running":
+        state = replace(state, active_training=ActiveTrainingSnapshot(is_running=True))
+    elif condition == "failed":
+        state = replace(
+            state,
+            training=replace(
+                state.training,
+                terminal_outcome=TrainingTerminalOutcome(TrainingOutcomeState.FAILED),
+            ),
+        )
+    publication = ApplicationViewPublication(
+        1, state, build_capability_policy(state), stale=condition == "stale"
+    )
+    assert MainWindow._application_publication_status_message(
+        publication, training_page=True
+    ) == (MainWindow._application_publication_status_message(publication))
 
 
 def test_switch_page_does_not_present_stale_backend_state_as_current(main_window):

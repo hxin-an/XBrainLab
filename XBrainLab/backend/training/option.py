@@ -407,7 +407,6 @@ class TrainingOption:
         self.early_stopping_patience = early_stopping_patience
         self.early_stopping_min_delta = early_stopping_min_delta
         self.criterion = nn.CrossEntropyLoss()
-        self.optimizer_name = "adam"  # Default
         self.validate()
         self._normalize_runtime_device()
 
@@ -682,17 +681,6 @@ class TrainingOption:
         if self.use_cpu:
             return "cpu"
         return f"cuda:{self.gpu_idx}"
-
-    def get_evaluation_option_repr(self) -> str:
-        """Return a string representation of the model selection option.
-
-        Returns:
-            A string in the format ``'ClassName.MEMBER_NAME'``.
-
-        """
-        module_name = self.evaluation_option.__class__.__name__
-        class_name = self.evaluation_option.name
-        return f"{module_name}.{class_name}"
 
     def get_output_dir(self) -> str:
         """Return the output directory path.

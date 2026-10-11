@@ -488,11 +488,7 @@ class TrainingSidebar(QWidget):
         batch_size = result.batch_size
         gpu_name = result.vram.gpu_name
         risk_level = self._training_resource_risk_level(result)
-        risk_label = {
-            RISK_BLOCKING: "Too large",
-            RISK_WARNING: "Warning",
-            RISK_UNKNOWN: "Unknown",
-        }.get(risk_level, "Safe")
+        risk_label = self._training_resource_risk_label(risk_level)
         message_title = str(
             next(iter(result.issues or result.warnings or result.unknowns), "")
             or result.message
@@ -592,13 +588,6 @@ class TrainingSidebar(QWidget):
             else:
                 reasons.append("CUDA did not report available GPU memory.")
         return list(dict.fromkeys(reasons))
-
-    def update_info(self):
-        """Refresh the aggregate info panel (delegated to InfoPanelService)."""
-        if not self.info_panel:
-            return
-
-        # Handled by InfoPanelService
 
     def _show_status(self, message: str) -> None:
         panel_status = getattr(self.panel, "show_status_message", None)
@@ -1096,6 +1085,7 @@ class TrainingSidebar(QWidget):
                 training_option=selection.option,
                 device=selection.device,
                 edited_recommendation_fields=(selection.edited_recommendation_fields),
+                resource_preview_receipt=selection.resource_preview_receipt,
             ),
             blocked_title="Training Settings Blocked",
             failed_title="Training Settings Failed",
@@ -1477,26 +1467,6 @@ class TrainingSidebar(QWidget):
             self._training_resource_preview_shutdown_requested = False
 
     @staticmethod
-    def _positive_summary_count(
-        summary: Any,
-        key: str,
-        *,
-        allow_zero: bool = False,
-    ) -> int | None:
-        if not isinstance(summary, dict):
-            return None
-        value = summary.get(key)
-        if value is None or isinstance(value, bool):
-            return None
-        try:
-            parsed = int(cast(Any, value))
-        except (TypeError, ValueError):
-            return None
-        if parsed > 0 or (allow_zero and parsed == 0):
-            return parsed
-        return None
-
-    @staticmethod
     def _configure_training_command(
         *,
         model_holder: Any | None = None,
@@ -1534,6 +1504,7 @@ class TrainingSidebar(QWidget):
                 batch_size=getattr(option, "bs", None),
                 learning_rate=getattr(option, "lr", None),
                 repeat=getattr(option, "repeat_num", 1),
+                seed=getattr(option, "seed", None),
                 device=(
                     device
                     if isinstance(device, str) and device.strip()

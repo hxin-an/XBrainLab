@@ -595,7 +595,6 @@ def test_training_settings_unexpected_exception_uses_stable_warning(
     caplog,
 ) -> None:
     from XBrainLab.ui.dialogs.training import (
-        device_setting_dialog,
         training_setting_dialog,
     )
 
@@ -604,7 +603,6 @@ def test_training_settings_unexpected_exception_uses_stable_warning(
         "get_optimizer_classes",
         dict,
     )
-    monkeypatch.setattr(device_setting_dialog, "get_device_count", lambda: 0)
     dialog = training_setting_dialog.TrainingSettingDialog(None)
     qtbot.addWidget(dialog)
     warning = MagicMock()

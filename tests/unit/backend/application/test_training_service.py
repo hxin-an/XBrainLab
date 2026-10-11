@@ -37,6 +37,7 @@ from XBrainLab.backend.application.resource_guard import (
     TrainingResourcePreviewResult,
 )
 from XBrainLab.backend.application.results import ErrorType
+from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -62,6 +63,7 @@ from XBrainLab.backend.application.training_submission import (
     attach_training_submission_provenance,
 )
 from XBrainLab.backend.model_base import model_catalog as model_catalog_module
+from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import option as training_option_module
 from XBrainLab.backend.training.option import ClassWeightMode, class_map_fingerprint
 from XBrainLab.backend.training_state_contract import (
@@ -369,6 +371,68 @@ def test_training_service_configures_model_and_options() -> None:
         "early_stopping_patience": 3,
         "early_stopping_min_delta": 0.0,
     }
+
+
+@pytest.mark.parametrize("optimizer", ["Adam", "AdamW", "SGD"])
+def test_real_service_accepts_supported_optimizer_settings(optimizer, tmp_path):
+    service = ApplicationService(Study())
+    try:
+        result = service.execute(
+            ConfigureTrainingCommand(
+                epoch=2,
+                batch_size=4,
+                learning_rate=0.01,
+                device="cpu",
+                optimizer=optimizer,
+                optimizer_params={"weight_decay": 0.1},
+                output_dir=str(tmp_path),
+            )
+        )
+        assert result.ok, result.message
+        option = service.training_runtime.resource_context().training_option
+        assert option is not None
+        native_optimizer = option.get_optim(torch.nn.Linear(1, 1))
+        assert isinstance(native_optimizer, getattr(torch.optim, optimizer))
+        assert native_optimizer.param_groups[0]["lr"] == 0.01
+        assert native_optimizer.param_groups[0]["weight_decay"] == 0.1
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
+    "optimizer, parameters",
+    [
+        ("Adam", {"betas": (2.0, 0.999)}),
+        ("AdamW", {"weight_decay": -1.0}),
+        ("SGD", {"momentum": -1.0}),
+        ("Adam", {"unknown_parameter": 1}),
+        ("Adam", {"lr": 0.5}),
+    ],
+)
+def test_real_service_rejects_invalid_optimizer_without_replacing_configuration(
+    optimizer, parameters, tmp_path
+):
+    service = ApplicationService(Study())
+    command = ConfigureTrainingCommand(
+        epoch=2,
+        batch_size=4,
+        learning_rate=0.01,
+        device="cpu",
+        output_dir=str(tmp_path),
+    )
+    try:
+        assert service.execute(command).ok
+        before_snapshot = service.get_state().training.training_option
+        result = service.execute(
+            replace(command, optimizer=optimizer, optimizer_params=parameters)
+        )
+        assert not result.ok
+        assert service.get_state().training.training_option == before_snapshot
+        retained = service.training_runtime.resource_context().training_option
+        assert retained is not None
+        assert isinstance(retained.get_optim(torch.nn.Linear(1, 1)), torch.optim.Adam)
+    finally:
+        service.close()
 
 
 def test_configure_early_stopping_accepts_saved_unmaterialized_validation_preview() -> (

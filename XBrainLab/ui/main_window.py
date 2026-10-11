@@ -47,6 +47,7 @@ from XBrainLab.backend.application.commands import (
     QueryStateCommand,
     StopTrainingCommand,
 )
+from XBrainLab.backend.application.state import DatasetSplitLifecycle
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.training_state_contract import TrainingOutcomeState
 from XBrainLab.backend.utils.logger import logger
@@ -465,6 +466,7 @@ class MainWindow(QMainWindow):
         self._application_status_restore_timer.timeout.connect(
             self._restore_application_publication_status
         )
+        self.statusBar().messageChanged.connect(self._restore_training_status_when_idle)
 
         # Initialize Panels
         self.init_panels()
@@ -957,6 +959,15 @@ class MainWindow(QMainWindow):
             self._last_fully_rendered_application_publication = publication
         return fully_rendered
 
+    def _restore_training_status_when_idle(self, message: str) -> None:
+        """Restore Training's saved-settings summary after temporary feedback."""
+        if (
+            not message
+            and not self._closing_in_progress
+            and self.stack.currentIndex() == 2
+        ):
+            self._application_status_restore_timer.start(0)
+
     def _restore_application_publication_status(self) -> bool:
         """Restore the last shell-rendered revision after transient navigation UI."""
         publication = self._last_rendered_application_publication
@@ -972,13 +983,25 @@ class MainWindow(QMainWindow):
         status_bar = self.statusBar()
         if status_bar is None or sip.isdeleted(status_bar):
             return False
+        if (
+            self.stack.currentIndex() == 2
+            and publication.usable
+            and status_bar.property("operationId")
+            and status_bar.property("operationPhase")
+            in {"pending", "running", "cancelling"}
+        ):
+            # Active work owns this surface until its terminal publication.
+            return True
         transient_remaining_ms = transient_status_remaining_ms(status_bar)
         if transient_remaining_ms > 0:
             self._application_status_restore_timer.start(transient_remaining_ms + 1)
             status_bar.repaint()
             return True
         self._application_status_restore_timer.stop()
-        message = self._application_publication_status_message(publication)
+        message = self._application_publication_status_message(
+            publication,
+            training_page=self.stack.currentIndex() == 2,
+        )
         status_bar.showMessage(message)
         status_bar.repaint()
         return status_bar.currentMessage() == message
@@ -986,6 +1009,8 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _application_publication_status_message(
         publication: ApplicationViewPublication,
+        *,
+        training_page: bool = False,
     ) -> str:
         """Project the highest-priority committed workflow state to the shell."""
         if not publication.usable:
@@ -995,6 +1020,18 @@ class MainWindow(QMainWindow):
             is TrainingOutcomeState.FAILED
         ):
             return "Training failed · Adjust settings"
+        state = publication.state
+        if training_page and not state.active_training.is_running:
+            split = (
+                "Review"
+                if state.dataset.split_lifecycle is DatasetSplitLifecycle.FAILED
+                else "✓"
+                if state.active_dataset.has_saved_split
+                else "—"
+            )
+            model = "✓" if state.active_training.has_model else "—"
+            settings = "✓" if state.active_training.has_training_option else "—"
+            return f"Split {split}  ·  Model {model}  ·  Training settings {settings}"
         return workflow_stage_hint(publication.state.pipeline_stage)
 
     def _panel_rendered_application_revision(

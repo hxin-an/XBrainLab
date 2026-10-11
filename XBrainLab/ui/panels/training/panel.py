@@ -157,14 +157,11 @@ class TrainingPanel(BasePanel):
             dict[int, tuple],
         ] = {}
         self._selection_pinned_by_user = False
-        self._suppress_log_render_once = False
         self._history_query_unavailable_shown = False
         self._has_verified_history_render = False
         self._last_verified_history_rows: list[dict] = []
         self._rendered_history_rows: list[dict] = []
         self._latest_terminal_outcome: TrainingTerminalOutcome | None = None
-        self.plan_items: dict[str, object] = {}
-        self.run_items: dict[str, object] = {}
 
         # 3. Setup bridges & UI
         self._setup_bridges()
@@ -670,12 +667,6 @@ class TrainingPanel(BasePanel):
         """Show a non-modal status message on the application status bar."""
         return show_status_message(self, message, timeout_ms)
 
-    def update_info(self):
-        """Delegate info-panel updates to the sidebar."""
-        # Info display is handled entirely by the Sidebar component.
-        if hasattr(self, "sidebar"):
-            self.sidebar.update_info()
-
     def update_panel(self, *args):
         """Refresh Training and commit a direct render only after success."""
         self._update_panel_content(*args)
@@ -687,7 +678,6 @@ class TrainingPanel(BasePanel):
 
     def _update_panel_content(self, *args):
         """Update state-changing content from committed application truth."""
-        self.update_info()
         publication = self._read_application_publication()
         if self._publication_port is not None and (
             publication is None or not publication.usable
@@ -756,15 +746,9 @@ class TrainingPanel(BasePanel):
             self._last_epoch_count = -1
             self._last_plot_signature = None
             self._selection_pinned_by_user = False
-            if self._suppress_log_render_once:
-                self._suppress_log_render_once = False
-            else:
-                self._render_epoch_logs_for_row(preferred_row)
+            self._render_epoch_logs_for_row(preferred_row)
         elif previous_log_signature != self._history_log_signature(preferred_row):
-            if self._suppress_log_render_once:
-                self._suppress_log_render_once = False
-            else:
-                self._render_epoch_logs_for_row(preferred_row)
+            self._render_epoch_logs_for_row(preferred_row)
 
         # 3. Update plots if the selected row has new copied data.
         if self.current_plotting_row:

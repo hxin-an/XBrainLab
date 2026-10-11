@@ -29,6 +29,7 @@ from XBrainLab.backend.application.resource_guard import (
     TrainingResourcePreviewRequest,
     TrainingResourcePreviewResult,
 )
+from XBrainLab.backend.application.resource_preflight import ResourcePreflightView
 from XBrainLab.backend.application.training_recommendation import (
     TrainingRecommendation,
     TrainingRecommendationField,
@@ -530,6 +531,30 @@ def test_model_selection_receives_typed_training_query_port(sidebar):
         initial_model_name=None,
         query_port=query_port,
     )
+
+
+@pytest.mark.parametrize(
+    ("risk", "label"),
+    [
+        (RISK_SAFE, "Safe"),
+        (RISK_WARNING, "Warning"),
+        (RISK_BLOCKING, "Too large"),
+        (RISK_UNKNOWN, "Unknown"),
+    ],
+)
+def test_resource_confirmation_message_preserves_risk_labels(sidebar, risk, label):
+    view = ResourcePreflightView.create(
+        risk_level=risk,
+        requires_confirmation=risk in {RISK_WARNING, RISK_UNKNOWN},
+        message="Resource preflight",
+        details={"dataset_ram_risk_level": risk, "vram_risk_level": risk},
+    )
+
+    message = sidebar._training_resource_dialog_message(view)
+
+    assert f"Risk level: {label}" in message
+    assert f"RAM risk level: {label}" in message
+    assert f"VRAM risk level: {label}" in message
 
 
 def test_execution_section_does_not_show_persistent_resource_status(sidebar):

@@ -10,9 +10,11 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QFrame,
     QLabel,
+    QLineEdit,
     QScrollArea,
 )
 
+from XBrainLab.backend.application.commands import ConfigureTrainingCommand
 from XBrainLab.backend.application.resource_guard import (
     RISK_UNKNOWN,
     RISK_WARNING,
@@ -20,22 +22,24 @@ from XBrainLab.backend.application.resource_guard import (
     TrainingResourcePreviewRequest,
     TrainingResourcePreviewResult,
 )
+from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.application.training_recommendation import (
     TrainingRecommendation,
     TrainingRecommendationField,
     TrainingRecommendationValues,
     TrainingSettingProvenance,
 )
+from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import TrainingEvaluation
 from XBrainLab.backend.training.utils import (
     get_optimizer_classes,
     instantiate_optimizer,
 )
 from XBrainLab.ui.dialogs.training import (
-    DeviceSettingDialog,
     OptimizerSettingDialog,
     TrainingSettingDialog,
 )
+from XBrainLab.ui.panels.training.sidebar import TrainingSidebar
 
 
 def _recommendation(
@@ -71,7 +75,183 @@ def _recommendation(
 
 
 class TestTrainingSetting:
-    def test_uses_four_category_sections_and_inline_validation_state(self, qtbot):
+    @pytest.mark.parametrize("seed", [None, 0, 1729, 4294967294])
+    def test_settings_save_preserves_generated_and_configured_seed(
+        self, qtbot, tmp_path, seed
+    ):
+        service = ApplicationService(Study())
+        try:
+            snapshot = None
+            if seed is not None:
+                configured = service.execute(
+                    ConfigureTrainingCommand(
+                        epoch=2,
+                        batch_size=4,
+                        learning_rate=0.01,
+                        repeat=2,
+                        seed=seed,
+                        device="cpu",
+                        output_dir=str(tmp_path),
+                    )
+                )
+                assert configured.ok, configured.message
+                snapshot = service.get_state().training.training_option
+            dialog = TrainingSettingDialog(None, initial_option=snapshot)
+            qtbot.addWidget(dialog)
+            dialog.output_dir = str(tmp_path)
+            dialog.accept()
+            option = dialog.get_result()
+            assert option is not None
+            if seed is not None:
+                assert option.seed == seed
+            else:
+                assert type(option.seed) is int
+                assert 0 <= option.seed <= 4294967295
+            command = TrainingSidebar._configure_training_command(
+                training_option=option, device="cpu"
+            )
+            assert command.seed == option.seed
+            saved = service.execute(command)
+            assert saved.ok, saved.message
+            stored = service.get_state().training.training_option
+            assert stored["seed"] == option.seed
+            assert stored["repeat_seeds"] == option.get_configured_repeat_seeds()
+        finally:
+            service.close()
+
+    @pytest.mark.parametrize("gpu_count", [0, 1, 10])
+    def test_device_dropdown_discovers_choices_only_when_opened(self, qtbot, gpu_count):
+        snapshot = {"device": "cpu"}
+        dialog = TrainingSettingDialog(None, initial_option=snapshot)
+        qtbot.addWidget(dialog)
+        dialog.show()
+        combo = dialog.device_combo
+        dialog.content_scroll.ensureWidgetVisible(combo)
+        with (
+            patch("torch.cuda.device_count", return_value=gpu_count),
+            patch("torch.cuda.get_device_name", side_effect=lambda i: f"Test GPU {i}"),
+        ):
+            combo.showPopup()
+        assert combo.count() == gpu_count + 2
+        assert combo.currentData() == "cpu"
+        assert [combo.itemData(i) for i in range(combo.count())] == [
+            "auto",
+            "cpu",
+            *[f"cuda:{i}" for i in range(gpu_count)],
+        ]
+        QApplication.processEvents()
+        popup = combo.view().window().grab().toImage()
+        for y in (2, popup.height() - 3):
+            near_white = sum(
+                min(popup.pixelColor(x, y).getRgb()[:3]) >= 220
+                for x in range(3, popup.width() - 3)
+            )
+            assert near_white / (popup.width() - 6) < 0.1
+        target = f"cuda:{gpu_count - 1}" if gpu_count else "auto"
+        qtbot.keyClick(combo.view(), Qt.Key.Key_End if gpu_count else Qt.Key.Key_Home)
+        qtbot.keyClick(combo.view(), Qt.Key.Key_Return)
+        assert dialog.get_device_value() == target
+        assert combo.toolTip() == combo.currentText()
+        assert snapshot == {"device": "cpu"}
+        dialog.reject()
+        assert dialog.get_result() is None
+
+    def test_device_dropdown_preserves_saved_device_and_refreshes_without_duplicates(
+        self, qtbot
+    ):
+        dialog = TrainingSettingDialog(None, initial_option={"device": "cuda:3"})
+        qtbot.addWidget(dialog)
+        dialog.show()
+        combo = dialog.device_combo
+        dialog.content_scroll.ensureWidgetVisible(combo)
+        with patch("torch.cuda.device_count", return_value=0):
+            for _ in range(2):
+                combo.showPopup()
+                combo.hidePopup()
+                assert combo.currentData() == "cuda:3"
+                assert combo.count() == 3
+        assert dialog.get_device_value() == "cuda:3"
+        combo.setCurrentIndex(combo.findData("cpu"))
+        dialog.accept()
+        assert dialog.get_result().use_cpu is True
+
+    def test_selection_actions_are_inline_and_keyboard_accessible(self, qtbot):
+        dialog = TrainingSettingDialog(None)
+        qtbot.addWidget(dialog)
+        dialog.show()
+        for field, button, action in (
+            (dialog.opt_label, dialog.opt_btn, "Configure optimizer"),
+            (dialog.output_dir_label, dialog.out_btn, "Choose output directory"),
+        ):
+            dialog.content_scroll.ensureWidgetVisible(button)
+            qtbot.wait(10)
+            assert button.text() == "…"
+            assert button.toolTip() == button.accessibleName() == action
+            assert button.focusPolicy() & Qt.FocusPolicy.TabFocus
+            assert field.parentWidget() is button.parentWidget()
+            assert button.geometry().left() == field.geometry().right() + 1
+            assert abs(button.height() - field.height()) <= 2
+            assert 28 <= button.width() <= 44
+        path = "D:/example/training-output"
+        dialog.output_dir_label.setText(path)
+        dialog.output_dir_label.selectAll()
+        dialog.output_dir_label.copy()
+        assert QApplication.clipboard().text() == path
+        with patch(
+            "PyQt6.QtWidgets.QFileDialog.getExistingDirectory", return_value=""
+        ) as choose_directory:
+            dialog.out_btn.setFocus()
+            qtbot.keyClick(dialog.out_btn, Qt.Key.Key_Space)
+        choose_directory.assert_called_once()
+        assert dialog.isVisible()
+
+    def test_selection_fields_are_readonly_and_keep_full_path_tooltip(self, qtbot):
+        dialog = TrainingSettingDialog(None)
+        qtbot.addWidget(dialog)
+        dialog.show()
+        for field in (dialog.opt_label, dialog.output_dir_label):
+            assert isinstance(field, QLineEdit)
+            assert field.isReadOnly()
+            assert field.toolTip() == field.text()
+        original = dialog.output_dir
+        long_path = "D:/" + "long-output-directory/" * 15
+        with patch("PyQt6.QtWidgets.QFileDialog.getExistingDirectory", return_value=""):
+            dialog.out_btn.click()
+        assert dialog.output_dir == original
+        with patch(
+            "PyQt6.QtWidgets.QFileDialog.getExistingDirectory", return_value=long_path
+        ):
+            dialog.out_btn.click()
+        assert dialog.output_dir == long_path
+        assert dialog.output_dir_label.text() == long_path
+        assert dialog.output_dir_label.toolTip() == long_path
+        qtbot.wait(20)
+        scroll = dialog.content_scroll
+        scroll.ensureWidgetVisible(dialog.out_btn)
+        qtbot.wait(20)
+        assert (
+            scroll.viewport()
+            .rect()
+            .contains(
+                QRect(
+                    dialog.out_btn.mapTo(scroll.viewport(), QPoint()),
+                    dialog.out_btn.size(),
+                )
+            )
+        )
+
+    def test_section_cards_leave_only_a_small_gap_before_scrollbar(self, qtbot):
+        dialog = TrainingSettingDialog(None)
+        qtbot.addWidget(dialog)
+        dialog.show()
+        qtbot.wait(20)
+        viewport = dialog.content_scroll.viewport()
+        assert dialog.content_scroll.verticalScrollBar().isVisible()
+        for card in dialog.findChildren(QFrame, "TrainingSettingSectionCard"):
+            right = card.mapTo(viewport, QPoint(card.width(), 0)).x()
+            assert 0 <= viewport.width() - right <= 12
+
+    def test_uses_five_category_sections_and_inline_validation_state(self, qtbot):
         dialog = TrainingSettingDialog(
             None,
             initial_option={"validation_samples_available": False},
@@ -92,6 +272,7 @@ class TestTrainingSetting:
             "Training Run",
             "Optimization",
             "Validation & Checkpoints",
+            "Early stopping",
             "Runtime & Output",
         } <= section_titles
         assert (
@@ -102,13 +283,10 @@ class TestTrainingSetting:
         validation_layout = dialog.section_layouts["Validation & Checkpoints"]
         validation_labels = [
             cast(QLabel, validation_layout.itemAtPosition(row, 0).widget()).text()
-            for row in range(5)
+            for row in (0, 1)
         ]
         assert validation_labels == [
             "Evaluation",
-            "Early stopping",
-            "Patience",
-            "Minimum improvement",
             "Checkpoint interval (training epochs)",
         ]
 
@@ -123,7 +301,7 @@ class TestTrainingSetting:
             runtime_layout.itemAtPosition(3, 0).widget() is dialog.resource_preview_note
         )
         section_cards = dialog.findChildren(QFrame, "TrainingSettingSectionCard")
-        assert len(section_cards) == 4
+        assert len(section_cards) == 5
         assert all(
             "QFrame#TrainingSettingSectionCard" in card.styleSheet()
             and "QFrame {" not in card.styleSheet()
@@ -141,6 +319,54 @@ class TestTrainingSetting:
         assert dialog.early_stopping_check.isEnabled() is False
         assert dialog.early_stopping_patience_entry is not None
         assert dialog.early_stopping_patience_entry.isEnabled() is False
+
+    def test_early_stopping_group_preserves_values_and_reflects_availability(
+        self, qtbot
+    ):
+        dialog = TrainingSettingDialog(
+            None, initial_option={"validation_samples_available": True}
+        )
+        qtbot.addWidget(dialog)
+        dialog.show()
+        qtbot.wait(20)
+        toggle = dialog.early_stopping_check
+        entries = (
+            dialog.early_stopping_patience_entry,
+            dialog.early_stopping_min_delta_entry,
+        )
+        labels = [
+            label for label in dialog.findChildren(QLabel) if label.buddy() in entries
+        ]
+        assert len(labels) == 2
+        assert toggle.accessibleName() == "Early stopping"
+        assert toggle.objectName() == "PreprocessSwitch"
+        assert not toggle.isChecked()
+        assert all(not control.isEnabled() for control in (*entries, *labels))
+        assert dialog.validation_status_label.isHidden()
+        assert dialog.validation_status_label.text() == ""
+
+        toggle.click()
+        assert all(control.isEnabled() for control in (*entries, *labels))
+        entries[0].setText("7")
+        entries[1].setText("0.01")
+        dialog.evaluation_combo.setCurrentIndex(
+            dialog.evaluation_combo.findData(TrainingEvaluation.LAST_EPOCH)
+        )
+        assert not toggle.isEnabled()
+        assert not toggle.isChecked()
+        assert all(not control.isEnabled() for control in (*entries, *labels))
+        assert "Select a validation-based" in dialog.validation_status_label.text()
+        assert not dialog.validation_status_label.isHidden()
+        assert dialog.validation_status_label.y() < entries[0].y()
+
+        dialog.evaluation_combo.setCurrentIndex(
+            dialog.evaluation_combo.findData(TrainingEvaluation.VAL_LOSS)
+        )
+        assert toggle.isEnabled() and not toggle.isChecked()
+        assert dialog.validation_status_label.isHidden()
+        toggle.click()
+        assert all(control.isEnabled() for control in (*entries, *labels))
+        assert [entry.text() for entry in entries] == ["7", "0.01"]
 
     @pytest.fixture
     def window(self, qtbot):
@@ -161,7 +387,7 @@ class TestTrainingSetting:
         assert window.opt_label.text() == "Adam"
         assert window.use_cpu is True
         assert window.get_device_value() == "auto"
-        assert window.dev_label.text() == "Auto"
+        assert window.device_combo.currentText() == "Auto"
         assert window.evaluation_combo.currentText() == "Validation loss"
         assert window.evaluation_combo.currentData() is TrainingEvaluation.VAL_LOSS
         assert all(
@@ -275,7 +501,7 @@ class TestTrainingSetting:
             )
             assert dialog.content_scroll is not None
             viewport = dialog.content_scroll.viewport()
-            for button in (dialog.opt_btn, dialog.dev_btn, dialog.out_btn):
+            for button in (dialog.opt_btn, dialog.device_combo, dialog.out_btn):
                 dialog.content_scroll.ensureWidgetVisible(button)
                 qtbot.wait(0)
                 bounds = QRect(button.mapTo(viewport, QPoint(0, 0)), button.size())
@@ -584,12 +810,7 @@ class TestTrainingSetting:
 
         dialog.epoch_entry.setText("61")
         dialog.epoch_entry.textEdited.emit("61")
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.DeviceSettingDialog"
-        ) as device_dialog:
-            device_dialog.return_value.exec.return_value = True
-            device_dialog.return_value.get_result.return_value = (True, None)
-            dialog.set_device()
+        dialog.device_combo.setCurrentIndex(dialog.device_combo.findData("cpu"))
 
         recommendation_provider.assert_called_once_with("cpu")
         assert dialog.get_device_value() == "cpu"
@@ -1026,12 +1247,7 @@ class TestTrainingSetting:
 
         in_flight = dialog.build_training_resource_preview_request()
         assert in_flight is not None
-        with patch(
-            "XBrainLab.ui.dialogs.training.training_setting_dialog.DeviceSettingDialog"
-        ) as device_dialog:
-            device_dialog.return_value.exec.return_value = True
-            device_dialog.return_value.get_result.return_value = (True, None)
-            dialog.set_device()
+        dialog.device_combo.setCurrentIndex(dialog.device_combo.findData("cpu"))
 
         assert (
             dialog.apply_training_resource_preview(
@@ -1128,7 +1344,7 @@ class TestTrainingSetting:
             assert window.repeat_entry is not None
             assert window.output_dir_label is not None
             assert window.opt_label is not None
-            assert window.dev_label is not None
+            assert window.device_combo is not None
             assert window.evaluation_combo is not None
             assert window.epoch_entry.text() == "50"
             assert window.bs_entry.text() == "64"
@@ -1140,7 +1356,7 @@ class TestTrainingSetting:
             assert window.use_cpu is False
             assert window.gpu_idx == 0
             assert "Adam" in window.opt_label.text()
-            assert window.dev_label.text() == "GPU 0"
+            assert window.device_combo.currentText() == "GPU 0"
 
         assert window.evaluation_combo.currentText() == "Last epoch"
         assert window.evaluation_combo.currentData() is TrainingEvaluation.LAST_EPOCH
@@ -1162,8 +1378,8 @@ class TestTrainingSetting:
         assert window.use_cpu is True
         assert window.gpu_idx is None
         assert window.get_device_value() == "auto"
-        assert window.dev_label is not None
-        assert window.dev_label.text() == "Auto"
+        assert window.device_combo is not None
+        assert window.device_combo.currentText() == "Auto"
 
 
 class TestSetOptimizer:
@@ -1281,40 +1497,3 @@ class TestSetOptimizer:
         assert parent is dialog
         assert title == "Validation Error"
         assert "betas" in message
-
-
-class TestSetDevice:
-    @pytest.fixture
-    def window(self, qtbot):
-        with (
-            patch("torch.cuda.device_count", return_value=1),
-            patch("torch.cuda.get_device_name", return_value="Test GPU"),
-        ):
-            window = DeviceSettingDialog(None)
-            qtbot.addWidget(window)
-            yield window
-
-    def test_init(self, window):
-        assert window.device_list.count() == 2  # CPU + 1 GPU
-        assert window.device_list.item(0).text() == "CPU"
-        assert "Test GPU" in window.device_list.item(1).text()
-
-    def test_confirm_cpu(self, window):
-        window.device_list.setCurrentRow(0)
-        with patch("PyQt6.QtWidgets.QDialog.accept") as mock_accept:
-            window.accept()
-            mock_accept.assert_called_once()
-
-        use_cpu, gpu_idx = window.get_result()
-        assert use_cpu is True
-        assert gpu_idx is None
-
-    def test_confirm_gpu(self, window):
-        window.device_list.setCurrentRow(1)
-        with patch("PyQt6.QtWidgets.QDialog.accept") as mock_accept:
-            window.accept()
-            mock_accept.assert_called_once()
-
-        use_cpu, gpu_idx = window.get_result()
-        assert use_cpu is False
-        assert gpu_idx == 0
