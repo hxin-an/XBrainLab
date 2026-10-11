@@ -67,10 +67,29 @@ build；不在此重複每版施工日誌。PR #161 已合併的 Select Model �
 UI：保留全部已接受 layout／互動，只有此前核准 history 數字括弧移除；本輪不重畫。
 Non-goals：論文資料/實驗、模型科學認證、第三方 library 全審、Import／Agent／
 Evaluation／Saliency 全模組重做、環境或磁碟清理。這不免除它們與本模組的直接交界。
-Current：逐檔閱讀、去留判斷與修正已完成；獨立覆核已對帳 production／tests／scripts
-與直接支援邊界，沒有未查 source 或未解 blocker。第三方 vendor 數學與 mixed docs
-的範圍外章節另列，不冒充全文認證；`2dc8b567` evidence 僅保留為 baseline。
-Next：凍結修正、取得 exact-head CI／source-diverse／原生 Windows evidence，確認後
+Current：`fe7039d9` CI 揭露 Saliency publication lifecycle 的 integration fake 未同步
+既有 Dataset get_test_len/get_val_len 介面，16 個
+案例在 resource admission 前失敗；本機真實 workflow 26 passed 不代替此 integration
+缺口。再對帳發現該直接交界測試未列入先前清單，撤回無遺漏結論；補完整讀取並按實際
+imports／holder／resource／publication callers 核對，而非依檔名推斷歸屬。先保留失敗、
+修測試資料介面並核對同類直接 callers，不新增產品 fallback 或弱化 assertion。
+補讀 product walkthrough 發現 class-method monkeypatch 前後仍直接清空 service cache，
+導致同一 Study 建立第二個 owner；先以既有 runtime 身分 assertion 重現，再移除過時
+cache reset，保留原流程與 assertion，不改產品或新增全域 fixture tracker。
+補讀的真實 workflow／event-value／saliency-label integration tests 亦需在 service
+建立後立即註冊本地 teardown，讓中途 assertion failure 仍會 close；沿 pytest 既有
+fixture/finalizer 修正，先保留 passing characterization，不新增全域追蹤器。
+直接 real-data／外部 labels／multi-subject integration 邊界沿相同原則補本地 teardown；
+若 wait assertion 先失敗，close 仍必須在 finally 執行，不能跳過必要清理。六個補讀檔案
+固定納入本輪，不擴成全 Import 或重新下載資料；可用 fixture 與缺資料 skip 分開回報。
+第三方 vendor 數學與 mixed docs 的範圍外章節另列，不冒充全文認證。
+上述補查已完成 fixture 修復及本地 teardown 收斂；沒有追加產品功能。六個 real-data
+交界檔的同組測試由 26 passed／22 缺資料 skip 變為 28 passed／相同 22 skip；新增
+兩個真 service 等待失敗案例先 red 再 green。Multisubject 的 discard／wait assertion／
+close 由独立 finalizers 保留執行次序與失敗可見性，不因前一 cleanup 失敗漏 close。
+本機 optional-fixture skips 不算通過，仍須同版本 CI 的 required source-diverse evidence。
+Next：完成凍結後的独立 diff／分母核對，再取得新 exact-head
+CI／source-diverse／原生 Windows evidence，確認後
 開啟 Windows 完整程式與 PowerShell log，交付單次整合手測；不自行 merge。
 
 本輪已確認 slice：

@@ -48,13 +48,14 @@ EXPECTED_A01T_SPLIT_SUMMARY = {
 
 
 @pytest.mark.skipif(not os.path.exists(GDF_FILE), reason="Real test data not found")
-def test_real_data_command_spine(tmp_path):
+def test_real_data_command_spine(tmp_path, request: pytest.FixtureRequest):
     """Run real A01T data through the ApplicationService command spine.
 
     Artifact writers are isolated here, so persistence/reload evidence belongs
     to the public cross-source training smoke rather than this test.
     """
     service = ApplicationService()
+    request.addfinalizer(service.close)
 
     scan_result = service.execute(
         ScanSourceCommand(source_path=GDF_FILE, source_hint="file")

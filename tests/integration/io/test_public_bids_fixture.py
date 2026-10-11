@@ -342,7 +342,10 @@ def test_public_mne_bids_numeric_trial_type_applies_and_publishes(
         service.close()
 
 
-def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
+def test_public_mne_bids_import_apply_recipe_and_epoch(
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
+) -> None:
     """Downloaded MNE-BIDS fixture should exercise folder-level import."""
     if not MNE_BIDS_EEG.exists():
         pytest.skip(
@@ -351,6 +354,7 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
         )
 
     service = ApplicationService()
+    request.addfinalizer(service.close)
     scan_result = service.execute(
         ScanSourceCommand(source_path=str(MNE_BIDS_ROOT), source_hint="bids")
     )
@@ -522,6 +526,7 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
     )
 
     reload_service = ApplicationService()
+    request.addfinalizer(reload_service.close)
     reload_result = reload_service.execute(
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path))
     )
@@ -559,11 +564,11 @@ def test_public_mne_bids_import_apply_recipe_and_epoch(tmp_path: Path) -> None:
         "show_stimulus",
         "start_experiment",
     }
-    reload_service.close()
-    service.close()
 
 
-def test_openneuro_p300_trial_type_excludes_missing_rows_and_imports() -> None:
+def test_openneuro_p300_trial_type_excludes_missing_rows_and_imports(
+    request: pytest.FixtureRequest,
+) -> None:
     """A valid BIDS label column may contain sparse canonical n/a values."""
     eeg_files = sorted(OPENNEURO_P300_EEG_DIR.glob("*_eeg.set"))
     events_files = sorted(OPENNEURO_P300_EEG_DIR.glob("*_events.tsv"))
@@ -587,6 +592,7 @@ def test_openneuro_p300_trial_type_excludes_missing_rows_and_imports() -> None:
         },
     }
     service = ApplicationService()
+    request.addfinalizer(service.close)
     scan = service.execute(
         ScanSourceCommand(source_path=str(OPENNEURO_P300_ROOT), source_hint="bids")
     )
@@ -642,7 +648,9 @@ def test_openneuro_p300_trial_type_excludes_missing_rows_and_imports() -> None:
     ]
 
 
-def test_openneuro_p300_preview_recommends_value_across_all_selected_runs() -> None:
+def test_openneuro_p300_preview_recommends_value_across_all_selected_runs(
+    request: pytest.FixtureRequest,
+) -> None:
     eeg_files = sorted(OPENNEURO_P300_EEG_DIR.glob("*_eeg.set"))
     if len(eeg_files) != 3:
         pytest.skip(
@@ -651,6 +659,7 @@ def test_openneuro_p300_preview_recommends_value_across_all_selected_runs() -> N
         )
 
     service = ApplicationService()
+    request.addfinalizer(service.close)
     scan = service.execute(
         ScanSourceCommand(source_path=str(OPENNEURO_P300_ROOT), source_hint="bids")
     )
