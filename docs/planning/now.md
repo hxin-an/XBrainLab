@@ -29,4 +29,5 @@ Stop condition：原生預覽已開啟且有回應，交使用者確認設計；
 warm 開窗不顯示 hint；首次耗時會受 OS/import cache 影響，不宣稱 backend 加速。
 原始 red 為兩項呈現錯誤；focused 模型選取、取消、失敗及 geometry tests 通過，Ruff 通過。
 獨立 actual-diff／原生 artifact 覆核無阻擋。未跑重型 CI／DPI，未更新 approved references。
-Next：開啟完整 Windows app 的隔離預覽至 Select Model，等使用者確認此呈現。
+Windows 隔離預覽已開啟至真實 Model Selection，確認可見且有回應；22 項 focused tests 通過。
+Next：等待使用者確認此呈現，再進正式候選驗證；不持續監控使用者操作。
