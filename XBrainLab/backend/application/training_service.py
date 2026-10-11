@@ -37,7 +37,6 @@ from .commands import (
     ClearTrainingHistoryCommand,
     Command,
     ConfigureTrainingCommand,
-    StopTrainingCommand,
     TrainCommand,
 )
 from .errors import ApplicationError, PreconditionError
@@ -564,25 +563,6 @@ class TrainingCommandService:
 
     def _resource_preflight_context(self) -> dict[str, Any]:
         return self.training_runtime.resource_context().to_mapping()
-
-    def handle_stop_training(self, command: Command) -> HandlerResult:
-        if not isinstance(command, StopTrainingCommand):
-            raise TypeError("Invalid command for stop_training")
-        stopped = self.training_runtime.stop_training(
-            wait_timeout=command.wait_timeout,
-        )
-        outcome = self._training_terminal_outcome()
-        return (
-            "Training stopped." if stopped else "Training stop requested.",
-            {
-                "stopped": bool(stopped),
-                "wait_timeout": command.wait_timeout,
-                "terminal_outcome": outcome.state.value,
-                "training_run": (
-                    outcome.run.to_dict() if outcome.run is not None else None
-                ),
-            },
-        )
 
     def handle_clear_training_history(self, command: Command) -> HandlerResult:
         if not isinstance(command, ClearTrainingHistoryCommand):

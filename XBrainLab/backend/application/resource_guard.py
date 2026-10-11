@@ -1291,11 +1291,6 @@ class ResourceChecker:
             return "Unknown"
         return _format_bytes(value)
 
-    @staticmethod
-    def build_resource_warning_message(result: ResourceCheckResult) -> str:
-        """Build a user-facing warning/error message."""
-        return result.message
-
 
 def check_training_resource_preflight(
     datasets: Iterable[Any],
@@ -1772,19 +1767,6 @@ def available_ram_bytes() -> int | None:
         available_pages = os.sysconf("SC_AVPHYS_PAGES")
         return int(page_size * available_pages)
     except (AttributeError, OSError, ValueError):
-        return None
-
-
-def available_vram_bytes(gpu_idx: int | None = None) -> int | None:
-    """Return free CUDA memory for the selected device, if CUDA is available."""
-    try:
-        torch_module = _torch_module()
-        if not torch_module.cuda.is_available():
-            return None
-        device_index = 0 if gpu_idx is None else int(gpu_idx)
-        free_bytes, _total = torch_module.cuda.mem_get_info(device_index)
-        return int(free_bytes)
-    except Exception:
         return None
 
 

@@ -324,7 +324,6 @@ class DataSplittingPreviewDialog(BaseDialog):
         self._content_refit_pending = False
 
         self.tree: QTreeWidget | None = None
-        self.btn_info: QLabel | None = None
         self.btn_confirm: QPushButton | None = None
         self.btn_back: QPushButton | None = None
         self.preview_status_label: QLabel | None = None
@@ -872,12 +871,20 @@ class DataSplittingPreviewDialog(BaseDialog):
         )
         if self.btn_confirm is not None:
             self.btn_confirm.setEnabled(False)
-        self.preview_worker = threading.Thread(
-            target=self._run_preview_generation,
-            args=(generation_id, request),
-            name=f"xbrainlab-split-preview-{generation_id}",
-        )
-        self.preview_worker.start()
+        try:
+            self.preview_worker = threading.Thread(
+                target=self._run_preview_generation,
+                args=(generation_id, request),
+                name=f"xbrainlab-split-preview-{generation_id}",
+            )
+            self.preview_worker.start()
+        except Exception as exc:
+            logger.exception("Data-splitting preview worker could not start")
+            self._set_preview_state(
+                generation_id,
+                PREVIEW_STATUS_FAILED,
+                _public_split_failure(exc, fallback=_PREVIEW_FAILURE_MESSAGE),
+            )
 
     def _run_preview_generation(
         self,

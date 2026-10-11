@@ -1,5 +1,6 @@
 """Real optimizer, selected weights, final metrics and safe artifact evidence."""
 
+from copy import copy
 from pathlib import Path
 from unittest.mock import patch
 
@@ -8,6 +9,11 @@ import numpy as np
 import pytest
 import torch
 
+from XBrainLab.backend.application.saliency_resource import (
+    ResourceChecker,
+    check_saliency_resource_preflight,
+    estimate_saliency_resources,
+)
 from XBrainLab.backend.application.training_history import project_training_history_rows
 from XBrainLab.backend.dataset import Dataset, DataSplittingConfig, Epochs, TrainingType
 from XBrainLab.backend.load_data import Raw
@@ -343,3 +349,178 @@ def test_final_artifact_failure_does_not_publish_completed_evaluation(
         assert rows[0]["status"] == "Completed early"
         assert holder.get_plans()[0].get_eval_record().get_acc() == 1.0
         assert (Path(holder.get_plans()[0].target_path) / "eval").is_file()
+
+
+@pytest.mark.parametrize("failure_stage", ["construct", "start", "clear_interrupt"])
+def test_trainer_startup_failure_releases_admission_and_allows_real_retry(
+    tiny_training, monkeypatch, failure_stage
+):
+    dataset, option, model_holder = tiny_training
+    holder = TrainingPlanHolder(model_holder, dataset, option, {})
+    trainer = Trainer([holder])
+    before = trainer.capture_startup_snapshot()
+    failure = RuntimeError(f"startup {failure_stage} failed")
+
+    def fail_startup(*_args, **_kwargs):
+        raise failure
+
+    with monkeypatch.context() as faults:
+        if failure_stage == "construct":
+            faults.setattr(
+                "XBrainLab.backend.training.trainer.threading.Thread",
+                fail_startup,
+            )
+        elif failure_stage == "start":
+            faults.setattr(
+                "XBrainLab.backend.training.trainer.threading.Thread.start",
+                fail_startup,
+            )
+        else:
+            faults.setattr(holder, "clear_interrupt", fail_startup)
+        with pytest.raises(RuntimeError, match=f"startup {failure_stage} failed"):
+            trainer.run(interact=True)
+
+    failed = trainer.get_terminal_outcome()
+    assert failed.state is TrainingOutcomeState.FAILED
+    assert failed.detail == str(failure)
+    assert not trainer.is_running()
+    assert trainer.job_thread is None
+    assert trainer.get_state_snapshot_token().stable
+    assert trainer.wait_for_completion(timeout=0.1)
+    assert all(record.epoch == 0 for record in holder.get_plans())
+    trainer.restore_startup_snapshot(before)
+    assert trainer.capture_startup_snapshot() == before
+    trainer.run(interact=True)
+    assert trainer.wait_for_completion(timeout=10)
+    assert trainer.get_terminal_outcome().state is TrainingOutcomeState.COMPLETED
+    assert holder.is_finished()
+    assert all(
+        record.get_eval_record().get_acc() == 1.0 for record in holder.get_plans()
+    )
+
+
+@pytest.mark.parametrize("nonfinite", [float("nan"), float("inf")], ids=["nan", "inf"])
+def test_real_nonfinite_model_output_fails_before_optimizer_or_artifact_publication(
+    tiny_training, nonfinite
+):
+    dataset, option, model_holder = tiny_training
+    holder = TrainingPlanHolder(model_holder, dataset, option, {})
+    record = holder.get_plans()[0]
+    original_weights = record.model.linear.weight.detach().clone()
+
+    def corrupt_output(_model, _inputs, output):
+        return output * nonfinite
+
+    with record.model.register_forward_hook(corrupt_output):
+        trainer = Trainer([holder])
+        trainer.run(interact=True)
+        assert trainer.wait_for_completion(timeout=10)
+
+    assert trainer.get_terminal_outcome().state is TrainingOutcomeState.FAILED
+    assert "contains NaN or infinite values" in holder.error
+    torch.testing.assert_close(record.model.linear.weight, original_weights)
+    assert record.epoch == 0
+    assert record.eval_record is None
+    assert not (Path(record.target_path) / "record").exists()
+
+
+def test_saliency_resource_estimate_covers_real_validation_fallback(tiny_training):
+    dataset, option, model_holder = tiny_training
+    dataset.test_mask[:] = False
+    dataset.test_mask[[8, 10]] = True
+    holder = TrainingPlanHolder(model_holder, dataset, option, {})
+    holder.train()
+    assert holder.is_finished()
+    record = holder.get_plans()[0]
+    _train_loader, val_loader, test_loader = holder.get_loader(record)
+    selected = holder.get_saliency_evaluation_split(record)
+    assert selected == "validation"
+    assert len(val_loader.dataset) == 4
+    assert len(test_loader.dataset) == 2
+
+    estimate = estimate_saliency_resources(
+        [dataset],
+        option,
+        model_holder,
+        {"_methods": ["Gradient"]},
+        training_plan_holders=[holder],
+    )
+
+    assert estimate["datasets"][0]["evaluation_epoch_count"] >= len(val_loader.dataset)
+    assert estimate["retained_attribution_bytes"] >= 4 * 1 * 1 * 4 * option.repeat_num
+
+    # Changing today's configuration must not erase the two trained repeats from
+    # the memory estimate. This iterable is intentionally single-use.
+    option.repeat_num = 1
+    changed = estimate_saliency_resources(
+        [dataset],
+        option,
+        model_holder,
+        {"_methods": ["Gradient"]},
+        training_plan_holders=iter([holder]),
+    )
+    assert (
+        changed["retained_attribution_bytes"] == estimate["retained_attribution_bytes"]
+    )
+
+
+def test_saliency_resource_uses_trained_batch_and_device_not_future_settings(
+    tiny_training,
+    monkeypatch,
+):
+    dataset, option, model_holder = tiny_training
+    holder = TrainingPlanHolder(model_holder, dataset, option, {})
+    holder.train()
+    future_option = copy(option)
+    future_option.bs = 1
+    _train, validation, test = holder.get_loader(holder.get_plans()[0])
+    assert test.batch_size == validation.batch_size == 4
+
+    estimate = estimate_saliency_resources(
+        [dataset],
+        future_option,
+        model_holder,
+        {"_methods": ["Gradient"]},
+        training_plan_holders=[holder],
+    )
+    assert estimate["datasets"][0]["evaluation_batch_size"] == test.batch_size
+
+    # Device routing evidence only: no GPU allocation is performed. Completed
+    # holders retain their device even after new CPU settings are saved.
+    holder.option.use_cpu = False
+    holder.option.gpu_idx = 2
+    gpu_estimate = estimate_saliency_resources(
+        [dataset],
+        future_option,
+        model_holder,
+        {"_methods": ["Gradient"]},
+        training_plan_holders=[holder],
+    )
+    assert gpu_estimate["estimated_vram_working_set_bytes"] > 0
+    assert gpu_estimate["gpu_index"] == 2
+
+    # Different historic holders can target different devices. Admission must
+    # check each selected device, not just the first GPU or today's CPU choice.
+    other_holder = copy(holder)
+    other_holder.option = copy(holder.option)
+    other_holder.option.gpu_idx = 3
+    probed = []
+
+    def gpu_status(index):
+        probed.append(index)
+        return {"available_bytes": 10**12 if index == 2 else 1}
+
+    monkeypatch.setattr(ResourceChecker, "get_gpu_vram_status", gpu_status)
+    monkeypatch.setattr(
+        ResourceChecker, "get_system_ram_status", lambda: {"available_bytes": 10**12}
+    )
+    admitted = check_saliency_resource_preflight(
+        [dataset],
+        future_option,
+        model_holder,
+        {"_methods": ["Gradient"]},
+        training_plan_holders=[holder, other_holder],
+    )
+    assert probed == [2, 3]
+    assert admitted.blocking
+    assert admitted.diagnostics["vram_risk_level"] == "blocking"

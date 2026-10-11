@@ -846,9 +846,6 @@ class DataSplittingDialog(BaseDialog):
                 train_type = t_type
                 break
 
-        if train_type is None:
-            train_type = TrainingType.FULL
-
         # Get Val Types
         val_type_list = []
         for v_type in ValSplitByType:
@@ -962,10 +959,6 @@ class DataSplittingDialog(BaseDialog):
         QLabel {
             background: transparent;
             color: #f2f5f8;
-        }
-        QLabel#DataSplitTitle {
-            font-size: 16px;
-            font-weight: 700;
         }
         QFrame#DataSplitPreviewGroup,
         QFrame#DataSplitOptionsGroup {

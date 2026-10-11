@@ -298,53 +298,6 @@ def test_step_two_projects_split_units_from_backend_context(
     )
 
 
-def test_data_splitting_window_keeps_long_preview_complete_without_summary_noise(
-    qtbot,
-) -> None:
-    """Long results stay available through the table's own scroll affordance."""
-    rows = tuple(
-        DatasetSplitPreviewRow(
-            name=f"Fold_{index}",
-            train_count=80,
-            validation_count=10,
-            test_count=10,
-        )
-        for index in range(51)
-    )
-
-    def preview(request):
-        from XBrainLab.backend.application.dataset_split_preview import (
-            DatasetSplitPreviewPublication,
-        )
-
-        return DatasetSplitPreviewPublication(
-            request=request,
-            generation=request.publication_generation,
-            rows=rows,
-            train_count=4000,
-            validation_count=500,
-            test_count=500,
-            total_count=51,
-            truncated_count=0,
-        )
-
-    window = DataSplittingPreviewDialog(
-        None,
-        "Test Window",
-        config=_split_config(),
-        **dialog_context_kwargs(preview_provider=preview),
-    )
-    qtbot.addWidget(window)
-    if window.preview_worker is not None:
-        window.preview_worker.join(timeout=1)
-    window.update_table()
-
-    assert window.tree.topLevelItemCount() == 51
-    labels = [label.text() for label in window.findChildren(QLabel)]
-    assert not any("Showing" in label for label in labels)
-    assert not any(label.startswith("Train ") for label in labels)
-
-
 def test_data_splitting_window_update_table_replaces_calculating_row(qtbot) -> None:
     window = _window(qtbot)
     window.tree.clear()

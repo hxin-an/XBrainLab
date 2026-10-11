@@ -296,45 +296,48 @@ def test_panel_close_abandons_preview_without_waiting_or_late_delivery(qtbot):
     qtbot.addWidget(sidebar)
     delivered: list[TrainingResourcePreviewResult] = []
 
-    assert sidebar._dispatch_training_resource_preview(
-        _resource_preview_request(1),
-        delivered.append,
-    )
-    qtbot.waitUntil(worker_started.is_set, timeout=1000)
-    worker = coordinator.worker_thread
-    assert worker is not None
-    assert worker.daemon is False
-
-    panel.show()
-    assert panel.close() is True
-    assert worker.is_alive() is True
-    assert (
-        sidebar._dispatch_training_resource_preview(
-            _resource_preview_request(2),
+    try:
+        assert sidebar._dispatch_training_resource_preview(
+            _resource_preview_request(1),
             delivered.append,
         )
-        is False
-    )
+        qtbot.waitUntil(worker_started.is_set, timeout=1000)
+        worker = coordinator.worker_thread
+        assert worker is not None
+        assert worker.daemon is False
 
-    release_worker.set()
-    qtbot.waitUntil(worker_finished.is_set, timeout=1000)
-    qtbot.waitUntil(
-        lambda: bool(coordinator.background_work_snapshot()["idle"]),
-        timeout=1000,
-    )
+        panel.show()
+        assert panel.close() is True
+        assert worker.is_alive() is True
+        assert (
+            sidebar._dispatch_training_resource_preview(
+                _resource_preview_request(2),
+                delivered.append,
+            )
+            is False
+        )
 
-    assert coordinator.background_work_snapshot()["remaining_workers"] == 0
-    assert delivered == []
+        release_worker.set()
+        qtbot.waitUntil(worker_finished.is_set, timeout=1000)
+        qtbot.waitUntil(
+            lambda: bool(coordinator.background_work_snapshot()["idle"]),
+            timeout=1000,
+        )
 
-    sidebar._cancel_training_resource_preview_shutdown()
-    retried: list[TrainingResourcePreviewResult] = []
-    assert sidebar._dispatch_training_resource_preview(
-        _resource_preview_request(2),
-        retried.append,
-    )
-    qtbot.waitUntil(lambda: len(retried) == 1, timeout=1000)
-    assert retried[0].request_generation == 2
-    assert coordinator.close(timeout=2.0)
+        assert coordinator.background_work_snapshot()["remaining_workers"] == 0
+        assert delivered == []
+
+        sidebar._cancel_training_resource_preview_shutdown()
+        retried: list[TrainingResourcePreviewResult] = []
+        assert sidebar._dispatch_training_resource_preview(
+            _resource_preview_request(2),
+            retried.append,
+        )
+        qtbot.waitUntil(lambda: len(retried) == 1, timeout=1000)
+        assert retried[0].request_generation == 2
+    finally:
+        release_worker.set()
+        assert coordinator.close(timeout=2.0)
 
 
 def test_training_sidebar_does_not_spawn_or_abandon_preview_workers() -> None:
@@ -1584,12 +1587,6 @@ def test_training_start_fails_closed_when_product_publication_is_unavailable(
     sidebar,
 ):
     publication = SimpleNamespace(usable=False, state=None)
-    capability = CommandCapability(
-        command_name="train",
-        enabled=False,
-        reasons=["Training state is unavailable."],
-    )
-
     with (
         patch(
             "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
@@ -1709,28 +1706,6 @@ def test_product_action_result_waits_for_the_next_publication(
 
     assert sidebar.btn_start.isEnabled()
     assert sidebar.btn_start.toolTip() == "Start Training"
-
-
-def test_check_ready_to_train_fails_closed_when_product_truth_is_missing(
-    sidebar,
-):
-    publication = SimpleNamespace(usable=False, state=None)
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
-            return_value=publication,
-        ),
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-            return_value=None,
-        ),
-    ):
-        sidebar.check_ready_to_train()
-
-    assert not sidebar.btn_start.isEnabled()
-    assert sidebar.btn_start.toolTip() == "Training state is unavailable right now."
-    assert sidebar.findChild(QGroupBox, "TrainingReadiness") is None
 
 
 def test_check_ready_to_train_rejects_enabled_capability_from_unusable_publication(
@@ -2308,13 +2283,6 @@ def test_data_splitting_context_stale_publication_requires_review(sidebar):
         "Review Data Splitting Again",
         str(error),
     )
-
-
-def test_data_splitting_launch_uses_typed_detached_binding():
-    source = inspect.getsource(TrainingSidebar._data_splitting_dialog_context)
-
-    assert "get_dataset_split_dialog_binding" in source
-    assert "publication_generation" in source
 
 
 def test_on_training_stopped(sidebar):

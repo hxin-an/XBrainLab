@@ -118,7 +118,6 @@ class PickMontageDialog(BaseDialog):
         chs: List of mapped dataset channel names after acceptance.
         positions: Channel position data from the selected montage.
         montage_channels: List of channel names from the current montage.
-        anchors: Set of row indices explicitly set by the user.
         settings: QSettings for persisting montage selections.
         montage_combo: QComboBox for selecting the montage standard.
         table: QTableWidget with mapping from dataset to montage channels.
@@ -804,14 +803,13 @@ class PickMontageDialog(BaseDialog):
         return {str(channel): str(electrode) for channel, electrode in mapping.items()}
 
     def clear_selections(self):
-        """Clear all channel mappings and anchors."""
+        """Clear all channel mappings."""
         if not self.table:
             return
         for row in range(self.table.rowCount()):
             combo = self.table.cellWidget(row, 1)
             if isinstance(combo, QComboBox):
                 combo.blockSignals(True)
-                combo.setCurrentIndex(0)
                 combo.setCurrentIndex(0)
                 combo.blockSignals(False)
         self._sync_apply_enabled()

@@ -11,8 +11,9 @@ from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.study import Study
 
 
-def test_application_service_publishes_detached_missing_epoch_context() -> None:
+def test_application_service_publishes_detached_missing_epoch_context(request) -> None:
     service = ApplicationService(Study())
+    request.addfinalizer(service.close)
     publication = service.get_view_publication()
 
     result = service.get_dataset_split_context(
@@ -26,8 +27,9 @@ def test_application_service_publishes_detached_missing_epoch_context() -> None:
     assert not hasattr(result.context, "epoch_data")
 
 
-def test_shutdown_fence_cancels_active_dataset_split_previews() -> None:
+def test_shutdown_fence_cancels_active_dataset_split_previews(request) -> None:
     service = ApplicationService(Study())
+    request.addfinalizer(service.close)
     cancel_all = Mock()
     service.dataset_split_preview.cancel_all = cancel_all
 

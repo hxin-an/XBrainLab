@@ -233,6 +233,7 @@ def estimate_saliency_resources(
 ) -> dict[str, Any]:
     """Estimate incremental saliency RAM and device working sets."""
     dataset_list = list(datasets or [])
+    holders = tuple(training_plan_holders)
     if not dataset_list:
         raise ValueError(
             "Saliency resource admission requires a generated training dataset."
@@ -247,23 +248,38 @@ def estimate_saliency_resources(
         raise ValueError(
             "Saliency resource admission requires at least one selected method."
         )
-    batch_size = _positive_int(
-        getattr(training_option, "bs", None),
-        field="training batch size",
+    retained_holders = [
+        holder
+        for holder in holders
+        if any(getattr(holder, "dataset", None) is dataset for dataset in dataset_list)
+        and any(record.is_finished() for record in holder.get_plans())
+    ]
+    execution_options = (
+        [holder.option for holder in retained_holders]
+        if retained_holders
+        else [training_option]
+    )
+    batch_size = max(
+        _positive_int(getattr(option, "bs", None), field="training batch size")
+        for option in execution_options
     )
     repeat_count = _positive_int(
         getattr(training_option, "repeat_num", 1),
         field="training repeat count",
     )
-    if not hasattr(training_option, "use_cpu"):
+    if any(not hasattr(option, "use_cpu") for option in execution_options):
         raise ValueError(
             "Saliency resource admission could not determine the selected device."
         )
-    uses_cpu = bool(training_option.use_cpu)
+    includes_cpu_work = any(bool(option.use_cpu) for option in execution_options)
+    gpu_indices = sorted(
+        {_gpu_index(option) or 0 for option in execution_options if not option.use_cpu}
+    )
+    uses_cpu = not gpu_indices
     model_estimate = _estimate_model_memory(
         model_holder,
         dataset_list,
-        training_plan_holders,
+        holders,
     )
 
     noise_details, peak_noise_partition = _noise_partition_details(
@@ -282,10 +298,12 @@ def estimate_saliency_resources(
             data = getattr(epoch_data, "data", None)
         shape = _epoch_shape(data, dataset_index=index)
         epoch_count, channel_count, sample_count = shape
-        evaluation_split, evaluation_count = _evaluation_count(
+        evaluation_split, evaluation_count, record_count = _evaluation_count(
             dataset,
             epoch_count=epoch_count,
             dataset_index=index,
+            holders=holders,
+            repeat_count=repeat_count,
         )
         per_epoch_bytes = (
             channel_count * sample_count * SALIENCY_ATTRIBUTION_DTYPE_BYTES
@@ -294,7 +312,7 @@ def estimate_saliency_resources(
         evaluation_batch_size = min(batch_size, evaluation_count)
         evaluation_batch_bytes = evaluation_batch_size * per_epoch_bytes
         record_attribution_bytes = evaluation_input_bytes * method_count
-        total_evaluation_input_bytes += evaluation_input_bytes
+        total_evaluation_input_bytes += evaluation_input_bytes * record_count
         peak_evaluation_input_bytes = max(
             peak_evaluation_input_bytes,
             evaluation_batch_bytes,
@@ -316,9 +334,7 @@ def estimate_saliency_resources(
             }
         )
 
-    retained_attribution_bytes = (
-        total_evaluation_input_bytes * method_count * repeat_count
-    )
+    retained_attribution_bytes = total_evaluation_input_bytes * method_count
     concatenation_peak_bytes = (
         peak_record_attribution_bytes * SALIENCY_RESULT_PEAK_COPIES
     )
@@ -327,7 +343,11 @@ def estimate_saliency_resources(
         SALIENCY_NOISE_TENSOR_COPIES if noise_details else SALIENCY_BASE_TENSOR_COPIES
     )
     tensor_workspace_bytes = expanded_batch_bytes * tensor_copy_count
-    activation_factor = _activation_factor(model_holder)
+    activation_factor = (
+        max(_activation_factor(holder.model_holder) for holder in retained_holders)
+        if retained_holders
+        else _activation_factor(model_holder)
+    )
     activation_bytes = int(expanded_batch_bytes * activation_factor)
     device_before_margin_bytes = int(
         model_estimate.bytes
@@ -342,7 +362,7 @@ def estimate_saliency_resources(
         + host_transfer_peak_bytes
         + (
             device_before_margin_bytes
-            if uses_cpu
+            if includes_cpu_work
             else model_estimate.bytes + SALIENCY_RUNTIME_WORKSPACE_BYTES
         )
     )
@@ -365,7 +385,8 @@ def estimate_saliency_resources(
         "training_batch_size": batch_size,
         "repeat_count": repeat_count,
         "uses_cpu": uses_cpu,
-        "gpu_index": None if uses_cpu else _gpu_index(training_option),
+        "gpu_index": gpu_indices[0] if gpu_indices else None,
+        "gpu_indices": gpu_indices,
         "attribution_dtype": "float32",
         "attribution_dtype_bytes": SALIENCY_ATTRIBUTION_DTYPE_BYTES,
         "peak_noise_partition": peak_noise_partition,
@@ -442,9 +463,8 @@ def check_saliency_resource_preflight(
         details=estimate,
     )
     results = [ram_result]
-    vram_result: ResourceCheckResult | None = None
-    if not estimate["uses_cpu"]:
-        gpu_idx = estimate["gpu_index"]
+    vram_results: list[ResourceCheckResult] = []
+    for gpu_idx in estimate["gpu_indices"]:
         vram = ResourceChecker.get_gpu_vram_status(gpu_idx)
         vram_result = _memory_check(
             required_bytes=estimate["estimated_vram_working_set_bytes"],
@@ -457,6 +477,15 @@ def check_saliency_resource_preflight(
             details=estimate,
         )
         results.append(vram_result)
+        vram_results.append(vram_result)
+
+    vram_result = max(
+        vram_results,
+        key=lambda result: (RISK_SAFE, RISK_UNKNOWN, RISK_WARNING, RISK_BLOCKING).index(
+            result.risk_level
+        ),
+        default=None,
+    )
 
     issues: list[str] = []
     warnings: list[str] = []
@@ -476,6 +505,7 @@ def check_saliency_resource_preflight(
             RISK_SAFE if vram_result is None else vram_result.risk_level
         ),
         "vram": None if vram_result is None else vram_result.to_diagnostics(),
+        "vram_checks": [result.to_diagnostics() for result in vram_results],
         "suggestions": list(SALIENCY_MEMORY_SUGGESTIONS),
     }
     return ResourcePreflightResult(
@@ -688,7 +718,9 @@ def _evaluation_count(
     *,
     epoch_count: int,
     dataset_index: int,
-) -> tuple[str, int]:
+    holders: tuple[Any, ...],
+    repeat_count: int,
+) -> tuple[str, int, int]:
     test_count = _mask_count(
         getattr(dataset, "test_mask", None),
         epoch_count=epoch_count,
@@ -701,10 +733,28 @@ def _evaluation_count(
         label="validation",
         dataset_index=dataset_index,
     )
+    matching_holders = [
+        holder for holder in holders if getattr(holder, "dataset", None) is dataset
+    ]
+    if matching_holders:
+        split_counts = {"test": test_count, "validation": validation_count}
+        selected_splits = [
+            split
+            for holder in matching_holders
+            for record in holder.get_plans()
+            if record.is_finished()
+            if (split := holder.get_saliency_evaluation_split(record)) is not None
+        ]
+        if not selected_splits:
+            return "unavailable", 0, 0
+        largest_split = max(selected_splits, key=split_counts.__getitem__)
+        # The largest selected split bounds both the batch peak and each retained
+        # record. Count actual finished records, not today's repeat setting.
+        return largest_split, split_counts[largest_split], len(selected_splits)
     if test_count > 0:
-        return "test", test_count
+        return "test", test_count, repeat_count
     if validation_count > 0:
-        return "validation", validation_count
+        return "validation", validation_count, repeat_count
     raise ValueError(
         "Saliency resource admission requires validation or test epochs for "
         f"dataset {dataset_index + 1}."

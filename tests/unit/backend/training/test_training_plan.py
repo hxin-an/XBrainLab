@@ -838,41 +838,6 @@ def test_saliency_producer_identity_separates_dataset_split_run_and_model(
 
 
 @pytest.mark.parametrize(
-    "val_loader, test_loader, expected_loader",
-    [
-        ("val", "test", "test"),
-        (None, "test", "test"),
-        ("val", None, "val"),
-        (None, None, None),
-    ],
-)
-def test_training_plan_holder_get_eval_loader(
-    base_holder,
-    dataset,
-    model_holder,
-    training_option,
-    val_loader,
-    test_loader,
-    expected_loader,
-):
-    repeat = 0
-    seed = set_seed()
-    model = model_holder.get_model({})
-    training_option.evaluation_option = TrainingEvaluation.VAL_LOSS
-    record = TrainRecord(
-        repeat=repeat, dataset=dataset, model=model, option=training_option, seed=seed
-    )
-    record.best_val_loss_model = record.model.state_dict()
-
-    if expected_loader is None:
-        with pytest.raises(FinalEvaluationUnavailableError):
-            base_holder.get_eval_pair(record, val_loader, test_loader)
-    else:
-        _, target_loader = base_holder.get_eval_pair(record, val_loader, test_loader)
-        assert target_loader == expected_loader
-
-
-@pytest.mark.parametrize(
     "evaluation_option, state_dict_attr_name",
     [
         (TrainingEvaluation.VAL_LOSS, f"best_val_{RecordKey.LOSS}_model"),
@@ -1417,8 +1382,6 @@ def test_training_plan_holder_train_error(base_holder):
 
 
 def test_test_model_metrics():
-    # Setup
-    # model = FakeModel()
     criterion = torch.nn.CrossEntropyLoss()
 
     # Create dummy data
@@ -1433,21 +1396,6 @@ def test_test_model_metrics():
     #   Preds: [[0, 0, 10, 0], [0, 10, 0, 0]] -> Argmax: [2, 1] (1 Correct, 1 Wrong)
 
     # Total: 4 samples, 3 correct -> Acc = 75%
-
-    class MockDataset(torch.utils.data.Dataset):
-        def __len__(self):
-            return 4
-
-        def __getitem__(self, idx):
-            return torch.randn(CLASS_NUM), torch.tensor(idx)
-
-    # Mock model output
-    # We need to mock the model call to return specific predictions
-    # But FakeModel is simple linear. Let's just mock the forward pass or use
-    # specific weights.
-    # Easier: Mock the model object itself to return specific outputs
-
-    mock_model = torch.nn.Linear(4, 4)  # Dummy
 
     # Batch 1 outputs (indices 0, 1) -> Labels 0, 1
     out1 = torch.tensor([[10.0, 0.0, 0.0, 0.0], [0.0, 10.0, 0.0, 0.0]])
@@ -1719,11 +1667,7 @@ def test_saliency_marks_a_fold_unavailable_when_every_evaluation_split_lacks_cla
         ),
     }
 
-    source = base_holder._select_saliency_evaluation_split(
-        record,
-        val_loader=object(),
-        test_loader=object(),
-    )
+    source = base_holder.get_saliency_evaluation_split(record)
 
     assert source is None
 

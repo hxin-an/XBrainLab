@@ -22,7 +22,6 @@ from XBrainLab.backend.application import training_service as training_service_m
 from XBrainLab.backend.application.commands import (
     ClearTrainingHistoryCommand,
     ConfigureTrainingCommand,
-    StopTrainingCommand,
     TrainCommand,
 )
 from XBrainLab.backend.application.errors import ApplicationError, PreconditionError
@@ -79,9 +78,6 @@ class _TrainingController:
         self.training_option: Any | None = None
         self.started = False
         self.start_count = 0
-        self.stopped = False
-        self.stop_result = True
-        self.stop_wait_timeout: float | None = None
         self.history_cleared = False
         self.notifications: list[str] = []
         self.resource_context: dict[str, Any] | None = {
@@ -146,11 +142,6 @@ class _TrainingRuntime:
             training_option=context.get("training_option"),
             model_holder=context.get("model_holder"),
         )
-
-    def stop_training(self, *, wait_timeout: float | None = None) -> bool:
-        self.training.stopped = True
-        self.training.stop_wait_timeout = wait_timeout
-        return self.training.stop_result
 
     def wait_for_training_completion(
         self,
@@ -1211,7 +1202,7 @@ def test_training_service_maps_auto_device_without_facade(monkeypatch) -> None:
     assert payload["training_option"]["device"] == "cuda:0"
 
 
-def test_training_service_start_stop_and_clear_history() -> None:
+def test_training_service_start_and_clear_history() -> None:
     service, training = _service()
 
     start_message, start_payload = _expect_payload(
@@ -1223,7 +1214,6 @@ def test_training_service_start_stop_and_clear_history() -> None:
             ),
         ),
     )
-    stop = service.handle_stop_training(StopTrainingCommand(wait_timeout=1.5))
     clear_message, clear_payload = _expect_payload(
         service.handle_clear_training_history(ClearTrainingHistoryCommand()),
     )
@@ -1234,23 +1224,9 @@ def test_training_service_start_stop_and_clear_history() -> None:
     assert start_payload["training_handoff_generation"] == 1
     assert start_payload["resource_preflight"]["dataset_bytes"] == 0
     assert start_payload["resource_preflight"]["risk_level"] == "safe"
-    assert stop == (
-        "Training stopped.",
-        {
-            "stopped": True,
-            "wait_timeout": 1.5,
-            "terminal_outcome": "completed",
-            "training_run": {
-                "trainer_id": "test-trainer",
-                "run_id": 1,
-            },
-        },
-    )
     assert training.started is True
     assert training.started_append is False
     assert training.started_interactive is False
-    assert training.stopped is True
-    assert training.stop_wait_timeout == 1.5
     assert training.history_cleared is True
     assert training.notifications == ["training_updated"]
     assert clear_message == "Training history cleared."
@@ -1345,32 +1321,6 @@ def test_synchronous_training_requires_verified_completion(
         )
 
 
-def test_stop_command_reports_requested_while_worker_is_still_alive() -> None:
-    training = _TrainingController()
-    training.stop_result = False
-    training.terminal_outcome = TrainingTerminalOutcome(
-        state=TrainingOutcomeState.STOP_REQUESTED,
-        run=TrainingRunIdentity(trainer_id="test-trainer", run_id=3),
-    )
-    service = TrainingCommandService(
-        training=training,
-        training_runtime=_TrainingRuntime(training),
-        get_state=lambda: _state(),
-    )
-
-    message, diagnostics = _expect_payload(
-        service.handle_stop_training(StopTrainingCommand(wait_timeout=0.01))
-    )
-
-    assert message == "Training stop requested."
-    assert diagnostics == {
-        "stopped": False,
-        "wait_timeout": 0.01,
-        "terminal_outcome": "stop_requested",
-        "training_run": {"trainer_id": "test-trainer", "run_id": 3},
-    }
-
-
 def test_training_service_blocks_training_when_dataset_exceeds_available_ram(
     monkeypatch,
 ) -> None:
@@ -1382,7 +1332,6 @@ def test_training_service_blocks_training_when_dataset_exceeds_available_ram(
         ),
     }
     monkeypatch.setattr(resource_guard, "available_ram_bytes", lambda: 5_000)
-    monkeypatch.setattr(resource_guard, "available_vram_bytes", lambda _idx=None: None)
 
     with pytest.raises(PreconditionError, match="available RAM"):
         service.handle_train(TrainCommand())

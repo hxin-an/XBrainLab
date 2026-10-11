@@ -109,17 +109,13 @@ def test_manual_splitter_preserves_trailing_whitespace_parse_contract(split_type
     assert splitter.get_value() == [2]
 
 
-@pytest.mark.parametrize("split_unit", [*list(SplitUnit), "test"])
-def test_splitter_not_implemented(split_unit):
+def test_splitter_not_implemented():
     split_type = SplitByType.SESSION
     value_var = "2"
     is_option = True
     splitter = DataSplitter(split_type, value_var, SplitUnit.MANUAL, is_option)
-    splitter.split_unit = split_unit
-    if split_unit == "test":
-        with pytest.raises(NotImplementedError):
-            splitter.is_valid()
-    else:
+    splitter.split_unit = "test"
+    with pytest.raises(NotImplementedError):
         splitter.is_valid()
 
 

@@ -397,7 +397,6 @@ class TrainingPlanHolder:
                     ),
                 ),
             )
-        self._validate_loaded_saliency_artifacts()
 
     def _resolve_class_weighting(self) -> dict[str, object]:
         """Resolve one fold-local loss policy before records or trainer mutate."""
@@ -489,25 +488,6 @@ class TrainingPlanHolder:
                 train_record.repeat,
                 train_record=train_record,
             )
-
-    def _validate_loaded_saliency_artifacts(self) -> None:
-        """Fail closed when a persisted record belongs to another producer."""
-        epoch_data = self.dataset.get_epoch_data()
-        for record in self.train_record_list:
-            eval_record = record.eval_record
-            if eval_record is None or not eval_record.has_saliency_data():
-                continue
-            try:
-                producer_identity = self.build_saliency_producer_identity(
-                    record,
-                    evaluation_split=eval_record.evaluation_split,
-                )
-                eval_record.validate_saliency_context(
-                    epoch_data,
-                    producer_identity=producer_identity,
-                )
-            except SaliencyContextError as exc:
-                eval_record.mark_saliency_context_incompatible(str(exc))
 
     def bind_state_tracker(self, tracker: TrainingStateTracker) -> None:
         """Bind this holder and all records to one trainer mutation token."""
@@ -1131,11 +1111,7 @@ class TrainingPlanHolder:
         for train_record, previous_eval_record in plan.records:
             self._raise_if_saliency_plan_stale(plan, should_cancel=should_cancel)
             train_loader, val_loader, test_loader = self.get_loader(train_record)
-            saliency_split = self._select_saliency_evaluation_split(
-                train_record,
-                val_loader=val_loader,
-                test_loader=test_loader,
-            )
+            saliency_split = self.get_saliency_evaluation_split(train_record)
             if saliency_split is None:
                 continue
             if saliency_split == "validation":
@@ -1223,19 +1199,20 @@ class TrainingPlanHolder:
             eval_records=tuple(prepared_eval_records),
         )
 
-    def _select_saliency_evaluation_split(
+    def get_saliency_evaluation_split(
         self,
         train_record: TrainRecord,
-        *,
-        val_loader: torch_data.DataLoader | None,
-        test_loader: torch_data.DataLoader | None,
     ) -> str | None:
         """Prefer test data, falling back only when class coverage is incomplete."""
         evaluation_records = getattr(train_record, "evaluation_records", {})
         known_incomplete: list[str] = []
         unknown_coverage: list[str] = []
-        for split, loader in (("test", test_loader), ("validation", val_loader)):
-            if loader is None:
+        test_count = self.dataset.get_test_len()
+        for split, count in (
+            ("test", test_count),
+            ("validation", self.dataset.get_val_len()),
+        ):
+            if not count:
                 continue
             eval_record = (
                 evaluation_records.get(split)
@@ -1244,7 +1221,7 @@ class TrainingPlanHolder:
             )
             coverage = self._has_complete_model_class_coverage(eval_record)
             if coverage is True:
-                if split != "test" and test_loader is not None:
+                if split != "test" and test_count:
                     logger.info(
                         "Test split lacks complete model-class coverage; "
                         "using validation data for saliency on %s.",

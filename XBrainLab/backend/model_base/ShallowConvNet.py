@@ -88,13 +88,10 @@ class ShallowConvNet(nn.Module):
             bias=False,
         )
         self.Bn1 = nn.BatchNorm2d(self.spatial_filter)
-        # self.SquareLayer = square_layer()
         self.AvgPool1 = nn.AvgPool2d((1, pool_len), stride=(1, pool_stride))
-        # self.LogLayer = Log_layer()
         self.Drop1 = nn.Dropout(0.5)
         fc_in_size = self._get_size(channels, samples)[1]
         self.classifier = nn.Linear(fc_in_size, n_classes, bias=True)
-        # self.softmax = nn.Softmax()
 
     def forward(self, x):
         """Performs the forward pass of ShallowConvNet.

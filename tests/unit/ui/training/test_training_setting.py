@@ -461,7 +461,15 @@ class TestTrainingSetting:
                 assert checkpoint_label.height() >= (
                     checkpoint_label.fontMetrics().lineSpacing() * 2
                 )
-            assert window.contentsRect().contains(checkpoint_label.geometry())
+            assert window.content_scroll is not None
+            window.content_scroll.ensureWidgetVisible(checkpoint_label)
+            qtbot.wait(0)
+            viewport = window.content_scroll.viewport()
+            bounds = QRect(
+                checkpoint_label.mapTo(viewport, QPoint()), checkpoint_label.size()
+            )
+            assert viewport.rect().contains(bounds)
+            assert checkpoint_label.visibleRegion().contains(checkpoint_label.rect())
         finally:
             app.setFont(original_font)
 
@@ -496,7 +504,15 @@ class TestTrainingSetting:
                 assert checkpoint_label.height() >= (
                     checkpoint_label.fontMetrics().lineSpacing() * 2
                 )
-            assert dialog.contentsRect().contains(checkpoint_label.geometry())
+            assert dialog.content_scroll is not None
+            dialog.content_scroll.ensureWidgetVisible(checkpoint_label)
+            qtbot.wait(0)
+            viewport = dialog.content_scroll.viewport()
+            bounds = QRect(
+                checkpoint_label.mapTo(viewport, QPoint()), checkpoint_label.size()
+            )
+            assert viewport.rect().contains(bounds)
+            assert checkpoint_label.visibleRegion().contains(checkpoint_label.rect())
             assert checkpoint_label.geometry().right() < (
                 dialog.checkpoint_entry.geometry().left()
             )

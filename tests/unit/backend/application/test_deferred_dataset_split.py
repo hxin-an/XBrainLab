@@ -189,6 +189,16 @@ def _service_with_epoch(
     return ApplicationService(study), epoch
 
 
+@pytest.fixture
+def service_factory(request):
+    def create(epoch=None):
+        service, epoch = _service_with_epoch(epoch)
+        request.addfinalizer(service.close)
+        return service, epoch
+
+    return create
+
+
 def _two_subject_epoch_data() -> Epochs:
     epoch = _epoch_data()
     epoch.subject = np.asarray([0] * 6 + [1] * 6, dtype=int)
@@ -290,8 +300,10 @@ def _publish_training_identity(service: ApplicationService) -> int:
     return 1
 
 
-def test_split_confirmation_saves_typed_summary_without_materializing_masks() -> None:
-    service, _epoch = _service_with_epoch()
+def test_split_confirmation_saves_typed_summary_without_materializing_masks(
+    service_factory,
+) -> None:
+    service, _epoch = service_factory()
     generation = service.get_view_publication().generation
     specification = _specification()
     service.study.get_datasets_generator = MagicMock(
@@ -319,10 +331,10 @@ def test_split_confirmation_saves_typed_summary_without_materializing_masks() ->
     service.study.get_datasets_generator.assert_not_called()
 
 
-def test_default_split_command_and_explicit_empty_payload_keep_distinct_contracts() -> (
-    None
-):
-    service, epoch = _service_with_epoch()
+def test_default_split_command_and_explicit_empty_payload_keep_distinct_contracts(
+    service_factory,
+) -> None:
+    service, epoch = service_factory()
     try:
         saved = service.execute(SaveDatasetSplitCommand(split_config=None))
 
@@ -367,10 +379,10 @@ def test_default_split_command_and_explicit_empty_payload_keep_distinct_contract
         service.close()
 
 
-def test_saved_split_publishes_consistent_training_readiness_before_materialization() -> (
-    None
-):
-    service, _epoch = _service_with_epoch()
+def test_saved_split_publishes_consistent_training_readiness_before_materialization(
+    service_factory,
+) -> None:
+    service, _epoch = service_factory()
     specification = _specification()
     generation = service.get_view_publication().generation
 
@@ -393,9 +405,11 @@ def test_saved_split_publishes_consistent_training_readiness_before_materializat
     assert state.training.missing_requirements == []
 
 
-def test_first_split_save_after_reading_training_recommendation() -> None:
+def test_first_split_save_after_reading_training_recommendation(
+    service_factory,
+) -> None:
     """Opening advisory settings must not invalidate the next reviewed split."""
-    service, _epoch = _service_with_epoch(_two_subject_epoch_data())
+    service, _epoch = service_factory(_two_subject_epoch_data())
     publication = service.get_view_publication()
     service.get_training_recommendation(
         expected_publication_generation=publication.generation,
@@ -428,9 +442,10 @@ def test_first_split_save_after_reading_training_recommendation() -> None:
 
 @pytest.mark.parametrize("prospective_model", [None, "braindecode.eegconformer"])
 def test_advisory_recommendation_preserves_committed_training_publication(
+    service_factory,
     prospective_model: str | None,
 ) -> None:
-    service, _epoch = _service_with_epoch(_two_subject_epoch_data())
+    service, _epoch = service_factory(_two_subject_epoch_data())
     _configure_training(service)
     before = service.get_view_publication()
     assert before.state.training.recommendation is not None
@@ -448,9 +463,10 @@ def test_advisory_recommendation_preserves_committed_training_publication(
 
 
 def test_real_preview_receipt_round_trips_to_deferred_materialization(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, _epoch = _service_with_epoch(_two_subject_epoch_data())
+    service, _epoch = service_factory(_two_subject_epoch_data())
     specification = _specification()
     generation = service.get_view_publication().generation
     preview = service.get_dataset_split_preview(
@@ -509,13 +525,14 @@ def test_real_preview_receipt_round_trips_to_deferred_materialization(
     ],
 )
 def test_real_shorthand_split_command_saves_canonical_non_cv_specification(
+    service_factory,
     split_strategy: str,
     test_type: SplitByType,
     validation_type: ValSplitByType,
     protocol: str,
 ) -> None:
     """Headless shorthand retains its real ApplicationService contract."""
-    service, _epoch = _service_with_epoch(_split_matrix_epoch_data())
+    service, _epoch = service_factory(_split_matrix_epoch_data())
     result = service.execute(
         SaveDatasetSplitCommand(
             split_strategy=split_strategy,
@@ -576,13 +593,14 @@ def test_real_shorthand_split_command_saves_canonical_non_cv_specification(
     ],
 )
 def test_real_cross_split_preview_save_and_preparation_preserve_reviewed_membership(
+    service_factory,
     train_type: TrainingType,
     test_type: SplitByType,
     validation_type: ValSplitByType,
     protected_values: str,
 ) -> None:
     """Exercise real allocation through preview, save, and deferred preparation."""
-    service, _epoch = _service_with_epoch(_split_matrix_epoch_data())
+    service, _epoch = service_factory(_split_matrix_epoch_data())
     specification = _cross_validation_specification(
         train_type=train_type,
         test_type=test_type,
@@ -637,9 +655,11 @@ def test_real_cross_split_preview_save_and_preparation_preserve_reviewed_members
         assert not test_values & set(values[dataset.val_mask].tolist())
 
 
-def test_individual_subject_split_is_rejected_by_preview_without_publication() -> None:
+def test_individual_subject_split_is_rejected_by_preview_without_publication(
+    service_factory,
+) -> None:
     """The public preview rejects unsupported Individual subject allocation."""
-    service, _epoch = _service_with_epoch(_split_matrix_epoch_data())
+    service, _epoch = service_factory(_split_matrix_epoch_data())
     specification = _cross_validation_specification(
         train_type=TrainingType.IND,
         test_type=SplitByType.SUBJECT,
@@ -664,9 +684,11 @@ def test_individual_subject_split_is_rejected_by_preview_without_publication() -
     assert state.split_materialized is False
 
 
-def test_mixed_trial_provenance_is_rejected_by_preview_and_unreviewed_prepare() -> None:
+def test_mixed_trial_provenance_is_rejected_by_preview_and_unreviewed_prepare(
+    service_factory,
+) -> None:
     """Preview and Train share the same blocking audit for a mixed split."""
-    service, epoch = _service_with_epoch(_epoch_data())
+    service, epoch = service_factory(_epoch_data())
     epoch.session = np.repeat([0, 1], 6)
     epoch.session_map = {0: "ses-0", 1: "ses-1"}
     epoch.epoch_window_provenance = tuple(
@@ -719,9 +741,10 @@ def test_mixed_trial_provenance_is_rejected_by_preview_and_unreviewed_prepare() 
 
 
 def test_training_blocks_same_count_materialization_with_different_membership(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, _epoch = _service_with_epoch(_two_subject_epoch_data())
+    service, _epoch = service_factory(_two_subject_epoch_data())
     specification = _specification()
     generation = service.get_view_publication().generation
     preview = service.get_dataset_split_preview(
@@ -771,10 +794,11 @@ def test_training_blocks_same_count_materialization_with_different_membership(
 
 
 def test_training_blocks_tampered_preview_coverage_evidence_even_when_digest_matches(
+    service_factory,
     monkeypatch,
 ) -> None:
     """A receipt binds the rendered allocation evidence as well as mask membership."""
-    service, _epoch = _service_with_epoch(_two_subject_epoch_data())
+    service, _epoch = service_factory(_two_subject_epoch_data())
     specification = _specification()
     generation = service.get_view_publication().generation
     preview = service.get_dataset_split_preview(
@@ -820,9 +844,11 @@ def test_training_blocks_tampered_preview_coverage_evidence_even_when_digest_mat
     assert service.study.datasets == []
 
 
-def test_preview_receipt_aggregate_evidence_rejects_tampering_after_many_rows() -> None:
+def test_preview_receipt_aggregate_evidence_rejects_tampering_after_many_rows(
+    service_factory,
+) -> None:
     """The receipt binds totals as well as every published row detail."""
-    service, epoch = _service_with_epoch()
+    service, epoch = service_factory()
     specification = _specification()
     config = DatasetGenerationCommandService.config_from_payload(
         specification.to_payload()
@@ -867,9 +893,10 @@ def test_preview_receipt_aggregate_evidence_rejects_tampering_after_many_rows() 
 
 
 def test_recommendation_preserves_only_manual_fields_across_split_transition(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, epoch = _service_with_epoch()
+    service, epoch = service_factory()
     initial_specification = _specification()
     initial_generation = service.get_view_publication().generation
     initial_saved = service.execute(
@@ -969,9 +996,10 @@ def test_recommendation_preserves_only_manual_fields_across_split_transition(
 
 
 def test_train_materializes_once_and_state_reads_skip_epoch_payload(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, epoch = _service_with_epoch()
+    service, epoch = service_factory()
     specification = _specification()
     generation = service.get_view_publication().generation
     saved = service.execute(
@@ -1054,9 +1082,10 @@ def test_train_materializes_once_and_state_reads_skip_epoch_payload(
 
 
 def test_changed_split_spec_invalidates_materialized_masks_without_regeneration(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, epoch = _service_with_epoch()
+    service, epoch = service_factory()
     first_spec = _specification(ratio="0.2")
     generation = service.get_view_publication().generation
     service.execute(
@@ -1105,7 +1134,9 @@ def test_changed_split_spec_invalidates_materialized_masks_without_regeneration(
     assert generator.prepare_result.call_count == 1
 
 
-def test_train_blocks_existing_datasets_without_saved_split_specification() -> None:
+def test_train_blocks_existing_datasets_without_saved_split_specification(
+    request,
+) -> None:
     study = Study()
     raw = _raw()
     epoch = _epoch_data()
@@ -1114,6 +1145,7 @@ def test_train_blocks_existing_datasets_without_saved_split_specification() -> N
     study.data_manager.epoch_data = epoch
     study.data_manager.datasets = [_materialized_dataset(epoch)]
     service = ApplicationService(study)
+    request.addfinalizer(service.close)
     _configure_training(service)
 
     capability = service.get_capabilities().get(CommandName.TRAIN)
@@ -1129,8 +1161,10 @@ def test_train_blocks_existing_datasets_without_saved_split_specification() -> N
     )
 
 
-def test_changed_epoch_invalidates_saved_split_and_train_capability() -> None:
-    service, _epoch = _service_with_epoch()
+def test_changed_epoch_invalidates_saved_split_and_train_capability(
+    service_factory,
+) -> None:
+    service, _epoch = service_factory()
     specification = _specification()
     generation = service.get_view_publication().generation
     saved = service.execute(
@@ -1154,8 +1188,10 @@ def test_changed_epoch_invalidates_saved_split_and_train_capability() -> None:
     )
 
 
-def test_mismatched_preview_receipt_is_rejected_without_saving_stale_rows() -> None:
-    service, epoch = _service_with_epoch()
+def test_mismatched_preview_receipt_is_rejected_without_saving_stale_rows(
+    service_factory,
+) -> None:
+    service, epoch = service_factory()
     generation = service.get_view_publication().generation
     previewed = _specification(ratio="0.2")
     submitted = _specification(ratio="0.25")
@@ -1178,8 +1214,10 @@ def test_mismatched_preview_receipt_is_rejected_without_saving_stale_rows() -> N
     assert result.state.dataset.split_preview_summary == {}
 
 
-def test_stale_publication_and_epoch_preview_receipts_are_rejected() -> None:
-    service, epoch = _service_with_epoch()
+def test_stale_publication_and_epoch_preview_receipts_are_rejected(
+    service_factory,
+) -> None:
+    service, epoch = service_factory()
     specification = _specification()
     original_generation = service.get_view_publication().generation
     publication_receipt = _receipt(
@@ -1219,8 +1257,10 @@ def test_stale_publication_and_epoch_preview_receipts_are_rejected() -> None:
     assert "current EEG epochs" in stale_epoch.message
 
 
-def test_commands_save_split_then_train_materializes_once(monkeypatch) -> None:
-    service, epoch = _service_with_epoch()
+def test_commands_save_split_then_train_materializes_once(
+    service_factory, monkeypatch
+) -> None:
+    service, epoch = service_factory()
     generator = MagicMock()
     generator.prepare_result.return_value = [_materialized_dataset(epoch)]
     service.study.get_datasets_generator = MagicMock(return_value=generator)
@@ -1257,9 +1297,10 @@ def test_commands_save_split_then_train_materializes_once(monkeypatch) -> None:
 
 
 def test_train_failure_result_and_state_share_bounded_audit_and_preserve_old_state(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, epoch = _service_with_epoch()
+    service, epoch = service_factory()
     specification = _specification()
     generation = service.get_view_publication().generation
     saved = service.execute(
@@ -1363,9 +1404,10 @@ def _save_split_and_configure_training(
 
 
 def test_training_resource_block_preserves_active_dataset_and_trainer(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, epoch = _service_with_epoch()
+    service, epoch = service_factory()
     _save_split_and_configure_training(service, epoch)
     old_dataset, old_trainer, _history = _install_existing_training_state(
         service, epoch
@@ -1400,9 +1442,10 @@ def test_training_resource_block_preserves_active_dataset_and_trainer(
 
 
 def test_training_start_failure_restores_active_dataset_trainer_and_history(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, epoch = _service_with_epoch()
+    service, epoch = service_factory()
     _save_split_and_configure_training(service, epoch)
     old_dataset, old_trainer, history = _install_existing_training_state(service, epoch)
     old_generator = service.study.data_manager.dataset_generator
@@ -1448,9 +1491,10 @@ def test_training_start_failure_restores_active_dataset_trainer_and_history(
 
 
 def test_split_commit_cleanup_failure_restores_trainer_and_dataset(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, epoch = _service_with_epoch()
+    service, epoch = service_factory()
     _save_split_and_configure_training(service, epoch)
     old_dataset, old_trainer, history = _install_existing_training_state(service, epoch)
     old_generator = service.study.data_manager.dataset_generator
@@ -1484,9 +1528,10 @@ def test_split_commit_cleanup_failure_restores_trainer_and_dataset(
 
 
 def test_real_deferred_start_failure_restores_saliency_and_pipeline_identities(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, _epoch = _service_with_epoch()
+    service, _epoch = service_factory()
     initial_specification = _specification(ratio="0.2")
     assert service.execute(
         SaveDatasetSplitCommand(split_config=initial_specification.to_payload())
@@ -1585,8 +1630,10 @@ def test_real_deferred_start_failure_restores_saliency_and_pipeline_identities(
     assert restored_record.get_saliency_eval_record() is saliency_result
 
 
-def test_training_restart_failure_restores_verified_split_history(monkeypatch) -> None:
-    service, epoch = _service_with_epoch()
+def test_training_restart_failure_restores_verified_split_history(
+    service_factory, monkeypatch
+) -> None:
+    service, epoch = service_factory()
     _save_split_and_configure_training(service, epoch)
     candidate = _materialized_dataset(epoch)
     generator = MagicMock()
@@ -1636,9 +1683,10 @@ def test_training_restart_failure_restores_verified_split_history(monkeypatch) -
 
 
 def test_real_append_restart_failure_removes_only_new_training_plans(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, epoch = _service_with_epoch()
+    service, epoch = service_factory()
     _save_split_and_configure_training(service, epoch)
     candidate = _materialized_dataset(epoch)
     generator = MagicMock()
@@ -1679,9 +1727,10 @@ def test_real_append_restart_failure_removes_only_new_training_plans(
 
 
 def test_cleanup_failure_keeps_candidate_dataset_and_trainer_paired(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, epoch = _service_with_epoch()
+    service, epoch = service_factory()
     _save_split_and_configure_training(service, epoch)
     old_dataset, old_trainer, _history = _install_existing_training_state(
         service,
@@ -1719,9 +1768,10 @@ def test_cleanup_failure_keeps_candidate_dataset_and_trainer_paired(
 
 
 def test_training_resource_warning_and_cancel_preserve_active_identity(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, epoch = _service_with_epoch()
+    service, epoch = service_factory()
     _save_split_and_configure_training(service, epoch)
     old_dataset, old_trainer, history = _install_existing_training_state(service, epoch)
     candidate = _materialized_dataset(epoch)
@@ -1783,9 +1833,10 @@ def test_training_resource_warning_and_cancel_preserve_active_identity(
 
 
 def test_confirmed_resource_retry_reuses_candidate_and_commits_once(
+    service_factory,
     monkeypatch,
 ) -> None:
-    service, epoch = _service_with_epoch()
+    service, epoch = service_factory()
     _save_split_and_configure_training(service, epoch)
     _old_dataset, old_trainer, _history = _install_existing_training_state(
         service, epoch

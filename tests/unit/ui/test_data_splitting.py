@@ -12,7 +12,6 @@ from PyQt6.QtCore import QPoint, QRect, Qt
 from PyQt6.QtWidgets import (
     QDialog,
     QFrame,
-    QPushButton,
     QSizePolicy,
     QWidget,
 )
@@ -107,26 +106,6 @@ class TestDataSplittingPreviewDialogDeep:
             "val_splitters": [],
             "test_splitters": [],
         }
-
-    def test_obsolete_show_split_button_is_not_rendered(self, dlg):
-        assert dlg.btn_info is None
-
-        dlg._set_preview_state(
-            dlg._preview_generation_id,
-            "succeeded",
-            rows=(
-                DatasetSplitPreviewRow(
-                    name="Split A",
-                    train_count=8,
-                    validation_count=1,
-                    test_count=1,
-                ),
-            ),
-        )
-        dlg.update_table()
-
-        button_texts = [button.text() for button in dlg.findChildren(QPushButton)]
-        assert not any("show" in text.lower() for text in button_texts)
 
 
 # ============ DataSplittingPreviewDialog with splitter options ============
@@ -454,9 +433,6 @@ class TestDataSplittingPreviewDialogSplitters:
         dlg.btn_back.click()
         qtbot.waitUntil(lambda: not dlg.isVisible(), timeout=1000)
 
-    def test_obsolete_show_info_action_is_removed(self, dlg):
-        assert not hasattr(dlg, "show_info")
-
     def test_confirm_worker_alive(self, dlg):
         dlg.preview_worker = MagicMock()
         dlg.preview_worker.is_alive.return_value = True
@@ -557,6 +533,50 @@ class TestDataSplittingPreviewDialogSplitters:
             "The split preview failed. Adjust the split settings and try again."
         )
         assert "Mary Example" not in dlg._preview_error
+
+    @pytest.mark.parametrize("failure_phase", ["construct", "start"])
+    def test_preview_worker_startup_failure_can_retry(self, dlg, failure_phase):
+        dlg.preview_provider = successful_preview
+        dlg.preview_worker = None
+
+        def failing_thread(*args, **kwargs):
+            if failure_phase == "construct":
+                raise RuntimeError("cannot create preview worker")
+            worker = _REAL_THREAD_CLASS(*args, **kwargs)
+            worker.start = MagicMock(
+                side_effect=RuntimeError("cannot start preview worker")
+            )
+            return worker
+
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
+            side_effect=failing_thread,
+        ):
+            dlg.preview()
+
+        dlg.update_table()
+        assert dlg.tree.topLevelItem(0).text(0) == "Preview failed"
+        assert not dlg.btn_confirm.isEnabled()
+        assert dlg.btn_back.isEnabled()
+        assert dlg.get_result() is None
+        assert dlg.get_preview_receipt() is None
+        assert dlg._active_preview_request is None
+
+        with patch(
+            "XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog.threading.Thread",
+            _REAL_THREAD_CLASS,
+        ):
+            dlg.preview()
+            worker = dlg.preview_worker
+            assert worker is not None
+            worker.join(timeout=1.0)
+
+        assert not worker.is_alive()
+        dlg.update_table()
+        assert dlg.tree.topLevelItem(0).text(0) == "Fold 1"
+        assert dlg.btn_confirm.isEnabled()
+        assert dlg.get_result() is not None
+        assert dlg.get_preview_receipt() is not None
 
     def test_confirm_does_not_regenerate_domain_datasets(self, dlg):
         dlg.preview_worker = MagicMock()
