@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
+
+import pytest
 
 from scripts.dev.run_app_polish_ui_dpi_gate import (
     DPI_APP_POLISH_SURFACES,
@@ -36,6 +39,24 @@ def test_dpi_gate_requires_exact_windows_100_125_150_matrix():
     )
 
     assert ok, reason
+
+
+@pytest.mark.parametrize(
+    "field", ["requested_scale_factor", "observed_device_pixel_ratio"]
+)
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf"), "NaN"])
+def test_dpi_gate_rejects_nonfinite_scale_from_json(field, value):
+    payload = build_dpi_gate_manifest(
+        captures=[_capture(scale) for scale in REQUIRED_SCALE_FACTORS],
+        source_identity={"source_digest": "a" * 64},
+    )
+    payload["captures"][0][field] = value
+    loaded = json.loads(json.dumps(payload))
+
+    ok, reason = validate_dpi_gate_manifest(loaded, expected_source_digest="a" * 64)
+
+    assert not ok
+    assert reason
 
 
 def test_dpi_gate_rejects_missing_scale_and_non_windows_capture():

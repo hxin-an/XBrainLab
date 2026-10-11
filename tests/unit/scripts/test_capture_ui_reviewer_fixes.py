@@ -137,19 +137,6 @@ def test_surface_inventory_preserves_capture_artifacts_in_order() -> None:
     )
 
 
-def test_preprocess_dialog_capture_records_both_filter_toggle_states(
-    qapp,
-    tmp_path,
-) -> None:
-    capture_script._capture_preprocess_dialogs(qapp, tmp_path)
-
-    initial = tmp_path / "preprocess-filtering-dialog.png"
-    toggled = tmp_path / "preprocess-filtering-toggled.png"
-    assert initial.is_file()
-    assert toggled.is_file()
-    assert initial.read_bytes() != toggled.read_bytes()
-
-
 @pytest.mark.parametrize(
     ("selected_methods", "expected_title", "ok_enabled"),
     [
@@ -355,7 +342,7 @@ def test_loaded_capture_path_has_no_synthetic_signal_fallback() -> None:
     assert "np.linspace" not in source
 
 
-def test_preprocess_dialog_capture_uses_channel_name_rereference_api(
+def test_preprocess_dialog_capture_records_filter_toggle_and_rereference_states(
     qapp,
     tmp_path,
 ) -> None:
@@ -365,6 +352,12 @@ def test_preprocess_dialog_capture_uses_channel_name_rereference_api(
         capture_script._capture_preprocess_dialogs(qapp, tmp_path)
     finally:
         qapp.setStyleSheet(original_stylesheet)
+
+    initial = tmp_path / "preprocess-filtering-dialog.png"
+    toggled = tmp_path / "preprocess-filtering-toggled.png"
+    assert initial.is_file()
+    assert toggled.is_file()
+    assert initial.read_bytes() != toggled.read_bytes()
 
     for filename in (
         "preprocess-rereference-average.png",

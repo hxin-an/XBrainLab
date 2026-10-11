@@ -112,6 +112,24 @@ def test_failed_training_preparation_releases_real_service_and_exception_hook(
         capture_script.sys.excepthook = original_hook
 
 
+def test_main_output_failure_preserves_exception_hook(tmp_path, monkeypatch):
+    output = tmp_path / "not-a-directory"
+    output.write_text("existing caller data", encoding="utf-8")
+    original_hook = capture_script.sys.excepthook
+    monkeypatch.setattr(
+        capture_script.sys,
+        "argv",
+        ["capture", "--output-dir", str(output)],
+    )
+    try:
+        with pytest.raises(FileExistsError):
+            capture_script.main()
+        assert capture_script.sys.excepthook is original_hook
+        assert output.read_text(encoding="utf-8") == "existing caller data"
+    finally:
+        capture_script.sys.excepthook = original_hook
+
+
 @pytest.mark.parametrize("existing", [False, True])
 @pytest.mark.parametrize(("status", "exit_code"), [("passed", 0), ("failed", 1)])
 def test_main_preserves_training_directory_on_rerun(
@@ -150,8 +168,6 @@ def test_main_preserves_training_directory_on_rerun(
 
     monkeypatch.setattr(capture_script, "QApplication", lambda _argv: qapp)
     monkeypatch.setattr(capture_script, "run_visualization_render_walkthrough", capture)
-    # main installs a hook; register the original for restoration after this test.
-    monkeypatch.setattr(capture_script.sys, "excepthook", capture_script.sys.excepthook)
     monkeypatch.setattr(
         capture_script.sys,
         "argv",

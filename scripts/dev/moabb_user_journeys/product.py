@@ -84,7 +84,7 @@ def review_dataset(
     except Exception as exc:
         report["failures"].append(_failure_from_exception("review", exc))
     finally:
-        _close_service(service, report["failures"])
+        _settle_service(service, report["failures"])
         report["duration_seconds"] = time.perf_counter() - started
     report["status"] = "failed" if report["failures"] else "validated"
     return report
@@ -100,15 +100,15 @@ def run_dataset_journey(
     attempt: int,
     previous_failure: dict[str, Any] | None,
     service_factory: Callable[[], Any] | None = None,
+    close_service: bool = True,
 ) -> dict[str, Any]:
-    """Replay one complete user journey through the product command spine."""
+    """Replay the command spine; callers retaining publications own final close."""
     if execution_profile not in {"smoke", "showcase"}:
         raise ValueError("execution_profile must be smoke or showcase")
     from XBrainLab.backend.training_state_contract import PostTrainingSaliencyPhase
 
     symbols = _product_symbols()
     factory = service_factory or symbols["ApplicationService"]
-    service = factory()
     dataset_dir = run_root / dataset["id"]
     dataset_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = dataset_dir / "checkpoint.json"
@@ -122,6 +122,7 @@ def run_dataset_journey(
     trace = evidence["command_trace"]
     total_started = time.perf_counter()
     current_stage = "initialize"
+    service = factory()
     try:
         _set_reproducible_seed(int(evidence["seed"]))
 
@@ -390,7 +391,7 @@ def run_dataset_journey(
     except Exception as exc:
         evidence["failures"].append(_failure_from_exception(current_stage, exc))
     finally:
-        _close_service(service, evidence["failures"])
+        _settle_service(service, evidence["failures"], close_service=close_service)
         evidence["timings"]["total"] = time.perf_counter() - total_started
         if evidence["failures"] and execution_profile == "showcase":
             evidence["quality_evidence_status"] = "failed"
@@ -804,21 +805,24 @@ def _wait_for_background_tasks(service: Any, *, timeout: float) -> None:
         raise TimeoutError("ApplicationService background work did not become idle")
 
 
-def _close_service(service: Any, failures: list[dict[str, Any]]) -> None:
-    """Retain wait failures and always invoke the bounded shutdown owner."""
+def _settle_service(
+    service: Any, failures: list[dict[str, Any]], *, close_service: bool = True
+) -> None:
+    """Retain wait failures, then invoke shutdown unless the caller owns it."""
     try:
         _wait_for_background_tasks(service, timeout=30.0)
     except Exception as exc:
         failures.append(_failure_from_exception("cleanup", exc))
     finally:
-        try:
-            service.close()
-            if getattr(service, "is_closed", True) is False:
-                raise TimeoutError(  # noqa: TRY301 - retained with earlier failures
-                    "ApplicationService close did not complete"
-                )
-        except Exception as exc:
-            failures.append(_failure_from_exception("cleanup", exc))
+        if close_service:
+            try:
+                service.close()
+                if getattr(service, "is_closed", True) is False:
+                    raise TimeoutError(  # noqa: TRY301 - retained with earlier failures
+                        "ApplicationService close did not complete"
+                    )
+            except Exception as exc:
+                failures.append(_failure_from_exception("cleanup", exc))
 
 
 def _product_symbols() -> dict[str, Any]:

@@ -277,15 +277,16 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
             message=f"reviewed import failed: {type(exc).__name__}: {exc}",
         )
 
-    validation_root = ROOT / "build" / "validation" / "public-cross-source"
-    validation_root.mkdir(parents=True, exist_ok=True)
-    output_root = Path(
-        tempfile.mkdtemp(
-            prefix=f"{fixture['name']}-",
-            dir=validation_root,
-        )
-    )
+    output_root: Path | None = None
     try:
+        validation_root = ROOT / "build" / "validation" / "public-cross-source"
+        validation_root.mkdir(parents=True, exist_ok=True)
+        output_root = Path(
+            tempfile.mkdtemp(
+                prefix=f"{fixture['name']}-",
+                dir=validation_root,
+            )
+        )
         filter_result = service.execute(
             PreprocessCommand(
                 operation=PreprocessOperation.BANDPASS,
@@ -432,7 +433,8 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
         )
     finally:
         service.close()
-        shutil.rmtree(output_root, ignore_errors=True)
+        if output_root is not None:
+            shutil.rmtree(output_root, ignore_errors=True)
 
 
 def run_fixture_boundary_smoke(fixture: dict[str, object]) -> SmokeResult:

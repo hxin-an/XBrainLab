@@ -104,7 +104,7 @@ def _class_value_decisions(
     }
 
 
-def test_real_gdf_internal_event_evidence_identifies_class_candidates():
+def test_real_gdf_internal_event_evidence_identifies_class_candidates(request):
     selected_files = [
         str(TEST_DATA_DIR / f"{stem}.gdf") for stem in CHECKED_IN_GDF_STEMS
     ]
@@ -112,6 +112,7 @@ def test_real_gdf_internal_event_evidence_identifies_class_candidates():
         pytest.skip("Checked-in GDF fixtures are unavailable")
 
     service = ApplicationService()
+    request.addfinalizer(service.close)
     scan = service.execute(
         ScanSourceCommand(source_path=str(TEST_DATA_DIR), source_hint="folder")
     )
@@ -139,7 +140,7 @@ def test_real_gdf_internal_event_evidence_identifies_class_candidates():
     assert excluded_by_code["32766"]["use_as"] == "Ignore"
 
 
-def test_real_gdf_file_picker_scope_excludes_unselected_nested_formats():
+def test_real_gdf_file_picker_scope_excludes_unselected_nested_formats(request):
     selected_files = [
         str((TEST_DATA_DIR / f"{stem}.gdf").resolve()) for stem in CHECKED_IN_GDF_STEMS
     ]
@@ -147,6 +148,7 @@ def test_real_gdf_file_picker_scope_excludes_unselected_nested_formats():
         pytest.skip("Checked-in GDF fixtures are unavailable")
 
     service = ApplicationService()
+    request.addfinalizer(service.close)
     review = service.execute(
         ReviewInterpretationCommand(
             source_path=str(TEST_DATA_DIR.resolve()),
@@ -170,9 +172,10 @@ def test_real_gdf_file_picker_scope_excludes_unselected_nested_formats():
     )
 
 
-def test_real_gdf_internal_labels_apply_the_same_artifact_policy():
+def test_real_gdf_internal_labels_apply_the_same_artifact_policy(request):
     gdf_path = str(TEST_DATA_DIR / "A01T.gdf")
     service = ApplicationService()
+    request.addfinalizer(service.close)
     assert service.execute(
         ScanSourceCommand(source_path=gdf_path, source_hint="file")
     ).ok
@@ -211,7 +214,9 @@ def test_real_gdf_internal_labels_apply_the_same_artifact_policy():
     assert epoch_result.state.epoch.epoch_count == 273
 
 
-def _build_reviewed_label_service(stem: str) -> ApplicationService:
+def _build_reviewed_label_service(
+    stem: str, request: pytest.FixtureRequest
+) -> ApplicationService:
     gdf_path, label_path = _checked_in_fixture_pair(stem)
     if not os.path.exists(gdf_path):
         pytest.skip(f"Test data not found at {gdf_path}")
@@ -219,6 +224,7 @@ def _build_reviewed_label_service(stem: str) -> ApplicationService:
         pytest.skip(f"Label data not found at {label_path}")
 
     service = ApplicationService()
+    request.addfinalizer(service.close)
     choices = {
         "selected_eeg_files": [gdf_path],
         "label_carrier_choices": {
@@ -265,9 +271,11 @@ def _build_reviewed_label_service(stem: str) -> ApplicationService:
 def test_checked_in_sequence_labels_fail_without_reviewed_target_events(
     selected_event_names: list[str] | None,
     expected_message: str,
+    request: pytest.FixtureRequest,
 ) -> None:
     gdf_path, label_path = _checked_in_fixture_pair("A01T")
     service = ApplicationService()
+    request.addfinalizer(service.close)
     assert import_recording_through_interpretation(service, gdf_path).ok
     original_raw = service.dataset.get_loaded_data_list()[0]
     original_events, original_event_id = original_raw.get_event_list()
@@ -314,9 +322,12 @@ def test_checked_in_sequence_labels_fail_without_reviewed_target_events(
     service.close()
 
 
-def test_checked_in_sequence_labels_preserve_reviewed_cue_sample_positions() -> None:
+def test_checked_in_sequence_labels_preserve_reviewed_cue_sample_positions(
+    request: pytest.FixtureRequest,
+) -> None:
     gdf_path, _label_path = _checked_in_fixture_pair("A01T")
     service = ApplicationService()
+    request.addfinalizer(service.close)
     assert import_recording_through_interpretation(service, gdf_path).ok
 
     raw = service.dataset.get_loaded_data_list()[0]
@@ -329,7 +340,7 @@ def test_checked_in_sequence_labels_preserve_reviewed_cue_sample_positions() -> 
     assert expected_samples.shape == (288,)
 
     service.close()
-    interpreted = _build_reviewed_label_service("A01T")
+    interpreted = _build_reviewed_label_service("A01T", request)
     applied_raw = interpreted.dataset.get_loaded_data_list()[0]
     applied_events, _applied_event_id = applied_raw.get_event_list()
     np.testing.assert_array_equal(applied_events[:, 0], expected_samples)
@@ -437,9 +448,9 @@ def _wait_for_training_stop(service: ApplicationService, timeout: float = 5.0) -
 
 
 @pytest.mark.parametrize("stem", CHECKED_IN_GDF_STEMS)
-def test_checked_in_reviewed_labels_save_split_specification(stem):
+def test_checked_in_reviewed_labels_save_split_specification(stem, request):
     """Each checked-in GDF+MAT pair should accept a deferred split specification."""
-    service = _build_reviewed_label_service(stem)
+    service = _build_reviewed_label_service(stem, request)
 
     epoch_setup = _query_epoch_setup(service)
     assert epoch_setup["available_events"] == [
@@ -454,9 +465,9 @@ def test_checked_in_reviewed_labels_save_split_specification(stem):
 
 
 @pytest.mark.parametrize("stem", CHECKED_IN_GDF_STEMS)
-def test_checked_in_reviewed_label_training_smoke(stem, tmp_path):
+def test_checked_in_reviewed_label_training_smoke(stem, tmp_path, request):
     """Each checked-in GDF+MAT pair should support a one-epoch training smoke."""
-    service = _build_reviewed_label_service(stem)
+    service = _build_reviewed_label_service(stem, request)
     _save_trial_split_specification(service, stem)
 
     history_row = _configure_and_train(service, tmp_path / "test-real-output")
@@ -469,10 +480,11 @@ def test_checked_in_reviewed_label_training_smoke(stem, tmp_path):
     assert state.dataset.active_split_summary == EXPECTED_SPLIT_SUMMARIES[stem]
 
 
-def test_real_gdf_mat_data_interpretation_product_workflow(tmp_path):
+def test_real_gdf_mat_data_interpretation_product_workflow(tmp_path, request):
     """A real external-label workflow must use the current interpretation spine."""
     gdf_path, label_path = _checked_in_fixture_pair("A01T")
     service = ApplicationService()
+    request.addfinalizer(service.close)
     choices = {
         "selected_eeg_files": [gdf_path],
         "label_carrier_choices": {
@@ -547,9 +559,9 @@ def test_real_gdf_mat_data_interpretation_product_workflow(tmp_path):
 
 
 def test_cuda_oom_job_failure_is_visible_and_training_can_restart(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, request
 ):
-    service = _build_reviewed_label_service("A01T")
+    service = _build_reviewed_label_service("A01T", request)
     _save_trial_split_specification(service, "A01T")
     _configure_training(service, tmp_path / "oom-recovery-output")
 

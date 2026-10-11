@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -382,3 +383,136 @@ def test_dirty_application_source_cannot_qualify_site(tmp_path: Path) -> None:
         "application_source_dirty"
     ]
     assert validate_capture_manifest(manifest, output_dir=tmp_path) == (True, "")
+
+
+@pytest.mark.parametrize("close_failure", [None, "incomplete", "exception"])
+def test_real_finished_journey_keeps_service_open_until_capture(
+    qapp, tmp_path_factory, monkeypatch, close_failure
+):
+    from scripts.dev.chatpanel_training_fixture import write_training_ready_raw_fif
+    from scripts.dev.moabb_ui_evidence import capture
+    from scripts.dev.moabb_user_journeys.registry import (
+        REPO_ROOT,
+        load_registry,
+        materialize_dataset,
+    )
+    from XBrainLab.backend import application
+
+    tmp_path = tmp_path_factory.mktemp("ui-j")
+    source = write_training_ready_raw_fif(tmp_path / "training_raw.fif")
+    registry = load_registry()
+    dataset = materialize_dataset(
+        registry["datasets"][0],
+        data_root=REPO_ROOT / registry["resource_policy"]["data_root"],
+    )
+    dataset["id"] = "ui-j"
+    dataset["import"] = {
+        "source_path": str(source),
+        "source_hint": "file",
+        "choices": {"label_carrier": "embedded_events"},
+    }
+    workflow = dataset["workflow"]
+    workflow["preprocessing"] = [
+        {
+            "operation": "standard",
+            "low_freq": 4.0,
+            "high_freq": 40.0,
+            "method": "z-score",
+        }
+    ]
+    workflow["epoch"] = {"t_min": 0.0, "t_max": 1.5, "event_ids": ["left", "right"]}
+    workflow["split"] = {
+        "test_ratio": 0.25,
+        "val_ratio": 0.25,
+        "split_strategy": "trial",
+        "training_mode": "individual",
+    }
+    workflow["training_profiles"]["smoke"]["batch_size"] = 2
+    service = application.ApplicationService()
+    real_close = service.close
+    if close_failure:
+
+        def fail_close():
+            if close_failure == "exception":
+                raise OSError("capture shutdown unavailable")
+
+        monkeypatch.setattr(service, "close", fail_close)
+    monkeypatch.setattr(application, "get_application_service", lambda _study: service)
+    captured = []
+
+    def observe_final_panels(_app, **kwargs):
+        assert not service.is_closed
+        assert kwargs["evidence"]["failures"] == []
+        assert service.get_state().training.finished_run_count == 1
+        captured.append(service.get_view_publication())
+        return {"status": "unverified"}, {"status": "unverified"}, []
+
+    monkeypatch.setattr(capture, "_capture_final_panels", observe_final_panels)
+    record = {"stages": {}, "limitations": []}
+    try:
+        capture._capture_finished_journey(
+            qapp,
+            dataset,
+            dataset_dir=tmp_path,
+            output_root=tmp_path,
+            source_artifacts=[],
+            execution_profile="smoke",
+            confirm_resource_plan=False,
+            record=record,
+        )
+        assert len(captured) == 1, record["limitations"]
+        assert record["execution"]["status"] == (
+            "failed" if close_failure else "completed"
+        )
+        if close_failure:
+            persisted = json.loads((tmp_path / "journey-evidence.json").read_text())
+            assert persisted["failures"][-1]["stage"] == "cleanup"
+            assert record["limitations"]
+        else:
+            assert service.is_closed
+    finally:
+        real_close()
+
+
+@pytest.mark.parametrize("close_raises", [False, True])
+def test_finished_journey_setup_exception_closes_real_service(
+    qapp, tmp_path, monkeypatch, close_raises
+):
+    from scripts.dev.moabb_ui_evidence import capture
+    from XBrainLab.backend import application
+
+    service = application.ApplicationService()
+    real_close = service.close
+    monkeypatch.setattr(application, "get_application_service", lambda _study: service)
+
+    if close_raises:
+
+        def fail_close():
+            raise OSError("capture shutdown unavailable")
+
+        monkeypatch.setattr(service, "close", fail_close)
+
+    def fail_setup(*_args, **_kwargs):
+        raise OSError("journey output unavailable")
+
+    monkeypatch.setattr(capture, "run_dataset_journey", fail_setup)
+    record = {"stages": {}, "limitations": []}
+    try:
+        with pytest.raises(OSError, match="journey output unavailable"):
+            capture._capture_finished_journey(
+                qapp,
+                {},
+                dataset_dir=tmp_path,
+                output_root=tmp_path,
+                source_artifacts=[],
+                execution_profile="smoke",
+                confirm_resource_plan=False,
+                record=record,
+            )
+        if close_raises:
+            assert record["execution"]["status"] == "failed"
+            assert record["limitations"] == ["capture shutdown unavailable"]
+        else:
+            assert service.is_closed
+    finally:
+        real_close()

@@ -64,6 +64,36 @@ class _Result:
         return {"state": self._state}
 
 
+def test_journey_output_setup_failure_does_not_allocate_service(tmp_path):
+    from XBrainLab.backend.application import ApplicationService
+
+    services = []
+
+    def create_service():
+        service = ApplicationService()
+        services.append(service)
+        return service
+
+    dataset = _dataset()
+    (tmp_path / dataset["id"]).write_text("not a directory", encoding="utf-8")
+    try:
+        with pytest.raises(FileExistsError):
+            run_dataset_journey(
+                dataset,
+                run_root=tmp_path,
+                source_artifacts=[],
+                execution_profile="smoke",
+                confirm_resource_plan=False,
+                attempt=1,
+                previous_failure=None,
+                service_factory=create_service,
+            )
+        assert services == []
+    finally:
+        for service in services:
+            service.close()
+
+
 class _RecordingService:
     def __init__(self):
         self.commands: list[str] = []

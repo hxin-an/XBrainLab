@@ -229,7 +229,6 @@ def main() -> int:
         help="Temporary directory for tiny training outputs.",
     )
     args = parser.parse_args()
-    _install_uncaught_exception_capture()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

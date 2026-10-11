@@ -2143,7 +2143,7 @@ def _write_readme(output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
         "- `preprocess-filtering-notch-only.png`\n"
         "- `preprocess-epoching-internal-events-dialog.png`\n"
         "- `preprocess-epoching-bids-interval-duration-dialog.png`\n"
-        "- `data-splitting-dialog.png` (820 x 470 requested; scroll fallback)\n"
+        "- `data-splitting-dialog.png` (product default size; scroll fallback)\n"
         "- `data-splitting-dialog-narrow.png` (752 x 700 full reflow)\n"
         "- `data-splitting-preview-dialog.png`\n"
         "- `assistant-setup-required-narrow.png` (320 x 650, setup-required "

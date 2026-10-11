@@ -25,21 +25,20 @@ def verify_native_ci_evidence(
     try:
         smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        smoke = None
         failures.append("Native platform smoke artifact is unreadable.")
-    if not isinstance(smoke, dict):
-        if smoke is not None:
-            failures.append("Native platform smoke artifact is malformed.")
     else:
-        if smoke.get("artifact_type") != expected_artifact_type:
-            failures.append("Native platform smoke artifact type does not match.")
-        if smoke.get("passed") is not True:
-            failures.append("Native platform smoke did not pass.")
-        if smoke.get("qt_platform") != expected_qt_platform:
-            failures.append("Native platform smoke used the wrong Qt platform.")
-        expected_root = str(expected_isolated_root.expanduser().resolve())
-        if smoke.get("isolated_root") != expected_root:
-            failures.append("Native platform smoke used the wrong isolated root.")
+        if not isinstance(smoke, dict):
+            failures.append("Native platform smoke artifact is malformed.")
+        else:
+            if smoke.get("artifact_type") != expected_artifact_type:
+                failures.append("Native platform smoke artifact type does not match.")
+            if smoke.get("passed") is not True:
+                failures.append("Native platform smoke did not pass.")
+            if smoke.get("qt_platform") != expected_qt_platform:
+                failures.append("Native platform smoke used the wrong Qt platform.")
+            expected_root = str(expected_isolated_root.expanduser().resolve())
+            if smoke.get("isolated_root") != expected_root:
+                failures.append("Native platform smoke used the wrong isolated root.")
 
     _payload, provenance_failure = validate_ci_source_provenance(
         provenance_path,

@@ -12,6 +12,7 @@ import pytest
 import torch
 
 import scripts.dev.run_public_cross_source_training_smoke as smoke_script
+from scripts.dev.chatpanel_training_fixture import write_training_ready_raw_fif
 from scripts.dev.run_public_cross_source_training_smoke import (
     PUBLIC_EPOCH_ONLY_FIXTURES,
     PUBLIC_TRAINING_FIXTURES,
@@ -24,9 +25,55 @@ from scripts.dev.training_evidence_fixture import verify_real_training_artifacts
 from tests.integration.pipeline.test_trainer_model_integration import (
     _make_synthetic_dataset,
 )
+from XBrainLab.backend.application import ApplicationService
 from XBrainLab.backend.model_base import EEGNet
 from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
 from XBrainLab.backend.training.record import EvalRecord, RecordKey, TrainRecord
+
+
+@pytest.mark.parametrize("failure_stage", ["parent_directory", "output_allocation"])
+def test_output_setup_failure_closes_real_imported_service(
+    tmp_path, monkeypatch, failure_stage
+):
+    source = write_training_ready_raw_fif(tmp_path / "training_raw.fif")
+    fixture = {
+        **PUBLIC_TRAINING_FIXTURES[0],
+        "filename": source.name,
+        "label_event_ids": ["left", "right"],
+        "not_label_event_ids": [],
+        "class_map": {"left": "left", "right": "right"},
+        "run_event_mappings": {},
+    }
+    service = ApplicationService()
+    monkeypatch.setattr(smoke_script, "get_application_service", lambda _study: service)
+    monkeypatch.setattr(smoke_script, "_public_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(smoke_script, "ROOT", tmp_path)
+    if failure_stage == "parent_directory":
+        (tmp_path / "build").write_text("not a directory", encoding="utf-8")
+    else:
+        original_mkdtemp = smoke_script.tempfile.mkdtemp
+
+        def fail_output_allocation(*args, **kwargs):
+            if kwargs.get("dir") == tmp_path / "build/validation/public-cross-source":
+                raise OSError("output allocation denied")
+            return original_mkdtemp(*args, **kwargs)
+
+        monkeypatch.setattr(smoke_script.tempfile, "mkdtemp", fail_output_allocation)
+    try:
+        try:
+            result = smoke_script.run_fixture_smoke(fixture)
+        finally:
+            assert service.is_closed, (
+                "output setup failure left the imported service open"
+            )
+        assert result.status == "failed"
+        assert result.artifacts_reloaded is False
+        assert result.dataset_count == 0
+        assert result.message
+        if failure_stage == "output_allocation":
+            assert "output allocation denied" in result.message
+    finally:
+        service.close()
 
 
 @pytest.fixture

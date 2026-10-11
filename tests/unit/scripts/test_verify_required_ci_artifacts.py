@@ -5,6 +5,58 @@ import json
 import pytest
 
 from scripts.dev import verify_required_ci_artifacts as verifier
+from scripts.dev.run_app_polish_ui_dpi_gate import (
+    DPI_APP_POLISH_SURFACES,
+    REQUIRED_SCALE_FACTORS,
+    build_dpi_gate_manifest,
+)
+
+
+def _dpi_payload():
+    return build_dpi_gate_manifest(
+        captures=[
+            {
+                "requested_scale_factor": scale,
+                "observed_device_pixel_ratio": scale,
+                "platform_system": "Windows",
+                "qt_platform": "windows",
+                "evidence_valid": True,
+                "selected_surfaces": list(DPI_APP_POLISH_SURFACES),
+                "evidence_path": (
+                    f"scale-{round(scale * 100):03d}/app-polish-evidence.json"
+                ),
+            }
+            for scale in REQUIRED_SCALE_FACTORS
+        ],
+        source_identity={"source_digest": "a" * 64},
+    )
+
+
+@pytest.mark.parametrize("damage", ["nonfinite", "missing-scale", "offscreen"])
+def test_ci_dpi_consumer_rejects_invalid_matrix_file(monkeypatch, tmp_path, damage):
+    payload = _dpi_payload()
+    if damage == "nonfinite":
+        payload["captures"][0]["observed_device_pixel_ratio"] = "NaN"
+    elif damage == "missing-scale":
+        payload["captures"].pop()
+    else:
+        payload["captures"][0]["qt_platform"] = "offscreen"
+    result = tmp_path / "dpi-gate.json"
+    result.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(
+        verifier, "validate_ci_source_provenance", lambda *_args, **_kwargs: ({}, None)
+    )
+
+    failures = verifier.verify_required_ci_artifacts(
+        required_artifacts=[("windows-dpi", result)],
+        provenance_path=tmp_path / "provenance.json",
+        expected_job_key="ui-windows-dpi",
+        expected_github_job="ui-windows-dpi",
+        expected_runner_os="Windows",
+    )
+
+    assert len(failures) == 1
+    assert "failed 'windows-dpi'" in failures[0]
 
 
 def test_required_ci_artifacts_reject_provenance_without_primary_result(
@@ -237,11 +289,7 @@ def test_required_ci_artifacts_reject_unknown_contract(monkeypatch, tmp_path) ->
         ),
         (
             "windows-dpi",
-            {
-                "schema_version": 1,
-                "artifact_type": "xbrainlab.app_polish_windows_dpi",
-                "captures": [{"evidence_valid": True}],
-            },
+            _dpi_payload(),
         ),
         ("dataset-validation", {"strict_validation": {"ok": True}}),
         ("data-interpretation-format", {"strict_validation": {"ok": True}}),

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import platform
 import subprocess
@@ -113,6 +114,8 @@ def validate_dpi_gate_manifest(
             observed = float(value.get("observed_device_pixel_ratio", 0.0))
         except (TypeError, ValueError):
             return False, "Windows DPI scale observation is invalid."
+        if not math.isfinite(requested) or not math.isfinite(observed):
+            return False, "Windows DPI scale observation must be finite."
         observed_scales.append(requested)
         if value.get("platform_system") != "Windows":
             return False, "Windows DPI evidence was not captured on Windows."

@@ -1089,10 +1089,6 @@ def _derive_failure_reasons(
     return failure_reasons
 
 
-def _parse_pytest_outcomes(output: str) -> dict[str, int]:
-    return parse_terminal_outcomes(output)
-
-
 def _pytest_outcomes_from_evidence(
     spec: GateSpec,
     attestation: dict[str, Any] | None,
@@ -1103,7 +1099,7 @@ def _pytest_outcomes_from_evidence(
         return dict(attestation["counts"])
     if spec.outcome.require_pytest_attestation:
         return dict.fromkeys(COUNT_NAMES, 0)
-    return _parse_pytest_outcomes(output)
+    return parse_terminal_outcomes(output)
 
 
 def _validated_pytest_attestation(

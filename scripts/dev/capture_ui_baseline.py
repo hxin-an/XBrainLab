@@ -448,6 +448,13 @@ def capture_window(
     _set_baseline_window_geometry(window)
     window.show()
 
+    def _capture_callback(callback, *args) -> None:
+        try:
+            callback(*args)
+        except Exception as error:
+            print(f"UI baseline capture failed: {error}", file=sys.stderr)
+            _request_shutdown(5)
+
     def _run_step(step_index: int) -> None:
         _filename, step_target = CAPTURE_STEPS[step_index]
         _prepare_capture_step(window, step_target)
@@ -465,7 +472,7 @@ def capture_window(
         window.update()
         QTimer.singleShot(
             PANEL_PAINT_SETTLE_MS,
-            lambda: _capture_prepared_step(step_index),
+            lambda: _capture_callback(_capture_prepared_step, step_index),
         )
 
     def _capture_prepared_step(step_index: int) -> None:
@@ -487,7 +494,9 @@ def capture_window(
 
         QTimer.singleShot(
             CONSECUTIVE_FRAME_SETTLE_MS,
-            lambda: _capture_stable_step(step_index, first_frame, step_output),
+            lambda: _capture_callback(
+                _capture_stable_step, step_index, first_frame, step_output
+            ),
         )
 
     def _capture_stable_step(
@@ -546,10 +555,10 @@ def capture_window(
 
         QTimer.singleShot(
             max(0, 500 - PANEL_PAINT_SETTLE_MS),
-            lambda: _run_step(step_index + 1),
+            lambda: _capture_callback(_run_step, step_index + 1),
         )
 
-    QTimer.singleShot(2500, lambda: _run_step(0))
+    QTimer.singleShot(2500, lambda: _capture_callback(_run_step, 0))
     app.exec()
     timed_out = (
         bool(result["shutdown_requested"])

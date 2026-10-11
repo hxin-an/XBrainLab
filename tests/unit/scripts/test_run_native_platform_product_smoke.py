@@ -102,6 +102,52 @@ def test_native_smoke_artifact_is_atomic_json(tmp_path) -> None:
     assert not output.with_suffix(".json.tmp").exists()
 
 
+def test_panel_failure_closes_real_service_and_window(monkeypatch, tmp_path, qapp):
+    from scripts.dev import ui_navigation
+    from XBrainLab.backend.application.runtime import get_application_service
+    from XBrainLab.ui import main_window, qt_settings
+
+    root = tmp_path / "Native 測試"
+    _set_isolated_environment(monkeypatch, root)
+    config_path = (
+        root / f"path {smoke.REQUIRED_ISOLATED_ENV.index('XBRAINLAB_CONFIG_DIR')}"
+    )
+    settings = QSettings(str(config_path / "prefs.ini"), QSettings.Format.IniFormat)
+    monkeypatch.setattr(qt_settings, "application_settings", lambda: settings)
+    windows = []
+    services = []
+    real_window = main_window.MainWindow
+
+    def observe_window(study):
+        services.append(get_application_service(study))
+        window = real_window(study)
+        windows.append(window)
+        return window
+
+    def fail_panel(*_args, **_kwargs):
+        raise OSError("native panel routing unavailable")
+
+    monkeypatch.setattr(main_window, "MainWindow", observe_window)
+    monkeypatch.setattr(ui_navigation, "open_workflow_panel", fail_panel)
+    previous_quit_policy = qapp.quitOnLastWindowClosed()
+    try:
+        with pytest.raises(OSError, match="native panel routing unavailable"):
+            smoke.run_native_product_smoke(
+                expected_platform=qapp.platformName(),
+                expected_isolated_root=root,
+            )
+        assert len(windows) == 1
+        assert services[0].is_closed
+        assert not windows[0].isVisible()
+    finally:
+        for window in windows:
+            window.close()
+            window.deleteLater()
+        for service in services:
+            service.close()
+        qapp.setQuitOnLastWindowClosed(previous_quit_policy)
+
+
 @pytest.mark.parametrize("panel_timeout_ms", (0, smoke.MAX_PANEL_TIMEOUT_MS + 1))
 def test_native_product_smoke_rejects_unbounded_panel_timeout(
     panel_timeout_ms,

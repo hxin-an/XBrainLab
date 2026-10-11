@@ -5025,6 +5025,13 @@ def test_resource_smoke_accepts_idle_qt_and_explicit_cuda_runtime_threads() -> N
                 "live_python_thread_native_ids": [10, 21],
                 "os_threads": 6,
                 "os_thread_ids": [10, 11, 21, 22, 23, 24],
+                "python_thread_records": [
+                    {
+                        "native_id": 21,
+                        "kind": "_DummyThread",
+                        "backed_by_os_thread": True,
+                    }
+                ],
                 "os_thread_records": [
                     {"native_id": 10, "name": "python", "wait_channel": "0"},
                     {
@@ -5180,12 +5187,55 @@ def test_resource_smoke_accepts_product_sized_dormant_qt_pool_with_dummy_wrapper
     notes = _linux_dormant_qt_resource_notes(extra_count=9)
     notes[-1]["live_python_threads"] = 2
     notes[-1]["live_python_thread_native_ids"] = [10, 29]
+    notes[-1]["python_thread_records"] = [
+        {"native_id": 29, "kind": "_DummyThread", "backed_by_os_thread": True}
+    ]
 
     summary = build_resource_smoke_summary(notes)
 
     assert summary["passed"] is True
     assert summary["persistent_runtime_os_thread_ids"] == list(range(21, 30))
     assert summary["unexpected_extra_os_thread_ids"] == []
+
+
+@pytest.mark.parametrize("os_thread_name", ["python3.11", "Thread (pooled)"])
+def test_resource_smoke_rejects_real_python_worker_with_qt_like_os_record(
+    qapp, os_thread_name
+) -> None:
+    import threading
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def unfinished_worker():
+        started.set()
+        release.wait(10)
+
+    before = resource_snapshot("start")
+    worker = threading.Thread(target=unfinished_worker, name="unfinished-training")
+    worker.start()
+    try:
+        assert started.wait(2)
+        after = resource_snapshot("after_close")
+        assert worker.native_id in after["live_python_thread_native_ids"]
+        # Exercise Linux's ambiguous OS-name seam on every CI platform; the
+        # Python lifetime and kind evidence above come from the actual worker.
+        after["platform_name"] = "linux"
+        for record in after["os_thread_records"]:
+            if record["native_id"] == worker.native_id:
+                record.update(name=os_thread_name, wait_channel="futex_do_wait")
+
+        summary = build_resource_smoke_summary([before, after])
+
+        assert summary["passed"] is False
+        assert worker.native_id in summary["unexpected_extra_os_thread_ids"]
+        assert any(
+            "Live Python thread identities" in item for item in summary["failed_checks"]
+        )
+    finally:
+        release.set()
+        worker.join(3)
+        assert not worker.is_alive()
 
 
 @pytest.mark.parametrize(

@@ -2,11 +2,53 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from scripts.dev import verify_native_ci_evidence as verifier
 
 
 def _write_json(path, payload) -> None:
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+@pytest.mark.parametrize("smoke", [None, [], "passed", 0])
+def test_native_evidence_rejects_nonobject_json_with_valid_provenance(tmp_path, smoke):
+    smoke_path = tmp_path / "smoke.json"
+    provenance_path = tmp_path / "provenance.json"
+    _write_json(smoke_path, smoke)
+    _write_json(
+        provenance_path,
+        {
+            "schema": "xbrainlab.ci-source-provenance.v1",
+            "job_key": "windows-product-py311",
+            "event_name": "pull_request",
+            "repository": "example/XBrainLab",
+            "workflow": "CI",
+            "run_id": "1",
+            "run_attempt": "1",
+            "github_sha": "a" * 40,
+            "expected_head_sha": "b" * 40,
+            "pull_request_head_sha": "b" * 40,
+            "pull_request_base_sha": "c" * 40,
+            "checked_out_head_sha": "b" * 40,
+            "checked_out_tree_sha": "d" * 40,
+            "github_job": "native-platform-source",
+            "runner_os": "Windows",
+            "runner_arch": "X64",
+        },
+    )
+
+    failures = verifier.verify_native_ci_evidence(
+        smoke_path=smoke_path,
+        provenance_path=provenance_path,
+        expected_job_key="windows-product-py311",
+        expected_runner_os="Windows",
+        expected_artifact_type="xbrainlab.native_platform_product_smoke",
+        expected_qt_platform="windows",
+        expected_isolated_root=tmp_path / "native",
+    )
+
+    assert failures == ("Native platform smoke artifact is malformed.",)
 
 
 def test_native_evidence_rejects_missing_smoke_and_provenance(tmp_path) -> None:

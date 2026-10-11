@@ -6,8 +6,8 @@
 # - Coverage only on Linux (pytest-cov conflicts with PyTorch on Windows;
 #   see https://github.com/pytorch/pytorch/issues/96606)
 # - macOS uses macos-latest (ARM); VTK >=9.4 provides ARM wheels
-# - Qt tests run headless via QT_QPA_PLATFORM=offscreen
-# - VTK/PyVista are mocked in conftest.py (no GPU/OpenGL required)
+# - General Qt test shards use offscreen; native jobs select their platform explicitly.
+# - Installed VTK/PyVista are real dependencies; render evidence has separate gates.
 
 name: CI
 

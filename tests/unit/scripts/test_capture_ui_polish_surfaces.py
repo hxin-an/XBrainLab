@@ -553,6 +553,7 @@ def test_training_history_capture_contract_is_coherent_and_readable(
     row_count,
     running,
 ) -> None:
+    assert filename in APP_POLISH_SURFACES
     panel = factory()
     qtbot.addWidget(panel)
     panel.show()
@@ -851,7 +852,7 @@ def test_capture_readme_can_be_written_outside_tracked_artifacts(tmp_path) -> No
     assert "App Polish Screenshots" in readme
     assert "human desktop acceptance" in readme
     assert all(f"`{filename}`" in readme for filename in APP_POLISH_SURFACES)
-    assert "(820 x 470 requested; scroll fallback)" in readme
+    assert "(product default size; scroll fallback)" in readme
     assert "environment: PyQt offscreen capture" not in readme
     assert "platform and requested scale: see `app-polish-evidence.json`" in readme
 
@@ -1290,11 +1291,6 @@ def test_app_polish_validator_rejects_completion_source_digest_mutation(
 
     assert ok is False
     assert "capture completion" in reason.lower()
-
-
-def test_app_polish_surface_inventory_includes_training_history_extremes() -> None:
-    assert "training-history-few-rows.png" in APP_POLISH_SURFACES
-    assert "training-history-many-rows.png" in APP_POLISH_SURFACES
 
 
 @pytest.mark.parametrize(
