@@ -13,6 +13,7 @@ from .commands import (
     ResetPreprocessCommand,
     ResetSessionCommand,
 )
+from .errors import ApplicationError, map_exception
 from .pipeline_transaction import PipelineStateTransaction
 from .state import ApplicationStateSnapshot
 
@@ -48,8 +49,22 @@ class LifecycleCommandService:
             trainer_retired = self._pipeline_transaction.commit_pipeline_invalidation(
                 training_boundary,
             )
-        except Exception:
-            self._pipeline_transaction.restore(snapshot)
+        except Exception as exc:
+            try:
+                self._pipeline_transaction.restore(snapshot)
+            except Exception as rollback_exc:
+                mapped = map_exception(exc)
+                raise ApplicationError(
+                    message=mapped.message,
+                    error_type=mapped.error_type,
+                    recoverable=mapped.recoverable,
+                    diagnostics={
+                        **mapped.diagnostics,
+                        "state_preserved": False,
+                        "rollback_failed": True,
+                        "rollback_errors": [map_exception(rollback_exc).message],
+                    },
+                ) from exc
             raise
         return (
             "Preprocessing reset to loaded raw data.",

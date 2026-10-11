@@ -16,6 +16,7 @@ from XBrainLab.backend.application.errors import ConfirmationRequiredError
 from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training import Trainer
 
 
 def _real_preprocess_application() -> tuple[ApplicationService, Raw, np.ndarray]:
@@ -305,5 +306,67 @@ def test_multi_recording_filter_failure_preserves_samples_events_and_publication
             np.testing.assert_array_equal(row.get_event_list()[0], [[200, 0, 7]])
             assert row.get_event_list()[1] == {"cue": 7}
             assert row.get_preprocess_history() == []
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("failed_restore", ["training", "pipeline", "both"])
+def test_publication_and_rollback_failure_reports_truth_and_recovers_other_owner(
+    monkeypatch, failed_restore
+):
+    service, source, source_values = _real_preprocess_application()
+    study = service.study
+    trainer = Trainer([])
+    study.training_manager.trainer = trainer
+    service.get_state()
+    before = service.pipeline_transaction.capture()
+
+    def publish_then_fail(_expected, *, publish):
+        publish()
+        study.training_manager.trainer = None
+        raise RuntimeError("publication failed after mutation")
+
+    def fail_training_restore(_snapshot):
+        raise RuntimeError("training restore failed")
+
+    def fail_pipeline_restore(_snapshot):
+        raise RuntimeError("pipeline restore failed")
+
+    monkeypatch.setattr(
+        study.training_manager, "commit_pipeline_replacement", publish_then_fail
+    )
+    if failed_restore in {"training", "both"}:
+        monkeypatch.setattr(
+            service.pipeline_transaction,
+            "restore_training_startup_snapshot",
+            fail_training_restore,
+        )
+    if failed_restore in {"pipeline", "both"}:
+        monkeypatch.setattr(
+            service.pipeline_transaction, "restore", fail_pipeline_restore
+        )
+    try:
+        result = service.execute(
+            PreprocessCommand(operation=PreprocessOperation.NORMALIZE, method="z-score")
+        )
+        assert result.failed
+        assert "publication failed after mutation" in result.message
+        assert result.diagnostics["state_preserved"] is False
+        assert result.diagnostics["rollback_failed"] is True
+        expected_errors = []
+        if failed_restore in {"training", "both"}:
+            expected_errors.append("training restore failed")
+            assert study.training_manager.trainer is None
+        else:
+            assert study.training_manager.trainer is trainer
+        if failed_restore in {"pipeline", "both"}:
+            expected_errors.append("pipeline restore failed")
+            assert study.preprocessed_data_list[0] is not source
+            assert study.preprocessed_data_list[0].get_runtime_detail("normalization")
+        else:
+            assert service.pipeline_transaction.capture() == before
+        assert result.diagnostics["rollback_errors"] == expected_errors
+        np.testing.assert_array_equal(source.get_mne().get_data(), source_values)
+        assert source.get_preprocess_history() == []
     finally:
         service.close()

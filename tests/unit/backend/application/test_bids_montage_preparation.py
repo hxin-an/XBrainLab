@@ -291,6 +291,9 @@ def test_receipt_does_not_fall_back_to_another_recordings_admitted_resources(
     receipt = admit_bids_montage_resources(requests)
     local_electrodes.unlink()
     local_coordsystem.unlink()
+    # Exercise receipt/path mismatch, not platform-dependent propagation of
+    # directory timestamps through the retained index registry after unlink.
+    replacement_index = build_bids_dataset_index(root)
     original_parser = bids_montage_preparation._parse_electrodes
     parser_calls = 0
 
@@ -309,6 +312,7 @@ def test_receipt_does_not_fall_back_to_another_recordings_admitted_resources(
         requests,
         generation=4,
         resource_receipt=receipt,
+        bids_index=replacement_index,
     )
 
     assert snapshot.state == "failed"
