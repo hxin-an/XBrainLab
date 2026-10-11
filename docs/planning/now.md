@@ -30,4 +30,10 @@ warm 開窗不顯示 hint；首次耗時會受 OS/import cache 影響，不宣�
 原始 red 為兩項呈現錯誤；focused 模型選取、取消、失敗及 geometry tests 通過，Ruff 通過。
 獨立 actual-diff／原生 artifact 覆核無阻擋。未跑重型 CI／DPI，未更新 approved references。
 Windows 隔離預覽已開啟至真實 Model Selection，確認可見且有回應；22 項 focused tests 通過。
-Next：等待使用者確認此呈現，再進正式候選驗證；不持續監控使用者操作。
+2026-10-11 UI 回饋：使用者指出底部黑色空白過大，授權收緊此區；ready screenshot 中
+內容區至 Confirm 上緣約 59 px。先補內容／按鈕間距 regression，檢查尺寸提示與最小高度，
+只修 model dialog，保留慢檢查不位移、搜尋、failure banner 與小視窗可達性。
+底部間距 regression 已先 red 再 green：移除兩處 452 px 最小 fit 高度，讓既有內容尺寸
+決定視窗；原生 640×452 → 640×405，間距 59 → 12 px，清單高度與 checking geometry
+不變。23 項 focused tests、Ruff 通過；已檢視新版原生截圖。
+Next：重開 compact Windows 隔離預覽交使用者確認設計；不跑重型 gate。

@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QFrame,
@@ -485,6 +485,20 @@ class TestModelSelection:
         assert scrollbar is not None
         assert dialog.confirm_btn is not None
         assert dialog.confirm_btn.isVisibleTo(dialog)
+
+    def test_model_content_and_confirm_have_only_normal_layout_spacing(self, qtbot):
+        dialog = ModelSelectionDialog(None, provider_status=HEALTHY_PROVIDER)
+        qtbot.addWidget(dialog)
+        dialog.show()
+        qtbot.wait(20)
+
+        section = dialog.findChild(QFrame, "ModelSection")
+        assert section is not None
+        content_bottom = section.mapTo(dialog, QPoint(0, section.height())).y()
+        gap = dialog.confirm_btn.geometry().top() - content_bottom
+        assert 0 <= gap <= dialog.layout().spacing() + 2
+        assert dialog.confirm_btn.isVisibleTo(dialog)
+        assert dialog.model_results.height() >= 150
 
     def test_model_sections_do_not_draw_internal_vertical_frame_lines(self, dialog):
         sections = dialog.findChildren(QFrame, "ModelSection")

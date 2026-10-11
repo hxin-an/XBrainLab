@@ -114,7 +114,6 @@ class ModelSelectionDialog(BaseDialog):
             self._apply_provider_status(provider_status)
         self.fit_to_content(
             minimum_width=640,
-            minimum_height=452,
             maximum_height=620,
         )
         QTimer.singleShot(0, self._focus_search_input)
@@ -673,7 +672,6 @@ class ModelSelectionDialog(BaseDialog):
         """Resize normal content high enough so the scroll area is not a gutter."""
         self.fit_to_content(
             minimum_width=640,
-            minimum_height=452,
             maximum_height=620,
         )
 
