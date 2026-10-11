@@ -328,6 +328,12 @@ class TrainingPanel(BasePanel):
         else:
             outcome = training.terminal_outcome
             if outcome.is_terminal and outcome != self._rendered_terminal_outcome:
+                # Clicking the active row is still following this run, not
+                # selecting older history that must exclude its terminal log.
+                if self.current_plotting_row and self.current_plotting_row.get(
+                    "is_current_run"
+                ):
+                    self._selection_pinned_by_user = False
                 self.training_completed_shown = False
                 self._latest_terminal_outcome = outcome
                 self.training_finished(
@@ -634,6 +640,8 @@ class TrainingPanel(BasePanel):
         terminal_detail: str | None,
     ) -> None:
         """Keep one terminal line visible after history-log reconstruction."""
+        if self._selection_pinned_by_user:
+            return
         if terminal_state is TrainingOutcomeState.FAILED:
             detail = terminal_detail or "Training stopped unexpectedly."
             message = f"Training failed: {detail}"
@@ -906,6 +914,12 @@ class TrainingPanel(BasePanel):
                 and detail.strip()
                 else "All training jobs finished."
             )
+        elif status in {"Pending", "Running"} and self.training_completed_shown:
+            # A zero-epoch cancellation can leave the authoritative row Pending.
+            # Preserve the accepted run outcome without relabelling that row.
+            outcome = self._latest_terminal_outcome
+            if outcome is not None:
+                self._ensure_terminal_log_visible(outcome.state, outcome.detail)
 
     @staticmethod
     def _completed_epoch_count(row) -> int:

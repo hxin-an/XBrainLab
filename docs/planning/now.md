@@ -82,6 +82,19 @@ class-weight與validation可用性；補真dialog→accept測試，loader只更�
 此補充已red→green及獨立覆核；刪除無caller/動態註冊的sidebar model-name私有helper，
 保留ResourcePreflightView既有顯示owner。Native與CI一律針對最後整合head重新核對。
 
+Native `3259aece` 的 delayed cancellation 已重現 terminal log 遺失：零 epoch 的
+authoritative Pending row 重建 log 時清除先寫入的取消結果。此 repair 只修 TrainingPanel
+既有 log reconciliation；保留 backend row status，不回復無條件 terminal row 覆寫，
+不改 layout／文案／public contract，不新增 owner/state。先補 Pending＋typed terminal
+及使用者歷史選取回歸，再沿既有 terminal log helper 修正；驗證原 native cancellation、
+Training panel 與 real early-stop UI tests。既有 presentation 修正已授權，無新 UI 決策。
+獨立覆核另補「手動選中當前 run」：terminal transition 用既有 prior current-row 證據
+回到該 run 的自動顯示；舊歷史 pin 保留，不能把兩者一律抑制 terminal 訊息。
+Stop：原 native 失敗與 focused regressions 同版通過、獨立 diff 覆核；再交主 agent
+整合最後 head gates，這個修補通過本身不宣稱 handoff-ready。
+此修補六格回歸與原 native cancellation／OOM／cross-sender、real early-stop 共
+33 tests 通過，獨立覆核無 scoped blocker；已凍結，Next 為最後 commit 的 CI／native gates。
+
 ### Earlier Training scope and reviewed decisions
 
 2026-10-11 使用者接受上述 UI 並核准完整 Training 功能鏈清理到獨立覆核、整合驗證後

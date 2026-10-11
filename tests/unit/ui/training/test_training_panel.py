@@ -455,3 +455,81 @@ def test_training_panel_terminal_fallback_does_not_guess_a_noncurrent_row(
     assert panel.history_table.item(0, 3).text() == previous_status
     assert panel._last_verified_history_rows[0]["status"] == previous_status
     panel.close()
+
+
+@pytest.mark.parametrize("selection", ["automatic", "historical", "current"])
+@pytest.mark.parametrize(
+    ("outcome", "message"),
+    [
+        (TrainingOutcomeState.CANCELLED, "Training stopped before completion."),
+        (TrainingOutcomeState.FAILED, "Training failed: Failed before epoch one"),
+    ],
+)
+def test_zero_epoch_terminal_log_preserves_row_truth_and_historical_selection(
+    qtbot, selection, outcome, message
+):
+    pinned_history = selection == "historical"
+    ports = _typed_training_ports()
+    panel = _panel(ports)
+    qtbot.addWidget(panel)
+    old = _history_row(status="Completed early", epochs=(0.6,), run_index=0)
+    old["status_detail"] = "Earlier run stopped early at epoch 1."
+    active = _history_row(status="Running", epochs=(), run_index=1)
+    initial = ports.get_view_publication()
+    running = replace(
+        initial,
+        state=replace(
+            initial.state, training=replace(initial.state.training, is_running=True)
+        ),
+        training_history=(old, active),
+    )
+    ports.get_view_publication.return_value = running
+    panel.update_panel()
+    if selection != "automatic":
+        panel.on_history_selection_changed(
+            old["identity"] if pinned_history else active["identity"]
+        )
+    pending = _history_row(status="Pending", epochs=(), run_index=1)
+    terminal = replace(
+        running,
+        generation=2,
+        revision=2,
+        state=replace(
+            running.state,
+            training=replace(
+                running.state.training,
+                is_running=False,
+                terminal_outcome=TrainingTerminalOutcome(
+                    outcome,
+                    detail="Failed before epoch one"
+                    if outcome is TrainingOutcomeState.FAILED
+                    else None,
+                ),
+            ),
+        ),
+        training_history=(old, pending),
+    )
+    ports.get_view_publication.return_value = terminal
+    panel.update_panel()
+    if not pinned_history:
+        assert message in panel.log_text.toPlainText()
+    panel.update_loop(log_epochs=True)
+    assert (message in panel.log_text.toPlainText()) is (not pinned_history)
+    # The delayed command reconciliation path must obey the same selection.
+    panel.refresh_terminal_publication()
+    log = panel.log_text.toPlainText()
+    assert panel.history_table.item(0, 3).text() == "Completed early"
+    assert panel.history_table.item(1, 3).text() == "Pending"
+    assert panel.current_plotting_identity == (0, 0 if pinned_history else 1)
+    if pinned_history:
+        assert old["status_detail"] in log
+        assert message not in log
+        assert panel.tab_acc.train_vals == [0.6]
+    else:
+        assert log.count(message) == 1
+        assert panel.tab_acc.train_vals == []
+        panel.on_history_selection_changed(old["identity"])
+        panel.update_loop(log_epochs=True)
+        assert old["status_detail"] in panel.log_text.toPlainText()
+        assert message not in panel.log_text.toPlainText()
+    panel.close()
