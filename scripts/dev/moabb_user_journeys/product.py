@@ -42,6 +42,13 @@ def review_dataset(
     service = factory()
     trace: list[dict[str, Any]] = []
     started = time.perf_counter()
+    report: dict[str, Any] = {
+        "dataset_id": dataset["id"],
+        "status": "failed",
+        "validation_decision": None,
+        "command_trace": trace,
+        "failures": [],
+    }
     try:
         _execute(
             service,
@@ -69,34 +76,18 @@ def review_dataset(
             trace=trace,
             confirm_resource_plan=confirm_resource_plan,
         )
-        return {
-            "dataset_id": dataset["id"],
-            "status": "validated",
-            "validation_decision": validation.diagnostics.get("validation_decision"),
-            "command_trace": trace,
-            "duration_seconds": time.perf_counter() - started,
-            "failures": [],
-        }
+        report["validation_decision"] = validation.diagnostics.get(
+            "validation_decision"
+        )
     except ProductCommandError as exc:
-        return {
-            "dataset_id": dataset["id"],
-            "status": "failed",
-            "validation_decision": None,
-            "command_trace": trace,
-            "duration_seconds": time.perf_counter() - started,
-            "failures": [_failure_from_result(exc.stage, exc.result)],
-        }
+        report["failures"].append(_failure_from_result(exc.stage, exc.result))
     except Exception as exc:
-        return {
-            "dataset_id": dataset["id"],
-            "status": "failed",
-            "validation_decision": None,
-            "command_trace": trace,
-            "duration_seconds": time.perf_counter() - started,
-            "failures": [_failure_from_exception("review", exc)],
-        }
+        report["failures"].append(_failure_from_exception("review", exc))
     finally:
-        _close_service(service)
+        _close_service(service, report["failures"])
+        report["duration_seconds"] = time.perf_counter() - started
+    report["status"] = "failed" if report["failures"] else "validated"
+    return report
 
 
 def run_dataset_journey(
@@ -399,6 +390,7 @@ def run_dataset_journey(
     except Exception as exc:
         evidence["failures"].append(_failure_from_exception(current_stage, exc))
     finally:
+        _close_service(service, evidence["failures"])
         evidence["timings"]["total"] = time.perf_counter() - total_started
         if evidence["failures"] and execution_profile == "showcase":
             evidence["quality_evidence_status"] = "failed"
@@ -408,7 +400,6 @@ def run_dataset_journey(
             current_stage,
             "failed" if evidence["failures"] else "completed",
         )
-        _close_service(service)
     return evidence
 
 
@@ -813,11 +804,21 @@ def _wait_for_background_tasks(service: Any, *, timeout: float) -> None:
         raise TimeoutError("ApplicationService background work did not become idle")
 
 
-def _close_service(service: Any) -> None:
-    _wait_for_background_tasks(service, timeout=30.0)
-    closer = getattr(service, "close", None)
-    if callable(closer):
-        closer()
+def _close_service(service: Any, failures: list[dict[str, Any]]) -> None:
+    """Retain wait failures and always invoke the bounded shutdown owner."""
+    try:
+        _wait_for_background_tasks(service, timeout=30.0)
+    except Exception as exc:
+        failures.append(_failure_from_exception("cleanup", exc))
+    finally:
+        try:
+            service.close()
+            if getattr(service, "is_closed", True) is False:
+                raise TimeoutError(  # noqa: TRY301 - retained with earlier failures
+                    "ApplicationService close did not complete"
+                )
+        except Exception as exc:
+            failures.append(_failure_from_exception("cleanup", exc))
 
 
 def _product_symbols() -> dict[str, Any]:

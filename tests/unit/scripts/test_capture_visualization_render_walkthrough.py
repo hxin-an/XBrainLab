@@ -65,6 +65,53 @@ from XBrainLab.backend.application.results import ErrorType
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
 
 
+@pytest.mark.parametrize("unexpected", [False, True])
+def test_failed_training_preparation_releases_real_service_and_exception_hook(
+    qapp, tmp_path, monkeypatch, unexpected
+) -> None:
+    from XBrainLab.backend import study as study_module
+    from XBrainLab.backend.application import get_application_service
+
+    study = study_module.Study()
+    service = get_application_service(study)
+    original_hook = capture_script.sys.excepthook
+    monkeypatch.setattr(study_module, "Study", lambda: study)
+    monkeypatch.setattr(capture_script, "collect_source_identity", lambda *_a, **_k: {})
+    if unexpected:
+
+        def fail_preparation(*_args):
+            raise OSError("preparation failed")
+
+        monkeypatch.setattr(
+            capture_script, "prepare_training_dataset_ready_state", fail_preparation
+        )
+    try:
+        if unexpected:
+            with pytest.raises(OSError, match="preparation failed"):
+                capture_script.run_visualization_render_walkthrough(
+                    qapp,
+                    tmp_path,
+                    tmp_path / "training",
+                    1,
+                    source_path=tmp_path / "missing.fif",
+                )
+        else:
+            payload = capture_script.run_visualization_render_walkthrough(
+                qapp,
+                tmp_path,
+                tmp_path / "training",
+                1,
+                source_path=tmp_path / "missing.fif",
+            )
+            assert payload["status"] == "failed"
+            assert payload["failure_reason"] == "Dataset preparation failed."
+        assert service.is_closed
+        assert capture_script.sys.excepthook is original_hook
+    finally:
+        service.close()
+        capture_script.sys.excepthook = original_hook
+
+
 @pytest.mark.parametrize("existing", [False, True])
 @pytest.mark.parametrize(("status", "exit_code"), [("passed", 0), ("failed", 1)])
 def test_main_preserves_training_directory_on_rerun(

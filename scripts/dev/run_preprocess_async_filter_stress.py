@@ -117,32 +117,34 @@ def run_stress(fixtures: tuple[Path, ...], cycles: int) -> dict[str, Any]:
     )
     study = Study()
     service = get_application_service(study)
-    fixture_paths = [str(path) for path in fixtures]
-    for command in (
-        ScanSourceCommand(source_path=fixture_paths[0], source_hint="file"),
-        PreviewInterpretationCommand(
-            choices={"selected_eeg_files": fixture_paths, "skip_labels": True}
-        ),
-        ValidateInterpretationCommand(),
-        ApplyInterpretationCommand(confirmed=True),
-    ):
-        load_result = service.execute(command)
-        if not load_result.ok:
-            raise RuntimeError(load_result.message)
-
-    window = MainWindow(study)
-    window.resize(1280, 900)
-    window.show()
-    app.processEvents()
-    panel = open_workflow_panel(window, 1, timeout_ms=15_000)
-    panel.update_panel()
-    app.processEvents()
+    window: MainWindow | None = None
     runtime = _RecordingRuntime(service)
     completed_cycles = 0
     minimum_time_samples: int | None = None
     minimum_psd_bins: int | None = None
 
     try:
+        fixture_paths = [str(path) for path in fixtures]
+        for command in (
+            ScanSourceCommand(source_path=fixture_paths[0], source_hint="file"),
+            PreviewInterpretationCommand(
+                choices={"selected_eeg_files": fixture_paths, "skip_labels": True}
+            ),
+            ValidateInterpretationCommand(),
+            ApplyInterpretationCommand(confirmed=True),
+        ):
+            load_result = service.execute(command)
+            if not load_result.ok:
+                raise RuntimeError(load_result.message)
+
+        window = MainWindow(study)
+        window.resize(1280, 900)
+        window.show()
+        app.processEvents()
+        panel = open_workflow_panel(window, 1, timeout_ms=15_000)
+        panel.update_panel()
+        app.processEvents()
+
         for cycle in range(cycles):
             if cycle:
                 reset = service.execute(ResetPreprocessCommand(confirmed=True))
@@ -220,13 +222,16 @@ def run_stress(fixtures: tuple[Path, ...], cycles: int) -> dict[str, Any]:
             )
             completed_cycles += 1
     finally:
-        window.close()
-        _pump_until(
-            app,
-            lambda: not window.isVisible(),
-            timeout_seconds=30.0,
-            timeout_message="MainWindow did not complete its safe shutdown protocol.",
-        )
+        if window is None:
+            service.close()
+        else:
+            window.close()
+            _pump_until(
+                app,
+                lambda: not window.isVisible(),
+                timeout_seconds=30.0,
+                timeout_message="MainWindow did not complete its safe shutdown protocol.",
+            )
 
     return {
         "core_dump_limit_supported": (_NATIVE_PROCESS_SAFETY.core_dump_limit_supported),

@@ -55,9 +55,20 @@ Preprocess re-audit findings：以真 MNE nonzero first_samp recording 重現 fi
 meas_date時重設 annotations 重複加時間偏移、resample尾端事件落到新n_times之外。
 修正沿MNE既有event/time契約，測原始carrier不變、annotation位置及新sample範圍。
 主agent另查預覽event與signal時間原點一致性，先真MNE red再修，不改UI設計。
+Training history：真 manager 的非OOM forward failure會被顯示為Pending／Stopped；
+改用既有plan.error辨識失敗，完成的先前repeat仍維持Completed，不新增狀態。
+獨立覆核重現final artifact export失敗但eval_record已發布而誤判完成；
+在既有record完成邊界保持失敗一致性，補真訓練與故障注入，不新增owner或狀態。
+Imported epochs：相同shape但不同tmin的來源可通過loader並在合併後套最後一份時間軸；
+在Epochs既有admission於任何event mutation前拒絕不一致grid，補真MNE來源與不變性測試。
+Preprocess preview：完整refresh在query失敗顯示unavailable後又reset成No data；
+補真panel錯誤路徑，保留既有unavailable呈現，不新增UI狀態或改版。
 
-Current：重審施工中，先前 handoff-ready 判斷因上述已確認缺陷撤回。
-Next：各責任區讀碼/測試矩陣與red重現→修正/清理→交叉覆核→同版本gates→手測。
+Current：重審修正與交叉獨立覆核完成；final export失敗誤判完成也經真訓練重現並補修。
+實作/測試/腳本盤點與保留理由在ignored `build/training-cleanup/*rereview.md`。
+先前handoff-ready已撤回；本輪還不是handoff-ready，也不宣稱完整測試覆蓋或零缺陷。
+Next：凍結實作→小commit與同版本CI/source-diverse/platform gates→原生Windows
+Training→Evaluation／Saliency與Preprocess驗證→開啟程式與PowerShell log交集中手測。
 
 ### Earlier Training scope and reviewed decisions
 

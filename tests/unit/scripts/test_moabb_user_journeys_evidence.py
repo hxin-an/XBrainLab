@@ -730,7 +730,7 @@ def test_journey_saliency_timeout_fails_closed_and_closes_service(
     class TimeoutSaliencyService(_RecordingService):
         def wait_for_background_tasks(self, timeout: float) -> bool:
             super().wait_for_background_tasks(timeout)
-            return len(self.wait_timeouts) != 2
+            return len(self.wait_timeouts) < 2
 
     service = TimeoutSaliencyService()
     evidence = run_dataset_journey(
@@ -745,9 +745,60 @@ def test_journey_saliency_timeout_fails_closed_and_closes_service(
     )
     assert evidence["failures"][0]["stage"] == "saliency"
     assert evidence["failures"][0]["type"] == "TimeoutError"
+    assert evidence["failures"][1]["stage"] == "cleanup"
+    assert evidence["failures"][1]["type"] == "TimeoutError"
     assert evidence["saliency"]["artifacts"] == []
     assert "evaluate" not in service.commands
     assert service.closed
+
+
+@pytest.mark.parametrize("close_raises", [False, True])
+def test_review_cleanup_failure_is_reported_without_losing_validation(
+    close_raises: bool,
+) -> None:
+    class FailedCleanupService(_RecordingService):
+        @property
+        def is_closed(self) -> bool:
+            return False
+
+        def close(self) -> None:
+            super().close()
+            if close_raises:
+                raise OSError("cleanup failed")
+
+    service = FailedCleanupService()
+    report = review_dataset(
+        _dataset(), confirm_resource_plan=False, service_factory=lambda: service
+    )
+    assert report["status"] == "failed"
+    assert report["validation_decision"] == "accepted"
+    assert report["failures"][0]["stage"] == "cleanup"
+    assert report["failures"][0]["type"] == (
+        "OSError" if close_raises else "TimeoutError"
+    )
+    assert service.closed
+
+
+def test_real_review_failure_closes_service_despite_persistent_background_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from XBrainLab.backend.application import ApplicationService
+
+    service = ApplicationService()
+    dataset = _dataset()
+    dataset["import"]["source_path"] = str(tmp_path / "missing.fif")
+    monkeypatch.setattr(service, "wait_for_background_tasks", lambda **_: False)
+    try:
+        report = review_dataset(
+            dataset, confirm_resource_plan=False, service_factory=lambda: service
+        )
+        assert report["status"] == "failed"
+        assert report["failures"][0]["stage"] == "scan"
+        assert report["failures"][1]["stage"] == "cleanup"
+        assert report["failures"][1]["type"] == "TimeoutError"
+        assert service.is_closed
+    finally:
+        service.close()
 
 
 def test_real_journey_computes_configured_saliency_after_training(
