@@ -1,16 +1,16 @@
 # XBrainLab Now
 
-最後更新：`2026-10-10`
+最後更新：`2026-10-11`
 
-## 本輪施工完成 — 待執行已批准的 PR 合併與清理
+## Current checkpoint
 
-PR #160 的 Restart queued-snapshot 修正已完成；產品版本 `cd3d28cf` 經同版本 CI、
-Windows 真模型流程與獨立覆核，使用者於 2026-10-10 補測交付後明確同意 merge。
-本次僅收束計畫，不再更改已接受的產品 source；合併／清理結果由 PR #160 擁有。
-沒有待施工的 active slice；下一個產品目標另行討論，不自動延伸本輪。
+Select Model 提示穩定化與 compact sizing 已完成，使用者已於 2026-10-11 接受 Windows
+候選並批准 PR #161 合併。驗收來源為 `7b404a85`；最後只整理本文件，不改產品行為。
+實際合併狀態、同 head CI 與驗收證據由 [PR #161](https://github.com/hxin-an/XBrainLab/pull/161)
+擁有，不在此維護第二份執行紀錄。合併仍須最終 head 的適用 checks 通過。
 
-一般格式錯誤保留一次修復；多物件重試候選因安全回歸撤回，維持 choose-one 零執行。
-契約見 [Agent architecture](../architecture/agent.md)、[Agent target](../target/agent.md)；
-原始失敗、已知模型限制與證據界線見 [Validation](../validation/README.md) 及 PR #160。
-歷史計畫保留於 Git，不再作為 active 指令。保留必要證據後清除本 PR worktree 與暫存，
-不動研究 checkout、使用者設定、原始資料、共用環境及 cache。
+## Next — 待討論，尚未施工
+
+下一個模組先討論 Set Training，再處理 Data Split：逐一確認操作與版面後，才進行
+該模組內部清理與必要測試。可見 UI 改動仍須先取得明確設計確認；不因本輪合併授權
+提前修改其他模組。研究 checkout、資料集與共用環境維持不動。

@@ -76,6 +76,7 @@ class ModelSelectionDialog(BaseDialog):
         self.search_input: QLineEdit | None = None
         self.model_results: QListWidget | None = None
         self.provider_banner: QLabel | None = None
+        self.provider_check_hint: QLabel | None = None
         self.no_match_label: QLabel | None = None
         self.confirm_btn: QPushButton | None = None
         self.weight_label: QLabel | None = None
@@ -100,6 +101,11 @@ class ModelSelectionDialog(BaseDialog):
 
         super().__init__(parent, title="Model Selection")
         self.setMinimumSize(600, 360)
+        self._provider_hint_timer = QTimer(self)
+        self._provider_hint_timer.setSingleShot(True)
+        self._provider_hint_timer.setInterval(300)
+        self._provider_hint_timer.timeout.connect(self._show_provider_check_hint)
+        self.finished.connect(self._clear_provider_check_hint)
 
         self._apply_catalog(self.model_specs, preserve_id=self.initial_model_id)
         if provider_status is None:
@@ -108,7 +114,6 @@ class ModelSelectionDialog(BaseDialog):
             self._apply_provider_status(provider_status)
         self.fit_to_content(
             minimum_width=640,
-            minimum_height=452,
             maximum_height=620,
         )
         QTimer.singleShot(0, self._focus_search_input)
@@ -173,12 +178,27 @@ class ModelSelectionDialog(BaseDialog):
         setup_layout.setVerticalSpacing(10)
         setup_title = QLabel("Model setup")
         setup_title.setObjectName("SectionTitle")
-        setup_layout.addWidget(setup_title, 0, 0, 1, 3)
+        setup_layout.addWidget(setup_title, 0, 0)
 
-        provider_banner = QLabel("Checking Braindecode 1.6.1 availability…")
+        # A delayed hint shares the existing heading row: showing or clearing
+        # it must not move the search field, model list, or action buttons.
+        hint = QLabel("Checking models…")
+        self.provider_check_hint = hint
+        hint.setObjectName("ModelProviderCheckHint")
+        hint.setAlignment(Qt.AlignmentFlag.AlignRight)
+        hint_policy = hint.sizePolicy()
+        hint_policy.setRetainSizeWhenHidden(True)
+        hint.setSizePolicy(hint_policy)
+        hint.hide()
+        setup_layout.addWidget(hint, 0, 1, 1, 2)
+
+        # The full banner is reserved for a real provider failure, not a
+        # transient readiness state on every opening.
+        provider_banner = QLabel()
         self.provider_banner = provider_banner
         provider_banner.setObjectName("ModelProviderBanner")
         provider_banner.setWordWrap(True)
+        provider_banner.hide()
         setup_layout.addWidget(provider_banner, 1, 0, 1, 3)
 
         setup_layout.addWidget(QLabel("Search models"), 2, 0)
@@ -261,6 +281,9 @@ class ModelSelectionDialog(BaseDialog):
             color: {Theme.TEXT_SECONDARY};
             background: transparent;
             font-weight: 700;
+        }}
+        QDialog#ModelSelectionDialog QLabel#ModelProviderCheckHint {{
+            color: {Theme.TEXT_SECONDARY};
         }}
         QDialog#ModelSelectionDialog QLineEdit#ModelSearchInput {{
             background: {Theme.METRICS_TABLE_BG};
@@ -381,6 +404,20 @@ class ModelSelectionDialog(BaseDialog):
         worker.signals.result.connect(self._apply_provider_status)
         worker.signals.error.connect(self._provider_preflight_failed)
         worker.start()
+        self._provider_hint_timer.start()
+
+    def _show_provider_check_hint(self) -> None:
+        if (
+            self._provider_check_pending
+            and self.isVisible()
+            and self.provider_check_hint is not None
+        ):
+            self.provider_check_hint.show()
+
+    def _clear_provider_check_hint(self) -> None:
+        self._provider_hint_timer.stop()
+        if self.provider_check_hint is not None:
+            self.provider_check_hint.hide()
 
     def _provider_preflight_failed(self, _error: object) -> None:
         self._apply_provider_status(
@@ -425,6 +462,7 @@ class ModelSelectionDialog(BaseDialog):
             if persisted is not None:
                 specs.append(persisted)
         self._provider_check_pending = False
+        self._clear_provider_check_hint()
         self._apply_catalog(
             tuple(specs),
             preserve_id=preserve_id,
@@ -446,7 +484,8 @@ class ModelSelectionDialog(BaseDialog):
             if style is not None:
                 style.unpolish(self.provider_banner)
                 style.polish(self.provider_banner)
-            self._resize_dialog_to_content()
+            if recovery:
+                self._resize_dialog_to_content()
 
     def _read_signal_context(self) -> dict[str, Any] | None:
         return get_training_model_signal_context(
@@ -633,7 +672,6 @@ class ModelSelectionDialog(BaseDialog):
         """Resize normal content high enough so the scroll area is not a gutter."""
         self.fit_to_content(
             minimum_width=640,
-            minimum_height=452,
             maximum_height=620,
         )
 

@@ -3,10 +3,11 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import (
     QDialogButtonBox,
     QFrame,
+    QLabel,
     QScrollArea,
     QTableWidget,
 )
@@ -334,7 +335,7 @@ class TestModelSelection:
 
         def checked_status_after_release():
             started.set()
-            release.wait(timeout=2)
+            release.wait(timeout=3)
             return HEALTHY_PROVIDER
 
         with patch(
@@ -345,19 +346,32 @@ class TestModelSelection:
             dialog = ModelSelectionDialog(None)
             qtbot.addWidget(dialog)
             dialog.show()
-            qtbot.waitUntil(started.is_set, timeout=1_000)
-
-            assert dialog.search_input is not None
-            assert dialog.search_input.isEnabled()
-            assert dialog.provider_banner is not None
-            assert not dialog.provider_banner.isHidden()
-            assert dialog.model_results is not None
-            dialog.search_input.setText("sccnet")
-            local_sccnet = _result_item(dialog, "xbrainlab.sccnet")
-            dialog.model_results.setCurrentItem(local_sccnet)
-            assert dialog._selected_model_id == "xbrainlab.sccnet"
-
-            release.set()
+            try:
+                qtbot.waitUntil(started.is_set, timeout=1_000)
+                assert dialog.search_input is not None
+                assert dialog.search_input.isEnabled()
+                assert dialog.provider_banner is not None
+                assert dialog.provider_banner.isHidden()
+                assert dialog.model_results is not None
+                initial_geometry = (
+                    dialog.geometry(),
+                    dialog.search_input.geometry(),
+                    dialog.model_results.geometry(),
+                )
+                hint = dialog.findChild(QLabel, "ModelProviderCheckHint")
+                assert hint is not None
+                qtbot.waitUntil(hint.isVisible, timeout=1_000)
+                assert initial_geometry == (
+                    dialog.geometry(),
+                    dialog.search_input.geometry(),
+                    dialog.model_results.geometry(),
+                )
+                dialog.search_input.setText("sccnet")
+                local_sccnet = _result_item(dialog, "xbrainlab.sccnet")
+                dialog.model_results.setCurrentItem(local_sccnet)
+                assert dialog._selected_model_id == "xbrainlab.sccnet"
+            finally:
+                release.set()
             qtbot.waitUntil(
                 lambda: not dialog._provider_check_pending,
                 timeout=2_000,
@@ -367,9 +381,79 @@ class TestModelSelection:
         assert dialog.search_input.text() == "sccnet"
         assert dialog.provider_banner is not None
         assert dialog.provider_banner.isHidden()
+        assert hint.isHidden()
+        qtbot.wait(20)
+        assert initial_geometry == (
+            dialog.geometry(),
+            dialog.search_input.geometry(),
+            dialog.model_results.geometry(),
+        )
         assert dialog._provider_worker is not None
         dialog._provider_worker.join(timeout=1)
         assert not dialog._provider_worker.is_alive()
+
+    def test_fast_provider_does_not_flash_a_checking_banner(self, qtbot):
+        with patch(
+            "XBrainLab.ui.dialogs.training.model_selection_dialog."
+            "braindecode_provider_status",
+            return_value=HEALTHY_PROVIDER,
+        ):
+            dialog = ModelSelectionDialog(None)
+            qtbot.addWidget(dialog)
+            dialog.show()
+            assert dialog.provider_banner.isHidden()
+            hint = dialog.findChild(QLabel, "ModelProviderCheckHint")
+            assert hint is not None and hint.isHidden()
+            qtbot.waitUntil(lambda: not dialog._provider_check_pending)
+            qtbot.wait(400)
+            assert hint.isHidden()
+            assert dialog.provider_banner.isHidden()
+            assert dialog.confirm_btn.isEnabled()
+
+    @pytest.mark.parametrize("cancel", [None, "before_hint", "after_hint"])
+    def test_pending_provider_failure_or_cancel_does_not_leave_checking_hint(
+        self, qtbot, cancel
+    ):
+        started, release = Event(), Event()
+
+        def unavailable_provider():
+            started.set()
+            release.wait(timeout=3)
+            return MISSING_PROVIDER
+
+        with patch(
+            "XBrainLab.ui.dialogs.training.model_selection_dialog."
+            "braindecode_provider_status",
+            side_effect=unavailable_provider,
+        ):
+            dialog = ModelSelectionDialog(None)
+            qtbot.addWidget(dialog)
+            dialog.show()
+            try:
+                qtbot.waitUntil(started.is_set)
+                hint = dialog.findChild(QLabel, "ModelProviderCheckHint")
+                assert hint is not None
+                if cancel == "after_hint":
+                    qtbot.waitUntil(hint.isVisible)
+                if cancel:
+                    dialog.reject()
+                    qtbot.wait(400)
+                    assert hint.isHidden()
+                else:
+                    qtbot.waitUntil(hint.isVisible)
+            finally:
+                release.set()
+            qtbot.waitUntil(lambda: not dialog._provider_check_pending)
+            assert hint.isHidden()
+            assert not dialog.confirm_btn.isEnabled()
+            assert dialog.get_result() is None
+            if cancel:
+                assert not dialog.isVisible()
+            else:
+                assert dialog.provider_banner.isVisible()
+                assert "unavailable" in dialog.provider_banner.text()
+            dialog._provider_worker.join(timeout=1)
+            assert not dialog._provider_worker.is_alive()
 
     def test_parameter_editor_is_absent_and_catalog_defaults_are_bound(self, dialog):
         assert dialog.findChild(QTableWidget) is None
@@ -401,6 +485,20 @@ class TestModelSelection:
         assert scrollbar is not None
         assert dialog.confirm_btn is not None
         assert dialog.confirm_btn.isVisibleTo(dialog)
+
+    def test_model_content_and_confirm_have_only_normal_layout_spacing(self, qtbot):
+        dialog = ModelSelectionDialog(None, provider_status=HEALTHY_PROVIDER)
+        qtbot.addWidget(dialog)
+        dialog.show()
+        qtbot.wait(20)
+
+        section = dialog.findChild(QFrame, "ModelSection")
+        assert section is not None
+        content_bottom = section.mapTo(dialog, QPoint(0, section.height())).y()
+        gap = dialog.confirm_btn.geometry().top() - content_bottom
+        assert 0 <= gap <= dialog.layout().spacing() + 2
+        assert dialog.confirm_btn.isVisibleTo(dialog)
+        assert dialog.model_results.height() >= 150
 
     def test_model_sections_do_not_draw_internal_vertical_frame_lines(self, dialog):
         sections = dialog.findChildren(QFrame, "ModelSection")
