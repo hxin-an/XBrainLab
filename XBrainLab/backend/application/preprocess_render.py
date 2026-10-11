@@ -417,8 +417,11 @@ class PreprocessRenderPublisher:
         try:
             values: Iterable[Any] = annotations
             copied: list[SignalEvent] = []
+            # MNE stores annotation onsets on the acquisition timeline; the
+            # preview signal window starts at the recording's first sample.
+            first_time = float(getattr(signal, "first_time", 0.0))
             for annotation in values:
-                onset = float(annotation["onset"])
+                onset = float(annotation["onset"]) - first_time
                 duration = max(float(annotation.get("duration", 0.0)), 0.0)
                 annotation_end = onset + duration
                 if onset <= end_seconds and annotation_end >= start_seconds:

@@ -142,3 +142,17 @@ class TestWindowEpochDataPreprocess:
         assert np.allclose(data.std(axis=-1), 1.0, atol=1e-7)
         assert result.get_runtime_detail("normalization")["status"] == "applied"
         assert result.get_runtime_detail("normalization")["requested_on"] == "raw"
+
+    def test_all_bad_windows_fail_without_replacing_source(self):
+        raw = _make_raw_with_single_event(duration=10.0)
+        mne_raw = raw.get_mne()
+        mne_raw.set_annotations(mne.Annotations([0.0], [10.0], ["BAD_motion"]))
+        original = mne_raw.get_data().copy()
+
+        with pytest.raises(ValueError, match="No usable epochs remain"):
+            WindowEpoch([raw]).data_preprocess(duration=2.0, overlap=0.0)
+
+        assert raw.get_mne() is mne_raw
+        assert raw.is_raw()
+        np.testing.assert_array_equal(mne_raw.get_data(), original)
+        assert raw.get_preprocess_history() == []

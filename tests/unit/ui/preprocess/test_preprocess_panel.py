@@ -21,12 +21,16 @@ from XBrainLab.backend.application.preprocess_render import (
     SignalSeries,
 )
 from XBrainLab.backend.load_data.raw import Raw
+from XBrainLab.backend.preprocessor import Filtering
 from XBrainLab.backend.study import Study
 from XBrainLab.ui.application_capabilities import (
     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
 )
 from XBrainLab.ui.async_command_runner import application_command_registry
 from XBrainLab.ui.dialogs.preprocess import RereferenceDialog
+from XBrainLab.ui.panels.preprocess.data_query import (
+    PreprocessRenderDataUnavailableError,
+)
 from XBrainLab.ui.panels.preprocess.panel import PreprocessPanel
 
 
@@ -298,6 +302,32 @@ def test_signal_preview_distinguishes_empty_raw_locked_and_unavailable(qtbot) ->
     )
 
 
+@pytest.mark.parametrize("refresh", ["update_panel", "update_plot_only"])
+def test_preview_query_failure_stays_unavailable_and_recovers(qtbot, refresh) -> None:
+    panel = PreprocessPanel()
+    qtbot.addWidget(panel)
+    preview = panel.preview_widget
+    with patch(
+        "XBrainLab.ui.panels.preprocess.panel.query_preprocess_render",
+        side_effect=PreprocessRenderDataUnavailableError("Signal read failed."),
+    ):
+        getattr(panel, refresh)()
+    assert preview.preview_stack.currentWidget() is preview.unavailable_state
+    assert preview.unavailable_state_detail.text() == "Signal read failed."
+    with patch(
+        "XBrainLab.ui.panels.preprocess.panel.query_preprocess_render",
+        return_value=_render_publication(),
+    ):
+        getattr(panel, refresh)()
+    assert preview.preview_stack.currentWidget() is not preview.unavailable_state
+    with patch(
+        "XBrainLab.ui.panels.preprocess.panel.query_preprocess_render",
+        return_value=None,
+    ):
+        panel.update_panel()
+    assert preview.preview_stack.currentWidget() is preview.empty_state
+
+
 def test_preprocess_panel_close_quiesces_native_plots(qtbot) -> None:
     panel = PreprocessPanel()
     qtbot.addWidget(panel)
@@ -324,6 +354,32 @@ def test_preprocess_history_has_stable_locked_row_layout(qtbot) -> None:
         history.history_list.item(12).text()
         == "EEG epochs created. Preprocessing is now locked."
     )
+
+
+@pytest.mark.parametrize(
+    "frequencies, expected",
+    [
+        (50.0, "Notch 50 Hz"),
+        ([50.0], "Notch 50 Hz"),
+        ((50.0, 100.0), "Notch 50, 100 Hz"),
+        (np.array([60.25, 120.5]), "Notch 60.25, 120.5 Hz"),
+    ],
+)
+def test_history_renders_notch_values_without_container_brackets(
+    qtbot, frequencies, expected
+) -> None:
+    panel = PreprocessPanel()
+    qtbot.addWidget(panel)
+    raw = Raw(
+        "history.fif",
+        mne.io.RawArray(
+            np.zeros((1, 5000)),
+            mne.create_info(["Cz"], 500.0, "eeg"),
+        ),
+    )
+    processed = Filtering([raw]).data_preprocess(None, None, frequencies)[0]
+    panel.history_widget.update_history(processed.get_preprocess_history(), False)
+    assert panel.history_widget.history_list.item(0).text() == expected
 
 
 def test_filtering_dialog_uses_lowest_published_sampling_rate(qtbot) -> None:

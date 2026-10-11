@@ -214,7 +214,6 @@ preprocess 由 application command/state services 協調 processor classes。
 - channel selection
 - time epoch
 - window epoch
-- export
 
 `PreprocessStateService` 的 domain 行為是：
 
@@ -254,6 +253,8 @@ selected BIDS runs 採最長 observed duration；BIDS interval 沒有 positive d
 Raw recordings 可以先以不同 sampling rates 匯入，讓使用者在 Preprocess 明確 resample；在所有
 recordings 尚未共享同一 sampling grid 前，Epoch context 會以 recoverable precondition 阻擋建立
 epochs 並提供 resampling guidance。已 epoched inputs 仍必須在 loader 邊界共享 sampling rate。
+Epochs 合併邊界在修改來源事件編碼前另檢查 channel identity、sampling frequency 與完整
+event-relative sample times，拒絕相同shape但不同tmin等不相容時間軸，不套用最後一份來源的時間。
 
 它會：
 

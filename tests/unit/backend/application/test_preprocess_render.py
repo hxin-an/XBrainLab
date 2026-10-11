@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import mne
 import numpy as np
 import pytest
 
@@ -12,6 +13,7 @@ from XBrainLab.backend.application.preprocess_render import (
     PreprocessRenderRequest,
     PreprocessSignalState,
 )
+from XBrainLab.backend.load_data import Raw
 
 
 class _Signal:
@@ -170,6 +172,37 @@ def test_no_data_publication_has_no_signal_payload() -> None:
     assert publication.data.current is None
     assert publication.data.original is None
     assert publication.data.events == ()
+
+
+@pytest.mark.parametrize("first_samp", [0, 500])
+def test_real_recording_event_markers_share_signal_relative_timeline(first_samp):
+    signal = mne.io.RawArray(
+        np.zeros((1, 1000)),
+        mne.create_info(["Cz"], 100.0, "eeg"),
+        first_samp=first_samp,
+    )
+    signal.set_annotations(mne.Annotations([1.5], [0.4], ["cue"]))
+    original_onsets = signal.annotations.onset.copy()
+    wrapped = Raw("offset.fif", signal)
+    publisher = PreprocessRenderPublisher(
+        dataset=SimpleNamespace(
+            get_preprocessed_data_list=lambda: [wrapped],
+            get_loaded_data_list=list,
+        ),
+        get_publication=lambda: _publication(),
+    )
+    data = publisher.publish(
+        PreprocessRenderRequest(
+            publication_generation=3, start_seconds=1.0, duration_seconds=2.0
+        )
+    ).data
+    assert data.current is not None
+    assert data.current.time_seconds[0] == pytest.approx(1.0)
+    assert len(data.events) == 1
+    assert data.events[0].onset_seconds == pytest.approx(1.5)
+    assert data.events[0].duration_seconds == pytest.approx(0.4)
+    assert data.events[0].label == "cue"
+    np.testing.assert_array_equal(signal.annotations.onset, original_onsets)
 
 
 def test_epoched_data_publishes_locked_state_without_reading_samples() -> None:

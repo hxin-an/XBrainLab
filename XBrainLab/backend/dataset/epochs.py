@@ -508,7 +508,7 @@ class Epochs:
             if not isinstance(data, mne.BaseEpochs):
                 raise TypeError("Preprocessed epoch data must contain MNE epochs")
             epoch_sources.append(data)
-        self._validate_channel_identity(epoch_sources)
+        self._validate_signal_axes(epoch_sources)
 
         self.sfreq = None
         # maps
@@ -634,14 +634,26 @@ class Epochs:
         self.subject_map = {map_subject[i]: i for i in map_subject}
 
     @staticmethod
-    def _validate_channel_identity(epoch_sources: list[mne.BaseEpochs]) -> None:
-        """Reject multi-file epochs whose channel axes have different meaning."""
+    def _validate_signal_axes(epoch_sources: list[mne.BaseEpochs]) -> None:
+        """Reject incompatible channel/time axes before source events are changed."""
         if not epoch_sources:
             return
         reference = epoch_sources[0]
         reference_names = list(reference.info["ch_names"])
         reference_types = list(reference.get_channel_types())
         for index, data in enumerate(epoch_sources[1:], start=1):
+            if data.info["sfreq"] != reference.info["sfreq"]:
+                raise ValueError(
+                    "Epoch sampling frequency differs between files: "
+                    f"source 0 has {reference.info['sfreq']} Hz, source {index} "
+                    f"has {data.info['sfreq']} Hz."
+                )
+            if not np.array_equal(data.times, reference.times):
+                raise ValueError(
+                    "Epoch time axis differs between files: "
+                    f"source {index} must use the same event-relative start and "
+                    "sample times as source 0."
+                )
             channel_names = list(data.info["ch_names"])
             if channel_names != reference_names:
                 raise ValueError(

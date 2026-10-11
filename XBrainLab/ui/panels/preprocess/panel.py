@@ -224,7 +224,6 @@ class PreprocessPanel(BasePanel):
         publication = self._query_render_publication()
         if publication is None:
             self.history_widget.show_no_data()
-            self.preview_widget.reset_view()
             return
         self._apply_render_publication(publication, update_history=True)
 
@@ -287,4 +286,6 @@ class PreprocessPanel(BasePanel):
         except PreprocessRenderDataUnavailableError as error:
             self.preview_widget.show_unavailable_message(str(error))
             return None
+        if publication is None:
+            self.preview_widget.reset_view()
         return publication

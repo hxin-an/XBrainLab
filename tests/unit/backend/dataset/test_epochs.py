@@ -152,6 +152,51 @@ def test_epochs_rejects_channel_order_mismatch_before_concatenation() -> None:
         Epochs([Raw("reference-epo.fif", reference), Raw("swapped-epo.fif", swapped)])
 
 
+@pytest.mark.parametrize(
+    ("sfreq", "tmin", "samples"),
+    [(20.0, -0.2, 10), (10.0, 0.0, 10), (10.0, -0.2, 11)],
+    ids=("sampling-rate", "event-relative-start", "sample-count"),
+)
+def test_epochs_rejects_different_time_axes_before_mutating_sources(
+    tmp_path, sfreq, tmin, samples
+):
+    sources = []
+    for index, (rate, start, count) in enumerate(
+        [(10.0, -0.2, 10), (sfreq, tmin, samples)]
+    ):
+        path = tmp_path / f"source-{index}-epo.fif"
+        signal = mne.EpochsArray(
+            np.full((1, 1, count), index + 1.0),
+            mne.create_info(["Cz"], rate, "eeg"),
+            events=np.array([[100, 0, 7 + index]]),
+            event_id={f"class-{index}": 7 + index},
+            tmin=start,
+            verbose=False,
+        )
+        signal.save(path, overwrite=True, verbose=False)
+        sources.append(
+            Raw(str(path), mne.read_epochs(path, preload=True, verbose=False))
+        )
+    before = [
+        (
+            row.get_event_list()[0].copy(),
+            dict(row.get_event_list()[1]),
+            row.get_mne().get_data().copy(),
+        )
+        for row in sources
+    ]
+
+    with pytest.raises(ValueError) as rejected:
+        Epochs(sources)
+
+    for row, (events, event_ids, values) in zip(sources, before, strict=True):
+        np.testing.assert_array_equal(row.get_event_list()[0], events)
+        assert row.get_event_list()[1] == event_ids
+        np.testing.assert_array_equal(row.get_mne().get_data(), values)
+        assert row.get_mne().metadata is None
+    assert re.search("sampling frequency|time axis", str(rejected.value))
+
+
 def test_epochs_copy(epochs):
     epochs_copy = epochs.copy()
     old_sfreq = epochs.sfreq

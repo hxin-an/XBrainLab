@@ -265,3 +265,45 @@ def test_preprocess_service_preserves_safety_boundaries() -> None:
             )
     finally:
         service.close()
+
+
+def test_multi_recording_filter_failure_preserves_samples_events_and_publication():
+    study = Study()
+    info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
+    rows = [
+        Raw(
+            f"filter-{index}-raw.fif",
+            mne.io.RawArray(values, info.copy(), verbose="ERROR"),
+        )
+        for index, values in enumerate(
+            [np.sin(np.arange(1000))[None, :], np.full((1, 1000), np.nan)]
+        )
+    ]
+    for row in rows:
+        row.set_event(np.array([[200, 0, 7]]), {"cue": 7})
+    study.set_loaded_data_list(rows, force_update=True)
+    service = ApplicationService(study)
+    original = study.preprocessed_data_list
+    samples = [row.get_mne().get_data().copy() for row in rows]
+    before = service.get_view_publication()
+    try:
+        result = service.execute(
+            PreprocessCommand(
+                operation=PreprocessOperation.BANDPASS,
+                low_freq=1.0,
+                high_freq=30.0,
+            )
+        )
+
+        assert result.failed
+        assert "no samples where every selected channel is finite" in result.message
+        assert study.preprocessed_data_list is original
+        assert result.state.preprocessed == before.state.preprocessed
+        assert study.epoch_data is None
+        for row, expected in zip(rows, samples, strict=True):
+            np.testing.assert_array_equal(row.get_mne().get_data(), expected)
+            np.testing.assert_array_equal(row.get_event_list()[0], [[200, 0, 7]])
+            assert row.get_event_list()[1] == {"cue": 7}
+            assert row.get_preprocess_history() == []
+    finally:
+        service.close()
