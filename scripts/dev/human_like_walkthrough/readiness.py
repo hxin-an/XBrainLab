@@ -305,6 +305,13 @@ def _reference_match_metrics(
             tile_recall = _white_pixel_count(matching_tile) / edge_pixels
             if tile_recall < 0.25:
                 missing_tiles += 1
+    if detail_tiles == 0 and reference_edge_pixels:
+        # A compact glyph (for example a Windows-rendered em dash) can have
+        # fewer than eight edge pixels. Check its whole region as one detail
+        # tile rather than returning a vacuous zero-tile success. The caller's
+        # minimum edge count and global recall thresholds still apply.
+        detail_tiles = 1
+        missing_tiles = int(edge_recall < 0.25)
     missing_tile_ratio = missing_tiles / max(detail_tiles, 1)
     return {
         "edge_recall": float(edge_recall),

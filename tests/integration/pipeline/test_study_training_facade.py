@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 import torch
 
-from tests.integration.training_artifact_support import assert_real_training_artifacts
+from scripts.dev.training_evidence_fixture import verify_real_training_artifacts
 from XBrainLab.backend.dataset import Dataset, DataSplittingConfig, Epochs, TrainingType
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.model_base import EEGNet, SCCNet
@@ -201,7 +201,7 @@ class TestStudyTrainCycle:
         study.trainer.job()
         for plan in study.trainer.get_training_plan_holders():
             for record in plan.train_record_list:
-                assert_real_training_artifacts(Path(record.target_path))
+                verify_real_training_artifacts(Path(record.target_path))
 
     def test_full_cycle_eegnet(self, tmp_path):
         study = Study()

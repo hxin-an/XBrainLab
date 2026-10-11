@@ -7,6 +7,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
+import pytest
+import torch
+
 import scripts.dev.run_public_cross_source_training_smoke as smoke_script
 from scripts.dev.run_public_cross_source_training_smoke import (
     PUBLIC_EPOCH_ONLY_FIXTURES,
@@ -16,6 +20,91 @@ from scripts.dev.run_public_cross_source_training_smoke import (
     build_snapshot,
     render_markdown,
 )
+from scripts.dev.training_evidence_fixture import verify_real_training_artifacts
+from tests.integration.pipeline.test_trainer_model_integration import (
+    _make_synthetic_dataset,
+)
+from XBrainLab.backend.model_base import EEGNet
+from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
+from XBrainLab.backend.training.record import EvalRecord, RecordKey, TrainRecord
+
+
+@pytest.fixture
+def persisted_training_artifacts(tmp_path, request):
+    dataset, *_ = _make_synthetic_dataset()
+    option = TrainingOption(
+        output_dir=str(tmp_path),
+        optim=torch.optim.Adam,
+        optim_params={},
+        use_cpu=True,
+        gpu_idx=None,
+        epoch=1,
+        bs=2,
+        lr=0.001,
+        checkpoint_epoch=1,
+        evaluation_option=TrainingEvaluation.VAL_ACC,
+        repeat_num=1,
+    )
+    model = ModelHolder(EEGNet, {}, None).get_model(
+        dataset.get_epoch_data().get_model_args()
+    )
+    record = TrainRecord(0, dataset, model, option, seed=42)
+    for _epoch in range(getattr(request, "param", 1)):
+        record.update_train({RecordKey.LOSS: 0.5, RecordKey.ACC: 75.0})
+        record.update_validation({RecordKey.LOSS: 0.6, RecordKey.ACC: 70.0})
+        record.step()
+        record.export_checkpoint()
+    artifact_dir = Path(record.target_path)
+    EvalRecord(
+        np.array([0, 1]),
+        np.array([[0.8, 0.2], [0.1, 0.9]]),
+        {},
+        {},
+        {},
+        {},
+        {},
+    ).export(str(artifact_dir))
+    return artifact_dir
+
+
+@pytest.mark.parametrize("persisted_training_artifacts", [1, 2], indirect=True)
+def test_training_artifact_evidence_loads_real_record(persisted_training_artifacts):
+    verify_real_training_artifacts(persisted_training_artifacts)
+
+
+@pytest.mark.parametrize("persisted_training_artifacts", [1, 2], indirect=True)
+def test_training_artifact_evidence_rejects_wrong_checkpoint(
+    persisted_training_artifacts,
+):
+    artifact_dir = persisted_training_artifacts
+    manifest = json.loads((artifact_dir / "record").read_text(encoding="utf-8"))
+    checkpoint = artifact_dir / f"Epoch-{manifest['payload']['epoch']}-model"
+    checkpoint.rename(checkpoint.with_name(checkpoint.name + "-unrelated"))
+    with pytest.raises(RuntimeError, match="checkpoint"):
+        verify_real_training_artifacts(artifact_dir)
+
+
+@pytest.mark.parametrize("corruption", ["npz", "schema", "history", "epoch"])
+def test_training_artifact_evidence_rejects_corrupt_record(
+    persisted_training_artifacts, corruption
+):
+    artifact_dir = persisted_training_artifacts
+    verify_real_training_artifacts(artifact_dir)
+    if corruption == "npz":
+        (artifact_dir / "record.npz").write_bytes(b"not a numeric archive")
+    else:
+        manifest_path = artifact_dir / "record"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        payload = manifest["payload"]
+        if corruption == "schema":
+            payload["record_schema_version"] = -1
+        elif corruption == "history":
+            payload["train"] = []
+        else:
+            payload["epoch"] = 99
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(RuntimeError):
+        verify_real_training_artifacts(artifact_dir)
 
 
 def test_public_data_dir_uses_canonical_data_root_when_configured(

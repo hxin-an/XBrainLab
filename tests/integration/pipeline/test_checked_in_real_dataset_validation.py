@@ -9,10 +9,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from scripts.dev.training_evidence_fixture import verify_real_training_artifacts
 from tests.integration.data_interpretation_support import (
     import_recording_through_interpretation,
 )
-from tests.integration.training_artifact_support import assert_real_training_artifacts
 from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
@@ -424,7 +424,7 @@ def _configure_and_train(service: ApplicationService, output_dir: Path):
     )
     assert history.ok is True
     assert history.diagnostics["row_count"] == 1
-    assert_real_training_artifacts(output_dir)
+    verify_real_training_artifacts(output_dir)
     return history.diagnostics["rows"][0]
 
 
@@ -579,4 +579,4 @@ def test_cuda_oom_job_failure_is_visible_and_training_can_restart(
     assert retry.ok
     assert retry.diagnostics["split_preparation"]["cache_reused"] is True
     assert retry.state.training.finished_run_count == 1
-    assert_real_training_artifacts(tmp_path / "oom-recovery-output")
+    verify_real_training_artifacts(tmp_path / "oom-recovery-output")

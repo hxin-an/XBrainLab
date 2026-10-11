@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[2]
 assert_active_checkout_import(ROOT)
 
 from scripts.dev.fetch_public_eeg_fixtures import resolve_public_fixture_dir
+from scripts.dev.training_evidence_fixture import verify_real_training_artifacts
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     ConfigureTrainingCommand,
@@ -40,8 +41,7 @@ from XBrainLab.backend.application import (
     get_application_service,
 )
 from XBrainLab.backend.study import Study
-from XBrainLab.backend.training.record import EvalRecord, RecordKey
-from XBrainLab.backend.training.record.artifact_store import load_model_state_dict
+from XBrainLab.backend.training.record import RecordKey
 
 _REPO_PUBLIC_FIXTURE_DIR = Path("tests/fixtures/data/public")
 
@@ -162,34 +162,6 @@ def _require_supervised_epoch_block(result, expected_reason: str) -> None:
         raise RuntimeError(
             f"boundary fixture was blocked for an unexpected reason: {result.message}"
         )
-
-
-def _reload_real_training_artifacts(output_root: Path) -> None:
-    """Require one complete, safely reloadable training artifact directory."""
-    record_manifests = list(output_root.rglob("record"))
-    if len(record_manifests) != 1:
-        raise RuntimeError(
-            "training persistence did not produce exactly one record manifest"
-        )
-    artifact_dir = record_manifests[0].parent
-    persisted_names = {path.name for path in artifact_dir.iterdir() if path.is_file()}
-    required_names = {"record", "record.npz", "eval", "eval.npz"}
-    if not required_names <= persisted_names:
-        raise RuntimeError("training persistence is missing safe record artifacts")
-    checkpoints = [
-        path
-        for path in artifact_dir.iterdir()
-        if path.is_file() and path.name.startswith("Epoch-1-model")
-    ]
-    if len(checkpoints) != 1 or not load_model_state_dict(checkpoints[0]):
-        raise RuntimeError("training checkpoint could not be safely reloaded")
-    evaluation = EvalRecord.load(str(artifact_dir))
-    if (
-        evaluation is None
-        or len(evaluation.label) == 0
-        or len(evaluation.output) != len(evaluation.label)
-    ):
-        raise RuntimeError("evaluation artifact could not be safely reloaded")
 
 
 def _apply_reviewed_internal_event_import(
@@ -438,7 +410,7 @@ def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
                 dataset_count=dataset_count,
                 message="training record missing loss/acc metrics",
             )
-        _reload_real_training_artifacts(output_root)
+        verify_real_training_artifacts(output_root)
 
         return SmokeResult(
             name=str(fixture["name"]),

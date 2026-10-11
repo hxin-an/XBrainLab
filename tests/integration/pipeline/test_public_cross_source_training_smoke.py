@@ -16,7 +16,7 @@ from scripts.dev.run_public_cross_source_training_smoke import (
     PUBLIC_TRAINING_FIXTURES,
     _apply_reviewed_internal_event_import,
 )
-from tests.integration.training_artifact_support import assert_real_training_artifacts
+from scripts.dev.training_evidence_fixture import verify_real_training_artifacts
 from XBrainLab.backend.application import (
     ApplicationService,
     CommandName,
@@ -186,7 +186,7 @@ def test_public_cross_source_training_smoke(
     train_metrics = history.diagnostics["rows"][0]["metrics"]["train"]
     assert RecordKey.LOSS in train_metrics
     assert RecordKey.ACC in train_metrics
-    assert_real_training_artifacts(output_root)
+    verify_real_training_artifacts(output_root)
 
 
 @pytest.mark.parametrize("fixture", PUBLIC_EPOCH_ONLY_FIXTURES, ids=lambda f: f["name"])

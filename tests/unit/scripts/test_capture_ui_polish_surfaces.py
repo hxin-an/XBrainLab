@@ -55,6 +55,7 @@ from scripts.dev.human_like_walkthrough.evidence import (
 )
 from scripts.dev.human_like_walkthrough.readiness import (
     assert_consecutive_complete_frames,
+    assert_region_matches_reference,
 )
 from XBrainLab.backend.model_base.model_catalog import BraindecodeProviderStatus
 from XBrainLab.ui.dialogs.training.model_selection_dialog import ModelSelectionDialog
@@ -75,6 +76,45 @@ def capture_application_theme(qapp):
         assert qapp.setStyle(previous_style) is not None
         assert qapp.style().objectName() == previous_style
         qapp.setProperty("xbrainlab_capture_qt_style", previous_capture_style)
+
+
+@pytest.mark.parametrize("cross_validation", [False, True])
+@pytest.mark.parametrize("validation", [False, True])
+@pytest.mark.parametrize(
+    "module",
+    [
+        "scripts.dev.capture_ui_polish_surfaces",
+        "scripts.dev.capture_ui_reviewer_fixes",
+    ],
+)
+def test_split_capture_examples_match_visible_configuration(
+    module, cross_validation, validation
+):
+    from importlib import import_module
+
+    from XBrainLab.backend.application.dataset_split_preview import (
+        DatasetSplitPreviewRequest,
+        DatasetSplitRule,
+        DatasetSplitSpecification,
+    )
+
+    capture = import_module(module)
+    request = DatasetSplitPreviewRequest(
+        "example",
+        1,
+        DatasetSplitSpecification(
+            train_type="Full Data",
+            is_cross_validation=cross_validation,
+            val_splitters=(DatasetSplitRule("By Trial", "Ratio", "0.2"),)
+            if validation
+            else (),
+        ),
+    )
+    preview = capture._data_split_capture_provider(request)
+    assert len(preview.rows) == (5 if cross_validation else 1)
+    for row in preview.rows:
+        assert row.validation_count == (20 if validation else 0)
+        assert row.train_count + row.validation_count + row.test_count == 120
 
 
 def test_pixmap_image_preserves_rgb_pixels_and_dimensions(qapp):
@@ -665,6 +705,7 @@ def test_training_history_pixel_gate_rejects_erased_chrome_and_row_cells(
         _assert_training_history_reference_pixels(panel, screenshot)
 
 
+@pytest.mark.usefixtures("capture_application_theme")
 def test_app_polish_validator_requires_many_row_cell_pixel_evidence(
     qtbot,
     tmp_path,
@@ -1288,6 +1329,28 @@ def test_app_polish_validator_rejects_missing_contract_fields(
 
     assert ok is False
     assert expected_reason in reason.lower()
+
+
+@pytest.mark.parametrize("glyph_width", [4, 6, 7])
+def test_sparse_glyph_reference_has_detail_and_rejects_erasure(
+    tmp_path, glyph_width
+) -> None:
+    reference = Image.new("RGB", (75, 29), "#1e1e1e")
+    ImageDraw.Draw(reference).line((30, 14, 30 + glyph_width - 1, 14), fill="white")
+    screenshot = tmp_path / "sparse-glyph.png"
+    reference.save(screenshot)
+    result = assert_region_matches_reference(
+        screenshot, (0, 0, 75, 29), reference, surface_name="Sparse glyph"
+    )
+    assert 4 <= result["reference_edge_pixels"] < 8
+    assert result["detail_tile_count"] >= 1
+    assert result["missing_detail_tile_ratio"] == 0
+
+    Image.new("RGB", reference.size, "#1e1e1e").save(screenshot)
+    with pytest.raises(RuntimeError, match="reference render"):
+        assert_region_matches_reference(
+            screenshot, (0, 0, 75, 29), reference, surface_name="Sparse glyph"
+        )
 
 
 def test_app_polish_validator_rejects_stale_timestamp(tmp_path) -> None:
