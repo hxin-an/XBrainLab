@@ -289,13 +289,10 @@ def _settle_chat_panel_capture(app: QApplication, panel: ChatPanel) -> None:
 
 
 def _model_selection_dialog() -> QWidget:
-    dialog = ModelSelectionDialog(
+    return ModelSelectionDialog(
         None,
         provider_status=BraindecodeProviderStatus(True, "1.6.1", "", True),
     )
-    dialog.adjustSize()
-    dialog.resize(QSize(680, max(dialog.sizeHint().height(), 452)))
-    return dialog
 
 
 def _rereference_dialog() -> QWidget:

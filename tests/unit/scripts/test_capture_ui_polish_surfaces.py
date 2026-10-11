@@ -56,6 +56,8 @@ from scripts.dev.human_like_walkthrough.evidence import (
 from scripts.dev.human_like_walkthrough.readiness import (
     assert_consecutive_complete_frames,
 )
+from XBrainLab.backend.model_base.model_catalog import BraindecodeProviderStatus
+from XBrainLab.ui.dialogs.training.model_selection_dialog import ModelSelectionDialog
 from XBrainLab.ui.styles.stylesheets import Stylesheets
 
 
@@ -125,8 +127,14 @@ def test_model_selection_capture_uses_compact_product_geometry(qtbot) -> None:
     assert banner is not None
     assert banner.isHidden()
     assert dialog.findChild(QTableWidget) is None
-    assert dialog.width() == 680
-    assert 452 <= dialog.height() < 520
+    product_dialog = ModelSelectionDialog(
+        None, provider_status=BraindecodeProviderStatus(True, "1.6.1", "", True)
+    )
+    qtbot.addWidget(product_dialog)
+    dialog.show()
+    product_dialog.show()
+    qtbot.wait(20)
+    assert dialog.size() == product_dialog.size()
 
 
 def test_data_splitting_capture_rejects_core_control_beyond_horizontal_viewport(

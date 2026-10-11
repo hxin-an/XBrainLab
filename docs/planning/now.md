@@ -38,3 +38,5 @@ Windows 隔離預覽已開啟至真實 Model Selection，確認可見且有回�
 不變。23 項 focused tests、Ruff 通過；已檢視新版原生截圖。
 Next：檢查適用 visual references 與定稿 diff → 建立 PR → 追蹤同 head CI，修理實際失敗 →
 開啟完整正式候選與 log，交使用者 focused 驗收。Set Training／Data Split 不納入本輪。
+正式驗證發現：DPI capture factory 覆寫 model dialog 為至少 452 px，會掩蓋已接受的
+compact sizing；補 factory 與真 dialog 尺寸一致的 regression，再移除這個尺寸覆寫。
