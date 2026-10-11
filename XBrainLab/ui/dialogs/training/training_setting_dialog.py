@@ -380,11 +380,15 @@ class TrainingSettingDialog(BaseDialog):
             self.evaluation_combo.setCurrentIndex(index)
 
     def _load_settings_snapshot(self, option: dict[str, Any]) -> None:
-        """Load saved settings from an ApplicationService state snapshot."""
-        validation_available = option.get("validation_samples_available")
-        self._validation_samples_available = (
-            validation_available if isinstance(validation_available, bool) else None
-        )
+        """Apply supplied fields without resetting other draft values."""
+        if "validation_samples_available" in option:
+            validation_available = option["validation_samples_available"]
+            self._validation_samples_available = (
+                validation_available if isinstance(validation_available, bool) else None
+            )
+        evaluation = option.get("evaluation_option")
+        if evaluation and self.evaluation_combo:
+            self._set_evaluation_option(evaluation)
         if self.epoch_entry and option.get("epoch") is not None:
             self.epoch_entry.setText(str(option["epoch"]))
         if self.bs_entry and option.get("batch_size") is not None:
@@ -395,18 +399,21 @@ class TrainingSettingDialog(BaseDialog):
             self.checkpoint_entry.setText(str(option["checkpoint_epoch"]))
         if self.repeat_entry and option.get("repeat") is not None:
             self.repeat_entry.setText(str(option["repeat"]))
-        if self.early_stopping_check is not None:
-            self.early_stopping_check.setChecked(
-                bool(option.get("early_stopping_enabled", False))
-            )
-            self._sync_early_stopping_inputs()
-        if self.early_stopping_patience_entry is not None:
+        if self.early_stopping_check is not None and "early_stopping_enabled" in option:
+            self.early_stopping_check.setChecked(bool(option["early_stopping_enabled"]))
+        if (
+            self.early_stopping_patience_entry is not None
+            and "early_stopping_patience" in option
+        ):
             self.early_stopping_patience_entry.setText(
-                str(option.get("early_stopping_patience", 3))
+                str(option["early_stopping_patience"])
             )
-        if self.early_stopping_min_delta_entry is not None:
+        if (
+            self.early_stopping_min_delta_entry is not None
+            and "early_stopping_min_delta" in option
+        ):
             self.early_stopping_min_delta_entry.setText(
-                str(option.get("early_stopping_min_delta", 0.0))
+                str(option["early_stopping_min_delta"])
             )
 
         optimizer_name = option.get("optimizer")
@@ -448,11 +455,8 @@ class TrainingSettingDialog(BaseDialog):
             if self.output_dir_label:
                 self.output_dir_label.setText(self.output_dir)
 
-        evaluation = option.get("evaluation_option")
-        if evaluation and self.evaluation_combo:
-            self._set_evaluation_option(evaluation)
-        mode = option.get("class_weight_mode", "off")
-        if self.class_weight_combo is not None:
+        mode = option.get("class_weight_mode")
+        if self.class_weight_combo is not None and mode is not None:
             index = self.class_weight_combo.findData(str(mode))
             if index >= 0:
                 self.class_weight_combo.setCurrentIndex(index)
@@ -461,6 +465,7 @@ class TrainingSettingDialog(BaseDialog):
             for name, entry in self.class_weight_entries.items():
                 if name in custom:
                     entry.setText(str(custom[name]))
+        self._sync_early_stopping_inputs()
 
     def apply_recommendation(
         self,

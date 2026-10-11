@@ -726,9 +726,6 @@ class TrainingPanel(BasePanel):
             self._has_verified_history_render = False
             self._clear_training_display()
             return
-        if self.training_completed_shown:
-            rows = self._rows_with_terminal_status(rows)
-
         previous_log_signature = self._history_log_signature(
             self.current_plotting_row,
         )
@@ -796,9 +793,12 @@ class TrainingPanel(BasePanel):
                 index
                 for index, row in enumerate(copied_rows)
                 if row.get("is_current_run")
+                and row.get("status") in {"Running", "Pending"}
             ),
-            len(copied_rows) - 1,
+            None,
         )
+        if target_index is None:
+            return copied_rows
         copied_rows[target_index] = {
             **copied_rows[target_index],
             "status": status,

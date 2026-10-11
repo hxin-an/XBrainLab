@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import cast
 from unittest.mock import MagicMock, patch
 
@@ -865,6 +866,51 @@ class TestTrainingSetting:
         assert dialog.get_recommendation().provenance["batch_size"] is (
             TrainingSettingProvenance.RECOMMENDED
         )
+
+    @pytest.mark.parametrize("proposal_timing", ["construction", "draft"])
+    def test_partial_proposal_preserves_unmentioned_training_settings(
+        self, qtbot, tmp_path, proposal_timing
+    ):
+        snapshot = {
+            "validation_samples_available": True,
+            "early_stopping_enabled": True,
+            "early_stopping_patience": 7,
+            "early_stopping_min_delta": 0.25,
+            "evaluation_option": TrainingEvaluation.VAL_LOSS,
+            "class_weight_mode": "custom",
+            "custom_class_weights": {"left": 2.5, "right": 0.5},
+            "class_map": {0: "left", 1: "right"},
+            "class_map_fingerprint": "a" * 64,
+            "output_dir": str(tmp_path),
+        }
+        original_snapshot = deepcopy(snapshot)
+        proposal = {"learning_rate": 0.002}
+        dialog = TrainingSettingDialog(
+            None,
+            initial_option=snapshot,
+            proposed_values=proposal if proposal_timing == "construction" else None,
+        )
+        qtbot.addWidget(dialog)
+        if proposal_timing == "draft":
+            dialog.early_stopping_patience_entry.setText("9")
+            dialog.apply_proposed_values(proposal)
+        assert dialog.early_stopping_check.isEnabled()
+        assert dialog.early_stopping_check.isChecked()
+        with patch(
+            "XBrainLab.ui.dialogs.training.training_setting_dialog.show_warning"
+        ) as warning:
+            dialog.accept()
+        warning.assert_not_called()
+        result = dialog.get_result()
+        assert result is not None
+        assert result.lr == 0.002
+        assert result.early_stopping_enabled
+        assert result.early_stopping_patience == (
+            7 if proposal_timing == "construction" else 9
+        )
+        assert result.early_stopping_min_delta == 0.25
+        assert result.custom_class_weights == {"left": 2.5, "right": 0.5}
+        assert dialog.initial_option == original_snapshot
 
     def test_tracks_only_actual_and_explicit_recommendation_edits(self, qtbot):
         recommendation = _recommendation(

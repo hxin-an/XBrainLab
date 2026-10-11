@@ -241,6 +241,75 @@ def test_later_repeat_failure_preserves_completed_history(tiny_training, failure
     assert rows[1]["status_detail"] == holder.error
 
 
+@pytest.mark.parametrize("history_source", ["publication", "query"])
+def test_training_panel_preserves_real_early_stop_status(
+    tiny_training, qtbot, history_source
+):
+    from dataclasses import replace
+    from types import SimpleNamespace
+
+    from XBrainLab.backend.application import (
+        ApplicationStateSnapshot,
+        ApplicationViewPublication,
+        CapabilityPolicy,
+    )
+    from XBrainLab.backend.application.results import ChangedState, CommandResult
+    from XBrainLab.backend.training_state_contract import TrainingTerminalOutcome
+    from XBrainLab.ui.panels.training.panel import TrainingPanel
+
+    dataset, option, model_holder = tiny_training
+    holder = TrainingPlanHolder(model_holder, dataset, option, {})
+    holder.train()
+    assert holder.error is None
+    rows = project_training_history_rows(
+        [{"plan": holder, "record": record} for record in holder.get_plans()]
+    )
+    assert [row["status"] for row in rows] == ["Completed early"] * 2
+    initial = ApplicationStateSnapshot.empty()
+    publication = ApplicationViewPublication(
+        generation=1,
+        revision=1,
+        state=replace(
+            initial,
+            training=replace(
+                initial.training,
+                terminal_outcome=TrainingTerminalOutcome(
+                    TrainingOutcomeState.COMPLETED
+                ),
+            ),
+        ),
+        capabilities=CapabilityPolicy({}),
+        verified=True,
+        stale=False,
+        training_history=tuple(rows) if history_source == "publication" else None,
+    )
+    ports = SimpleNamespace(
+        get_view_publication=lambda: publication,
+        query_training_history=lambda **_kwargs: CommandResult.success_result(
+            "history",
+            "history",
+            {},
+            ChangedState(),
+            diagnostics={"payload_type": "training_history", "rows": rows},
+        ),
+    )
+    # Only the publication transport is detached; training, projection, widgets,
+    # terminal reconciliation and subsequent progress refresh remain real.
+    panel = TrainingPanel(query_port=ports)
+    panel._publication_port = ports
+    qtbot.addWidget(panel)
+    panel.update_panel()
+    panel.update_loop(log_epochs=True)
+
+    assert [panel.history_table.item(index, 3).text() for index in range(2)] == [
+        "Completed early",
+        "Completed early",
+    ]
+    assert rows[1]["status_detail"] in panel.log_text.toPlainText()
+    assert panel.tab_acc.test_vals == rows[1]["metrics"]["test"]["accuracy"]
+    panel.close()
+
+
 @pytest.mark.parametrize("failed_repeat", [0, 1])
 def test_final_artifact_failure_does_not_publish_completed_evaluation(
     tiny_training, monkeypatch, failed_repeat

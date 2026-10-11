@@ -3,6 +3,7 @@ from copy import deepcopy
 from dataclasses import replace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from PyQt6.QtWidgets import QApplication
 
 from XBrainLab.backend.application import (
@@ -369,3 +370,88 @@ def test_training_panel_delayed_transient_tick_keeps_terminal_render_idempotent(
     qtbot.waitUntil(lambda: panel.log_text.toPlainText() == before_log)
     assert panel.current_plotting_identity == before_identity
     assert panel.sidebar.btn_stop.isEnabled() is False
+
+
+def test_training_panel_terminal_fallback_only_applies_while_history_is_unavailable(
+    qtbot,
+):
+    ports = _typed_training_ports()
+    panel = _panel(ports)
+    qtbot.addWidget(panel)
+    running = replace(ports.get_view_publication(), training_history=(_history_row(),))
+    ports.get_view_publication.return_value = running
+    panel.update_loop()
+    terminal = replace(
+        running,
+        generation=2,
+        revision=2,
+        state=replace(
+            running.state,
+            training=replace(
+                running.state.training,
+                terminal_outcome=TrainingTerminalOutcome(
+                    TrainingOutcomeState.FAILED, detail="Final artifact export failed"
+                ),
+            ),
+        ),
+        training_history=None,
+    )
+    ports.get_view_publication.return_value = terminal
+    ports.query_training_history.return_value = CommandResult.failure_result(
+        "history",
+        "busy",
+        None,
+        ChangedState(),
+        ErrorType.PRECONDITION,
+        True,
+    )
+    panel.update_panel()
+
+    assert panel.history_table.item(0, 3).text() == "Failed"
+    assert "Final artifact export failed" in panel.log_text.toPlainText()
+    assert panel.tab_acc.train_vals == [0.7]
+    panel.close()
+
+
+@pytest.mark.parametrize("previous_status", ["Completed early", "Completed", "Pending"])
+def test_training_panel_terminal_fallback_does_not_guess_a_noncurrent_row(
+    qtbot, previous_status
+):
+    ports = _typed_training_ports()
+    panel = _panel(ports)
+    qtbot.addWidget(panel)
+    previous = replace(
+        ports.get_view_publication(),
+        training_history=(_history_row(status=previous_status),),
+    )
+    ports.get_view_publication.return_value = previous
+    panel.update_loop()
+    terminal = replace(
+        previous,
+        generation=2,
+        revision=2,
+        state=replace(
+            previous.state,
+            training=replace(
+                previous.state.training,
+                terminal_outcome=TrainingTerminalOutcome(
+                    TrainingOutcomeState.FAILED, detail="New attempt failed"
+                ),
+            ),
+        ),
+        training_history=None,
+    )
+    ports.get_view_publication.return_value = terminal
+    ports.query_training_history.return_value = CommandResult.failure_result(
+        "history",
+        "busy",
+        None,
+        ChangedState(),
+        ErrorType.PRECONDITION,
+        True,
+    )
+    panel.update_panel()
+
+    assert panel.history_table.item(0, 3).text() == previous_status
+    assert panel._last_verified_history_rows[0]["status"] == previous_status
+    panel.close()

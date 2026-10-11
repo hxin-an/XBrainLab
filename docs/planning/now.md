@@ -71,6 +71,16 @@ Next：凍結實作→小commit與同版本CI/source-diverse/platform gates→�
 Training→Evaluation／Saliency與Preprocess驗證→開啟程式與PowerShell log交集中手測。
 CI `c1d77563` 發現MNE joint resample回傳型別的兩個diagnostics；沿events非None的
 既有tuple契約補明確型別，focused型別/數值測試後以新head重驗，不更動baseline。
+同輪backend gate尚有一個舊Notch含括弧期待；保留真Command/prepare/commit斷言，
+只同步已授權顯示文字，再跑該實際流程。
+Fresh Training UI覆核：成功取得的backend history也被busy-query terminal fallback覆寫，
+會將Completed early改成Completed；保留既有fallback但只用於query unavailable，
+以真early-stop結果與Qt table補測，不讓UI取代backend已提供的狀態。
+Training Settings partial proposal：只提議learning rate會重置未提議的early-stop／
+class-weight與validation可用性；補真dialog→accept測試，loader只更新明確提供的欄位，
+保留既有預設、後端validation事實及未指定設定，不新增Assistant契約。
+此補充已red→green及獨立覆核；刪除無caller/動態註冊的sidebar model-name私有helper，
+保留ResourcePreflightView既有顯示owner。Native與CI一律針對最後整合head重新核對。
 
 ### Earlier Training scope and reviewed decisions
 

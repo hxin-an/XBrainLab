@@ -291,7 +291,7 @@ def test_notch_below_lowest_source_nyquist_uses_existing_prepare_and_commit() ->
     assert detached_targets[0].prepare_filter.call_count == 1
     assert commit_prepared.call_count == 1
     assert (
-        "notch [40.0] hz"
+        "notch 40 hz"
         in study.preprocessed_data_list[0].get_preprocess_history()[-1].lower()
     )
 

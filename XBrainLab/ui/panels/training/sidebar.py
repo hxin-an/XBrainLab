@@ -553,20 +553,6 @@ class TrainingSidebar(QWidget):
         }.get(str(risk_level), "Unknown")
 
     @staticmethod
-    def _training_model_name(model_holder: Any | None) -> str:
-        if model_holder is None:
-            return "Unknown"
-        target_model = getattr(model_holder, "target_model", None)
-        name = getattr(target_model, "__name__", None)
-        if name:
-            return str(name)
-        for attr in ("model_name", "name"):
-            value = getattr(model_holder, attr, None)
-            if value:
-                return str(value)
-        return "Unknown"
-
-    @staticmethod
     def _training_resource_unknown_reasons(
         result: ResourcePreflightView,
     ) -> list[str]:
