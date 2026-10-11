@@ -113,6 +113,8 @@ def run_dataset_journey(
     """Replay one complete user journey through the product command spine."""
     if execution_profile not in {"smoke", "showcase"}:
         raise ValueError("execution_profile must be smoke or showcase")
+    from XBrainLab.backend.training_state_contract import PostTrainingSaliencyPhase
+
     symbols = _product_symbols()
     factory = service_factory or symbols["ApplicationService"]
     service = factory()
@@ -302,6 +304,26 @@ def run_dataset_journey(
             "repeat_seeds": persisted_repeat_seeds,
         }
         evidence["timings"]["training"] = time.perf_counter() - stage_started
+        _checkpoint(checkpoint_path, evidence, current_stage, "completed")
+
+        current_stage = "saliency"
+        stage_started = time.perf_counter()
+        _execute(
+            service,
+            symbols["SaliencyCommand"](params=dict(evidence["saliency"]["params"])),
+            stage="compute_saliency",
+            trace=trace,
+            confirm_resource_plan=confirm_resource_plan,
+        )
+        _wait_for_background_tasks(service, timeout=1800.0)
+        saliency_status = (
+            service.get_view_publication().state.visualization.post_training_saliency
+        )
+        if saliency_status.phase is not PostTrainingSaliencyPhase.SUCCEEDED:
+            raise RuntimeError(  # noqa: TRY301 - recorded by the journey stage boundary
+                f"Saliency computation did not succeed: {saliency_status.phase.value}."
+            )
+        evidence["timings"]["saliency"] = time.perf_counter() - stage_started
         _checkpoint(checkpoint_path, evidence, current_stage, "completed")
 
         current_stage = "evaluation"

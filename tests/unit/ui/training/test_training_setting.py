@@ -1283,6 +1283,8 @@ class TestTrainingSetting:
             resource_preview_request=request,
         )
         qtbot.addWidget(dialog)
+        dialog.show()
+        qtbot.waitUntil(dialog.isVisible)
         current = dialog.build_training_resource_preview_request()
         assert current is not None
 
@@ -1302,9 +1304,12 @@ class TestTrainingSetting:
 
         assert applied is False
         assert dialog.bs_entry.text() == "8"
+        assert dialog.resource_preview_note is not None
+        assert dialog.resource_preview_note.isHidden()
         visible_text = " ".join(
             label.text() for label in dialog.findChildren(QLabel) if label.isVisible()
         )
+        assert "Training Settings" in visible_text
         assert "GPU memory" not in visible_text
 
     def test_set_output_dir(self, window):

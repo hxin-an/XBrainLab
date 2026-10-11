@@ -557,11 +557,14 @@ def test_resource_confirmation_message_preserves_risk_labels(sidebar, risk, labe
     assert f"VRAM risk level: {label}" in message
 
 
-def test_execution_section_does_not_show_persistent_resource_status(sidebar):
+def test_execution_section_does_not_show_persistent_resource_status(sidebar, qtbot):
+    sidebar.show()
+    qtbot.waitUntil(sidebar.isVisible)
     visible_text = " ".join(
         label.text() for label in sidebar.findChildren(QLabel) if label.isVisible()
     )
 
+    assert sidebar.btn_start.isVisible()
     assert "Resource check" not in visible_text
     assert "GPU memory unavailable" not in visible_text
 
@@ -1444,8 +1447,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
         "settings",
         "capability_enabled",
         "capability_reason",
-        "expected_statuses",
-        "expected_next",
     ),
     [
         pytest.param(
@@ -1457,8 +1458,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             False,
             False,
             "Import EEG data before training.",
-            ("Needed", "Needed", "Needed"),
-            "Next: Import EEG data",
             id="import",
         ),
         pytest.param(
@@ -1470,8 +1469,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             False,
             False,
             "Preprocess the imported EEG data before training.",
-            ("Needed", "Needed", "Needed"),
-            "Next: Preprocess EEG",
             id="preprocess",
         ),
         pytest.param(
@@ -1483,8 +1480,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             False,
             False,
             "Create EEG epochs before configuring training datasets.",
-            ("Needed", "Needed", "Needed"),
-            "Next: Create EEG epochs",
             id="epochs-before-split",
         ),
         pytest.param(
@@ -1496,8 +1491,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             False,
             False,
             "Generate datasets before training.",
-            ("Needed", "Needed", "Needed"),
-            "Next: Configure dataset split",
             id="split",
         ),
         pytest.param(
@@ -1509,8 +1502,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             False,
             False,
             "Select a model before training.",
-            ("Ready", "Needed", "Needed"),
-            "Next: Select model",
             id="model",
         ),
         pytest.param(
@@ -1522,8 +1513,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             False,
             False,
             "Set training options before training.",
-            ("Ready", "Ready", "Needed"),
-            "Next: Set training options",
             id="settings",
         ),
         pytest.param(
@@ -1535,8 +1524,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             True,
             True,
             "",
-            ("Ready", "Ready", "Ready"),
-            None,
             id="ready",
         ),
     ],
@@ -1551,8 +1538,6 @@ def test_training_start_availability_uses_one_application_publication(
     settings,
     capability_enabled,
     capability_reason,
-    expected_statuses,
-    expected_next,
 ):
     capability = CommandCapability(
         command_name="train",

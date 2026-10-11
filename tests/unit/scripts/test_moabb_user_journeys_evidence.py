@@ -31,6 +31,7 @@ from scripts.dev.moabb_user_journeys.registry import (
     materialize_dataset,
 )
 from scripts.dev.moabb_user_journeys.storage import write_json_atomic
+from XBrainLab.backend.training_state_contract import PostTrainingSaliencyPhase
 
 
 class _Result:
@@ -164,7 +165,12 @@ class _RecordingService:
                     split_specification_fingerprint="moabb-journey-split-sha256",
                     split_epoch_revision=1,
                 ),
-                visualization=SimpleNamespace(saliency_coverage=coverage),
+                visualization=SimpleNamespace(
+                    saliency_coverage=coverage,
+                    post_training_saliency=SimpleNamespace(
+                        phase=PostTrainingSaliencyPhase.SUCCEEDED
+                    ),
+                ),
             ),
         )
 
@@ -664,7 +670,7 @@ def test_showcase_journey_records_actual_product_sequence_and_quality_inputs(
         "Gradient",
         "Gradient * Input",
     }
-    assert service.wait_timeouts == [1800.0, 30.0]
+    assert service.wait_timeouts == [1800.0, 1800.0, 30.0]
     assert service.commands == [
         "scan_source",
         "preview_interpretation",
@@ -680,10 +686,125 @@ def test_showcase_journey_records_actual_product_sequence_and_quality_inputs(
         "configure_training",
         "saliency",
         "train",
+        "saliency",
         "query_state",
         "evaluate",
         "saliency",
     ]
+
+
+@pytest.mark.parametrize(
+    "phase", [PostTrainingSaliencyPhase.FAILED, PostTrainingSaliencyPhase.CANCELLED]
+)
+def test_journey_stops_before_export_when_saliency_does_not_succeed(
+    tmp_path: Path, phase: PostTrainingSaliencyPhase
+) -> None:
+    class FailedSaliencyService(_RecordingService):
+        def get_view_publication(self) -> SimpleNamespace:
+            publication = super().get_view_publication()
+            publication.state.visualization.post_training_saliency.phase = phase
+            return publication
+
+    service = FailedSaliencyService()
+    evidence = run_dataset_journey(
+        _dataset(),
+        run_root=tmp_path,
+        source_artifacts=[],
+        execution_profile="showcase",
+        confirm_resource_plan=False,
+        attempt=1,
+        previous_failure=None,
+        service_factory=lambda: service,
+    )
+    assert evidence["failures"][0]["stage"] == "saliency"
+    assert phase.value in evidence["failures"][0]["message"]
+    assert evidence["quality_evidence_status"] == "failed"
+    assert evidence["saliency"]["artifacts"] == []
+    assert "evaluate" not in service.commands
+    assert service.closed
+
+
+def test_journey_saliency_timeout_fails_closed_and_closes_service(
+    tmp_path: Path,
+) -> None:
+    class TimeoutSaliencyService(_RecordingService):
+        def wait_for_background_tasks(self, timeout: float) -> bool:
+            super().wait_for_background_tasks(timeout)
+            return len(self.wait_timeouts) != 2
+
+    service = TimeoutSaliencyService()
+    evidence = run_dataset_journey(
+        _dataset(),
+        run_root=tmp_path,
+        source_artifacts=[],
+        execution_profile="smoke",
+        confirm_resource_plan=False,
+        attempt=1,
+        previous_failure=None,
+        service_factory=lambda: service,
+    )
+    assert evidence["failures"][0]["stage"] == "saliency"
+    assert evidence["failures"][0]["type"] == "TimeoutError"
+    assert evidence["saliency"]["artifacts"] == []
+    assert "evaluate" not in service.commands
+    assert service.closed
+
+
+def test_real_journey_computes_configured_saliency_after_training(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    import numpy as np
+
+    from scripts.dev.chatpanel_training_fixture import write_training_ready_raw_fif
+
+    tmp_path = tmp_path_factory.mktemp("journey")
+    source = write_training_ready_raw_fif(tmp_path / "training_ready_raw.fif")
+    dataset = _dataset()
+    dataset["id"] = "synthetic-training-saliency"
+    dataset["import"] = {
+        "source_path": str(source),
+        "source_hint": "file",
+        "choices": {"label_carrier": "embedded_events"},
+    }
+    workflow = dataset["workflow"]
+    workflow["preprocessing"] = [
+        {
+            "operation": "standard",
+            "low_freq": 4.0,
+            "high_freq": 40.0,
+            "method": "z-score",
+        }
+    ]
+    workflow["epoch"] = {"t_min": 0.0, "t_max": 1.5, "event_ids": ["left", "right"]}
+    workflow["split"] = {
+        "test_ratio": 0.25,
+        "val_ratio": 0.25,
+        "split_strategy": "trial",
+        "training_mode": "individual",
+    }
+    workflow["training_profiles"]["smoke"]["batch_size"] = 2
+    evidence = run_dataset_journey(
+        dataset,
+        run_root=tmp_path / "journey",
+        source_artifacts=[],
+        execution_profile="smoke",
+        confirm_resource_plan=False,
+        attempt=1,
+        previous_failure=None,
+    )
+    assert evidence["failures"] == []
+    assert evidence["model"]["terminal_training_state"]["finished_run_count"] == 1
+    artifacts = evidence["saliency"]["artifacts"]
+    assert {item["method"] for item in artifacts} == set(
+        workflow["saliency"]["methods"]
+    )
+    for artifact in artifacts:
+        with np.load(artifact["path"], allow_pickle=False) as archive:
+            assert archive.files
+            assert all(
+                archive[key].size > 0 and np.isfinite(archive[key]).all()
+                for key in archive.files
+            )
 
 
 def test_showcase_journey_fails_closed_when_configured_seed_is_unverifiable(
