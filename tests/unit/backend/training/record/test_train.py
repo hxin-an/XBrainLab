@@ -1,5 +1,4 @@
 import os
-import shutil
 from pathlib import Path
 from types import MappingProxyType
 from unittest.mock import patch
@@ -102,16 +101,7 @@ def test_resume_and_pause_preserve_training_interval_boundaries(train_record):
     assert train_record.end_timestamp is None
 
 
-@pytest.fixture()
-def cleanup():
-    yield
-
-    if os.path.exists("ok"):
-        shutil.rmtree("ok")
-
-
 def test_train_record_init_dir(
-    cleanup,
     dataset,  # noqa: F811
     training_option,  # noqa: F811
     model_holder,  # noqa: F811

@@ -273,16 +273,6 @@ def _training_status(
     epoch: int,
     is_current_run: bool,
 ) -> str:
-    plan_status = ""
-    getter = getattr(plan, "get_training_status", None)
-    if callable(getter):
-        try:
-            plan_status = str(getter() or "")
-        except Exception:
-            plan_status = ""
-    status_lower = plan_status.lower()
-    if "out of memory" in status_lower or status_lower.startswith("failed"):
-        return "Failed"
     finished = False
     is_finished = getattr(record, "is_finished", None)
     if callable(is_finished):
@@ -297,6 +287,19 @@ def _training_status(
         ):
             return "Completed early"
         return "Completed"
+    error = getattr(plan, "error", None)
+    if isinstance(error, str) and error:
+        return "Failed"
+    plan_status = ""
+    getter = getattr(plan, "get_training_status", None)
+    if callable(getter):
+        try:
+            plan_status = str(getter() or "")
+        except Exception:
+            plan_status = ""
+    status_lower = plan_status.lower()
+    if "out of memory" in status_lower or status_lower.startswith("failed"):
+        return "Failed"
     if is_current_run:
         return "Running"
     if epoch == 0:

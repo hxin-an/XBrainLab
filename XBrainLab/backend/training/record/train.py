@@ -122,7 +122,13 @@ def _normalize_early_stopping(value: object) -> dict[str, object]:
         or (stop_epoch is not None and (type(stop_epoch) is not int or stop_epoch <= 0))
     ):
         raise ArtifactStoreError("Training early-stopping metadata is malformed.")
-    if not enabled and value != _disabled_early_stopping():
+    if not enabled and (
+        stopped
+        or best_value is not None
+        or best_epoch is not None
+        or count != 0
+        or stop_epoch is not None
+    ):
         raise ArtifactStoreError("Training early-stopping metadata is malformed.")
     if enabled and (
         (best_value is None) != (best_epoch is None)

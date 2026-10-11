@@ -797,6 +797,83 @@ def test_training_record_v3_weighting_round_trip_is_lossless(
         assert loaded.criterion.weight.tolist() == pytest.approx(resolved["weights"])
 
 
+@pytest.mark.parametrize("patience,min_delta", [(7, 0.25), (1, 0.0)])
+def test_disabled_early_stopping_retains_custom_settings_through_artifact_reload(
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+    patience,
+    min_delta,
+):
+    training_option.early_stopping_patience = patience
+    training_option.early_stopping_min_delta = min_delta
+    training_option.validate()
+    record = TrainRecord(0, dataset, model_holder.get_model({}), training_option, 17)
+    record.update_train({RecordKey.LOSS: 0.75})
+    record.step()
+    record.export_checkpoint()
+
+    with patch.object(TrainRecord, "init_dir"):
+        restored = TrainRecord(
+            0, dataset, model_holder.get_model({}), training_option, 0
+        )
+    restored.target_path = record.target_path
+    restored._artifact_io_path = record._artifact_io_path
+    restored.load()
+
+    assert restored.epoch == 1
+    assert restored.seed == 17
+    assert restored.train[RecordKey.LOSS] == [0.75]
+    assert restored.early_stopping == record.early_stopping
+    assert restored.early_stopping["patience"] == patience
+    assert restored.early_stopping["min_delta"] == min_delta
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("patience", 0),
+        ("patience", True),
+        ("min_delta", -0.1),
+        ("min_delta", True),
+        ("stopped_early", True),
+        ("best_value", 0.5),
+        ("best_epoch", 1),
+        ("consecutive_non_improvements", 1),
+        ("stop_epoch", 1),
+    ],
+)
+def test_disabled_early_stopping_rejects_invalid_settings_and_active_state(
+    dataset,  # noqa: F811
+    training_option,  # noqa: F811
+    model_holder,  # noqa: F811
+    field,
+    value,
+):
+    record = TrainRecord(0, dataset, model_holder.get_model({}), training_option, 17)
+    record.update_train({RecordKey.LOSS: 0.75})
+    record.step()
+    record.export_checkpoint()
+    manifest_path = Path(record.target_path) / "record"
+    manifest = _read_manifest(manifest_path)
+    manifest["payload"]["early_stopping"][field] = value
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with patch.object(TrainRecord, "init_dir"):
+        restored = TrainRecord(
+            0, dataset, model_holder.get_model({}), training_option, 0
+        )
+    restored.target_path = record.target_path
+    restored._artifact_io_path = record._artifact_io_path
+    restored.load()
+
+    assert restored.epoch == 0
+    assert restored.seed == 0
+    assert restored.train[RecordKey.LOSS] == []
+    assert restored.early_stopping["enabled"] is False
+    assert restored.early_stopping["best_epoch"] is None
+
+
 def test_training_record_v2_migrates_early_stopping_to_disabled(
     tmp_path: Path,
     dataset,  # noqa: F811
