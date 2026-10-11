@@ -33,7 +33,10 @@ from XBrainLab.backend.training.record.artifact_store import (
     write_json_npz_artifact,
 )
 from XBrainLab.backend.utils import set_seed
-from XBrainLab.backend.utils.filesystem_identity import FilesystemIdentityError
+from XBrainLab.backend.utils.filesystem_identity import (
+    FilesystemIdentityError,
+    StableDirectoryIdentity,
+)
 
 
 class _ReplacingDirectoryIdentity:
@@ -50,6 +53,265 @@ class _ReplacingDirectoryIdentity:
 
 def _read_manifest(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_failed_manifest_publication_preserves_previous_artifact(tmp_path, monkeypatch):
+    manifest = tmp_path / "record"
+    write_json_npz_artifact(
+        manifest,
+        artifact_type="test.record",
+        payload={"epoch": 1},
+        arrays={"loss": np.array([1.0])},
+    )
+    original_replace = StableDirectoryIdentity.replace_entry
+
+    def fail_manifest_replace(identity, source, target):
+        if Path(target) == manifest:
+            raise OSError("manifest publication failed")
+        original_replace(identity, source, target)
+
+    monkeypatch.setattr(StableDirectoryIdentity, "replace_entry", fail_manifest_replace)
+    with pytest.raises(OSError, match="manifest publication failed"):
+        write_json_npz_artifact(
+            manifest,
+            artifact_type="test.record",
+            payload={"epoch": 2},
+            arrays={"loss": np.array([1.0, 0.5])},
+        )
+
+    payload, arrays = read_json_npz_artifact(
+        manifest, expected_artifact_type="test.record"
+    )
+    assert payload == {"epoch": 1}
+    np.testing.assert_array_equal(arrays["loss"], [1.0])
+
+
+def _write_publication_fixture(manifest: Path, epoch: int) -> None:
+    write_json_npz_artifact(
+        manifest,
+        artifact_type="test.record",
+        payload={"epoch": epoch},
+        arrays={"loss": np.arange(epoch, dtype=float)},
+    )
+
+
+def test_first_manifest_failure_leaves_no_public_artifact(tmp_path, monkeypatch):
+    manifest = tmp_path / "record"
+    original_replace = StableDirectoryIdentity.replace_entry
+
+    def fail_manifest(identity, source, target):
+        if Path(target) == manifest:
+            raise OSError("manifest failed")
+        original_replace(identity, source, target)
+
+    monkeypatch.setattr(StableDirectoryIdentity, "replace_entry", fail_manifest)
+    with pytest.raises(OSError, match="manifest failed"):
+        _write_publication_fixture(manifest, 1)
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("failure_stage", ["backup", "backup-missing", "arrays"])
+def test_failure_before_manifest_keeps_previous_pair(
+    tmp_path, monkeypatch, failure_stage
+):
+    manifest = tmp_path / "record"
+    _write_publication_fixture(manifest, 1)
+    old_files = {path.name: path.read_bytes() for path in tmp_path.iterdir()}
+    original_open = StableDirectoryIdentity.open_existing_binary
+    original_replace = StableDirectoryIdentity.replace_entry
+
+    def fail_old_payload_read(identity, path):
+        stream = original_open(identity, path)
+        if not failure_stage.startswith("backup") or Path(path).name != "record.npz":
+            return stream
+
+        class FailedRead:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                stream.close()
+
+            def read(self, _size):
+                if failure_stage == "backup-missing":
+                    raise FileNotFoundError("backup read failed")
+                raise OSError("backup read failed")
+
+        return FailedRead()
+
+    def fail_arrays_replace(identity, source, target):
+        if failure_stage == "arrays" and Path(target).name == "record.npz":
+            raise OSError("arrays replacement failed")
+        original_replace(identity, source, target)
+
+    monkeypatch.setattr(
+        StableDirectoryIdentity, "open_existing_binary", fail_old_payload_read
+    )
+    monkeypatch.setattr(StableDirectoryIdentity, "replace_entry", fail_arrays_replace)
+    with pytest.raises(OSError, match="failed"):
+        _write_publication_fixture(manifest, 2)
+    assert {path.name: path.read_bytes() for path in tmp_path.iterdir()} == old_files
+
+
+def test_failed_rollback_retains_previous_numeric_bytes(tmp_path, monkeypatch):
+    manifest = tmp_path / "record"
+    _write_publication_fixture(manifest, 1)
+    old_arrays = (tmp_path / "record.npz").read_bytes()
+    original_replace = StableDirectoryIdentity.replace_entry
+    arrays_replaced = False
+
+    def fail_manifest_and_restore(identity, source, target):
+        nonlocal arrays_replaced
+        if Path(target) == manifest:
+            raise OSError("manifest failed")
+        if arrays_replaced:
+            raise OSError("restore failed")
+        original_replace(identity, source, target)
+        arrays_replaced = True
+
+    monkeypatch.setattr(
+        StableDirectoryIdentity, "replace_entry", fail_manifest_and_restore
+    )
+    with pytest.raises(ArtifactStoreError, match="rollback") as caught:
+        _write_publication_fixture(manifest, 2)
+    assert isinstance(caught.value.__cause__, OSError)
+    assert str(caught.value.__cause__) == "restore failed"
+    assert str(caught.value.__cause__.__context__) == "manifest failed"
+    backups = [path for path in tmp_path.iterdir() if path.name.startswith(".")]
+    assert len(backups) == 1
+    assert backups[0].read_bytes() == old_arrays
+    assert backups[0].name in str(caught.value)
+
+
+@pytest.mark.parametrize("failed_target", ["record.npz", "record"])
+def test_post_replace_identity_failure_never_recovers_or_cleans(
+    tmp_path, monkeypatch, failed_target
+):
+    manifest = tmp_path / "record"
+    _write_publication_fixture(manifest, 1)
+    original_replace = StableDirectoryIdentity.replace_entry
+    original_unlink = StableDirectoryIdentity.unlink_entry
+    rejected = False
+
+    def reject_after_replace(identity, source, target):
+        nonlocal rejected
+        assert not rejected, "must not restore after identity rejection"
+        original_replace(identity, source, target)
+        if Path(target).name == failed_target:
+            rejected = True
+            raise FilesystemIdentityError("post-replace identity changed")
+
+    def reject_cleanup(identity, path, *, missing_ok):
+        assert not rejected, "must not clean after identity rejection"
+        original_unlink(identity, path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(StableDirectoryIdentity, "replace_entry", reject_after_replace)
+    monkeypatch.setattr(StableDirectoryIdentity, "unlink_entry", reject_cleanup)
+    with pytest.raises(FilesystemIdentityError, match="identity changed"):
+        _write_publication_fixture(manifest, 2)
+    assert rejected
+
+
+def test_successful_artifact_overwrite_keeps_public_names(tmp_path):
+    manifest = tmp_path / "record"
+    _write_publication_fixture(manifest, 1)
+    _write_publication_fixture(manifest, 2)
+    payload, arrays = read_json_npz_artifact(
+        manifest, expected_artifact_type="test.record"
+    )
+    assert payload == {"epoch": 2}
+    np.testing.assert_array_equal(arrays["loss"], [0.0, 1.0])
+    assert {path.name for path in tmp_path.iterdir()} == {"record", "record.npz"}
+
+
+def test_cleanup_failure_does_not_mask_manifest_error(tmp_path, monkeypatch):
+    manifest = tmp_path / "record"
+    _write_publication_fixture(manifest, 1)
+    original_replace = StableDirectoryIdentity.replace_entry
+    publication_error = OSError("manifest failed")
+
+    def fail_manifest(identity, source, target):
+        if Path(target) == manifest:
+            raise publication_error
+        original_replace(identity, source, target)
+
+    def fail_cleanup(_identity, _path, *, missing_ok):
+        raise OSError("cleanup failed")
+
+    monkeypatch.setattr(StableDirectoryIdentity, "replace_entry", fail_manifest)
+    monkeypatch.setattr(StableDirectoryIdentity, "unlink_entry", fail_cleanup)
+    with pytest.raises(OSError, match="manifest failed") as caught:
+        _write_publication_fixture(manifest, 2)
+    assert caught.value is publication_error
+    assert any("cleanup failed" in note for note in caught.value.__notes__)
+    payload, _arrays = read_json_npz_artifact(
+        manifest, expected_artifact_type="test.record"
+    )
+    assert payload == {"epoch": 1}
+
+
+@pytest.mark.platform_contract
+@pytest.mark.parametrize("link_kind", ["hardlink", "symlink"])
+def test_artifact_overwrite_rejects_linked_old_numeric_payload(tmp_path, link_kind):
+    store = tmp_path / "store"
+    store.mkdir()
+    manifest = store / "record"
+    _write_publication_fixture(manifest, 1)
+    arrays_path = store / "record.npz"
+    outside = tmp_path / "outside.npz"
+    old_arrays = arrays_path.read_bytes()
+    if link_kind == "hardlink":
+        os.link(arrays_path, outside)
+    else:
+        arrays_path.replace(outside)
+        try:
+            arrays_path.symlink_to(outside)
+        except OSError as exc:
+            pytest.skip(f"Native symbolic link creation unavailable: {exc}")
+    with pytest.raises(FilesystemIdentityError):
+        _write_publication_fixture(manifest, 2)
+    assert outside.read_bytes() == old_arrays
+
+
+def test_artifact_backup_leaf_is_exclusive(tmp_path, monkeypatch):
+    manifest = tmp_path / "record"
+    _write_publication_fixture(manifest, 1)
+    old_arrays = (tmp_path / "record.npz").read_bytes()
+    occupied = tmp_path / "occupied-backup"
+    occupied.write_bytes(b"do not overwrite")
+    temporary_paths = iter(
+        [tmp_path / "new-arrays", tmp_path / "new-manifest", occupied]
+    )
+    monkeypatch.setattr(
+        artifact_store_module, "_temporary_path", lambda _: next(temporary_paths)
+    )
+    with pytest.raises(FilesystemIdentityError, match="temporary entry"):
+        _write_publication_fixture(manifest, 2)
+    assert occupied.read_bytes() == b"do not overwrite"
+    assert (tmp_path / "record.npz").read_bytes() == old_arrays
+
+
+@pytest.mark.platform_contract
+def test_artifact_backup_and_restore_support_native_long_paths(tmp_path, monkeypatch):
+    directory = tmp_path / ("d" * (240 - len(str(tmp_path)) - 1))
+    directory.mkdir()
+    manifest = directory / "record"
+    _write_publication_fixture(manifest, 1)
+    original_replace = StableDirectoryIdentity.replace_entry
+
+    def fail_manifest(identity, source, target):
+        if Path(target) == manifest:
+            raise OSError("manifest failed")
+        original_replace(identity, source, target)
+
+    monkeypatch.setattr(StableDirectoryIdentity, "replace_entry", fail_manifest)
+    with pytest.raises(OSError, match="manifest failed"):
+        _write_publication_fixture(manifest, 2)
+    payload, _arrays = read_json_npz_artifact(
+        manifest, expected_artifact_type="test.record"
+    )
+    assert payload == {"epoch": 1}
+    assert {path.name for path in directory.iterdir()} == {"record", "record.npz"}
 
 
 @pytest.mark.platform_contract

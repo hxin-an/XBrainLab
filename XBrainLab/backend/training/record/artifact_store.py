@@ -209,7 +209,12 @@ def write_json_npz_artifact(
     arrays_filename: str | None = None,
     directory_identity: StableDirectoryIdentity | None = None,
 ) -> None:
-    """Atomically write one JSON manifest and one non-pickle NPZ payload."""
+    """Publish a JSON/NPZ pair, restoring the old payload on manifest IO failure.
+
+    Each replacement is atomic, but the pair is not crash-atomic and readers
+    may reject the short interval between replacements. Public names and the
+    artifact format remain unchanged.
+    """
     target = Path(manifest_path)
     array_name = arrays_filename or f"{target.name}.npz"
     if Path(array_name).name != array_name:
@@ -234,7 +239,10 @@ def write_json_npz_artifact(
     ) as identity:
         arrays_temp = _temporary_path(arrays_path)
         manifest_temp = _temporary_path(target)
+        backup_temp: Path | None = None
+        preserve_backup = False
         cleanup_allowed = True
+        failure: BaseException | None = None
         try:
             identity.assert_matches(target.parent)
             with identity.create_exclusive_binary(arrays_temp) as stream:
@@ -261,15 +269,61 @@ def write_json_npz_artifact(
             )
             with identity.create_exclusive_binary(manifest_temp) as stream:
                 stream.write(encoded_manifest.encode("utf-8"))
+
+            try:
+                previous_payload = identity.open_existing_binary(arrays_path)
+            except FileNotFoundError:
+                previous_payload = None
+            if previous_payload is not None:
+                with previous_payload:
+                    backup_temp = _temporary_path(arrays_path)
+                    with identity.create_exclusive_binary(backup_temp) as backup:
+                        while chunk := previous_payload.read(1024 * 1024):
+                            backup.write(chunk)
+
             identity.replace_entry(arrays_temp, arrays_path)
-            identity.replace_entry(manifest_temp, target)
-        except FilesystemIdentityError:
-            cleanup_allowed = False
+            try:
+                identity.replace_entry(manifest_temp, target)
+            except OSError:
+                try:
+                    if backup_temp is not None:
+                        identity.replace_entry(backup_temp, arrays_path)
+                    else:
+                        identity.unlink_entry(arrays_path, missing_ok=True)
+                except OSError as rollback_error:
+                    preserve_backup = True
+                    recovery = (
+                        f"Previous numeric payload retained at {backup_temp.name!r}."
+                        if backup_temp is not None
+                        else "The unpublished numeric payload could not be removed."
+                    )
+                    raise ArtifactStoreError(
+                        f"Artifact publication and rollback failed. {recovery}"
+                    ) from rollback_error
+                raise
+        except BaseException as exc:
+            failure = exc
+            cleanup_allowed = not isinstance(exc, FilesystemIdentityError)
             raise
         finally:
             if cleanup_allowed:
-                _cleanup_temporary(arrays_temp, identity)
-                _cleanup_temporary(manifest_temp, identity)
+                for temporary in (
+                    arrays_temp,
+                    manifest_temp,
+                    None if preserve_backup else backup_temp,
+                ):
+                    if temporary is None:
+                        continue
+                    try:
+                        _cleanup_temporary(temporary, identity)
+                    except (OSError, FilesystemIdentityError) as cleanup_error:
+                        if failure is None:
+                            raise
+                        failure.add_note(
+                            f"Temporary cleanup failed for {temporary.name!r}: "
+                            f"{cleanup_error}"
+                        )
+                        break
 
 
 def _legacy_message(path: Path, artifact_type: str) -> str:

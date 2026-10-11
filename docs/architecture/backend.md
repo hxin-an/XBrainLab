@@ -146,6 +146,12 @@ artifact identity or integrity checks.
 - Temporary leaves are exclusively created and a verified retained parent performs the atomic replacement.
   Readers use the same trusted-parent/regular-leaf checks, so a leaf substitution cannot be accepted between
   validation and publication.
+- JSON/NPZ publication is atomic per file, not per pair. Before overwriting an existing numeric payload,
+  the writer retains a bounded-memory backup under the same directory identity. An ordinary manifest
+  replacement failure restores that payload; a failed restoration retains the recovery file and reports
+  both failures. Identity failure prevents further recovery through an untrusted path. This does not
+  promise crash durability or concurrent-reader/writer snapshots; readers reject mismatched hashes.
+  A cleanup failure after successful publication may still report an error with the new pair committed.
 - Source/training/result identity is validated before a result is considered current. This protection is
   distinct from the admission boundary for a user-selected pretrained weight or EEG source reader.
 - Generated validation evidence belongs under ignored `build/` locations described in
