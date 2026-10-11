@@ -17,7 +17,49 @@
 設計接受不等於最終手測／merge 批准。前期原生預覽與 focused evidence 保留於 ignored
 build；不在此重複每版施工日誌。PR #161 已合併的 Select Model 改善屬 main 基線。
 
-## Active — Training 模組深度清理
+## Active — Training／Preprocess 行為鏈重審與收尾
+
+2026-10-11 使用者核准擴充為 Training＋Preprocess 全面重審、修正與必要清理，做到
+同版本整合驗證、獨立覆核後一次集中 Windows 手測；沿目前 PR #162 整合，不自行 merge。
+本輪起點 `98bc99ac`；下列舊審查完成記錄只代表當時檢查，不代表本輪已閉合。
+
+### Reopened evidence and acceptance
+
+- 已重現：disabled early stopping 保留非預設 patience/min_delta 時，export 合法但 loader
+  拒絕自己的紀錄；補真 JSON/NPZ roundtrip 和 early-stop→best weights→evaluation→reload。
+- 已重現：MOABB product journey 持續 timeout 在 finally 跳過 service.close 且中斷結構化
+  回報；沿既有 shutdown owner 補持續失敗清理，不只測下次 wait 自行成功。
+- 已重現：coverage concurrency 只有 multiprocessing，漏記 Python worker threads；補
+  真 worker instrumentation regression，修正量測後才判讀各責任區缺覆蓋分支。
+- UI 已接受；唯一新可見改動為 Preprocessing history 數字去容器括弧，例如 Notch [50.0]
+  Hz→Notch 50 Hz，多值逗號分隔。保留單位、順序、有效資訊與資料語意，不全域刪括弧。
+  先原生 focused preview／截圖，不重畫 layout、配色或流程。
+- 完整新增範圍：preprocessor 全部運算、channel/montage接點、resample/rereference/
+  normalize/filter/notch、event/window epoch、history/preview/summary、command preparation /
+  publication / cancellation / rollback，連同 tests、fixtures、scripts、CI/Poe、設定與文件。
+- 三條分工：Training 核心与結果；Preprocess 資料變換与交易；scripts/coverage證據。
+  主 agent 擁有 history 顯示、整合、coverage判讀及跨模組覆核；各改動先 red 或 passing
+  characterization 再修，獨立覆核必須看實際 diff、未改責任與缺口，不只接受作者摘要。
+- 行為矩陣至少包含非預設值/開關/重開、multi-subject/fold/repeat、停止重跑、持續失敗、
+  資料/event/label/time 語意、部分失敗不發布、preprocess替換使舊training/results失效、
+  stale callback不覆蓋新狀態。真資料/模型/檔案證據與 mock 接線證據分開。
+- 結構審查要有每個責任區的真入口、owners、去留理由；查死碼/重複policy/過度轉接/
+  大檔混責任/脚本入口。無必要不新增owner、cache或control plane；性能變更先量測。
+- Non-goals：不重做 Import／Agent／Evaluation／Saliency 全模組、不改 public Command／
+  Assistant contract，不作所有模型科學認證；研究資料/封存/共用環境/settings.json不動。
+- Stop：範圍清單無未查清責任、已知defect與必要測試缺口閉合、獨立整合覆核無blocker、
+  exact-head CI/source-diverse/platform/Windows gates通過，開完整Windows程式與即時log
+  再交集中手測。不是修三個bug或讀完檔案即完成。新UI/公共契約決策另請核准。
+
+Preprocess re-audit findings：以真 MNE nonzero first_samp recording 重現 filter 在無
+meas_date時重設 annotations 重複加時間偏移、resample尾端事件落到新n_times之外。
+修正沿MNE既有event/time契約，測原始carrier不變、annotation位置及新sample範圍。
+主agent另查預覽event與signal時間原點一致性，先真MNE red再修，不改UI設計。
+
+Current：重審施工中，先前 handoff-ready 判斷因上述已確認缺陷撤回。
+Next：各責任區讀碼/測試矩陣與red重現→修正/清理→交叉覆核→同版本gates→手測。
+
+### Earlier Training scope and reviewed decisions
 
 2026-10-11 使用者接受上述 UI 並核准完整 Training 功能鏈清理到獨立覆核、整合驗證後
 一次集中手測。前述預覽階段的等待回饋／不做後端工作限制已由本階段取代；後續收斂
@@ -69,8 +111,8 @@ Stop：全部盤點有結論、確認問題處理、無範圍內 blocker、獨�
 pending 停工。只在此 endpoint、使用者暫停或必要新決策／資源 blocker 停止。不自行 merge。
 Adjacent findings 最多三项 follow-up，非必要依賴不擴大施工。
 
-Current：UI／後端／artifact／evidence 修正已分成可回退 commits；Git 擁有精確 SHA。
-獨立整體審查及最後兩段修正覆核完成，沒有剩餘範圍內 blocker；不是零缺陷宣稱。
+Earlier checkpoint：UI／後端／artifact／evidence 修正已分成可回退 commits；Git 擁有精確 SHA。
+前次獨立覆核未發現上述後續重現的缺陷；其通過不作本輪完成依據。
 首輪整合 CI 抓到六個 typing diagnostics：optimizer helper 的 int 預設被推論成
 只接受 int，以及 Qt view/window/statusBar 的 nullable stub 未收窄。補明確 float 契約
 與 Qt nullable 回傳的顯式收窄，不放寬 analyzer baseline；focused typing／元件測試後
