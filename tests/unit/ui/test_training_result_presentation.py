@@ -139,15 +139,6 @@ class TestTrainingPanelRealUsage:
         # Simulate get_training_epoch returning int
         mock_plan.get_training_epoch.return_value = 1
         mock_plan.get_training_status.return_value = "Running"
-        mock_plan.get_training_evaluation.return_value = (
-            0.001,
-            0.5,
-            0.8,
-            0.9,
-            0.6,
-            0.75,
-            0.85,
-        )
 
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
@@ -355,15 +346,6 @@ class TestTrainingWorkflowWithUI:
         mock_plan = MagicMock()
         mock_plan.get_training_epoch.return_value = 5
         mock_plan.get_training_status.return_value = "Running"
-        mock_plan.get_training_evaluation.return_value = (
-            0.001,
-            0.5,
-            0.8,
-            0.9,
-            0.6,
-            0.75,
-            0.85,
-        )
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
         mock_trainer.current_idx = 0
@@ -417,16 +399,6 @@ class TestTrainingWorkflowWithUI:
         mock_plan = MagicMock()
         mock_plan.get_training_epoch.return_value = 1
         mock_plan.get_training_status.return_value = "Running"
-        # Return string values to simulate the actual bug
-        mock_plan.get_training_evaluation.return_value = (
-            "0.001",
-            "0.5",
-            "0.8",
-            "0.9",
-            "0.6",
-            "0.75",
-            "0.85",
-        )
 
         mock_trainer.get_training_plan_holders.return_value = [mock_plan]
         mock_trainer.is_running.return_value = True
@@ -434,7 +406,6 @@ class TestTrainingWorkflowWithUI:
         mock_trainer.get_progress_text.return_value = "Training..."
         mock_plan.get_epoch_progress_text.return_value = "Epoch 1/10"
         mock_plan.model_holder.target_model.__name__ = "TestModel"
-        mock_plan.get_best_performance.return_value = 0.75
         mock_plan.get_training_repeat.return_value = 0
 
         # Mock get_plans

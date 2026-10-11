@@ -35,7 +35,7 @@ from .option import (
     class_weighting_request,
     resolve_class_weighting,
 )
-from .record import EvalRecord, RecordKey, TrainRecord, TrainRecordKey
+from .record import EvalRecord, RecordKey, TrainRecord
 from .saliency_provenance import (
     SaliencyContextError,
     SaliencyProducerIdentity,
@@ -43,8 +43,6 @@ from .saliency_provenance import (
     fingerprint_saliency_model_state,
     fingerprint_saliency_split_mask,
 )
-
-TrainingMetricValue = float | str | None
 
 if TYPE_CHECKING:
     from .state_tracker import TrainingStateTracker
@@ -579,6 +577,8 @@ class TrainingPlanHolder:
         try:
             self._validate_finite_epoch_data()
             for i in range(self.option.repeat_num):
+                if self._interrupt.is_set():
+                    break
                 with self._state_mutation():
                     self.status = Status.INIT.value.format(
                         self.train_record_list[i].get_name(),
@@ -1372,50 +1372,6 @@ class TrainingPlanHolder:
         """
         return self.train_record_list[self.get_training_repeat()].get_epoch()
 
-    def get_training_evaluation(
-        self,
-    ) -> tuple[
-        TrainingMetricValue,
-        TrainingMetricValue,
-        TrainingMetricValue,
-        TrainingMetricValue,
-        TrainingMetricValue,
-        TrainingMetricValue,
-        TrainingMetricValue,
-    ]:
-        """Return current evaluation metrics for the active training repetition.
-
-        Returns:
-            A tuple of ``(lr, train_loss, train_acc, train_auc, val_loss,
-            val_acc, val_auc)``. Empty histories default to ``'-'``; a stored
-            unavailable metric remains ``None``.
-
-        """
-        record = self.train_record_list[self.get_training_repeat()]
-
-        lr: TrainingMetricValue = "-"
-        train_loss: TrainingMetricValue = "-"
-        train_acc: TrainingMetricValue = "-"
-        train_auc: TrainingMetricValue = "-"
-        val_loss: TrainingMetricValue = "-"
-        val_acc: TrainingMetricValue = "-"
-        val_auc: TrainingMetricValue = "-"
-        if len(record.train[TrainRecordKey.LR]) > 0:
-            lr = record.train[TrainRecordKey.LR][-1]
-        if len(record.train[TrainRecordKey.LOSS]) > 0:
-            train_loss = record.train[TrainRecordKey.LOSS][-1]
-        if len(record.train[TrainRecordKey.AUC]) > 0:
-            train_auc = record.train[TrainRecordKey.AUC][-1]
-        if len(record.train[TrainRecordKey.ACC]) > 0:
-            train_acc = record.train[TrainRecordKey.ACC][-1]
-        if len(record.val[RecordKey.LOSS]) > 0:
-            val_loss = record.val[RecordKey.LOSS][-1]
-        if len(record.val[RecordKey.ACC]) > 0:
-            val_acc = record.val[RecordKey.ACC][-1]
-        if len(record.val[RecordKey.AUC]) > 0:
-            val_auc = record.val[RecordKey.AUC][-1]
-        return lr, train_loss, train_acc, train_auc, val_loss, val_acc, val_auc
-
     def is_finished(self) -> bool:
         """Check whether all training repetitions have completed.
 
@@ -1436,32 +1392,3 @@ class TrainingPlanHolder:
         for train_record in self.train_record_list:
             total += train_record.get_epoch()
         return f"{total} / {self.option.epoch * self.option.repeat_num}"
-
-    def get_best_performance(self) -> float:
-        """Return the best accuracy achieved during training.
-
-        Uses validation accuracy when available, then the final evaluation or
-        training accuracy. Test-set metrics never select a checkpoint.
-
-        Returns:
-            The best accuracy value as a float.
-
-        """
-        record = self.train_record_list[self.get_training_repeat()]
-        # Check validation accuracy first
-        best_val_acc = record.best_record.get(f"best_val_{RecordKey.ACC}", -1)
-        if best_val_acc is not None:
-            return best_val_acc
-        if record.eval_record is not None:
-            final_accuracy = record.eval_record.get_acc()
-            if final_accuracy is not None:
-                return final_accuracy * 100
-        if len(record.val[RecordKey.ACC]) > 0:
-            latest_validation = record.val[RecordKey.ACC][-1]
-            if latest_validation is not None:
-                return latest_validation
-        if len(record.train[RecordKey.ACC]) > 0:
-            latest_training = record.train[RecordKey.ACC][-1]
-            if latest_training is not None:
-                return latest_training
-        return 0.0

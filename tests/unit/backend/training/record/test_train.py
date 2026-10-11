@@ -7,7 +7,6 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 import torch
-from matplotlib import pyplot as plt
 
 from tests.unit.backend.training.test_training_plan import (
     CLASS_NUM,
@@ -247,47 +246,6 @@ def test_train_record_step(train_record):
         assert train_record.get_epoch() == i + 1
 
 
-@pytest.mark.parametrize("train", [True, False])
-@pytest.mark.parametrize("val", [True, False])
-@pytest.mark.parametrize("test", [True, False])
-@pytest.mark.parametrize(
-    "test_func, add_target",
-    [
-        ("get_loss_figure", TrainRecordKey.LOSS),
-        ("get_acc_figure", TrainRecordKey.ACC),
-        ("get_auc_figure", TrainRecordKey.AUC),
-    ],
-)
-def test_train_record_test_line_figure(
-    train_record, train, val, test, test_func, add_target
-):
-    counter = 0
-    if train:
-        counter += 1
-        train_record.update_train({add_target: 1})
-    if val:
-        counter += 1
-        train_record.update_validation({add_target: 1})
-    if test:
-        counter += 1
-        train_record._legacy_test_history[add_target].append(1)
-
-    if not train and not val and not test:
-        assert getattr(train_record, test_func)() is None
-    else:
-        figure = getattr(train_record, test_func)()
-        assert len(figure.axes[0].lines) == counter
-    plt.close("all")
-
-
-def test_train_record_test_lr_figure(train_record):
-    assert train_record.get_lr_figure() is None
-    train_record.update_statistic({TrainRecordKey.LR: 1})
-    figure = train_record.get_lr_figure()
-    assert len(figure.axes[0].lines) == 1
-    plt.close("all")
-
-
 @pytest.fixture()
 def eval_record():
     label = np.arange(CLASS_NUM).repeat(CLASS_NUM)
@@ -297,19 +255,6 @@ def eval_record():
     output[0][1] = 10
     gradient = {}
     return EvalRecord(label, output, gradient, {}, {}, {}, {})
-
-
-def test_train_record_empty_figures_do_not_leave_open_matplotlib_handles(
-    train_record,
-):
-    plt.close("all")
-
-    assert train_record.get_loss_figure() is None
-    assert train_record.get_acc_figure() is None
-    assert train_record.get_auc_figure() is None
-    assert train_record.get_lr_figure() is None
-
-    assert plt.get_fignums() == []
 
 
 def test_train_record_eval_record_getter(train_record, eval_record):

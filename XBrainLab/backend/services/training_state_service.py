@@ -115,13 +115,6 @@ class TrainingProductPort(Protocol):
     ) -> int: ...
     def clear_history(self) -> None: ...
     def get_trainer(self) -> Any | None: ...
-    def capture_trainer_startup_snapshot(self) -> Any | None: ...
-    def restore_trainer_after_failed_start(
-        self,
-        trainer: Any | None,
-        startup_snapshot: Any | None,
-    ) -> None: ...
-    def apply_data_splitting(self, generator: Any) -> None: ...
     def clean_datasets(self, force_update: bool = False) -> None: ...
     def is_training(self) -> bool: ...
     def wait_for_terminal_notification(
@@ -496,42 +489,6 @@ class TrainingStateService(Observable):
     def get_trainer(self) -> Any | None:
         return self._study.trainer
 
-    def capture_trainer_startup_snapshot(self) -> Any | None:
-        """Capture an opaque quiescent trainer snapshot for startup rollback."""
-        trainer = self._study.trainer
-        if trainer is None:
-            return None
-        capture = getattr(trainer, "capture_startup_snapshot", None)
-        if not callable(capture):
-            raise RuntimeError("Trainer does not support startup rollback snapshots")
-        return capture()
-
-    def restore_trainer_after_failed_start(
-        self,
-        trainer: Any | None,
-        startup_snapshot: Any | None,
-    ) -> None:
-        """Restore quiescent history after replacement training fails to start."""
-        current = self._study.trainer
-        restore_in_place = current is trainer and trainer is not None
-        if current is not None and current is not trainer:
-            clean = getattr(current, "clean", None)
-            if callable(clean):
-                clean(force_update=True)
-            self._study.trainer = trainer
-        elif current is None:
-            self._study.trainer = trainer
-        if trainer is None or startup_snapshot is None:
-            return
-        if restore_in_place:
-            clean = getattr(trainer, "clean", None)
-            if callable(clean):
-                clean(force_update=True)
-        restore = getattr(trainer, "restore_startup_snapshot", None)
-        if not callable(restore):
-            raise RuntimeError("Trainer does not support startup rollback snapshots")
-        restore(startup_snapshot)
-
     def validate_ready(self) -> bool:
         return self.has_datasets() and self.has_model() and self.has_training_option()
 
@@ -555,10 +512,6 @@ class TrainingStateService(Observable):
 
     def clean_datasets(self, force_update: bool = False) -> None:
         self._study.clean_datasets(force_update=force_update)
-
-    def apply_data_splitting(self, generator: Any) -> None:
-        generator.apply(self._study)
-        self.notify("config_changed")
 
     def set_model_holder(self, holder: Any) -> None:
         self._study.set_model_holder(holder)

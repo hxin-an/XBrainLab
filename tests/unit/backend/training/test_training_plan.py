@@ -1267,15 +1267,11 @@ def test_training_plan_holder_train_one_repeat_status(base_holder):
         epoch_counter += 1
         assert base_holder.get_training_epoch() == epoch_counter
         assert base_holder.get_epoch_progress_text() == str(epoch_counter) + " / 50"
-        for i in base_holder.get_training_evaluation():
-            assert i != "-"
 
     with patch.object(
         base_holder, "train_one_epoch", side_effect=train_one_epoch_side_effect
     ):
         train_record = base_holder.train_record_list[0]
-        for i in base_holder.get_training_evaluation():
-            assert i == "-"
         base_holder.train_one_repeat(train_record)
 
 
@@ -1350,16 +1346,12 @@ def test_training_plan_holder_train(base_holder):
         assert base_holder.is_finished() is False
         assert base_holder.get_training_repeat() == 0
         assert base_holder.get_training_epoch() == 0
-        for i in base_holder.get_training_evaluation():
-            assert i == "-"
         assert base_holder.get_epoch_progress_text() == "0 / 50"
         base_holder.train()
         assert base_holder.get_training_status() == "Finished"
         assert base_holder.is_finished()
         assert base_holder.get_training_repeat() == 4
         assert base_holder.get_training_epoch() == 10
-        for i in base_holder.get_training_evaluation():
-            assert i != "-"
         assert base_holder.get_epoch_progress_text() == "50 / 50"
         train_one_repeat_mock.assert_called()
         get_eval_pair_mock.assert_called()
@@ -1380,6 +1372,34 @@ def test_training_plan_holder_train_status(base_holder):
         assert base_holder.is_finished() is False
         assert base_holder.get_training_status() == "Pending"
         train_one_repeat_mock.assert_called()
+
+
+def test_stop_does_not_start_or_export_later_repeats(
+    model_holder, dataset, training_option, monkeypatch
+):
+    training_option.repeat_num = 3
+    holder = TrainingPlanHolder(model_holder, dataset, training_option, {})
+    trainer = Trainer([holder])
+    first, *pending = holder.get_plans()
+    original_epoch = holder.train_one_epoch
+
+    def stop_after_first_epoch(*args, **kwargs):
+        original_epoch(*args, **kwargs)
+        trainer.set_interrupt()
+
+    monkeypatch.setattr(holder, "train_one_epoch", stop_after_first_epoch)
+    trainer.run()
+
+    assert trainer.get_terminal_outcome().state is TrainingOutcomeState.CANCELLED
+    assert first.epoch == 1
+    assert first.start_timestamp is not None
+    assert first.end_timestamp is not None
+    assert (Path(first.target_path) / "record").is_file()
+    for record in pending:
+        assert record.epoch == 0
+        assert record.start_timestamp is None
+        assert record.end_timestamp is None
+        assert list(Path(record.target_path).iterdir()) == []
 
 
 @pytest.mark.timeout(10)
