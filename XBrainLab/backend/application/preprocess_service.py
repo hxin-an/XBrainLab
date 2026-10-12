@@ -113,9 +113,6 @@ class PreprocessCommandService:
         """Transform captured EEG holders without touching the active Study."""
         if not isinstance(plan, PreprocessMutationPlan):
             raise TypeError("plan must be PreprocessMutationPlan")
-        detached = self.preprocess.detached_preparation_service(
-            plan.pipeline_snapshot.preprocessed_data
-        )
         if isinstance(plan.command, PreprocessCommand):
             operation = PreprocessOperation(plan.command.operation)
             if operation in {
@@ -130,13 +127,11 @@ class PreprocessCommandService:
                 handler_result = f"Selected {len(channels)} channel(s)."
             else:
                 prepared_data, handler_result = self._prepare_preprocess(
-                    detached,
                     plan.command,
                     source_data=plan.pipeline_snapshot.preprocessed_data,
                 )
         else:
             prepared_data, handler_result = self._prepare_epoch(
-                detached,
                 plan.command,
                 state=plan.application.state,
                 source_data=plan.pipeline_snapshot.preprocessed_data,
@@ -266,7 +261,6 @@ class PreprocessCommandService:
 
     def _prepare_preprocess(
         self,
-        target: PreprocessProductPort,
         command: PreprocessCommand,
         *,
         source_data: Sequence[Any],
@@ -286,7 +280,9 @@ class PreprocessCommandService:
             )
             notch_freqs = [command.notch_freq] if command.notch_freq else None
             return (
-                target.prepare_filter(low_freq, high_freq, notch_freqs),
+                self.preprocess.prepare_filter(
+                    low_freq, high_freq, notch_freqs, source_data=source_data
+                ),
                 f"Applied bandpass filter: {low_freq}-{high_freq} Hz.",
             )
         if operation == PreprocessOperation.NOTCH:
@@ -300,17 +296,22 @@ class PreprocessCommandService:
                 diagnostic_code="notch_frequency_at_or_above_nyquist",
             )
             return (
-                target.prepare_filter(None, None, [freq]),
+                self.preprocess.prepare_filter(
+                    None, None, [freq], source_data=source_data
+                ),
                 f"Applied notch filter: {freq} Hz.",
             )
         if operation == PreprocessOperation.RESAMPLE:
             rate = self._require(command.rate, "rate")
-            return target.prepare_resample(rate), f"Resampled data to {rate} Hz."
+            return (
+                self.preprocess.prepare_resample(rate, source_data=source_data),
+                f"Resampled data to {rate} Hz.",
+            )
         if operation == PreprocessOperation.NORMALIZE:
             method = self._require(command.method, "method")
             raw_count, epoch_count = self._normalization_target_counts_for(source_data)
             return (
-                target.prepare_normalization(method),
+                self.preprocess.prepare_normalization(method, source_data=source_data),
                 self._normalization_result(
                     str(method),
                     raw_count=raw_count,
@@ -326,7 +327,9 @@ class PreprocessCommandService:
                 method = self._require(command.method, "method")
                 ref_channels = "average" if method == "average" else [method]
             return (
-                target.prepare_rereference(ref_channels),
+                self.preprocess.prepare_rereference(
+                    ref_channels, source_data=source_data
+                ),
                 f"Applied reference: {method}.",
             )
         if operation == PreprocessOperation.STANDARD:
@@ -339,7 +342,8 @@ class PreprocessCommandService:
                     and command.channels[0].lower() == "average"
                 )
                 reference = "average" if is_average else list(command.channels)
-            prepared = target.prepare_standard_pipeline(
+            prepared = self.preprocess.prepare_standard_pipeline(
+                source_data=source_data,
                 l_freq=low_freq,
                 h_freq=high_freq,
                 notch_freq=command.notch_freq,
@@ -427,7 +431,6 @@ class PreprocessCommandService:
 
     def _prepare_epoch(
         self,
-        target: PreprocessProductPort,
         command: CreateEpochCommand,
         *,
         state: ApplicationStateSnapshot,
@@ -485,12 +488,13 @@ class PreprocessCommandService:
                     "the epoch window or review the selected events.",
                     diagnostics={"epoch_boundary_check": boundary_diagnostics},
                 )
-        prepared = target.prepare_epoching(
+        prepared = self.preprocess.prepare_epoching(
             command.baseline,
             event_ids,
             command.t_min,
             command.t_max,
             bool(boundary_summary.excluded_event_count),
+            source_data=source_data,
             event_label_aliases_by_source=event_label_aliases_by_source,
         )
         message = f"Created EEG epochs from {command.t_min}s to {command.t_max}s."

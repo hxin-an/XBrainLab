@@ -101,6 +101,7 @@ def test_preprocess_state_service_preserves_atomic_standard_pipeline() -> None:
 
     try:
         service.prepare_standard_pipeline(
+            source_data=original,
             l_freq=4,
             h_freq=40,
             rate=128,
@@ -169,7 +170,9 @@ def test_standard_pipeline_late_failure_preserves_live_raw_data() -> None:
     service.subscribe("preprocess_changed", lambda: notifications.append("changed"))
 
     with pytest.raises(RuntimeError, match="late preprocessing failure"):
-        service.prepare_standard_pipeline(l_freq=4.0, h_freq=40.0, rate=128.0)
+        service.prepare_standard_pipeline(
+            source_data=original, l_freq=4.0, h_freq=40.0, rate=128.0
+        )
 
     assert study.preprocessed_data_list is original
     assert original[0] is raw
@@ -195,6 +198,7 @@ def test_preprocess_state_service_commits_and_publishes_once() -> None:
     service.subscribe("preprocess_changed", lambda: notifications.append("changed"))
 
     prepared = service.prepare_standard_pipeline(
+        source_data=study.preprocessed_data_list,
         l_freq=4,
         h_freq=40,
         notch_freq=60,
@@ -226,7 +230,7 @@ def test_preprocess_prepare_is_detached_until_explicit_commit() -> None:
     )
     service.subscribe("preprocess_changed", lambda: notifications.append("changed"))
 
-    prepared = service.prepare_normalization("z score")
+    prepared = service.prepare_normalization("z score", source_data=original)
 
     assert study.preprocessed_data_list is original
     assert original[0].history == ["loaded"]
@@ -241,6 +245,50 @@ def test_preprocess_prepare_is_detached_until_explicit_commit() -> None:
     assert study.preprocessed_data_list[0].history == ["loaded", "normalize"]
     assert len(study.commits) == 1
     assert notifications == ["changed"]
+
+
+def test_preparation_uses_captured_rows_and_rejects_replaced_live_state() -> None:
+    source = Raw(
+        "captured.fif",
+        mne.io.RawArray(
+            np.zeros((1, 100)),
+            mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    replacement = Raw(
+        "replacement.fif",
+        mne.io.RawArray(
+            np.ones((1, 100)),
+            mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+            verbose="ERROR",
+        ),
+    )
+    study = _Study()
+    study.preprocessed_data_list = [source]
+    service = PreprocessStateService(study)
+    captured = tuple(study.preprocessed_data_list)
+    notifications: list[str] = []
+    service.subscribe("preprocess_changed", lambda: notifications.append("changed"))
+    study.preprocessed_data_list = [replacement]
+
+    prepared = service.prepare_resample(50.0, source_data=captured)
+
+    assert prepared.source_identity == (id(source),)
+    assert prepared.data[0].get_sfreq() == 50.0
+    assert prepared.data[0].get_mne().n_times == 50
+    np.testing.assert_array_equal(prepared.data[0].get_mne().get_data(), 0.0)
+    assert source.get_sfreq() == 100.0
+    assert replacement.get_sfreq() == 100.0
+    np.testing.assert_array_equal(source.get_mne().get_data(), 0.0)
+    np.testing.assert_array_equal(replacement.get_mne().get_data(), 1.0)
+    assert source.get_preprocess_history() == []
+    assert replacement.get_preprocess_history() == []
+    with pytest.raises(RuntimeError, match="state changed"):
+        service.commit_prepared(prepared)
+    assert study.preprocessed_data_list == [replacement]
+    assert study.commits == []
+    assert notifications == []
 
 
 def test_every_preprocess_prepare_path_is_structurally_publication_free() -> None:
@@ -330,13 +378,23 @@ def test_channel_selection_prepare_is_structurally_publication_free() -> None:
     [
         (
             OwnedWorkKind.PREPROCESS,
-            lambda service: service.commit_prepared(service.prepare_filter(4.0, 40.0)),
+            lambda service: service.commit_prepared(
+                service.prepare_filter(
+                    4.0, 40.0, source_data=service.get_preprocessed_data_list()
+                )
+            ),
             False,
         ),
         (
             OwnedWorkKind.EPOCH,
             lambda service: service.commit_prepared(
-                service.prepare_epoching(None, None, -0.1, 0.5)
+                service.prepare_epoching(
+                    None,
+                    None,
+                    -0.1,
+                    0.5,
+                    source_data=service.get_preprocessed_data_list(),
+                )
             ),
             True,
         ),
@@ -486,7 +544,7 @@ def test_cancel_after_commit_admission_is_rejected_and_commit_completes(
         try:
             with registry.bind(operation.operation_id):
                 registry.claim_start(operation.operation_id)
-                prepared = service.prepare_filter(4.0, 40.0)
+                prepared = service.prepare_filter(4.0, 40.0, source_data=original)
                 assert service.commit_prepared(prepared) is True
                 registry.complete(operation.operation_id)
         except BaseException as exc:
