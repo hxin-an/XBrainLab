@@ -129,9 +129,7 @@ class _Trainer:
 def _target(run: TrainingRunIdentity) -> PostTrainingSaliencyTarget:
     return PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=True,
     )
 
 
@@ -257,10 +255,7 @@ def test_manual_all_finished_failure_never_partially_publishes_records() -> None
     manager.saliency_params = {"_methods": ["Gradient"]}
     target = PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=0,
         finished_runs_after=2,
-        append=False,
-        explicit=True,
     )
 
     with patch(
@@ -303,10 +298,7 @@ def test_manual_all_finished_compute_never_partially_publishes_records() -> None
     original_eval_records = tuple(holder.records[0].eval_record for holder in holders)
     target = PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=0,
         finished_runs_after=2,
-        append=False,
-        explicit=True,
     )
 
     with patch(
@@ -353,10 +345,7 @@ def test_manual_all_finished_rejects_wrong_record_with_same_count() -> None:
     manager.trainer = cast(Any, trainer)
     target = PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=0,
         finished_runs_after=2,
-        append=False,
-        explicit=True,
     )
 
     with patch(
@@ -405,10 +394,7 @@ def test_manual_all_finished_cancel_then_retry_publishes_one_atomic_batch() -> N
     def target() -> PostTrainingSaliencyTarget:
         return PostTrainingSaliencyTarget(
             run=run,
-            finished_runs_before=0,
             finished_runs_after=2,
-            append=False,
-            explicit=True,
         )
 
     def publish(updates, *, manager_params, publish_manager_params):
@@ -463,11 +449,6 @@ def test_manual_all_finished_cancel_then_retry_publishes_one_atomic_batch() -> N
             PostTrainingSaliencyScheduleReason.TRAINER_UNAVAILABLE,
         ),
         (
-            "unsupported_profile",
-            PostTrainingSaliencyScheduleDisposition.REJECTED,
-            PostTrainingSaliencyScheduleReason.UNSUPPORTED_PROFILE,
-        ),
-        (
             "training_not_completed",
             PostTrainingSaliencyScheduleDisposition.STALE,
             PostTrainingSaliencyScheduleReason.TRAINING_NOT_COMPLETED,
@@ -491,11 +472,6 @@ def test_manual_all_finished_cancel_then_retry_publishes_one_atomic_batch() -> N
             "finished_run_count_changed",
             PostTrainingSaliencyScheduleDisposition.STALE,
             PostTrainingSaliencyScheduleReason.FINISHED_RUN_COUNT_CHANGED,
-        ),
-        (
-            "no_new_finished_runs",
-            PostTrainingSaliencyScheduleDisposition.REJECTED,
-            PostTrainingSaliencyScheduleReason.NO_NEW_FINISHED_RUNS,
         ),
         (
             "no_finished_records",
@@ -542,8 +518,6 @@ def test_scheduler_returns_typed_terminal_outcome_for_every_rejection(
 
     if scenario == "trainer_unavailable":
         manager.trainer = None
-    elif scenario == "unsupported_profile":
-        params = {"_profile": "advanced", "_methods": ["SmoothGrad"]}
     elif scenario == "training_not_completed":
         trainer.outcome = TrainingTerminalOutcome(
             state=TrainingOutcomeState.FAILED,
@@ -573,24 +547,13 @@ def test_scheduler_returns_typed_terminal_outcome_for_every_rejection(
     elif scenario == "finished_run_count_changed":
         target = PostTrainingSaliencyTarget(
             run=run,
-            finished_runs_before=0,
             finished_runs_after=2,
-            append=True,
-        )
-    elif scenario == "no_new_finished_runs":
-        target = PostTrainingSaliencyTarget(
-            run=run,
-            finished_runs_before=1,
-            finished_runs_after=1,
-            append=True,
         )
     elif scenario == "no_finished_records":
         trainer.holder.records = []
         target = PostTrainingSaliencyTarget(
             run=run,
-            finished_runs_before=0,
             finished_runs_after=0,
-            append=False,
         )
     elif scenario == "plan_preparation_failed":
         patches.append(
@@ -1084,10 +1047,13 @@ def test_stale_request_after_terminal_cleanup_cannot_rewrite_current_lifecycle(
 
 
 def test_newer_training_run_supersedes_terminal_saliency_owner() -> None:
-    compute_calls: list[TrainingRunIdentity] = []
+    compute_calls: list[tuple[TrainingRunIdentity, int]] = []
     manager, first_run = _manager_with_compute(
-        lambda _plan, _should_cancel: compute_calls.append(
-            cast(TrainingRunIdentity, cast(_Trainer, manager.trainer).outcome.run)
+        lambda plan, _should_cancel: compute_calls.append(
+            (
+                cast(TrainingRunIdentity, cast(_Trainer, manager.trainer).outcome.run),
+                len(plan.records),
+            )
         )
     )
     trainer = cast(_Trainer, manager.trainer)
@@ -1114,9 +1080,7 @@ def test_newer_training_run_supersedes_terminal_saliency_owner() -> None:
         trainer.holder.records.append(_FinishedRecord(eval_record=object()))
         second_target = PostTrainingSaliencyTarget(
             run=second_run,
-            finished_runs_before=1,
             finished_runs_after=2,
-            append=True,
         )
         with post_training_saliency_target(second_target):
             second_schedule = manager.set_saliency_params(_BASELINE_PARAMS)
@@ -1132,7 +1096,7 @@ def test_newer_training_run_supersedes_terminal_saliency_owner() -> None:
     assert second_status.phase is PostTrainingSaliencyPhase.SUCCEEDED
     assert second_status.run == second_run
     assert second_status.generation > first_status.generation
-    assert compute_calls == [first_run, second_run]
+    assert compute_calls == [(first_run, 1), (second_run, 2)]
 
 
 def test_explicit_same_lineage_recompute_supersedes_terminal_owner() -> None:
@@ -1154,10 +1118,7 @@ def test_explicit_same_lineage_recompute_supersedes_terminal_owner() -> None:
     trainer.holder.prepare_saliency_update_plan = remember_params  # type: ignore[method-assign]
     explicit_target = PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=False,
-        explicit=True,
     )
     accumulated_params = {
         "_methods": ["Gradient", "VarGrad"],
@@ -1210,10 +1171,7 @@ def test_explicit_same_lineage_failure_preserves_previous_committed_params() -> 
     manager, run = _manager_with_compute(compute)
     explicit_target = PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=False,
-        explicit=True,
     )
     accumulated_params = {
         "_methods": ["Gradient", "VarGrad"],
@@ -1257,10 +1215,7 @@ def test_explicit_same_lineage_recompute_does_not_supersede_active_owner() -> No
     manager, run = _manager_with_compute(compute)
     explicit_target = PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=False,
-        explicit=True,
     )
 
     with patch(
@@ -1287,32 +1242,6 @@ def test_explicit_same_lineage_recompute_does_not_supersede_active_owner() -> No
     assert manager.get_post_training_saliency_status().phase is (
         PostTrainingSaliencyPhase.SUCCEEDED
     )
-
-
-def test_non_explicit_same_lineage_request_remains_blocked_after_terminal() -> None:
-    manager, run = _manager_with_compute(lambda _plan, _should_cancel: object())
-    duplicate_target = PostTrainingSaliencyTarget(
-        run=run,
-        finished_runs_before=0,
-        finished_runs_after=1,
-        append=False,
-        explicit=False,
-    )
-
-    with patch(
-        "XBrainLab.backend.training.training_plan.publish_prepared_saliency_updates",
-        side_effect=_publish_updates,
-    ):
-        with post_training_saliency_target(_target(run)):
-            manager.set_saliency_params(_BASELINE_PARAMS)
-        assert manager.wait_for_saliency_job(timeout=2.0)
-
-        with post_training_saliency_target(duplicate_target):
-            blocked = manager.set_saliency_params(_BASELINE_PARAMS)
-
-    assert isinstance(blocked, PostTrainingSaliencyScheduleOutcome)
-    assert blocked.disposition is PostTrainingSaliencyScheduleDisposition.STALE
-    assert blocked.reason is PostTrainingSaliencyScheduleReason.REQUEST_SUPERSEDED
 
 
 def test_terminal_delivery_remains_monotonic_when_older_notify_is_delayed() -> None:
@@ -1389,9 +1318,7 @@ def test_terminal_delivery_remains_monotonic_when_older_notify_is_delayed() -> N
             trainer.holder.records.append(_FinishedRecord(eval_record=object()))
             second_target = PostTrainingSaliencyTarget(
                 run=second_run,
-                finished_runs_before=1,
                 finished_runs_after=2,
-                append=True,
             )
             with post_training_saliency_target(second_target):
                 second_schedule = manager.set_saliency_params(_BASELINE_PARAMS)

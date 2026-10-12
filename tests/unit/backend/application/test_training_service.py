@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import fields, replace
 from threading import Barrier, Event, Thread
@@ -23,6 +24,9 @@ from XBrainLab.backend.application.commands import (
     ClearTrainingHistoryCommand,
     ConfigureTrainingCommand,
     TrainCommand,
+)
+from XBrainLab.backend.application.dataset_generation_service import (
+    DatasetGenerationCommandService,
 )
 from XBrainLab.backend.application.errors import ApplicationError, PreconditionError
 from XBrainLab.backend.application.owned_work import (
@@ -280,12 +284,26 @@ def _expect_payload(result: HandlerResult) -> tuple[str, dict[str, Any]]:
     return cast(tuple[str, dict[str, Any]], result)
 
 
+def _dataset_generation_provider(
+    training: _TrainingController,
+) -> Callable[[], DatasetGenerationCommandService]:
+    """Isolate split IO while exercising the production training workflow."""
+    generation = MagicMock(spec=DatasetGenerationCommandService)
+    generation.prepare_saved_split_candidate.side_effect = lambda: SimpleNamespace(
+        datasets=tuple((training.resource_context or {}).get("datasets", ())),
+    )
+    generation.commit_prepared_split.return_value = {"materialized": True}
+    generation.discard_prepared_split.return_value = True
+    return lambda: generation
+
+
 def _service() -> tuple[TrainingCommandService, _TrainingController]:
     training = _TrainingController()
     return (
         TrainingCommandService(
             training=training,
             training_runtime=_TrainingRuntime(training),
+            dataset_generation=_dataset_generation_provider(training),
             get_state=_state,
         ),
         training,
@@ -441,6 +459,7 @@ def test_configure_early_stopping_accepts_saved_unmaterialized_validation_previe
     service = TrainingCommandService(
         training=training,
         training_runtime=_TrainingRuntime(training),
+        dataset_generation=_dataset_generation_provider(training),
         get_state=lambda: state,
     )
 
@@ -493,6 +512,7 @@ def test_configure_early_stopping_fails_closed_on_authoritative_split_count(
     service = TrainingCommandService(
         training=training,
         training_runtime=_TrainingRuntime(training),
+        dataset_generation=_dataset_generation_provider(training),
         get_state=lambda: state,
     )
 
@@ -543,11 +563,13 @@ def test_public_start_rejects_early_stopping_without_actual_validation_mask() ->
     }
 
     with pytest.raises(
-        PreconditionError, match=r"^Early stopping requires a validation split$"
-    ):
+        ApplicationError, match=r"^Early stopping requires a validation split$"
+    ) as raised:
         service.handle_train(TrainCommand(resource_preflight_confirmed=True))
 
     assert training.start_count == 0
+    assert raised.value.error_type is ErrorType.PRECONDITION
+    assert raised.value.diagnostics["split_rollback"] is True
 
 
 def test_configure_training_command_has_no_unvalidated_option_object_path() -> None:
@@ -569,6 +591,7 @@ def test_configure_custom_weights_require_the_current_reviewed_class_names() -> 
         training=training,
         training_runtime=_TrainingRuntime(training),
         get_state=lambda: state,
+        dataset_generation=_dataset_generation_provider(training),
     )
     command = ConfigureTrainingCommand(
         epoch=2,
@@ -606,6 +629,7 @@ def test_configure_custom_weights_require_the_current_reviewed_class_names() -> 
 @pytest.mark.parametrize("mode", [ClassWeightMode.OFF, ClassWeightMode.BALANCED])
 def test_start_training_blocks_zero_class_before_runtime_handoff(
     mode: ClassWeightMode,
+    monkeypatch,
 ) -> None:
     class _WeightingEpoch:
         def get_label_map(self) -> dict[int, str]:
@@ -630,19 +654,25 @@ def test_start_training_blocks_zero_class_before_runtime_handoff(
         ),
         "model_holder": object(),
     }
-    preflight = resource_guard.ResourcePreflightResult(issues=(), diagnostics={})
+    monkeypatch.setattr(
+        training_service_module,
+        "check_training_resource_preflight",
+        lambda *_args: resource_guard.ResourcePreflightResult(
+            issues=(), diagnostics={}
+        ),
+    )
 
-    with pytest.raises(PreconditionError, match="missing class"):
-        service.start_train_after_preflight(
-            TrainCommand(),
-            preflight=preflight,
-            receipt_reused=False,
-        )
+    with pytest.raises(ApplicationError, match="missing class") as raised:
+        service.handle_train(TrainCommand())
 
     assert training.start_count == 0
+    assert raised.value.error_type is ErrorType.PRECONDITION
+    assert raised.value.diagnostics["split_rollback"] is True
 
 
-def test_start_training_rechecks_custom_weights_against_the_current_map() -> None:
+def test_start_training_rechecks_custom_weights_against_the_current_map(
+    monkeypatch,
+) -> None:
     class _WeightingEpoch:
         def get_label_map(self) -> dict[int, str]:
             return {0: "left", 1: "right"}
@@ -667,14 +697,19 @@ def test_start_training_rechecks_custom_weights_against_the_current_map() -> Non
         "model_holder": object(),
     }
 
-    with pytest.raises(PreconditionError, match="mapping changed"):
-        service.start_train_after_preflight(
-            TrainCommand(),
-            preflight=resource_guard.ResourcePreflightResult(issues=(), diagnostics={}),
-            receipt_reused=False,
-        )
+    monkeypatch.setattr(
+        training_service_module,
+        "check_training_resource_preflight",
+        lambda *_args: resource_guard.ResourcePreflightResult(
+            issues=(), diagnostics={}
+        ),
+    )
+    with pytest.raises(ApplicationError, match="mapping changed") as raised:
+        service.handle_train(TrainCommand())
 
     assert training.start_count == 0
+    assert raised.value.error_type is ErrorType.PRECONDITION
+    assert raised.value.diagnostics["split_rollback"] is True
 
 
 def test_training_service_forwards_only_typed_edited_recommendation_fields() -> None:
@@ -684,6 +719,7 @@ def test_training_service_forwards_only_typed_edited_recommendation_fields() -> 
         training=training,
         training_runtime=_TrainingRuntime(training),
         get_state=_state,
+        dataset_generation=_dataset_generation_provider(training),
         recommendation=recommendation,
     )
 
@@ -1218,7 +1254,8 @@ def test_training_service_start_and_clear_history() -> None:
         service.handle_clear_training_history(ClearTrainingHistoryCommand()),
     )
 
-    assert start_message == "Training completed."
+    assert start_message == "Training started."
+    assert start_payload["synchronous_completion_deferred"] is True
     assert start_payload["append"] is False
     assert start_payload["interactive"] is False
     assert start_payload["training_handoff_generation"] == 1
@@ -1226,7 +1263,12 @@ def test_training_service_start_and_clear_history() -> None:
     assert start_payload["resource_preflight"]["risk_level"] == "safe"
     assert training.started is True
     assert training.started_append is False
-    assert training.started_interactive is False
+    assert training.started_interactive is True
+    completion_message, completion_payload = service.complete_synchronous_training(
+        start_payload["training_trainer_identity"]
+    )
+    assert completion_message == "Training completed."
+    assert completion_payload["terminal_outcome"] == "completed"
     assert training.history_cleared is True
     assert training.notifications == ["training_updated"]
     assert clear_message == "Training history cleared."
@@ -1241,8 +1283,9 @@ def test_training_service_rejects_missing_terminal_handoff_generation() -> None:
     service, training = _service()
     training.start_training = MagicMock(return_value=None)  # type: ignore[method-assign]
 
-    with pytest.raises(RuntimeError, match="handoff generation"):
+    with pytest.raises(ApplicationError, match="handoff generation") as raised:
         service.handle_train(TrainCommand())
+    assert raised.value.diagnostics["split_rollback"] is True
 
 
 @pytest.mark.parametrize(
@@ -1265,21 +1308,26 @@ def test_synchronous_training_failure_is_not_reported_as_success(
     service = TrainingCommandService(
         training=training,
         training_runtime=_TrainingRuntime(training),
+        dataset_generation=_dataset_generation_provider(training),
         get_state=lambda: (_ for _ in ()).throw(
             AssertionError("terminal failure must not rebuild application state")
         ),
     )
 
-    with pytest.raises(
-        ApplicationError,
-        match=failure_message.removeprefix("Error: "),
-    ) as raised:
+    _message, payload = _expect_payload(
         service.handle_train(
             TrainCommand(
                 interactive=False,
                 resource_preflight_confirmed=True,
             ),
         )
+    )
+    assert payload["synchronous_completion_deferred"] is True
+    with pytest.raises(
+        ApplicationError,
+        match=failure_message.removeprefix("Error: "),
+    ) as raised:
+        service.complete_synchronous_training(payload["training_trainer_identity"])
 
     assert training.started is True
     assert raised.value.error_type is ErrorType.TRAINING
@@ -1310,15 +1358,20 @@ def test_synchronous_training_requires_verified_completion(
         training=training,
         training_runtime=_TrainingRuntime(training),
         get_state=lambda: _state(),
+        dataset_generation=_dataset_generation_provider(training),
     )
 
-    with pytest.raises(ApplicationError, match=message):
+    _start_message, payload = _expect_payload(
         service.handle_train(
             TrainCommand(
                 interactive=False,
                 resource_preflight_confirmed=True,
             )
         )
+    )
+    assert payload["synchronous_completion_deferred"] is True
+    with pytest.raises(ApplicationError, match=message):
+        service.complete_synchronous_training(payload["training_trainer_identity"])
 
 
 def test_training_service_blocks_training_when_dataset_exceeds_available_ram(
@@ -1333,8 +1386,10 @@ def test_training_service_blocks_training_when_dataset_exceeds_available_ram(
     }
     monkeypatch.setattr(resource_guard, "available_ram_bytes", lambda: 5_000)
 
-    with pytest.raises(PreconditionError, match="available RAM"):
+    with pytest.raises(ApplicationError, match="available RAM") as raised:
         service.handle_train(TrainCommand())
+    assert raised.value.error_type is ErrorType.PRECONDITION
+    assert raised.value.diagnostics["state_preserved"] is True
 
     assert training.started is False
 
@@ -1370,8 +1425,10 @@ def test_training_service_blocks_cuda_training_when_batch_exceeds_available_vram
         ),
     )
 
-    with pytest.raises(PreconditionError, match="GPU memory"):
+    with pytest.raises(ApplicationError, match="GPU memory") as raised:
         service.handle_train(TrainCommand())
+    assert raised.value.error_type is ErrorType.PRECONDITION
+    assert raised.value.diagnostics["state_preserved"] is True
 
     assert training.started is False
 
@@ -1636,7 +1693,7 @@ def test_training_blocking_preflight_cannot_use_warning_receipt(
         ),
     )
 
-    with pytest.raises(PreconditionError, match="exceeds available GPU memory"):
+    with pytest.raises(ApplicationError, match="exceeds available GPU memory"):
         service.handle_train(
             TrainCommand(
                 confirmed=True,

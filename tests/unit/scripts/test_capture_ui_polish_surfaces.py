@@ -32,7 +32,6 @@ from scripts.dev.capture_ui_polish_surfaces import (
     _control_is_fully_visible_in_capture,
     _crop_logical_reference,
     _data_splitting_dialog,
-    _data_splitting_preview_dialog,
     _data_splitting_preview_semantics,
     _epoching_bids_interval_duration_dialog,
     _epoching_internal_events_dialog,
@@ -57,6 +56,10 @@ from scripts.dev.human_like_walkthrough.readiness import (
     assert_consecutive_complete_frames,
     assert_region_matches_reference,
 )
+from scripts.dev.training_evidence_fixture import (
+    data_split_capture_dialog,
+    data_split_capture_provider,
+)
 from XBrainLab.backend.model_base.model_catalog import BraindecodeProviderStatus
 from XBrainLab.ui.dialogs.training.model_selection_dialog import ModelSelectionDialog
 from XBrainLab.ui.styles.stylesheets import Stylesheets
@@ -80,25 +83,15 @@ def capture_application_theme(qapp):
 
 @pytest.mark.parametrize("cross_validation", [False, True])
 @pytest.mark.parametrize("validation", [False, True])
-@pytest.mark.parametrize(
-    "module",
-    [
-        "scripts.dev.capture_ui_polish_surfaces",
-        "scripts.dev.capture_ui_reviewer_fixes",
-    ],
-)
 def test_split_capture_examples_match_visible_configuration(
-    module, cross_validation, validation
+    cross_validation, validation
 ):
-    from importlib import import_module
-
     from XBrainLab.backend.application.dataset_split_preview import (
         DatasetSplitPreviewRequest,
         DatasetSplitRule,
         DatasetSplitSpecification,
     )
 
-    capture = import_module(module)
     request = DatasetSplitPreviewRequest(
         "example",
         1,
@@ -110,7 +103,7 @@ def test_split_capture_examples_match_visible_configuration(
             else (),
         ),
     )
-    preview = capture._data_split_capture_provider(request)
+    preview = data_split_capture_provider(request)
     assert len(preview.rows) == (5 if cross_validation else 1)
     for row in preview.rows:
         assert row.validation_count == (20 if validation else 0)
@@ -205,7 +198,7 @@ def test_split_preview_capture_counts_pixels_after_inclusive_last_row(
     qtbot,
     unused_height,
 ) -> None:
-    dialog = _data_splitting_preview_dialog()
+    dialog = data_split_capture_dialog()
     qtbot.addWidget(dialog)
     dialog.show()
     app = QApplication.instance()
@@ -231,7 +224,7 @@ def test_split_preview_capture_counts_pixels_after_inclusive_last_row(
 
 
 def test_data_splitting_preview_capture_uses_current_worker_lifecycle(qtbot) -> None:
-    dialog = _data_splitting_preview_dialog()
+    dialog = dict(_capture_factories())["data-splitting-preview-dialog.png"]()
     qtbot.addWidget(dialog)
 
     assert dialog.preview_worker is not None
@@ -256,7 +249,7 @@ def test_data_splitting_preview_capture_uses_current_worker_lifecycle(qtbot) -> 
 
 
 def test_data_splitting_preview_rejects_k_fold_row_mismatch(qtbot) -> None:
-    dialog = _data_splitting_preview_dialog()
+    dialog = data_split_capture_dialog()
     qtbot.addWidget(dialog)
     _combo, entry = dialog.test_widgets[0]
     entry.blockSignals(True)
@@ -1182,7 +1175,7 @@ def test_app_polish_validator_rejects_k_fold_manifest_row_mismatch(
     tmp_path,
 ) -> None:
     now = datetime(2026, 7, 16, 8, 0, tzinfo=UTC)
-    dialog = _data_splitting_preview_dialog()
+    dialog = data_split_capture_dialog()
     qtbot.addWidget(dialog)
     payload, identity = _single_surface_payload(
         tmp_path,

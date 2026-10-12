@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     from .training.training_plan import TrainingPlanHolder
 
 
-_BASELINE_SALIENCY_METHODS = frozenset({"Gradient", "Gradient * Input"})
 _POST_TRAINING_SALIENCY_CANCEL_WAIT_SECONDS = 2.0
 _POST_TRAINING_SALIENCY_CANCELLED_MESSAGE = "Saliency computation was cancelled."
 _POST_TRAINING_SALIENCY_FAILED_MESSAGE = (
@@ -57,9 +56,6 @@ _POST_TRAINING_SALIENCY_TERMINAL_RETRY_SECONDS = 0.05
 _POST_TRAINING_SALIENCY_SCHEDULE_MESSAGES = {
     PostTrainingSaliencyScheduleReason.TRAINER_UNAVAILABLE: (
         "Saliency was not scheduled because its trainer is no longer available."
-    ),
-    PostTrainingSaliencyScheduleReason.UNSUPPORTED_PROFILE: (
-        "Saliency accepts only the recommended baseline profile."
     ),
     PostTrainingSaliencyScheduleReason.TRAINING_NOT_COMPLETED: (
         "Saliency was not scheduled because training did not complete successfully."
@@ -75,9 +71,6 @@ _POST_TRAINING_SALIENCY_SCHEDULE_MESSAGES = {
     ),
     PostTrainingSaliencyScheduleReason.FINISHED_RUN_COUNT_CHANGED: (
         "Saliency was cancelled because the finished run set changed."
-    ),
-    PostTrainingSaliencyScheduleReason.NO_NEW_FINISHED_RUNS: (
-        "Saliency found no newly finished runs to compute."
     ),
     PostTrainingSaliencyScheduleReason.NO_FINISHED_RECORDS: (
         "Saliency found no finished evaluation records to compute."
@@ -105,13 +98,10 @@ _POST_TRAINING_SALIENCY_SCHEDULE_MESSAGES = {
 
 @dataclass(frozen=True, slots=True)
 class PostTrainingSaliencyTarget:
-    """Verified record range produced by one completed trainer run."""
+    """Verified complete finished-record set for an explicit saliency command."""
 
     run: TrainingRunIdentity
-    finished_runs_before: int
     finished_runs_after: int
-    append: bool
-    explicit: bool = False
     _command_completed: Event = field(
         default_factory=Event,
         init=False,
@@ -134,16 +124,12 @@ class PostTrainingSaliencyTarget:
     def __post_init__(self) -> None:
         if not isinstance(self.run, TrainingRunIdentity):
             raise TypeError("post-training saliency run identity is invalid")
-        for name, value in (
-            ("finished_runs_before", self.finished_runs_before),
-            ("finished_runs_after", self.finished_runs_after),
+        if (
+            isinstance(self.finished_runs_after, bool)
+            or not isinstance(self.finished_runs_after, int)
+            or self.finished_runs_after < 0
         ):
-            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise TypeError(f"{name} must be a non-negative integer")
-        if not isinstance(self.append, bool):
-            raise TypeError("append must be a boolean")
-        if not isinstance(self.explicit, bool):
-            raise TypeError("explicit must be a boolean")
+            raise TypeError("finished_runs_after must be a non-negative integer")
 
     def mark_command_completed(self) -> None:
         """Release heavy computation after the command boundary has returned."""
@@ -292,7 +278,7 @@ _POST_TRAINING_SALIENCY_TARGET: ContextVar[PostTrainingSaliencyTarget | None] = 
 def post_training_saliency_target(
     target: PostTrainingSaliencyTarget,
 ) -> Iterator[None]:
-    """Scope one automatic baseline command to its completed trainer run."""
+    """Scope one explicit saliency command to its completed trainer run."""
     token = _POST_TRAINING_SALIENCY_TARGET.set(target)
     try:
         yield
@@ -302,7 +288,7 @@ def post_training_saliency_target(
 
 
 def current_post_training_saliency_target() -> PostTrainingSaliencyTarget | None:
-    """Return the automatic baseline target active on this command thread."""
+    """Return the explicit saliency target active on this command thread."""
     return _POST_TRAINING_SALIENCY_TARGET.get()
 
 
@@ -744,7 +730,7 @@ class TrainingManager:
         return self.saliency_params
 
     def get_post_training_saliency_status(self) -> PostTrainingSaliencyStatus:
-        """Return the immutable status of the latest automatic saliency job."""
+        """Return the immutable status of the latest background saliency job."""
         with self._saliency_job_lock:
             return self._post_training_saliency_status
 
@@ -803,7 +789,7 @@ class TrainingManager:
         self,
         saliency_params,
     ) -> PostTrainingSaliencyScheduleOutcome | None:
-        """Compute manual settings or schedule the scoped automatic baseline."""
+        """Compute directly or schedule the scoped explicit saliency command."""
         params = dict(saliency_params or {})
         target = current_post_training_saliency_target()
         if target is not None:
@@ -880,7 +866,7 @@ class TrainingManager:
         request_generation: int,
         cancellation_epoch: int,
     ) -> PostTrainingSaliencyScheduleOutcome:
-        """Capture one completed run and compute its baseline outside command lock."""
+        """Capture the completed record set and compute outside the command lock."""
         methods = self._requested_saliency_methods(params)
         with self._training_pipeline_lock:
             trainer = self.trainer
@@ -891,14 +877,6 @@ class TrainingManager:
                 methods=methods,
                 disposition=PostTrainingSaliencyScheduleDisposition.STALE,
                 reason=PostTrainingSaliencyScheduleReason.TRAINER_UNAVAILABLE,
-            )
-        if not target.explicit and not self._is_automatic_baseline(params):
-            return self._terminal_schedule_outcome(
-                target,
-                request_generation=request_generation,
-                methods=methods,
-                disposition=PostTrainingSaliencyScheduleDisposition.REJECTED,
-                reason=PostTrainingSaliencyScheduleReason.UNSUPPORTED_PROFILE,
             )
         outcome = read_training_terminal_outcome(trainer)
         if outcome.state is not TrainingOutcomeState.COMPLETED:
@@ -953,7 +931,7 @@ class TrainingManager:
                 training_generation=token.generation,
             )
         try:
-            indexed_entries = self._finished_record_entries(trainer)
+            entries = self._finished_record_entries(trainer)
         except Exception as exc:
             logger.warning(
                 "Automatic saliency could not read finished records",
@@ -968,7 +946,7 @@ class TrainingManager:
                 training_generation=token.generation,
                 diagnostic_type=type(exc).__name__,
             )
-        if len(indexed_entries) != target.finished_runs_after:
+        if len(entries) != target.finished_runs_after:
             return self._terminal_schedule_outcome(
                 target,
                 request_generation=request_generation,
@@ -977,19 +955,6 @@ class TrainingManager:
                 reason=PostTrainingSaliencyScheduleReason.FINISHED_RUN_COUNT_CHANGED,
                 training_generation=token.generation,
             )
-        if target.append:
-            new_count = target.finished_runs_after - target.finished_runs_before
-            if new_count <= 0:
-                return self._terminal_schedule_outcome(
-                    target,
-                    request_generation=request_generation,
-                    methods=methods,
-                    disposition=PostTrainingSaliencyScheduleDisposition.REJECTED,
-                    reason=PostTrainingSaliencyScheduleReason.NO_NEW_FINISHED_RUNS,
-                    training_generation=token.generation,
-                )
-            indexed_entries = indexed_entries[-new_count:]
-        entries = [(holder, record) for _member, holder, record in indexed_entries]
         if not entries:
             return self._terminal_schedule_outcome(
                 target,
@@ -1408,10 +1373,7 @@ class TrainingManager:
         """Allow a fresh explicit retry only after the exact owner is terminal."""
         status = self._post_training_saliency_status
         return bool(
-            target.explicit
-            and not target.append
-            and target.finished_runs_before == 0
-            and trainer is owner.trainer
+            trainer is owner.trainer
             and target.run == owner.target.run
             and target.finished_runs_after == owner.target.finished_runs_after
             and status.generation == owner.generation
@@ -1452,14 +1414,10 @@ class TrainingManager:
         previous = owner.target
         if target.run.trainer_id != previous.run.trainer_id:
             return True
-        if (
-            target.run.run_id <= previous.run.run_id
-            or training_generation <= owner.training_generation
-        ):
-            return False
-        if target.append:
-            return target.finished_runs_after > previous.finished_runs_after
-        return True
+        return (
+            target.run.run_id > previous.run.run_id
+            and training_generation > owner.training_generation
+        )
 
     @staticmethod
     def _requested_saliency_methods(params: dict) -> tuple[str, ...]:
@@ -1620,24 +1578,14 @@ class TrainingManager:
     @staticmethod
     def _finished_record_entries(
         trainer: Trainer,
-    ) -> list[tuple[tuple[int, int], TrainingPlanHolder, TrainRecord]]:
-        """Return indexed finished records in stable holder/repeat order."""
+    ) -> list[tuple[TrainingPlanHolder, TrainRecord]]:
+        """Return finished records in stable holder/repeat order."""
         return [
-            ((plan_index, run_index), holder, record)
-            for plan_index, holder in enumerate(trainer.get_training_plan_holders())
-            for run_index, record in enumerate(holder.get_plans())
+            (holder, record)
+            for holder in trainer.get_training_plan_holders()
+            for record in holder.get_plans()
             if record.is_finished()
         ]
-
-    @staticmethod
-    def _is_automatic_baseline(params: dict) -> bool:
-        methods = params.get("_methods") or params.get("methods")
-        return (
-            params.get("_profile") in {None, "recommended"}
-            and isinstance(methods, (list, tuple, set))
-            and frozenset(str(method) for method in methods)
-            == _BASELINE_SALIENCY_METHODS
-        )
 
     def _saliency_job_is_current(
         self,
@@ -2010,7 +1958,7 @@ class TrainingManager:
             )
 
     def wait_for_saliency_job(self, timeout: float | None = None) -> bool:
-        """Wait for the current automatic saliency job; intended for lifecycle gates."""
+        """Wait for the current background saliency job at lifecycle gates."""
         return self._wait_for_saliency_work(timeout=timeout)
 
     def _wait_for_saliency_work(

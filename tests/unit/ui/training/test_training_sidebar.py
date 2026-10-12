@@ -1256,6 +1256,87 @@ def test_configure_training_previews_selected_model_recommendation_before_commit
     assert submitted.edited_recommendation_fields == frozenset()
 
 
+@pytest.mark.parametrize("combined", [False, True])
+def test_training_dialog_queries_keep_one_model_and_publication_draft(
+    sidebar, combined
+):
+    query_port = MagicMock()
+    query_port.query_training_state.return_value = SimpleNamespace(
+        failed=False,
+        diagnostics={"state": {"training": {"training_option": {"batch_size": 8}}}},
+    )
+    query_port.get_training_recommendation.return_value = None
+    sidebar.panel._typed_port_mode = True
+    sidebar.panel._query_port = query_port
+    model_holder = MagicMock()
+    model_holder.model_id = "braindecode.eegconformer"
+    model_holder.model_params_map = {"n_filters_time": 40}
+    model_holder.pretrained_weight_path = None
+    model_holder.target_model.__name__ = "EEGConformer"
+    publication = SimpleNamespace(
+        generation=73,
+        state=SimpleNamespace(
+            epoch=SimpleNamespace(available=True),
+            training=SimpleNamespace(model_name="EEGNet", model_params={}),
+        ),
+    )
+    expected_name = "braindecode.eegconformer" if combined else "EEGNet"
+    expected_params = {"n_filters_time": 40} if combined else {}
+    observed_requests = []
+
+    def inspect_dialog(dialog):
+        request = dialog._resource_preview_request_template
+        assert request is not None
+        observed_requests.append(request)
+        assert request.publication_generation == 73
+        assert request.model_name == expected_name
+        assert request.model_params == expected_params
+        assert request.batch_size == 11
+        dialog._device_recommendation_provider("cuda:0")
+        return False
+
+    with (
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.get_command_review_context",
+            return_value=CommandReviewContext(
+                capability=CommandCapability(
+                    command_name="configure_training", enabled=True
+                ),
+                publication_generation=73,
+            ),
+        ),
+        patch.object(sidebar, "_application_publication", return_value=publication),
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.ModelSelectionDialog"
+        ) as model_dialog,
+        patch(
+            "XBrainLab.ui.panels.training.sidebar.TrainingSettingDialog.exec",
+            new=inspect_dialog,
+        ),
+        patch.object(sidebar, "_apply_training_configuration") as apply_configuration,
+    ):
+        model_dialog.return_value.exec.return_value = True
+        model_dialog.return_value.get_result.return_value = model_holder
+        open_dialog = (
+            sidebar.configure_training if combined else sidebar.training_setting
+        )
+        outcome = open_dialog(suggested_values={"batch_size": "11"})
+
+    context = {"expected_publication_generation": 73}
+    if combined:
+        context.update(
+            prospective_model_name=expected_name,
+            prospective_model_params=expected_params,
+        )
+    assert query_port.get_training_recommendation.call_args_list == [
+        call(**context),
+        call(**context, prospective_device="cuda:0"),
+    ]
+    assert len(observed_requests) == 1
+    assert outcome.status.value == "cancelled"
+    apply_configuration.assert_not_called()
+
+
 def test_start_training_blocking_result_opens_adjust_settings_without_retry(sidebar):
     dispatch, calls, callbacks = _async_dispatch_recorder()
     blocking_result = _training_preflight(ram_risk=RISK_BLOCKING)

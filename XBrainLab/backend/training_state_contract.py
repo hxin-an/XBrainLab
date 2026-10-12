@@ -42,7 +42,7 @@ class TrainingRunIdentity:
 
 
 class PostTrainingSaliencyPhase(str, Enum):
-    """Observable phases of one automatic post-training saliency job."""
+    """Observable phases of one background post-training saliency job."""
 
     IDLE = "idle"
     PENDING = "pending"
@@ -62,7 +62,7 @@ class PostTrainingSaliencyPhase(str, Enum):
 
 
 class PostTrainingSaliencyScheduleDisposition(str, Enum):
-    """Result category for one automatic saliency scheduling request."""
+    """Result category for one explicit saliency scheduling request."""
 
     SCHEDULED = "scheduled"
     REJECTED = "rejected"
@@ -70,17 +70,15 @@ class PostTrainingSaliencyScheduleDisposition(str, Enum):
 
 
 class PostTrainingSaliencyScheduleReason(str, Enum):
-    """Stable reason codes for automatic saliency scheduling outcomes."""
+    """Stable reason codes for explicit saliency scheduling outcomes."""
 
     SCHEDULED = "scheduled"
     TRAINER_UNAVAILABLE = "trainer_unavailable"
-    UNSUPPORTED_PROFILE = "unsupported_profile"
     TRAINING_NOT_COMPLETED = "training_not_completed"
     TRAINING_RUN_CHANGED = "training_run_changed"
     TRAINING_STATE_UNAVAILABLE = "training_state_unavailable"
     TRAINING_STATE_UNSTABLE = "training_state_unstable"
     FINISHED_RUN_COUNT_CHANGED = "finished_run_count_changed"
-    NO_NEW_FINISHED_RUNS = "no_new_finished_runs"
     NO_FINISHED_RECORDS = "no_finished_records"
     PLAN_PREPARATION_FAILED = "plan_preparation_failed"
     TRAINING_GENERATION_CHANGED = "training_generation_changed"
@@ -110,7 +108,7 @@ _ALLOWED_POST_TRAINING_SALIENCY_TRANSITIONS = {
 
 @dataclass(frozen=True, slots=True)
 class PostTrainingSaliencyStatus:
-    """Immutable, generation-bound status for automatic saliency computation."""
+    """Immutable, generation-bound status for background saliency computation."""
 
     phase: PostTrainingSaliencyPhase
     generation: int
@@ -176,7 +174,7 @@ class PostTrainingSaliencyStatus:
 
     @classmethod
     def idle(cls, *, generation: int = 0) -> PostTrainingSaliencyStatus:
-        """Return the status before any automatic job is scheduled."""
+        """Return the status before any background job is scheduled."""
         return cls(
             phase=PostTrainingSaliencyPhase.IDLE,
             generation=generation,
@@ -249,7 +247,7 @@ class PostTrainingSaliencyStatus:
 
 @dataclass(frozen=True, slots=True)
 class PostTrainingSaliencyScheduleOutcome:
-    """Typed acknowledgement for one automatic saliency scheduling request."""
+    """Typed acknowledgement for one explicit saliency scheduling request."""
 
     disposition: PostTrainingSaliencyScheduleDisposition
     reason: PostTrainingSaliencyScheduleReason

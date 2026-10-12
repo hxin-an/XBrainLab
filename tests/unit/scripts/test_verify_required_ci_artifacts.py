@@ -12,6 +12,126 @@ from scripts.dev.run_app_polish_ui_dpi_gate import (
 )
 
 
+@pytest.fixture
+def public_smoke_artifact(tmp_path, monkeypatch):
+    from scripts.dev import run_public_cross_source_training_smoke as smoke
+
+    def passed_result(fixture, protocol):
+        return smoke.SmokeResult(
+            name=str(fixture["name"]),
+            filename=str(fixture["filename"]),
+            source_family=str(fixture["source_family"]),
+            status="passed",
+            dataset_count=1 if protocol == "training" else 0,
+            message="observed success",
+            protocol=protocol,
+            artifacts_reloaded=protocol == "training",
+        )
+
+    monkeypatch.setattr(
+        smoke, "run_fixture_smoke", lambda fixture: passed_result(fixture, "training")
+    )
+    monkeypatch.setattr(
+        smoke,
+        "run_fixture_boundary_smoke",
+        lambda fixture: passed_result(fixture, "import-preprocess-only"),
+    )
+    payload = smoke.build_snapshot()
+    # Files and the provenance consumer are real; only expensive EEG execution is
+    # replaced because these tests protect the report admission boundary.
+    provenance = tmp_path / "provenance.json"
+    provenance.write_text(
+        json.dumps(
+            {
+                "schema": "xbrainlab.ci-source-provenance.v1",
+                "job_key": "public-dataset-gate",
+                "event_name": "pull_request",
+                "repository": "example/XBrainLab",
+                "workflow": "CI",
+                "run_id": "1",
+                "run_attempt": "1",
+                "github_sha": "a" * 40,
+                "expected_head_sha": "b" * 40,
+                "pull_request_head_sha": "b" * 40,
+                "pull_request_base_sha": "c" * 40,
+                "checked_out_head_sha": "b" * 40,
+                "checked_out_tree_sha": "d" * 40,
+                "github_job": "public-dataset-gate",
+                "runner_os": "Linux",
+                "runner_arch": "X64",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return payload, tmp_path / "public.json", provenance
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        None,
+        "absent",
+        "empty",
+        "duplicate",
+        "failed",
+        "missing",
+        "protocol",
+        "reload",
+        "summary",
+        "malformed-row",
+        "malformed-config",
+        "invalid-status",
+        "no-datasets",
+        "malformed-reload",
+        "unconfigured",
+        "extra-result",
+    ],
+)
+def test_public_ci_consumer_checks_actual_cases(public_smoke_artifact, damage):
+    payload, result_path, provenance_path = public_smoke_artifact
+    if damage == "absent":
+        payload.pop("results")
+    elif damage == "empty":
+        payload["results"] = []
+    elif damage == "duplicate":
+        payload["results"].append(dict(payload["results"][0]))
+    elif damage in {"failed", "missing", "invalid-status"}:
+        payload["results"][0]["status"] = damage
+    elif damage == "protocol":
+        payload["results"][0]["protocol"] = "import-preprocess-only"
+    elif damage == "reload":
+        payload["results"][0]["artifacts_reloaded"] = False
+    elif damage == "summary":
+        payload["summary"]["passed_required_case_count"] = 999
+    elif damage == "malformed-row":
+        payload["results"][0] = None
+    elif damage == "malformed-config":
+        payload["summary"]["configured_case_ids"] = None
+    elif damage == "no-datasets":
+        payload["results"][0]["dataset_count"] = 0
+    elif damage == "malformed-reload":
+        payload["results"][0]["artifacts_reloaded"] = "yes"
+    elif damage == "unconfigured":
+        payload["summary"]["configured_case_ids"] = []
+    elif damage == "extra-result":
+        payload["results"].append({**payload["results"][0], "name": "unregistered"})
+    result_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    failures = verifier.verify_required_ci_artifacts(
+        required_artifacts=[("public-cross-source", result_path)],
+        provenance_path=provenance_path,
+        expected_job_key="public-dataset-gate",
+        expected_github_job="public-dataset-gate",
+        expected_runner_os="Linux",
+    )
+
+    if damage is None:
+        assert failures == ()
+    else:
+        assert len(failures) == 1
+        assert "failed 'public-cross-source'" in failures[0]
+
+
 def _dpi_payload():
     return build_dpi_gate_manifest(
         captures=[
@@ -293,7 +413,6 @@ def test_required_ci_artifacts_reject_unknown_contract(monkeypatch, tmp_path) ->
         ),
         ("dataset-validation", {"strict_validation": {"ok": True}}),
         ("data-interpretation-format", {"strict_validation": {"ok": True}}),
-        ("public-cross-source", {"summary": {"all_required_passed": True}}),
     ),
 )
 def test_required_ci_artifact_contract_accepts_successful_payload(

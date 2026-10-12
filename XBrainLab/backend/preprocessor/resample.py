@@ -5,6 +5,10 @@ from typing import cast
 import mne
 import numpy as np
 
+from ..dataset.epochs import (
+    read_verified_epoch_window_provenance,
+    resampled_epoch_source_metadata,
+)
 from ..load_data import Raw
 from .base import PreprocessBase
 
@@ -57,7 +61,18 @@ class Resample(PreprocessBase):
                 mne_data.resample(sfreq=sfreq)
                 preprocessed_data.set_mne(mne_data)
         else:
+            provenance = read_verified_epoch_window_provenance(mne_data)
+            source_events = mne_data.events.copy() if provenance is not None else None
+            if provenance and mne_data.tmin != provenance[0].tmin_seconds:
+                # Recover the verified origin lost to FIF first-sample rounding.
+                mne_data.shift_time(provenance[0].tmin_seconds, relative=False)
             mne_data.resample(sfreq=sfreq)
+            if provenance is not None:
+                if not np.array_equal(mne_data.events, cast(np.ndarray, source_events)):
+                    raise ValueError("Resampling changed the source event grid.")
+                mne_data.metadata = resampled_epoch_source_metadata(
+                    mne_data, provenance
+                )
             preprocessed_data.set_mne_and_wipe_events(mne_data)
 
     @staticmethod

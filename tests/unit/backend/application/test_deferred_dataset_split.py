@@ -20,9 +20,6 @@ from XBrainLab.backend.application import (
     SaveDatasetSplitCommand,
     TrainCommand,
 )
-from XBrainLab.backend.application.dataset_generation_service import (
-    DatasetGenerationCommandService,
-)
 from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitPreviewPublication,
     DatasetSplitPreviewRequest,
@@ -562,7 +559,7 @@ def test_real_shorthand_split_command_saves_canonical_non_cv_specification(
             "is_option": True,
         }
     ]
-    canonical = DatasetGenerationCommandService.config_from_payload(specification)
+    canonical = DatasetSplitSpecification.from_payload(specification).to_config()
     assert split_protocols_for_config(canonical) == {
         "test": protocol,
         "validation": protocol,
@@ -763,9 +760,7 @@ def test_training_blocks_same_count_materialization_with_different_membership(
     assert saved.ok is True
     _configure_training(service)
 
-    generator = service.study.get_datasets_generator(
-        DatasetGenerationCommandService.config_from_payload(specification.to_payload())
-    )
+    generator = service.study.get_datasets_generator(specification.to_config())
     original_generate = generator.generate
 
     def generate_with_same_counts_different_membership():
@@ -850,9 +845,7 @@ def test_preview_receipt_aggregate_evidence_rejects_tampering_after_many_rows(
     """The receipt binds totals as well as every published row detail."""
     service, epoch = service_factory()
     specification = _specification()
-    config = DatasetGenerationCommandService.config_from_payload(
-        specification.to_payload()
-    )
+    config = specification.to_config()
     datasets = []
     for index in range(51):
         dataset = _materialized_dataset(epoch)

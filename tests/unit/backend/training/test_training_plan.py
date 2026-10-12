@@ -1740,7 +1740,7 @@ def _mark_finished_records(base_holder, count: int) -> tuple[list, list[object]]
     return records, eval_records
 
 
-def test_post_training_saliency_append_only_computes_new_records_off_thread(
+def test_post_training_saliency_computes_all_finished_records_off_thread(
     base_holder,
 ):
     records, old_eval_records = _mark_finished_records(base_holder, 2)
@@ -1753,9 +1753,7 @@ def test_post_training_saliency_append_only_computes_new_records_off_thread(
     run, outcome = _completed_saliency_run()
     target = PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=1,
         finished_runs_after=2,
-        append=True,
     )
     params = {
         "_profile": "recommended",
@@ -1789,9 +1787,8 @@ def test_post_training_saliency_append_only_computes_new_records_off_thread(
         release_compute.set()
         assert manager.wait_for_saliency_job(timeout=2.0)
 
-    assert get_eval_pair.call_args.args[0] is records[1]
-    assert records[0].eval_record is old_eval_records[0]
-    assert records[1].eval_record is prepared_eval
+    assert [args.args[0] for args in get_eval_pair.call_args_list] == records
+    assert all(record.eval_record is prepared_eval for record in records)
     assert manager.saliency_params == params
 
 
@@ -1806,9 +1803,7 @@ def test_post_training_saliency_append_race_discards_prepared_result(base_holder
     run, outcome = _completed_saliency_run()
     target = PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=1,
         finished_runs_after=2,
-        append=True,
     )
     params = {
         "_profile": "recommended",
@@ -1858,9 +1853,7 @@ def test_post_training_saliency_never_schedules_non_completed_run(base_holder, s
     outcome = TrainingTerminalOutcome(state=state, run=run)
     target = PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=True,
     )
 
     with (
@@ -1892,9 +1885,7 @@ def test_post_training_saliency_publishes_multiple_records_atomically(base_holde
     run, outcome = _completed_saliency_run()
     target = PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=0,
         finished_runs_after=2,
-        append=True,
     )
     prepared = [_prepared_saliency_record(), _prepared_saliency_record()]
     observed = []
@@ -1933,9 +1924,7 @@ def test_post_training_saliency_oom_preserves_existing_record_state(base_holder)
     run, outcome = _completed_saliency_run()
     target = PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=True,
     )
     params = {
         "_profile": "recommended",
@@ -1980,9 +1969,7 @@ def test_noncooperative_saliency_cancel_is_bounded_and_never_publishes(
     run, outcome = _completed_saliency_run()
     target = PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=True,
     )
     params = {
         "_profile": "recommended",

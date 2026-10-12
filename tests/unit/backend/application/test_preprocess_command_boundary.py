@@ -61,16 +61,8 @@ def test_notch_at_or_above_lowest_source_nyquist_preserves_pipeline(
     service = ApplicationService(study)
     before = service.get_view_publication()
     original_data = study.preprocessed_data_list
-    detached_targets = []
-    detached_preparation_service = service.preprocess.detached_preparation_service
-
-    def capture_detached_target(source_data):
-        target = detached_preparation_service(source_data)
-        target.prepare_filter = MagicMock(wraps=target.prepare_filter)
-        detached_targets.append(target)
-        return target
-
-    service.preprocess.detached_preparation_service = capture_detached_target
+    prepare_filter = MagicMock(wraps=service.preprocess.prepare_filter)
+    service.preprocess.prepare_filter = prepare_filter
     commit_prepared = MagicMock(wraps=service.preprocess.commit_prepared)
     service.preprocess.commit_prepared = commit_prepared
 
@@ -97,8 +89,7 @@ def test_notch_at_or_above_lowest_source_nyquist_preserves_pipeline(
     assert result.diagnostics["sampling_rate"] == 100.0
     assert result.diagnostics["nyquist"] == 50.0
     assert result.diagnostics["state_preserved"] is True
-    assert len(detached_targets) == 1
-    assert detached_targets[0].prepare_filter.call_count == 0
+    assert prepare_filter.call_count == 0
     assert commit_prepared.call_count == 0
     assert study.preprocessed_data_list is original_data
     assert raw.get_preprocess_history() == []
@@ -109,16 +100,8 @@ def test_notch_below_lowest_source_nyquist_uses_existing_prepare_and_commit() ->
     raw = _minimal_raw(Path("low-rate-recording.fif"), sfreq=100.0)
     study.set_loaded_data_list([raw], force_update=True)
     service = ApplicationService(study)
-    detached_targets = []
-    detached_preparation_service = service.preprocess.detached_preparation_service
-
-    def capture_detached_target(source_data):
-        target = detached_preparation_service(source_data)
-        target.prepare_filter = MagicMock(wraps=target.prepare_filter)
-        detached_targets.append(target)
-        return target
-
-    service.preprocess.detached_preparation_service = capture_detached_target
+    prepare_filter = MagicMock(wraps=service.preprocess.prepare_filter)
+    service.preprocess.prepare_filter = prepare_filter
     commit_prepared = MagicMock(wraps=service.preprocess.commit_prepared)
     service.preprocess.commit_prepared = commit_prepared
 
@@ -127,8 +110,7 @@ def test_notch_below_lowest_source_nyquist_uses_existing_prepare_and_commit() ->
     )
 
     assert result.ok
-    assert len(detached_targets) == 1
-    assert detached_targets[0].prepare_filter.call_count == 1
+    assert prepare_filter.call_count == 1
     assert commit_prepared.call_count == 1
     assert (
         "notch 40 hz"
@@ -147,16 +129,8 @@ def test_bandpass_at_or_above_lowest_source_nyquist_preserves_pipeline(
     service = ApplicationService(study)
     before = service.get_view_publication()
     original_data = study.preprocessed_data_list
-    detached_targets = []
-    detached_preparation_service = service.preprocess.detached_preparation_service
-
-    def capture_detached_target(source_data):
-        target = detached_preparation_service(source_data)
-        target.prepare_filter = MagicMock(wraps=target.prepare_filter)
-        detached_targets.append(target)
-        return target
-
-    service.preprocess.detached_preparation_service = capture_detached_target
+    prepare_filter = MagicMock(wraps=service.preprocess.prepare_filter)
+    service.preprocess.prepare_filter = prepare_filter
     commit_prepared = MagicMock(wraps=service.preprocess.commit_prepared)
     service.preprocess.commit_prepared = commit_prepared
 
@@ -184,8 +158,7 @@ def test_bandpass_at_or_above_lowest_source_nyquist_preserves_pipeline(
     assert result.diagnostics["sampling_rate"] == 100.0
     assert result.diagnostics["nyquist"] == 50.0
     assert result.diagnostics["state_preserved"] is True
-    assert len(detached_targets) == 1
-    assert detached_targets[0].prepare_filter.call_count == 0
+    assert prepare_filter.call_count == 0
     assert commit_prepared.call_count == 0
     assert study.preprocessed_data_list is original_data
     assert raw.get_preprocess_history() == []
@@ -291,24 +264,15 @@ def test_notch_skips_unreadable_sampling_rate_and_uses_existing_prepare_path() -
     raw.get_sfreq = MagicMock(side_effect=RuntimeError("unreadable sampling rate"))
     study.set_loaded_data_list([raw], force_update=True)
     service = ApplicationService(study)
-    detached_targets = []
-    detached_preparation_service = service.preprocess.detached_preparation_service
-
-    def capture_detached_target(source_data):
-        target = detached_preparation_service(source_data)
-        target.prepare_filter = MagicMock(wraps=target.prepare_filter)
-        detached_targets.append(target)
-        return target
-
-    service.preprocess.detached_preparation_service = capture_detached_target
+    prepare_filter = MagicMock(wraps=service.preprocess.prepare_filter)
+    service.preprocess.prepare_filter = prepare_filter
 
     result = service.execute(
         PreprocessCommand(operation=PreprocessOperation.NOTCH, notch_freq=40.0)
     )
 
     assert result.error_type is not ErrorType.PRECONDITION
-    assert len(detached_targets) == 1
-    assert detached_targets[0].prepare_filter.call_count == 1
+    assert prepare_filter.call_count == 1
 
 
 @pytest.mark.parametrize(

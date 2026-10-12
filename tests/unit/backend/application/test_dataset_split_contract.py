@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from XBrainLab.backend.application.dataset_generation_service import (
-    DatasetGenerationCommandService,
-)
 from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitContext,
     DatasetSplitSpecification,
@@ -101,7 +98,7 @@ def test_structured_split_payload_rejects_inactive_rules() -> None:
     )
 
     with pytest.raises(ValueError, match=r"(?i)inactive"):
-        DatasetGenerationCommandService.config_from_payload(payload)
+        DatasetSplitSpecification.from_payload(payload).to_config()
 
 
 @pytest.mark.parametrize(
@@ -110,7 +107,7 @@ def test_structured_split_payload_rejects_inactive_rules() -> None:
 )
 def test_split_config_rejects_retired_test_strategies(split_type: str) -> None:
     with pytest.raises(ValueError, match="supported"):
-        DatasetGenerationCommandService.config_from_payload(
+        DatasetSplitSpecification.from_payload(
             _payload(
                 test_splitters=[
                     {
@@ -121,7 +118,7 @@ def test_split_config_rejects_retired_test_strategies(split_type: str) -> None:
                     }
                 ]
             )
-        )
+        ).to_config()
 
 
 @pytest.mark.parametrize(
@@ -140,9 +137,9 @@ def test_individual_subject_split_is_rejected_for_test_or_validation(
         }
     ]
     with pytest.raises(ValueError, match=r"Individual.*Subject"):
-        DatasetGenerationCommandService.config_from_payload(
+        DatasetSplitSpecification.from_payload(
             _payload(train_type="Individual", **{split_field: splitters})
-        )
+        ).to_config()
 
 
 @pytest.mark.parametrize(
@@ -154,7 +151,7 @@ def test_enabled_split_rule_requires_a_non_empty_supported_value(
     value: str,
 ) -> None:
     with pytest.raises(ValueError):
-        DatasetGenerationCommandService.config_from_payload(
+        DatasetSplitSpecification.from_payload(
             _payload(
                 test_splitters=[
                     {
@@ -165,20 +162,20 @@ def test_enabled_split_rule_requires_a_non_empty_supported_value(
                     }
                 ]
             )
-        )
+        ).to_config()
 
 
 def test_cross_validation_requires_kfold_test_and_non_manual_validation() -> None:
     with pytest.raises(ValueError, match="K Fold"):
-        DatasetGenerationCommandService.config_from_payload(
+        DatasetSplitSpecification.from_payload(
             _payload(is_cross_validation=True)
-        )
+        ).to_config()
 
 
 def test_validation_disable_is_canonical_empty_rules_not_a_test_disable() -> None:
-    config = DatasetGenerationCommandService.config_from_payload(
+    config = DatasetSplitSpecification.from_payload(
         _payload(val_splitters=[]),
-    )
+    ).to_config()
 
     assert config.val_splitter_list == []
 
@@ -204,7 +201,7 @@ def test_split_context_exposes_backend_owned_strategy_availability() -> None:
     assert context.cv_validation_split_units == ("Ratio", "Number")
     assert context.individual_subject_unavailable_reason
     with pytest.raises(ValueError, match="Manual"):
-        DatasetGenerationCommandService.config_from_payload(
+        DatasetSplitSpecification.from_payload(
             _payload(
                 is_cross_validation=True,
                 test_splitters=[
@@ -224,4 +221,4 @@ def test_split_context_exposes_backend_owned_strategy_availability() -> None:
                     }
                 ],
             )
-        )
+        ).to_config()

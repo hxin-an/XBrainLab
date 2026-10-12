@@ -11,6 +11,9 @@ import scipy.io
 import XBrainLab.backend.dataset.epochs as epochs_module
 from XBrainLab.backend.dataset import Epochs
 from XBrainLab.backend.load_data import Raw
+from XBrainLab.backend.preprocessor.resample import Resample
+from XBrainLab.backend.preprocessor.time_epoch import TimeEpoch
+from XBrainLab.backend.preprocessor.window_epoch import WindowEpoch
 
 epoch_duration = 3
 n_class = 2
@@ -347,17 +350,8 @@ def test_explicit_xbrainlab_raw_event_provenance_survives_fif_reload(
             np.asarray([1, 2, 1, 2, 1, 2]),
         ),
     )
-    source_epochs = mne.Epochs(
-        raw,
-        events,
-        event_id={"left": 1, "right": 2},
-        tmin=-0.1,
-        tmax=0.89,
-        baseline=None,
-        preload=True,
-        verbose=False,
-    )
-    source = Raw("/recordings/reviewed-source.fif", source_epochs)
+    source = Raw("/recordings/reviewed-source.fif", raw)
+    source.set_event(events, {"left": 1, "right": 2})
     source.set_source_content_identity(
         {
             "algorithm": "sha256",
@@ -365,10 +359,10 @@ def test_explicit_xbrainlab_raw_event_provenance_survives_fif_reload(
             "file_bytes": 80_000,
         },
     )
-    source.add_preprocess("Epoching -0.1 ~ 0.89 by event (None baseline)")
+    source = TimeEpoch([source]).data_preprocess(None, None, -0.1, 0.89)[0]
     before = Epochs([source]).get_epoch_window_provenance()
     saved_path = tmp_path / "verified-source-epo.fif"
-    source_epochs.save(saved_path, overwrite=True, verbose=False)
+    source.get_mne().save(saved_path, overwrite=True, verbose=False)
 
     reloaded = mne.read_epochs(saved_path, preload=True, verbose=False)
     after = Epochs([Raw(str(saved_path), reloaded)]).get_epoch_window_provenance()
@@ -383,24 +377,15 @@ def test_stale_serialized_provenance_fails_closed_after_reload(
 ) -> None:
     info = mne.create_info(ch_names=["Cz"], sfreq=100.0, ch_types="eeg")
     raw = mne.io.RawArray(np.zeros((1, 500)), info, verbose=False)
-    mne_epochs = mne.Epochs(
-        raw,
-        np.asarray([[100, 0, 1], [300, 0, 2]]),
-        event_id={"left": 1, "right": 2},
-        tmin=0.0,
-        tmax=0.99,
-        baseline=None,
-        preload=True,
-        verbose=False,
-    )
-    source = Raw("/recordings/source.fif", mne_epochs)
-    source.add_preprocess("Epoching 0.0 ~ 0.99 by event (None baseline)")
+    source = Raw("/recordings/source.fif", raw)
+    source.set_event(np.asarray([[100, 0, 1], [300, 0, 2]]), {"left": 1, "right": 2})
+    source = TimeEpoch([source]).data_preprocess(None, None, 0.0, 0.99)[0]
     assert all(
         item.source_coordinates_verified
         for item in Epochs([source]).get_epoch_window_provenance()
     )
     saved_path = tmp_path / "marked-source-epo.fif"
-    mne_epochs.save(saved_path, overwrite=True, verbose=False)
+    source.get_mne().save(saved_path, overwrite=True, verbose=False)
     reloaded = mne.read_epochs(saved_path, preload=True, verbose=False)
     metadata = reloaded.metadata
     assert metadata is not None
@@ -415,6 +400,222 @@ def test_stale_serialized_provenance_fails_closed_after_reload(
     ).get_epoch_window_provenance()
 
     assert all(not item.source_coordinates_verified for item in provenance)
+    resampled = Resample([Raw(str(saved_path), reloaded)]).data_preprocess(50.0)
+    assert all(
+        not item.source_coordinates_verified
+        for item in Epochs(resampled).get_epoch_window_provenance()
+    )
+
+
+@pytest.mark.parametrize("changed_axis", ["time", "rate", "metadata_end"])
+@pytest.mark.parametrize("resample", [False, True])
+def test_stale_live_epoch_timing_is_not_verified(changed_axis, resample):
+    source = Raw(
+        "reviewed-source.fif",
+        mne.io.RawArray(
+            np.zeros((1, 500)),
+            mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+            verbose=False,
+        ),
+    )
+    source.set_event(np.asarray([[100, 0, 1]]), {"rest": 1})
+    data = TimeEpoch([source]).data_preprocess(None, None, 0.0, 0.99)[0].get_mne()
+    metadata = data.metadata.copy()
+    if changed_axis == "time":
+        data.shift_time(0.02, relative=True)
+    elif changed_axis == "rate":
+        data = mne.EpochsArray(
+            data.get_data(),
+            mne.create_info(["Cz"], sfreq=200.0, ch_types="eeg"),
+            events=data.events.copy(),
+            event_id=data.event_id,
+            metadata=metadata.copy(),
+            verbose=False,
+        )
+    else:
+        column = epochs_module.EPOCH_SOURCE_PROVENANCE_METADATA_COLUMN
+        encoded = json.loads(metadata.loc[0, column])
+        encoded["tmax_seconds"] = 0.5
+        metadata.loc[0, column] = json.dumps(encoded)
+        data.metadata = metadata.copy()
+    imported = Raw("imported-stale-epo.fif", data)
+    candidate = Resample([imported]).data_preprocess(50.0) if resample else [imported]
+
+    assert all(
+        not item.source_coordinates_verified
+        for item in Epochs(candidate).get_epoch_window_provenance()
+    )
+    assert candidate[0].get_mne().metadata.equals(metadata)
+
+
+def test_noninteger_rate_off_grid_epoch_provenance_survives_fif(tmp_path):
+    sfreq = 128.3
+    source = Raw(
+        "reviewed-source.fif",
+        mne.io.RawArray(
+            np.zeros((1, 1000)),
+            mne.create_info(["Cz"], sfreq=sfreq, ch_types="eeg"),
+            verbose=False,
+        ),
+    )
+    source.set_event(np.asarray([[100, 0, 1]]), {"rest": 1})
+    produced = TimeEpoch([source]).data_preprocess(None, None, -1 / sfreq, 0.99)
+    resampled = Resample(produced).data_preprocess(sfreq / 2)[0]
+    before = Epochs([resampled]).get_epoch_window_provenance()
+    path = tmp_path / "noninteger-off-grid-epo.fif"
+    resampled.get_mne().save(path, fmt="double", overwrite=True, verbose=False)
+    data = mne.read_epochs(path, preload=True, verbose=False)
+
+    # FIF writes sfreq as float32 and the first sample as round(tmin * sfreq).
+    assert data.info["sfreq"] == float(np.float32(sfreq / 2))
+    assert data.tmin == pytest.approx(
+        round(before[0].tmin_seconds * before[0].epoch_sfreq) / data.info["sfreq"]
+    )
+    reloaded = Raw(str(path), data)
+    assert Epochs([reloaded]).get_epoch_window_provenance() == before
+    original_times = data.times.copy()
+    original_events = data.events.copy()
+    original_samples = data.get_data().copy()
+    final = Resample([reloaded]).data_preprocess(32.075)
+    after = Epochs(final)
+    assert (
+        epochs_module.read_verified_epoch_window_provenance(final[0].get_mne())
+        == after.get_epoch_window_provenance()
+    )
+    assert all(
+        item.source_coordinates_verified
+        and item.source_recording_id == before[0].source_recording_id
+        and item.window_start_sample == before[0].window_start_sample
+        and item.window_end_sample_exclusive == before[0].window_end_sample_exclusive
+        for item in after.get_epoch_window_provenance()
+    )
+    np.testing.assert_array_equal(data.times, original_times)
+    np.testing.assert_array_equal(data.events, original_events)
+    np.testing.assert_array_equal(data.get_data(), original_samples)
+
+
+@pytest.mark.parametrize("producer", ["event", "window"])
+def test_real_epoch_producer_resample_and_fif_preserve_source_coordinates(
+    tmp_path, producer
+):
+    samples = np.arange(1000, dtype=float)[None, :] * 1e-6
+    raw = Raw(
+        "reviewed-source.fif",
+        mne.io.RawArray(
+            samples.copy(),
+            mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+            first_samp=1000,
+            verbose=False,
+        ),
+    )
+    raw.set_source_content_identity(
+        {"algorithm": "sha256", "sha256": "e" * 64, "file_bytes": 8000}
+    )
+    if producer == "event":
+        events = np.asarray([[1100, 0, 1], [1300, 0, 2]])
+        raw.set_event(events.copy(), {"left": 1, "right": 2})
+        produced = TimeEpoch([raw]).data_preprocess(None, None, -0.1, 0.89)
+        expected_starts = [1090, 1290]
+    else:
+        events = np.asarray([[1000, 0, 1]])
+        raw.set_event(events.copy(), {"rest": 1})
+        produced = WindowEpoch([raw]).data_preprocess(1.0, 0.5)
+        expected_starts = list(range(1000, 1901, 50))
+    resampled = Resample(produced).data_preprocess(50.0)[0]
+    aggregate = Epochs([resampled])
+    before = aggregate.get_epoch_window_provenance()
+    assert all(item.source_coordinates_verified for item in before)
+    assert {item.source_recording_id for item in before} == {
+        "content-sha256:" + "e" * 64
+    }
+    assert [item.window_start_sample for item in before] == expected_starts
+    assert [item.window_end_sample_exclusive for item in before] == [
+        start + 100 for start in expected_starts
+    ]
+    assert {item.source_sfreq for item in before} == {100.0}
+    assert {item.epoch_sfreq for item in before} == {50.0}
+    np.testing.assert_array_equal(raw.get_mne().get_data(), samples)
+    np.testing.assert_array_equal(raw.get_event_list()[0], events)
+    assert raw.get_preprocess_history() == []
+
+    path = tmp_path / f"{producer}-resampled-epo.fif"
+    resampled.get_mne().save(path, fmt="double", overwrite=True, verbose=False)
+    reloaded = Raw(str(path), mne.read_epochs(path, preload=True, verbose=False))
+    after = Epochs([reloaded])
+    assert after.get_epoch_window_provenance() == before
+    np.testing.assert_array_equal(after.get_data(), aggregate.get_data())
+    np.testing.assert_array_equal(after.get_label_list(), aggregate.get_label_list())
+    np.testing.assert_array_equal(
+        after.get_trial_group_list(), aggregate.get_trial_group_list()
+    )
+    resampled_reload = Resample([reloaded]).data_preprocess(25.0)[0]
+    retained = Epochs([resampled_reload]).get_epoch_window_provenance()
+    assert [item.source_recording_id for item in retained] == [
+        item.source_recording_id for item in before
+    ]
+    assert [item.window_start_sample for item in retained] == expected_starts
+    assert [item.window_end_sample_exclusive for item in retained] == [
+        start + 100 for start in expected_starts
+    ]
+    assert {item.epoch_sfreq for item in retained} == {25.0}
+    assert all(item.source_coordinates_verified for item in retained)
+
+
+@pytest.mark.parametrize("producer", ["event", "window"])
+@pytest.mark.parametrize("invalid_identity", ["blank_path", "malformed_content"])
+def test_real_epoch_producer_leaves_invalid_source_coordinates_unverified(
+    producer, invalid_identity
+):
+    raw = Raw(
+        "" if invalid_identity == "blank_path" else "recording.fif",
+        mne.io.RawArray(
+            np.zeros((1, 500)),
+            mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+            verbose=False,
+        ),
+    )
+    raw.set_event(np.asarray([[100, 0, 1]]), {"rest": 1})
+    if invalid_identity == "malformed_content":
+        raw.set_runtime_detail(
+            "source_content_identity",
+            {"algorithm": "sha256", "sha256": "broken", "file_bytes": 4000},
+        )
+    produced = (
+        TimeEpoch([raw]).data_preprocess(None, None, 0.0, 0.99)
+        if producer == "event"
+        else WindowEpoch([raw]).data_preprocess(1.0, 0.0)
+    )
+    assert all(
+        not item.source_coordinates_verified
+        for item in Epochs(produced).get_epoch_window_provenance()
+    )
+
+
+@pytest.mark.parametrize(
+    "history",
+    [
+        "Epoching 0.0 ~ 0.99 by event (None baseline)",
+        "Epoching 1s (0s overlap) by sliding window",
+    ],
+)
+def test_display_history_cannot_verify_imported_epoch_coordinates(history):
+    source = Raw(
+        "imported-epo.fif",
+        mne.EpochsArray(
+            np.zeros((1, 1, 100)),
+            mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+            events=np.asarray([[100, 0, 1]]),
+            event_id={"rest": 1},
+            verbose=False,
+        ),
+    )
+    source.add_preprocess(history)
+
+    assert all(
+        not item.source_coordinates_verified
+        for item in Epochs([source]).get_epoch_window_provenance()
+    )
+    assert source.get_mne().metadata is None
 
 
 def test_epoch_source_identity_uses_the_canonical_path_fingerprint(

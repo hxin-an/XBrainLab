@@ -52,12 +52,7 @@ from scripts.dev.human_like_walkthrough.readiness import (
     assert_region_has_no_unpainted_block,
     assert_region_matches_reference,
 )
-from scripts.dev.training_evidence_fixture import (
-    data_split_capture_context as _data_split_capture_context,
-)
-from scripts.dev.training_evidence_fixture import (
-    data_split_capture_provider as _data_split_capture_provider,
-)
+from scripts.dev.training_evidence_fixture import data_split_capture_dialog
 from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.preprocess_render import (
     PreprocessRenderPublication,
@@ -72,13 +67,6 @@ from XBrainLab.backend.application.resource_guard import (
 from XBrainLab.backend.application.state import ApplicationStateSnapshot
 from XBrainLab.backend.application.view_publication import (
     ApplicationViewPublication,
-)
-from XBrainLab.backend.dataset import (
-    DataSplitter,
-    DataSplittingConfig,
-    SplitByType,
-    TrainingType,
-    ValSplitByType,
 )
 from XBrainLab.backend.load_data.raw_data_loader import load_gdf_file
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
@@ -1105,7 +1093,7 @@ def _capture_extended_review_surfaces(
         ("data-splitting-step-2-ratio.png", False),
         ("data-splitting-step-2-cross-validation.png", True),
     ):
-        dialog = _data_splitting_step_two_dialog(
+        dialog = data_split_capture_dialog(
             cross_validation=cross_validation,
         )
         _expand_data_splitting_capture(app, dialog)
@@ -1127,44 +1115,6 @@ def _saliency_setting_dialog(
         raise RuntimeError(f"Unknown saliency methods for capture: {sorted(unknown)}")
     for method, checkbox in dialog.method_checks.items():
         checkbox.setChecked(method in selected_methods)
-    return dialog
-
-
-def _data_splitting_step_two_dialog(
-    *,
-    cross_validation: bool,
-) -> DataSplittingPreviewDialog:
-    config = DataSplittingConfig(
-        TrainingType.FULL,
-        cross_validation,
-        [DataSplitter(ValSplitByType.TRIAL)],
-        [DataSplitter(SplitByType.TRIAL)],
-    )
-    dialog = DataSplittingPreviewDialog(
-        None,
-        "Data Splitting Step 2",
-        split_context=_data_split_capture_context(),
-        publication_generation=1,
-        config=config,
-        preview_provider=_data_split_capture_provider,
-        preview_canceller=lambda _request_id: True,
-    )
-    worker = dialog.preview_worker
-    if worker is not None:
-        worker.join(timeout=2)
-        if worker.is_alive():
-            raise RuntimeError("Data-splitting capture preview did not finish.")
-    dialog.update_table()
-    if dialog.preview_debounce_timer is not None:
-        dialog.preview_debounce_timer.stop()
-    if dialog.timer is not None:
-        dialog.timer.stop()
-    if dialog.tree is None:
-        raise RuntimeError("Data-splitting capture tree is unavailable.")
-    dialog._clear_tree_current_item()
-    dialog._resize_tree_to_rows()
-    dialog.adjustSize()
-    dialog.resize(QSize(980, dialog.sizeHint().height()))
     return dialog
 
 

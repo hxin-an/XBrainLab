@@ -138,6 +138,7 @@ def _training_receipt_runtime(
     service.training_commands = TrainingCommandService(
         training=probe,
         training_runtime=probe,
+        dataset_generation=lambda: service.dataset_generation,
         get_state=service.get_state,
     )
 

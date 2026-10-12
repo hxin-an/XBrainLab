@@ -55,36 +55,6 @@ class PreprocessStudyPort(Protocol):
     ) -> None: ...
 
 
-class _DetachedPreprocessStudy:
-    """Private holder that cannot publish prepared work into the live Study."""
-
-    def __init__(self, preprocessed_data: Sequence[Any]) -> None:
-        self.preprocessed_data_list = list(preprocessed_data)
-
-    def set_preprocessed_data_list(
-        self,
-        preprocessed_data_list: list[Any],
-        force_update: bool = False,
-    ) -> None:
-        del preprocessed_data_list, force_update
-        raise RuntimeError("Detached preprocessing holders cannot publish state.")
-
-    def reset_preprocess(self, force_update: bool = False) -> None:
-        del force_update
-        raise RuntimeError("Detached preprocessing holders cannot reset state.")
-
-    def lock_dataset(self) -> None:
-        raise RuntimeError("Detached preprocessing holders cannot lock datasets.")
-
-    def set_channels(
-        self,
-        chs: list[str],
-        positions: list[tuple],
-    ) -> None:
-        del chs, positions
-        raise RuntimeError("Detached preprocessing holders cannot set channels.")
-
-
 class PreprocessStateReadPort(Protocol):
     """Preprocess state reads used by application command and snapshot services."""
 
@@ -95,7 +65,7 @@ class PreprocessStateReadPort(Protocol):
 
 
 class PreprocessProductPort(PreprocessStateReadPort, Protocol):
-    """Complete preprocess command surface owned by a Study."""
+    """Prepare captured sources and commit through the Study-owned service."""
 
     def apply_montage(
         self,
@@ -108,17 +78,26 @@ class PreprocessProductPort(PreprocessStateReadPort, Protocol):
         l_freq: float | None,
         h_freq: float | None,
         notch_freqs: Sequence[float] | None = None,
+        *,
+        source_data: Sequence[Any],
     ) -> PreparedPreprocessData: ...
 
-    def prepare_resample(self, rate: float) -> PreparedPreprocessData: ...
-    def prepare_normalization(self, method: str) -> PreparedPreprocessData: ...
+    def prepare_resample(
+        self, rate: float, *, source_data: Sequence[Any]
+    ) -> PreparedPreprocessData: ...
+    def prepare_normalization(
+        self, method: str, *, source_data: Sequence[Any]
+    ) -> PreparedPreprocessData: ...
     def prepare_rereference(
         self,
         channels: str | list[str],
+        *,
+        source_data: Sequence[Any],
     ) -> PreparedPreprocessData: ...
     def prepare_standard_pipeline(
         self,
         *,
+        source_data: Sequence[Any],
         l_freq: float,
         h_freq: float,
         notch_freq: float | None = None,
@@ -134,13 +113,10 @@ class PreprocessProductPort(PreprocessStateReadPort, Protocol):
         tmax: float,
         allow_boundary_drop: bool = False,
         *,
+        source_data: Sequence[Any],
         event_label_aliases_by_source: Sequence[Mapping[str, str]] | None = None,
     ) -> PreparedPreprocessData: ...
     def commit_prepared(self, prepared: PreparedPreprocessData) -> bool: ...
-    def detached_preparation_service(
-        self,
-        preprocessed_data: Sequence[Any],
-    ) -> PreprocessStateService: ...
 
 
 def _default_processor_provider(name: str) -> Any:
@@ -163,16 +139,6 @@ class PreprocessStateService(Observable):
 
     def get_preprocessed_data_list(self) -> list[Any]:
         return self.study.preprocessed_data_list
-
-    def detached_preparation_service(
-        self,
-        preprocessed_data: Sequence[Any],
-    ) -> PreprocessStateService:
-        """Bind speculative processing to a captured source sequence."""
-        return PreprocessStateService(
-            _DetachedPreprocessStudy(preprocessed_data),
-            processor_provider=self._processor_provider,
-        )
 
     def reset_preprocess(self) -> None:
         self.study.reset_preprocess(force_update=True)
@@ -197,42 +163,55 @@ class PreprocessStateService(Observable):
         l_freq: float | None,
         h_freq: float | None,
         notch_freqs: Sequence[float] | None = None,
+        *,
+        source_data: Sequence[Any],
     ) -> PreparedPreprocessData:
         return self._prepare_processor(
             self._processor("Filtering"),
             l_freq,
             h_freq,
             notch_freqs=notch_freqs,
+            source_data=source_data,
             progress_stage="Filtering EEG recordings",
         )
 
-    def prepare_resample(self, rate: float) -> PreparedPreprocessData:
+    def prepare_resample(
+        self, rate: float, *, source_data: Sequence[Any]
+    ) -> PreparedPreprocessData:
         return self._prepare_processor(
             self._processor("Resample"),
             rate,
+            source_data=source_data,
             progress_stage="Resampling EEG recordings",
         )
 
     def prepare_rereference(
         self,
         channels: str | list[str],
+        *,
+        source_data: Sequence[Any],
     ) -> PreparedPreprocessData:
         return self._prepare_processor(
             self._processor("Rereference"),
             ref_channels=channels,
+            source_data=source_data,
             progress_stage="Rereferencing EEG recordings",
         )
 
-    def prepare_normalization(self, method: str) -> PreparedPreprocessData:
+    def prepare_normalization(
+        self, method: str, *, source_data: Sequence[Any]
+    ) -> PreparedPreprocessData:
         return self._prepare_processor(
             self._processor("Normalize"),
             norm=method,
+            source_data=source_data,
             progress_stage="Normalizing EEG recordings",
         )
 
     def prepare_standard_pipeline(
         self,
         *,
+        source_data: Sequence[Any],
         l_freq: float,
         h_freq: float,
         notch_freq: float | None = None,
@@ -240,7 +219,7 @@ class PreprocessStateService(Observable):
         ref_channels: str | list[str] | None = None,
         normalization: str | None = None,
     ) -> PreparedPreprocessData:
-        data_list = self.study.preprocessed_data_list
+        data_list = list(source_data)
         if not data_list:
             raise ValueError("No data to preprocess.")
         source_identity = self._data_identity(data_list)
@@ -249,9 +228,8 @@ class PreprocessStateService(Observable):
             # Shipped processors inherit ``PreprocessBase`` and make the one
             # detached copy that protects live study state.  A second full
             # copy here only duplicates memory traffic before that boundary.
-            working_list = list(data_list)
             working_list = self._process_working_list(
-                working_list,
+                data_list,
                 self._processor("Filtering"),
                 l_freq,
                 h_freq,
@@ -306,6 +284,7 @@ class PreprocessStateService(Observable):
         tmax: float,
         allow_boundary_drop: bool = False,
         *,
+        source_data: Sequence[Any],
         event_label_aliases_by_source: Sequence[Mapping[str, str]] | None = None,
     ) -> PreparedPreprocessData:
         epoch_options: dict[str, Any] = {}
@@ -321,6 +300,7 @@ class PreprocessStateService(Observable):
             tmax,
             allow_boundary_drop,
             **epoch_options,
+            source_data=source_data,
             progress_stage="Creating EEG epochs",
         )
         return PreparedPreprocessData(
@@ -368,10 +348,11 @@ class PreprocessStateService(Observable):
         self,
         processor_class: Any,
         *args: Any,
+        source_data: Sequence[Any],
         progress_stage: str,
         **kwargs: Any,
     ) -> PreparedPreprocessData:
-        data_list = self.study.preprocessed_data_list
+        data_list = list(source_data)
         if not data_list:
             raise ValueError("No data to preprocess.")
         source_identity = self._data_identity(data_list)
@@ -379,14 +360,13 @@ class PreprocessStateService(Observable):
         try:
             # See ``prepare_standard_pipeline``: processor construction owns
             # the detached data copy used for speculative preprocessing.
-            working_list = list(data_list)
-            owned_work_checkpoint(
-                progress_stage,
-                completed=0,
-                total=len(working_list),
+            result = self._process_working_list(
+                data_list,
+                processor_class,
+                *args,
+                progress_stage=progress_stage,
+                **kwargs,
             )
-            processor = processor_class(working_list)
-            result = processor.data_preprocess(*args, **kwargs)
         except OwnedOperationCancelledError:
             raise
         except Exception as exc:

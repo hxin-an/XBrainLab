@@ -24,6 +24,7 @@ from XBrainLab.backend.training.record import (
     TrainRecord,
     TrainRecordKey,
 )
+from XBrainLab.backend.training.state_tracker import TrainingStateTracker
 from XBrainLab.backend.utils import set_seed
 from XBrainLab.backend.utils.filesystem_identity import filesystem_safe_identity
 
@@ -346,9 +347,7 @@ def test_split_prediction_records_round_trip_with_primary_split(
         )
         for index, split in enumerate(("training", "validation", "test"))
     }
-    record.set_evaluation_records(records, primary_split="test")
-
-    record.export_checkpoint()
+    record.complete_evaluation(records, primary_split="test")
 
     with patch.object(TrainRecord, "init_dir"):
         restored = TrainRecord(
@@ -372,6 +371,47 @@ def test_split_prediction_records_round_trip_with_primary_split(
         assert loaded.evaluation_split == split
         np.testing.assert_array_equal(loaded.label, np.array([index]))
     assert restored.eval_record is restored.evaluation_records["test"]
+
+
+@pytest.mark.parametrize("failure", [OSError("export failed"), KeyboardInterrupt()])
+def test_failed_completion_restores_prior_records_before_becoming_stable(
+    train_record, monkeypatch, failure
+):
+    def evaluation(split):
+        return EvalRecord(
+            np.array([0]),
+            np.array([[0.9, 0.1]]),
+            {},
+            {},
+            {},
+            {},
+            {},
+            evaluation_split=split,
+        )
+
+    tracker = TrainingStateTracker()
+    train_record.bind_state_tracker(tracker)
+    previous = evaluation("validation")
+    train_record.set_evaluation_records(
+        {"validation": previous}, primary_split="validation"
+    )
+    previous_store = train_record.evaluation_records
+    replacement = evaluation("test")
+
+    def fail_export():
+        assert not tracker.token().stable
+        assert train_record.get_eval_record() is replacement
+        raise failure
+
+    monkeypatch.setattr(train_record, "export_checkpoint", fail_export)
+    with pytest.raises(type(failure)) as raised:
+        train_record.complete_evaluation({"test": replacement}, primary_split="test")
+
+    assert raised.value is failure
+    assert tracker.token().stable
+    assert train_record.get_eval_record() is previous
+    assert train_record.evaluation_records is previous_store
+    assert train_record.get_available_evaluation_splits() == ["validation"]
 
 
 def test_eval_artifact_load_preserves_primary_base_and_split_sidecars(

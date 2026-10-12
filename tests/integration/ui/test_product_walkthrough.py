@@ -1011,14 +1011,13 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
         *,
         preflight,
         receipt_reused,
-        defer_synchronous_completion=False,
     ):
         """Populate finished-run state through the command route without real training."""
         assert isinstance(command, TrainCommand)
         assert command.confirmed is True
         assert preflight.ok is True
         assert receipt_reused is False
-        assert defer_synchronous_completion is False
+        assert command.interactive is True
         assert service.get_state().dataset.split_materialized is True
         fake_train_calls.append(command)
         eval_record = EvalRecord(
@@ -1087,16 +1086,13 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
     original_service = get_application_service(test_app.study)
     monkeypatch.setattr(
         training_service_module.TrainingCommandService,
-        "start_train_after_preflight",
+        "_start_train_after_preflight",
         fake_start_train_after_preflight,
     )
     service = get_application_service(test_app.study)
     assert service is original_service
     test_app.init_agent()
     manager = test_app.agent_manager
-    assert service._command_handlers[CommandName.TRAIN] == (
-        service._handle_train_with_saved_split
-    )
 
     test_app.switch_page(0)
 

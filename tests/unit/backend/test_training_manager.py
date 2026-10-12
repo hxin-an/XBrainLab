@@ -1030,9 +1030,7 @@ class TestSaliencyParams:
         assert run is not None
         target = PostTrainingSaliencyTarget(
             run=run,
-            finished_runs_before=0,
             finished_runs_after=1,
-            append=True,
         )
 
         with manager._training_pipeline_lock, manager._saliency_job_lock:

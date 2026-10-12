@@ -24,6 +24,7 @@ from tests.unit.ui.data_split_test_support import (
 from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitPreviewPublisher,
     DatasetSplitPreviewRow,
+    DatasetSplitSpecification,
 )
 from XBrainLab.backend.dataset import DataSplitter
 
@@ -856,6 +857,12 @@ class TestDataSplittingPreviewDialogSplitters:
     def test_close_retries_cancellation_before_publisher_registration(
         self, dlg, qtbot, action
     ):
+        config = DatasetSplitSpecification.from_payload(
+            _split_config_payload()
+        ).to_config()
+        dlg.config = config
+        dlg.val_splitter_list = config.val_splitter_list
+        dlg.test_splitter_list = config.test_splitter_list
         factory_entered = threading.Event()
         release_factory = threading.Event()
         generation_started = threading.Event()
@@ -883,7 +890,6 @@ class TestDataSplittingPreviewDialogSplitters:
             get_publication=lambda: SimpleNamespace(
                 generation=dlg.publication_generation, usable=True
             ),
-            config_factory=lambda payload: payload,
         )
         cancellation_results = []
 

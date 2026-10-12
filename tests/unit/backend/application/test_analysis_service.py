@@ -891,10 +891,7 @@ def test_explicit_saliency_incoming_params_resolve_prior_artifact_conflict(
     )
     target = PostTrainingSaliencyTarget(
         run=TrainingRunIdentity(trainer_id="trainer-a", run_id=1),
-        finished_runs_before=0,
         finished_runs_after=2,
-        append=False,
-        explicit=True,
     )
 
     with post_training_saliency_target(target):
@@ -917,7 +914,7 @@ def test_explicit_saliency_incoming_params_resolve_prior_artifact_conflict(
     }
 
 
-def test_automatic_saliency_baseline_does_not_accumulate_prior_advanced_methods(
+def test_saliency_preflight_uses_requested_methods_without_prior_advanced_methods(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     run = _Run(finished=True)
@@ -959,10 +956,7 @@ def test_automatic_saliency_baseline_does_not_accumulate_prior_advanced_methods(
     )
     target = PostTrainingSaliencyTarget(
         run=TrainingRunIdentity(trainer_id="trainer-a", run_id=1),
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=True,
-        explicit=False,
     )
 
     with post_training_saliency_target(target):
@@ -1414,9 +1408,7 @@ def test_analysis_service_rejects_automatic_scheduler_noop_with_terminal_status(
     run = TrainingRunIdentity(trainer_id="missing-trainer", run_id=1)
     target = PostTrainingSaliencyTarget(
         run=run,
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=True,
     )
 
     with (

@@ -285,9 +285,7 @@ def _schedule_baseline(service: ApplicationService, trainer: Trainer):
     assert outcome.run is not None
     target = PostTrainingSaliencyTarget(
         run=outcome.run,
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=True,
     )
     with post_training_saliency_target(target):
         scheduled = service.execute(
@@ -577,9 +575,7 @@ def test_cancelled_close_reconciles_retained_terminal_after_owned_saliency_quies
     assert outcome.run is not None
     target = PostTrainingSaliencyTarget(
         run=outcome.run,
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=True,
     )
     compute_started = Event()
     release_compute = Event()
@@ -666,9 +662,7 @@ def test_real_main_window_close_quiesces_active_owned_saliency_without_livelock(
     assert outcome.run is not None
     target = PostTrainingSaliencyTarget(
         run=outcome.run,
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=True,
     )
     compute_started = Event()
     compute_finished = Event()
@@ -807,9 +801,7 @@ def test_scheduler_thread_start_failure_publishes_failed_view_and_events_once(
     assert outcome.run is not None
     target = PostTrainingSaliencyTarget(
         run=outcome.run,
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=True,
     )
     application_events: list[TrainingLifecycleEvent] = []
     saliency_events: list[str] = []
@@ -1896,9 +1888,7 @@ def test_stale_automatic_command_preserves_current_application_publication(
     )
     delayed = PostTrainingSaliencyTarget(
         run=TrainingRunIdentity(trainer_id="retired-trainer", run_id=1),
-        finished_runs_before=0,
         finished_runs_after=1,
-        append=True,
     )
 
     with post_training_saliency_target(delayed):
