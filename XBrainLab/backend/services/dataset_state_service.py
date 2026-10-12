@@ -682,16 +682,6 @@ class DatasetStateService:
             self.study.lock_dataset()
             return True
 
-    def get_filenames(self) -> list[str]:
-        return [str(data.get_filepath()) for data in self.get_loaded_data_list()]
-
-    def get_data_at_assignments(self, indices: Sequence[int]) -> list[Any]:
-        data_list = self.get_loaded_data_list()
-        return [data_list[index] for index in indices if 0 <= index < len(data_list)]
-
-    def get_epoch_count(self, data: Any, event_names: Sequence[str]) -> int:
-        return int(self.label_service.get_epoch_count_for_file(data, event_names))
-
     def get_event_info(self) -> dict[str, Any]:
         total_events = 0
         unique_events: set[str] = set()

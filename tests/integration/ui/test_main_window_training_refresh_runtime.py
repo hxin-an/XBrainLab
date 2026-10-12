@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from copy import copy
+from dataclasses import replace
 from pathlib import Path
 from threading import Event, Thread, get_ident
 from typing import Any, cast
@@ -42,9 +43,17 @@ from XBrainLab.backend.application.evaluation_render import (
     EvaluationRunIdentity,
     EvaluationSummaryIdentity,
 )
+from XBrainLab.backend.application.resource_guard import (
+    RISK_WARNING,
+    TrainingResourcePreviewResult,
+    TrainingResourceRefinement,
+)
 from XBrainLab.backend.application.runtime import get_application_service
 from XBrainLab.backend.application.saliency_policy import (
     selected_saliency_methods_from_params,
+)
+from XBrainLab.backend.application.training_recommendation import (
+    TrainingSettingProvenance,
 )
 from XBrainLab.backend.saliency_methods import all_saliency_methods
 from XBrainLab.backend.study import Study
@@ -160,6 +169,59 @@ def _prepare_epoch_runtime(tmp_path: Path):
     return study, service
 
 
+def test_training_status_tracks_saved_commands_and_reset(
+    qtbot, tmp_path, runtime_lifecycle
+):
+    study, service = _prepare_epoch_runtime(tmp_path)
+    window = MainWindow(study)
+    qtbot.addWidget(window)
+    runtime_lifecycle(window, service)
+    window.show()
+    ready = []
+    window.switch_page(2, on_ready=ready.append)
+    qtbot.waitUntil(lambda: bool(ready), timeout=5000)
+
+    def expect(message):
+        def check():
+            assert window.statusBar().currentMessage() == message
+
+        qtbot.waitUntil(check, timeout=5000)
+
+    expect("Split —  ·  Model —  ·  Training settings —")
+    # Cancelling an opened settings dialog must not mark the setting as saved.
+    dialog = TrainingSettingDialog(window)
+    qtbot.addWidget(dialog)
+    dialog.reject()
+    expect("Split —  ·  Model —  ·  Training settings —")
+    for command, message in (
+        (
+            SaveDatasetSplitCommand(test_ratio=0.25, val_ratio=0.25),
+            "Split ✓  ·  Model —  ·  Training settings —",
+        ),
+        (
+            ConfigureTrainingCommand(model_name="EEGNet"),
+            "Split ✓  ·  Model ✓  ·  Training settings —",
+        ),
+        (
+            ConfigureTrainingCommand(
+                epoch=1,
+                batch_size=2,
+                learning_rate=0.001,
+                device="cpu",
+                output_dir=str(tmp_path / "output"),
+            ),
+            "Split ✓  ·  Model ✓  ·  Training settings ✓",
+        ),
+        (
+            ResetPreprocessCommand(confirmed=True),
+            "Split —  ·  Model ✓  ·  Training settings ✓",
+        ),
+    ):
+        result = service.execute(command)
+        assert result.ok, result.message
+        expect(message)
+
+
 def test_training_settings_reopen_and_edit_real_service_snapshot(qtbot, tmp_path):
     """Editing a settings proposal must not mutate the saved backend snapshot."""
     _study, service = _prepare_training_runtime(tmp_path)
@@ -168,6 +230,14 @@ def test_training_settings_reopen_and_edit_real_service_snapshot(qtbot, tmp_path
         assert result.ok, result.message
         snapshot = result.state.training.training_option
         assert snapshot is not None
+        cancelled = TrainingSettingDialog(None, initial_option=snapshot)
+        qtbot.addWidget(cancelled)
+        cancelled.device_combo.setCurrentIndex(cancelled.device_combo.findData("auto"))
+        assert cancelled.get_device_value() == "auto"
+        cancel_buttons = cancelled.findChild(QDialogButtonBox)
+        cancel_buttons.button(QDialogButtonBox.StandardButton.Cancel).click()
+        assert cancelled.get_result() is None
+        assert service.get_state().training.training_option == snapshot
         dialog = TrainingSettingDialog(None, initial_option=snapshot)
         qtbot.addWidget(dialog)
         assert dialog.epoch_entry is not None
@@ -208,6 +278,83 @@ def test_training_settings_reopen_and_edit_real_service_snapshot(qtbot, tmp_path
         assert reopened.bs_entry.text() == "4"
     finally:
         service.close()
+
+
+@pytest.mark.parametrize(
+    "preview_overrides",
+    [{}, {"model_name": "SCCNet"}, {"model_params": {"f1": 16}}],
+    ids=["current-model", "different-model", "different-parameters"],
+)
+def test_settings_only_save_retains_only_matching_resource_adjustment_on_reopen(
+    qtbot, tmp_path, monkeypatch, runtime_lifecycle, preview_overrides
+):
+    """The ordinary settings entry must carry its accepted backend preview."""
+    study, service = _prepare_training_runtime(tmp_path)
+    window = MainWindow(study)
+    qtbot.addWidget(window)
+    runtime_lifecycle(window, service)
+    window.show()
+    ready = []
+    window.switch_page(2, on_ready=ready.append)
+    qtbot.waitUntil(lambda: bool(ready), timeout=5000)
+    original_holder = service.training_runtime.resource_context().model_holder
+    accepted_batches = []
+
+    def estimate(request, _context):
+        return TrainingResourcePreviewResult(
+            request_generation=request.request_generation,
+            publication_generation=request.publication_generation,
+            requested_batch_size=request.batch_size,
+            suggested_batch_size=1,
+            estimated_vram_bytes=4096,
+            available_vram_bytes=2048,
+            risk_level=RISK_WARNING,
+            vram_known=True,
+            refinement=TrainingResourceRefinement.batch_size(
+                requested=request.batch_size, refined=1
+            ),
+        )
+
+    def accept_adjustment(dialog):
+        dialog._resource_preview_timer.stop()
+        request = dialog.build_training_resource_preview_request()
+        assert request is not None
+        assert request.batch_size > 1
+        request = replace(request, **preview_overrides)
+        result = service.get_training_resource_preview(request)
+        assert dialog.apply_training_resource_preview(result)
+        accepted_batches.append(int(dialog.bs_entry.text()))
+        dialog.accept()
+        return dialog.result()
+
+    monkeypatch.setattr(service.training_resource_preview, "_estimate", estimate)
+    monkeypatch.setattr(TrainingSettingDialog, "exec", accept_adjustment)
+    outcome = window.training_panel.sidebar.training_setting()
+    assert outcome.status.value == "completed", outcome
+    assert accepted_batches == [1]
+    saved_holder = service.training_runtime.resource_context().model_holder
+    assert saved_holder.catalog_identity == original_holder.catalog_identity
+    assert saved_holder.model_params_map == original_holder.model_params_map
+    assert saved_holder.pretrained_weight_path == original_holder.pretrained_weight_path
+    assert service.get_state().training.training_option["batch_size"] == 1
+    recommendation = service.get_training_recommendation()
+    if preview_overrides:
+        assert recommendation.values.batch_size > 1
+        assert recommendation.provenance["batch_size"] is (
+            TrainingSettingProvenance.RECOMMENDED
+        )
+    else:
+        assert recommendation.values.batch_size == 1
+        assert recommendation.provenance["batch_size"] is (
+            TrainingSettingProvenance.RESOURCE_ADJUSTED
+        )
+    reopened = TrainingSettingDialog(
+        None,
+        initial_option=service.get_state().training.training_option,
+        recommendation=recommendation,
+    )
+    qtbot.addWidget(reopened)
+    assert reopened.bs_entry.text() == str(recommendation.values.batch_size)
 
 
 def test_saved_split_reopens_for_real_preview_and_edit_before_training(
@@ -663,7 +810,6 @@ def test_gui_import_to_subject_training_and_reopened_results(
     )
     from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
     from XBrainLab.ui.dialogs.preprocess.resampling_dialog import ResampleDialog
-    from XBrainLab.ui.dialogs.training.device_setting_dialog import DeviceSettingDialog
     from XBrainLab.ui.dialogs.training.model_selection_dialog import (
         ModelSelectionDialog,
     )
@@ -1000,10 +1146,6 @@ def test_gui_import_to_subject_training_and_reopened_results(
         )
         click(sidebar.btn_model)
 
-        def device(dialog) -> None:
-            dialog.device_list.setCurrentRow(0)
-            ok(dialog)
-
         def settings(dialog) -> None:
             for editor, value in (
                 (dialog.epoch_entry, "1"),
@@ -1019,8 +1161,11 @@ def test_gui_import_to_subject_training_and_reopened_results(
             qtbot.keyClick(dialog.evaluation_combo, Qt.Key.Key_Return)
             assert dialog.evaluation_combo.currentText() == "Last epoch"
             assert (dialog.epoch_entry.text(), dialog.bs_entry.text()) == ("1", "2")
-            dialog.content_scroll.ensureWidgetVisible(dialog.dev_btn)
-            click(dialog.dev_btn)
+            dialog.content_scroll.ensureWidgetVisible(dialog.device_combo)
+            qtbot.mouseClick(dialog.device_combo, Qt.MouseButton.LeftButton)
+            qtbot.keyClick(dialog.device_combo, Qt.Key.Key_Home)
+            qtbot.keyClick(dialog.device_combo, Qt.Key.Key_Down)
+            qtbot.keyClick(dialog.device_combo, Qt.Key.Key_Return)
             assert dialog.device == "cpu"
             assert (dialog.epoch_entry.text(), dialog.bs_entry.text()) == ("1", "2")
             dialog.content_scroll.ensureWidgetVisible(dialog.out_btn)
@@ -1031,7 +1176,6 @@ def test_gui_import_to_subject_training_and_reopened_results(
         pending.extend(
             [
                 (TrainingSettingDialog, lambda _d: True, settings),
-                (DeviceSettingDialog, lambda _d: True, device),
             ]
         )
         click(sidebar.btn_setting)
@@ -1097,7 +1241,6 @@ def test_gui_import_to_subject_training_and_reopened_results(
             "PickMontageDialog",
             "EpochingDialog",
             "TrainingSettingDialog",
-            "DeviceSettingDialog",
         } <= set(visited)
     finally:
         timer.stop()

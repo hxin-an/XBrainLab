@@ -41,9 +41,9 @@ from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_source_identity,
     validate_source_identity,
 )
+from scripts.dev.chatpanel_training_fixture import write_training_ready_raw_fif
 from scripts.dev.training_evidence_fixture import (
     prepare_training_dataset_ready_state,
-    write_synthetic_training_raw_fif,
 )
 from scripts.dev.ui_navigation import open_workflow_panel
 from XBrainLab.backend.application import (
@@ -229,14 +229,21 @@ def main() -> int:
         help="Temporary directory for tiny training outputs.",
     )
     args = parser.parse_args()
-    _install_uncaught_exception_capture()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     training_output_dir = Path(args.training_output_dir)
     training_output_dir.mkdir(parents=True, exist_ok=True)
 
-    with isolated_capture_config():
+    with (
+        tempfile.TemporaryDirectory(
+            prefix="xbrainlab-training-evidence-"
+        ) as source_dir,
+        isolated_capture_config(),
+    ):
+        source_path = write_training_ready_raw_fif(
+            Path(source_dir) / "training_ready_raw.fif"
+        )
         app = QApplication(sys.argv)
         app.setStyle("Fusion")
         payload = run_visualization_render_walkthrough(
@@ -244,6 +251,7 @@ def main() -> int:
             output_dir,
             training_output_dir,
             args.timeout_seconds,
+            source_path=source_path,
         )
         _write_artifacts(output_dir, payload)
         print(f"Wrote {output_dir / JSON_ARTIFACT}")
@@ -256,150 +264,167 @@ def run_visualization_render_walkthrough(
     output_dir: Path,
     training_output_dir: Path,
     timeout_seconds: int,
+    *,
+    source_path: Path,
 ) -> dict[str, Any]:
     """Prepare a tiny trained state and capture real VisualizationPanel renders."""
     from XBrainLab.backend.study import Study
     from XBrainLab.ui.main_window import MainWindow
 
-    UNCAUGHT_EXCEPTIONS.clear()
-    _remove_previous_visualization_screenshots(output_dir)
-    _install_uncaught_exception_capture()
-    _set_deterministic_capture_seed()
-    started_at = time.monotonic()
-    source_identity_at_start = collect_source_identity(ROOT, refresh=True)
-    source_path = write_synthetic_training_raw_fif()
-    study = Study()
-    service = get_application_service(study)
-    dataset_preparation = prepare_training_dataset_ready_state(
-        study,
-        source_path,
-        training_output_dir,
-    )
-    three_d_runtime = _three_d_runtime_contract()
-    payload: dict[str, Any] = {
-        "status": "running",
-        "failure_reason": "",
-        "source_identity_at_start": source_identity_at_start,
-        "source_identity_at_completion": {},
-        "source_identity": {},
-        "source_capture": {},
-        "artifact_metadata": _artifact_metadata_for_runtime(three_d_runtime),
-        "source_path": str(source_path),
-        "training_output_dir": str(training_output_dir),
-        "dataset_preparation": dataset_preparation,
-        "training": {
-            "commands": [],
-            "finished_run_count": 0,
-            "metrics_available": False,
-            "saliency_available": False,
-        },
-        "application_evaluate": {},
-        "application_visualize": {},
-        "saliency_compute": {},
-        "three_d_runtime": three_d_runtime,
-        "renders": [],
-        "blocked_renders": [],
-        "interactive_renders": [],
-        "claim_boundary": _claim_boundary_for_runtime(three_d_runtime),
-        "dismissed_dialogs": [],
-        "screenshots": {"ready": ""},
-        "final_state": {},
-        "shutdown": {},
-        "ui_state": {},
-        "elapsed_seconds": 0.0,
-        "uncaught_exceptions": [],
-    }
+    original_hook = sys.excepthook
+    service: Any = None
+    window: MainWindow | None = None
+    window_closed = False
+    try:
+        UNCAUGHT_EXCEPTIONS.clear()
+        _remove_previous_visualization_screenshots(output_dir)
+        _install_uncaught_exception_capture()
+        _set_deterministic_capture_seed()
+        started_at = time.monotonic()
+        source_identity_at_start = collect_source_identity(ROOT, refresh=True)
+        study = Study()
+        service = get_application_service(study)
+        dataset_preparation = prepare_training_dataset_ready_state(
+            study,
+            source_path,
+            training_output_dir,
+        )
+        three_d_runtime = _three_d_runtime_contract()
+        payload: dict[str, Any] = {
+            "status": "running",
+            "failure_reason": "",
+            "source_identity_at_start": source_identity_at_start,
+            "source_identity_at_completion": {},
+            "source_identity": {},
+            "source_capture": {},
+            "artifact_metadata": _artifact_metadata_for_runtime(three_d_runtime),
+            "source_path": str(source_path),
+            "training_output_dir": str(training_output_dir),
+            "dataset_preparation": dataset_preparation,
+            "training": {
+                "commands": [],
+                "finished_run_count": 0,
+                "metrics_available": False,
+                "saliency_available": False,
+            },
+            "application_evaluate": {},
+            "application_visualize": {},
+            "saliency_compute": {},
+            "three_d_runtime": three_d_runtime,
+            "renders": [],
+            "blocked_renders": [],
+            "interactive_renders": [],
+            "claim_boundary": _claim_boundary_for_runtime(three_d_runtime),
+            "dismissed_dialogs": [],
+            "screenshots": {"ready": ""},
+            "final_state": {},
+            "shutdown": {},
+            "ui_state": {},
+            "elapsed_seconds": 0.0,
+            "uncaught_exceptions": [],
+        }
 
-    if not dataset_preparation.get("ok"):
-        return _finish_payload(
-            payload,
+        if not dataset_preparation.get("ok"):
+            return _finish_payload(
+                payload,
+                service,
+                started_at,
+                "Dataset preparation failed.",
+            )
+
+        training_ok = _prepare_tiny_trained_state(
+            app,
             service,
+            training_output_dir,
+            timeout_seconds,
             started_at,
-            "Dataset preparation failed.",
+            payload,
+        )
+        if not training_ok:
+            return _finish_payload(
+                payload,
+                service,
+                started_at,
+                payload.get("failure_reason") or "Tiny training did not complete.",
+            )
+
+        window = MainWindow(study)
+        _set_baseline_window_geometry(window)
+        _schedule_message_box_dismissal(payload)
+        window.show()
+        _process_events(app, 300)
+        panel = cast(
+            Any,
+            open_workflow_panel(window, 4, timeout_ms=int(timeout_seconds * 1_000)),
+        )
+        _process_events(app, 800)
+        panel.normalize_check.setChecked(True)
+        _process_events(app, 150)
+
+        payload["saliency_compute"] = _compute_saliency_for_capture(
+            app,
+            panel,
+            service,
+            timeout_seconds=timeout_seconds,
+        )
+        payload["training"]["saliency_available"] = bool(
+            payload["saliency_compute"].get("saliency_available")
+        )
+        _process_events(app, 300)
+
+        payload["ui_state"] = {
+            "current_panel": "Visualization",
+            "plan": panel.plan_combo.currentText(),
+            "run": panel.run_combo.currentText(),
+            "method": panel.method_combo.currentText(),
+            "normalize": panel.normalize_check.isChecked(),
+            "control_layout": _control_layout_evidence(panel),
+        }
+        payload["application_evaluate"] = _command_payload(
+            service.execute(EvaluateCommand()),
+        )
+        payload["application_visualize"] = _command_payload(
+            service.execute(VisualizeCommand(view="Saliency Map")),
         )
 
-    training_ok = _prepare_tiny_trained_state(
-        app,
-        service,
-        training_output_dir,
-        timeout_seconds,
-        started_at,
-        payload,
-    )
-    if not training_ok:
-        return _finish_payload(
-            payload,
-            service,
-            started_at,
-            payload.get("failure_reason") or "Tiny training did not complete.",
-        )
+        for spec in RENDER_TAB_SPECS:
+            render = _capture_render_tab(app, window, output_dir, spec)
+            payload["renders"].append(render)
+            if not render["ok"]:
+                break
+        if payload["renders"]:
+            payload["screenshots"]["ready"] = payload["renders"][0]["screenshot"]
+        if all(render.get("ok") for render in payload["renders"]):
+            for spec in THREE_D_TAB_SPECS:
+                if three_d_runtime["expected_outcome"] == "blocked":
+                    payload["blocked_renders"].append(
+                        _capture_blocked_tab(app, window, output_dir, spec),
+                    )
+                else:
+                    payload["interactive_renders"].append(
+                        _capture_interactive_tab(app, window, output_dir, spec),
+                    )
 
-    window = MainWindow(study)
-    _set_baseline_window_geometry(window)
-    _schedule_message_box_dismissal(payload)
-    window.show()
-    _process_events(app, 300)
-    panel = cast(
-        Any,
-        open_workflow_panel(window, 4, timeout_ms=int(timeout_seconds * 1_000)),
-    )
-    _process_events(app, 800)
-    panel.normalize_check.setChecked(True)
-    _process_events(app, 150)
-
-    payload["saliency_compute"] = _compute_saliency_for_capture(
-        app,
-        panel,
-        service,
-        timeout_seconds=timeout_seconds,
-    )
-    payload["training"]["saliency_available"] = bool(
-        payload["saliency_compute"].get("saliency_available")
-    )
-    _process_events(app, 300)
-
-    payload["ui_state"] = {
-        "current_panel": "Visualization",
-        "plan": panel.plan_combo.currentText(),
-        "run": panel.run_combo.currentText(),
-        "method": panel.method_combo.currentText(),
-        "normalize": panel.normalize_check.isChecked(),
-        "control_layout": _control_layout_evidence(panel),
-    }
-    payload["application_evaluate"] = _command_payload(
-        service.execute(EvaluateCommand()),
-    )
-    payload["application_visualize"] = _command_payload(
-        service.execute(VisualizeCommand(view="Saliency Map")),
-    )
-
-    for spec in RENDER_TAB_SPECS:
-        render = _capture_render_tab(app, window, output_dir, spec)
-        payload["renders"].append(render)
-        if not render["ok"]:
-            break
-    if payload["renders"]:
-        payload["screenshots"]["ready"] = payload["renders"][0]["screenshot"]
-    if all(render.get("ok") for render in payload["renders"]):
-        for spec in THREE_D_TAB_SPECS:
-            if three_d_runtime["expected_outcome"] == "blocked":
-                payload["blocked_renders"].append(
-                    _capture_blocked_tab(app, window, output_dir, spec),
-                )
-            else:
-                payload["interactive_renders"].append(
-                    _capture_interactive_tab(app, window, output_dir, spec),
-                )
-
-    payload["final_state"] = service.get_state().to_dict()
-    payload["shutdown"] = _close_window_for_capture(app, window)
-    payload["uncaught_exceptions"] = list(UNCAUGHT_EXCEPTIONS)
-    _seal_source_identity(payload)
-    ok, reason = validate_visualization_render_payload(payload)
-    payload["status"] = "passed" if ok else "failed"
-    payload["failure_reason"] = "" if ok else reason
-    payload["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
-    return payload
+        payload["final_state"] = service.get_state().to_dict()
+        payload["shutdown"] = _close_window_for_capture(app, window)
+        window_closed = True
+        payload["uncaught_exceptions"] = list(UNCAUGHT_EXCEPTIONS)
+        _seal_source_identity(payload)
+        ok, reason = validate_visualization_render_payload(payload)
+        payload["status"] = "passed" if ok else "failed"
+        payload["failure_reason"] = "" if ok else reason
+        payload["elapsed_seconds"] = round(time.monotonic() - started_at, 3)
+        return payload
+    finally:
+        try:
+            if window is not None and not window_closed:
+                _close_window_for_capture(app, window)
+        finally:
+            try:
+                if service is not None:
+                    service.close()
+            finally:
+                sys.excepthook = original_hook
 
 
 def _shutdown_snapshot_is_clean(snapshot: object) -> bool:

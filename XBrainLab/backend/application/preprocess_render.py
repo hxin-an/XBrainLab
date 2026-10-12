@@ -378,6 +378,10 @@ class PreprocessRenderPublisher:
     ) -> SignalSeries:
         n_times = PreprocessRenderPublisher._sample_count(signal)
         start_sample = int(start_seconds * sampling_frequency)
+        if clamp_start and start_seconds >= (n_times - 1) / sampling_frequency:
+            # The final cursor is already a sample boundary. Multiplying its
+            # seconds by the rate can round down to the preceding sample.
+            start_sample = max(0, n_times - 1)
         if start_sample >= n_times:
             if not clamp_start:
                 raise ValueError("Original signal does not cover the requested window")
@@ -417,8 +421,11 @@ class PreprocessRenderPublisher:
         try:
             values: Iterable[Any] = annotations
             copied: list[SignalEvent] = []
+            # MNE stores annotation onsets on the acquisition timeline; the
+            # preview signal window starts at the recording's first sample.
+            first_time = float(getattr(signal, "first_time", 0.0))
             for annotation in values:
-                onset = float(annotation["onset"])
+                onset = float(annotation["onset"]) - first_time
                 duration = max(float(annotation.get("duration", 0.0)), 0.0)
                 annotation_end = onset + duration
                 if onset <= end_seconds and annotation_end >= start_seconds:

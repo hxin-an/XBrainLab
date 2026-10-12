@@ -47,7 +47,6 @@ from XBrainLab.ui.dialogs.common import checkbox_stylesheet
 from XBrainLab.ui.styles.theme import Theme
 
 from .data_splitting_preview_dialog import (
-    DataSplitterHolder,
     DataSplittingPreviewDialog,
 )
 
@@ -241,7 +240,7 @@ class PreviewCanvas(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         self.setObjectName("DataSplitPreviewCanvas")
-        self.setMinimumSize(460, 280)
+        self.setMinimumSize(320, 260)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.regions = []  # List of (DrawRegion, DrawColor)
         self.subject_num = 5
@@ -448,7 +447,7 @@ class DataSplittingDialog(BaseDialog):
 
         super().__init__(parent, title="Data Splitting Setting")
         self.setObjectName("DataSplittingDialog")
-        self.resize(820, 470)
+        self.resize(860, 460)
         self.setStyleSheet(self._dialog_style())
 
         self._sync_availability()
@@ -518,8 +517,8 @@ class DataSplittingDialog(BaseDialog):
         self.options_group = options_group
         options_group.setObjectName("DataSplitOptionsGroup")
         options_group.setFrameShape(QFrame.Shape.NoFrame)
-        options_group.setMinimumWidth(260)
-        options_group.setMaximumWidth(300)
+        options_group.setMinimumWidth(340)
+        options_group.setMaximumWidth(360)
         options_group.setSizePolicy(
             QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Maximum,
@@ -532,11 +531,17 @@ class DataSplittingDialog(BaseDialog):
         settings_title.setObjectName("DataSplitSectionTitle")
         right_layout.addWidget(settings_title)
 
+        settings_body = QWidget()
+        settings_body.setObjectName("DataSplitSettingsBody")
+        body_layout = QVBoxLayout(settings_body)
+        body_layout.setContentsMargins(12, 0, 0, 0)
+        body_layout.setSpacing(16)
+        right_layout.addWidget(settings_body)
         form_layout = QGridLayout()
         form_layout.setContentsMargins(0, 0, 0, 0)
         form_layout.setHorizontalSpacing(12)
         form_layout.setVerticalSpacing(10)
-        form_layout.setColumnStretch(1, 0)
+        form_layout.setColumnStretch(1, 1)
 
         # Training Type
         train_type_combo = QComboBox()
@@ -545,8 +550,6 @@ class DataSplittingDialog(BaseDialog):
         train_type_combo.addItems([i.value for i in TrainingType])
         self._configure_split_combo(train_type_combo)
         train_type_combo.currentTextChanged.connect(self._sync_strategy_options)
-        form_layout.addWidget(QLabel("Training"), 0, 0)
-        form_layout.addWidget(train_type_combo, 0, 1)
 
         # Testing Set
         test_combo = QComboBox()
@@ -554,8 +557,6 @@ class DataSplittingDialog(BaseDialog):
         test_combo.setObjectName("DataSplitTestingStrategyInput")
         self._configure_split_combo(test_combo)
         test_combo.currentTextChanged.connect(self.update_preview)
-        form_layout.addWidget(QLabel("Testing"), 1, 0)
-        form_layout.addWidget(test_combo, 1, 1)
 
         # Validation Set
         val_combo = QComboBox()
@@ -563,15 +564,23 @@ class DataSplittingDialog(BaseDialog):
         val_combo.setObjectName("DataSplitValidationStrategyInput")
         self._configure_split_combo(val_combo)
         val_combo.currentTextChanged.connect(self.update_preview)
-        form_layout.addWidget(QLabel("Validation"), 2, 0)
-        form_layout.addWidget(val_combo, 2, 1)
-        right_layout.addLayout(form_layout)
+        for row, text, combo in (
+            (0, "Training mode", train_type_combo),
+            (1, "Testing", test_combo),
+            (2, "Validation", val_combo),
+        ):
+            label = QLabel(text)
+            label.setBuddy(combo)
+            label.setWordWrap(True)
+            form_layout.addWidget(label, row, 0)
+            form_layout.addWidget(combo, row, 1)
+        body_layout.addLayout(form_layout)
 
         cv_check = QCheckBox("Cross validation")
         self.cv_check = cv_check
         cv_check.setObjectName("DataSplitCrossValidationCheck")
         cv_check.stateChanged.connect(self.update_preview)
-        right_layout.addWidget(cv_check)
+        body_layout.addWidget(cv_check)
         self._sync_strategy_options()
         self._apply_initial_specification()
         self._sync_strategy_options()
@@ -583,7 +592,7 @@ class DataSplittingDialog(BaseDialog):
         self.blocked_label = blocked_label
         blocked_label.setWordWrap(True)
         blocked_label.setStyleSheet("color: #f59e0b;")
-        right_layout.addWidget(blocked_label)
+        body_layout.addWidget(blocked_label)
         content_layout.addWidget(options_group, stretch=0)
         content_layout.setAlignment(
             options_group,
@@ -631,7 +640,7 @@ class DataSplittingDialog(BaseDialog):
                 QSizePolicy.Policy.Maximum,
             )
         else:
-            self.options_group.setMaximumWidth(300)
+            self.options_group.setMaximumWidth(360)
             self.options_group.setSizePolicy(
                 QSizePolicy.Policy.Fixed,
                 QSizePolicy.Policy.Maximum,
@@ -645,8 +654,12 @@ class DataSplittingDialog(BaseDialog):
     @staticmethod
     def _configure_split_combo(combo: QComboBox) -> None:
         combo.setMinimumWidth(148)
-        combo.setMaximumWidth(178)
-        combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        # The popup's margins belong to a separate window, outside the item view.
+        view = combo.view()
+        popup = view.window() if view is not None else None
+        if popup is not None:
+            popup.setStyleSheet("background-color: #25272a;")
 
     def _apply_initial_values(self) -> None:
         """Prefill only choices explicitly supplied by an assistant handoff."""
@@ -833,9 +846,6 @@ class DataSplittingDialog(BaseDialog):
                 train_type = t_type
                 break
 
-        if train_type is None:
-            train_type = TrainingType.FULL
-
         # Get Val Types
         val_type_list = []
         for v_type in ValSplitByType:
@@ -852,12 +862,8 @@ class DataSplittingDialog(BaseDialog):
                 break
 
         # Create DataSplitter instances for val and test
-        val_splitters: list[DataSplitter] = [
-            DataSplitterHolder(True, t) for t in val_type_list
-        ]
-        test_splitters: list[DataSplitter] = [
-            DataSplitterHolder(True, t) for t in test_type_list
-        ]
+        val_splitters: list[DataSplitter] = [DataSplitter(t) for t in val_type_list]
+        test_splitters: list[DataSplitter] = [DataSplitter(t) for t in test_type_list]
 
         # Create DataSplittingConfig directly with backend class
         config = DataSplittingConfig(
@@ -945,17 +951,14 @@ class DataSplittingDialog(BaseDialog):
         }
         QScrollArea#DataSplitContentScroll,
         QScrollArea#DataSplitContentScroll > QWidget > QWidget,
-        QWidget#DataSplitContentWidget {
+        QWidget#DataSplitContentWidget,
+        QWidget#DataSplitSettingsBody {
             border: none;
             background: transparent;
         }
         QLabel {
             background: transparent;
             color: #f2f5f8;
-        }
-        QLabel#DataSplitTitle {
-            font-size: 16px;
-            font-weight: 700;
         }
         QFrame#DataSplitPreviewGroup,
         QFrame#DataSplitOptionsGroup {
@@ -966,7 +969,7 @@ class DataSplittingDialog(BaseDialog):
         QLabel#DataSplitSectionTitle {
             color: #f2f5f8;
             font-weight: 700;
-            font-size: 13px;
+            font-size: 14px;
         }
         QLabel#DataSplitLegendSwatch {
             border-radius: 2px;

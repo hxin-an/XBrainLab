@@ -128,9 +128,19 @@ def _write_synthetic_raw_fif(tmp_path):
     return path
 
 
-def test_invalid_import_preserves_existing_real_raw_data(tmp_path):
+@pytest.fixture
+def service_factory(request):
+    def create():
+        service = ApplicationService()
+        request.addfinalizer(service.close)
+        return service
+
+    return create
+
+
+def test_invalid_import_preserves_existing_real_raw_data(tmp_path, service_factory):
     fif_path = _write_synthetic_raw_fif(tmp_path)
-    service = ApplicationService()
+    service = service_factory()
     imported = import_recording_through_interpretation(service, fif_path)
     raw_before = imported.state.raw
     invalid_path = tmp_path / "not-an-eeg-recording.txt"
@@ -151,11 +161,11 @@ def test_invalid_import_preserves_existing_real_raw_data(tmp_path):
     assert result.state.raw.metadata[0]["file"] == fif_path.name
 
 
-def test_remove_files_removes_the_exact_real_raw_row(tmp_path):
+def test_remove_files_removes_the_exact_real_raw_row(tmp_path, service_factory):
     first_path = _write_synthetic_raw_fif(tmp_path)
     second_path = tmp_path / "second_synthetic_raw.fif"
     second_path.write_bytes(first_path.read_bytes())
-    service = ApplicationService()
+    service = service_factory()
 
     scan = service.execute(ScanSourceCommand(source_path=str(tmp_path)))
     preview = service.execute(
@@ -188,9 +198,11 @@ def test_remove_files_removes_the_exact_real_raw_row(tmp_path):
     ]
 
 
-def test_update_metadata_persists_exact_subject_and_session_for_real_raw(tmp_path):
+def test_update_metadata_persists_exact_subject_and_session_for_real_raw(
+    tmp_path, service_factory
+):
     fif_path = _write_synthetic_raw_fif(tmp_path)
-    service = ApplicationService()
+    service = service_factory()
     import_recording_through_interpretation(service, fif_path)
 
     updated = service.execute(
@@ -209,9 +221,11 @@ def test_update_metadata_persists_exact_subject_and_session_for_real_raw(tmp_pat
     ]
 
 
-def test_reset_session_clears_real_raw_data_and_downstream_state(tmp_path):
+def test_reset_session_clears_real_raw_data_and_downstream_state(
+    tmp_path, service_factory
+):
     fif_path = _write_synthetic_raw_fif(tmp_path)
-    service = ApplicationService()
+    service = service_factory()
     imported = import_recording_through_interpretation(service, fif_path)
     assert imported.state.raw.loaded is True
     assert imported.state.preprocessed.available is True
@@ -227,9 +241,11 @@ def test_reset_session_clears_real_raw_data_and_downstream_state(tmp_path):
     assert reset.state.training.has_model is False
 
 
-def test_apply_smart_parse_persists_exact_metadata_for_real_raw(tmp_path):
+def test_apply_smart_parse_persists_exact_metadata_for_real_raw(
+    tmp_path, service_factory
+):
     fif_path = _write_synthetic_raw_fif(tmp_path)
-    service = ApplicationService()
+    service = service_factory()
     import_recording_through_interpretation(service, fif_path)
 
     parsed = service.execute(
@@ -356,13 +372,14 @@ def _write_resource_preflight_bids_fixture(tmp_path):
 def test_public_scan_is_shallow_at_one_byte_and_preview_materializes_after_admission(
     tmp_path,
     monkeypatch,
+    service_factory,
 ):
     bids_root, _eeg_path, events_path, _participants, _channels = (
         _write_resource_preflight_bids_fixture(tmp_path)
     )
     external_mat = tmp_path / "external-labels.mat"
     savemat(external_mat, {"classlabel": np.array([1, 2])})
-    service = ApplicationService()
+    service = service_factory()
     monkeypatch.setattr(resource_guard, "available_ram_bytes", lambda: 1)
     tsv_reads = []
     event_reads = []
@@ -436,13 +453,14 @@ def test_bids_description_payload_is_parsed_only_after_resource_admission(
     tmp_path,
     monkeypatch,
     workflow,
+    service_factory,
 ):
     default_parsed_content_cache().clear()
     bids_root, _eeg_path, _events_path, _participants, _channels = (
         _write_resource_preflight_bids_fixture(tmp_path)
     )
     description = (bids_root / "dataset_description.json").resolve()
-    service = ApplicationService()
+    service = service_factory()
     ordering = []
     real_json_loads = data_interpretation_metadata.json.loads
     real_preflight = service_module.check_import_resource_preflight
@@ -506,6 +524,7 @@ def test_application_service_resource_block_precedes_real_label_loader_and_mutat
     tmp_path,
     monkeypatch,
     suffix,
+    service_factory,
 ):
     eeg_path = _write_synthetic_raw_fif(tmp_path)
     label_path = tmp_path / f"synthetic_raw{suffix}"
@@ -516,7 +535,7 @@ def test_application_service_resource_block_precedes_real_label_loader_and_mutat
             "onset,classlabel\n0.5,left\n1.5,right\n",
             encoding="utf-8",
         )
-    service = ApplicationService()
+    service = service_factory()
     monkeypatch.setattr(
         resource_guard,
         "available_ram_bytes",
@@ -601,6 +620,7 @@ def test_application_service_bids_scan_metadata_is_admitted_in_source_order(
     monkeypatch,
     command_kind,
     large_metadata_kind,
+    service_factory,
 ):
     bids_root, eeg_path, events_path, participants, channels = (
         _write_resource_preflight_bids_fixture(tmp_path)
@@ -608,7 +628,7 @@ def test_application_service_bids_scan_metadata_is_admitted_in_source_order(
     large_path = participants if large_metadata_kind == "participants" else channels
     with large_path.open("ab") as handle:
         handle.truncate(2_000_000)
-    service = ApplicationService()
+    service = service_factory()
     monkeypatch.setattr(resource_guard, "available_ram_bytes", lambda: 100_000_000)
     read_paths = []
     real_read_tsv = data_interpretation_metadata._read_tsv_rows
@@ -652,8 +672,8 @@ def test_application_service_bids_scan_metadata_is_admitted_in_source_order(
     assert result.state.interpretation.has_scan_result is False
 
 
-def test_application_service_load_epoch_saved_split_workflow(tmp_path):
-    service = ApplicationService()
+def test_application_service_load_epoch_saved_split_workflow(tmp_path, service_factory):
+    service = service_factory()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
     load_result = _apply_synthetic_internal_event_interpretation(service, fif_path)
@@ -785,8 +805,9 @@ def test_application_service_load_epoch_saved_split_workflow(tmp_path):
 
 def test_reviewed_multiclass_epoch_unlocks_deferred_dataset_split(
     tmp_path,
+    service_factory,
 ) -> None:
-    service = ApplicationService()
+    service = service_factory()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
     apply_result = _apply_synthetic_internal_event_interpretation(service, fif_path)
@@ -864,8 +885,9 @@ def test_reviewed_multiclass_epoch_unlocks_deferred_dataset_split(
 
 def test_montage_preserves_real_epoch_channels_and_locks_replacement_afterward(
     tmp_path,
+    service_factory,
 ):
-    service = ApplicationService()
+    service = service_factory()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
     _apply_synthetic_internal_event_interpretation(service, fif_path)
@@ -957,8 +979,9 @@ def test_montage_preserves_real_epoch_channels_and_locks_replacement_afterward(
 
 def test_application_service_accepts_dialog_split_specification_and_updates_readiness(
     tmp_path,
+    service_factory,
 ):
-    service = ApplicationService()
+    service = service_factory()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
     _apply_synthetic_internal_event_interpretation(service, fif_path)
@@ -1027,8 +1050,10 @@ def test_application_service_accepts_dialog_split_specification_and_updates_read
     assert service.get_capabilities().get(CommandName.TRAIN).available is True
 
 
-def test_dataset_replacement_rejects_invalid_split_then_can_commit(tmp_path):
-    service = ApplicationService()
+def test_dataset_replacement_rejects_invalid_split_then_can_commit(
+    tmp_path, service_factory
+):
+    service = service_factory()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
     _apply_synthetic_internal_event_interpretation(service, fif_path)
@@ -1129,8 +1154,9 @@ def test_dataset_replacement_rejects_invalid_split_then_can_commit(tmp_path):
 def test_dataset_replacement_fences_plan_generation_across_real_publication(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
+    service_factory,
 ) -> None:
-    service = ApplicationService()
+    service = service_factory()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
     _apply_synthetic_internal_event_interpretation(service, fif_path)
@@ -1266,8 +1292,10 @@ def test_dataset_replacement_fences_plan_generation_across_real_publication(
     assert manager.trainer is not trainer
 
 
-def test_data_interpretation_to_deferred_split_workflow_is_non_mocked(tmp_path):
-    service = ApplicationService()
+def test_data_interpretation_to_deferred_split_workflow_is_non_mocked(
+    tmp_path, service_factory
+):
+    service = service_factory()
     fif_path = _write_synthetic_raw_fif(tmp_path)
     recipe_path = tmp_path / "synthetic_import_recipe.json"
 
@@ -1320,7 +1348,7 @@ def test_data_interpretation_to_deferred_split_workflow_is_non_mocked(tmp_path):
     assert save_recipe_result.state.interpretation.has_recipe is True
     assert recipe_path.exists()
 
-    reload_service = ApplicationService()
+    reload_service = service_factory()
     reload_result = reload_service.execute(
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
     )
@@ -1406,8 +1434,8 @@ def test_data_interpretation_to_deferred_split_workflow_is_non_mocked(tmp_path):
     assert dataset_result.state.dataset.active_split_summary == {}
 
 
-def test_product_smoke_bids_import_apply_create_epoch(tmp_path):
-    service = ApplicationService()
+def test_product_smoke_bids_import_apply_create_epoch(tmp_path, service_factory):
+    service = service_factory()
     bids_root, eeg_path, events_path, channels_path = (
         _write_bids_eeg_motor_imagery_fixture(tmp_path)
     )
@@ -1474,7 +1502,7 @@ def test_product_smoke_bids_import_apply_create_epoch(tmp_path):
     assert recipe_result.diagnostics["recipe"]["bids"]["root"] == str(
         bids_root.resolve()
     )
-    reload_service = ApplicationService()
+    reload_service = service_factory()
     reload_result = reload_service.execute(
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
     )
@@ -1694,8 +1722,8 @@ def test_bids_montage_publication_stales_only_the_old_generation(tmp_path, monke
         service.close()
 
 
-def test_reload_recipe_blocks_missing_saved_eeg_file(tmp_path):
-    service = ApplicationService()
+def test_reload_recipe_blocks_missing_saved_eeg_file(tmp_path, service_factory):
+    service = service_factory()
     fif_path = _write_synthetic_raw_fif(tmp_path)
     recipe_path = tmp_path / "missing-file-recipe.json"
     missing_path = tmp_path / "missing_raw.fif"
@@ -1718,8 +1746,8 @@ def test_reload_recipe_blocks_missing_saved_eeg_file(tmp_path):
     assert reload_result.state.interpretation.validation_decision == "blocked"
 
 
-def test_reload_recipe_blocks_missing_saved_label_carrier(tmp_path):
-    service = ApplicationService()
+def test_reload_recipe_blocks_missing_saved_label_carrier(tmp_path, service_factory):
+    service = service_factory()
     fif_path = _write_synthetic_raw_fif(tmp_path)
     recipe_path = tmp_path / "missing-label-carrier-recipe.json"
     missing_events = tmp_path / "missing_events.tsv"
@@ -1744,8 +1772,8 @@ def test_reload_recipe_blocks_missing_saved_label_carrier(tmp_path):
     assert reload_result.state.interpretation.validation_decision == "blocked"
 
 
-def test_reload_recipe_accepts_explicit_label_carrier_remap(tmp_path):
-    service = ApplicationService()
+def test_reload_recipe_accepts_explicit_label_carrier_remap(tmp_path, service_factory):
+    service = service_factory()
     fif_path = _write_synthetic_raw_fif(tmp_path)
     old_events = tmp_path / "old_events.tsv"
     new_events = tmp_path / "renamed_events.tsv"
@@ -1806,8 +1834,8 @@ def test_reload_recipe_accepts_explicit_label_carrier_remap(tmp_path):
     )
 
 
-def test_reload_recipe_accepts_explicit_eeg_file_remap(tmp_path):
-    service = ApplicationService()
+def test_reload_recipe_accepts_explicit_eeg_file_remap(tmp_path, service_factory):
+    service = service_factory()
     fif_path = _write_synthetic_raw_fif(tmp_path)
     old_fif = tmp_path / "old_raw.fif"
     recipe_path = tmp_path / "remap-eeg-file-recipe.json"
@@ -1849,8 +1877,10 @@ def test_reload_recipe_accepts_explicit_eeg_file_remap(tmp_path):
     assert "choices:eeg_file_remap" in remapped["recipe_trace"]
 
 
-def test_application_service_failed_command_sets_and_clears_last_error(tmp_path):
-    service = ApplicationService()
+def test_application_service_failed_command_sets_and_clears_last_error(
+    tmp_path, service_factory
+):
+    service = service_factory()
     fif_path = _write_synthetic_raw_fif(tmp_path)
 
     load_result = _apply_synthetic_internal_event_interpretation(service, fif_path)

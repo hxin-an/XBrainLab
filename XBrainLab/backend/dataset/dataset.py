@@ -131,16 +131,6 @@ class Dataset:
         self.cross_validation_cohort_id = cohort_id
         self._mark_resource_fingerprint_mutation()
 
-    def has_set_empty(self) -> bool:
-        """Check whether any split (train, val, or test) is empty.
-
-        Returns:
-            True if any of the train, validation, or test sets has zero trials.
-
-        """
-        train_number, val_number, test_number = self.get_all_trial_numbers()
-        return train_number == 0 or val_number == 0 or test_number == 0
-
     def set_test(self, mask: np.ndarray) -> None:
         """Set the test set mask and update the remaining mask.
 

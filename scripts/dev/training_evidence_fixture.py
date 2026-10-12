@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import shutil
-import tempfile
 from pathlib import Path
 from typing import Any
 
-from scripts.dev.chatpanel_training_fixture import write_training_ready_raw_fif
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
     ConfigureTrainingCommand,
@@ -20,16 +17,95 @@ from XBrainLab.backend.application import (
     ValidateInterpretationCommand,
     get_application_service,
 )
+from XBrainLab.backend.application.dataset_split_preview import (
+    DatasetSplitChoice,
+    DatasetSplitContext,
+    DatasetSplitPreviewPublication,
+    DatasetSplitPreviewRequest,
+    DatasetSplitPreviewRow,
+)
+from XBrainLab.backend.training.record import EvalRecord, RecordKey
+from XBrainLab.backend.training.record.artifact_store import (
+    TRAINING_RECORD_ARTIFACT_TYPE,
+    load_model_state_dict,
+    read_json_npz_artifact,
+)
+from XBrainLab.backend.training.record.train import _decode_training_artifact
 
-_SOURCE_DIR = Path(tempfile.gettempdir()) / "xbrainlab_training_evidence"
-_SOURCE_PATH = _SOURCE_DIR / "training_ready_raw.fif"
+
+def verify_real_training_artifacts(output_root: Path) -> None:
+    """Reload one completed evidence run through the product artifact decoders."""
+    record_manifests = list(output_root.rglob("record"))
+    if len(record_manifests) != 1:
+        raise RuntimeError(
+            "training persistence did not produce exactly one record manifest"
+        )
+    artifact_dir = record_manifests[0].parent
+    data, arrays = read_json_npz_artifact(
+        record_manifests[0], expected_artifact_type=TRAINING_RECORD_ARTIFACT_TYPE
+    )
+    train, _val, _test, _best, _seed, epoch, *_metadata = _decode_training_artifact(
+        data,
+        arrays,
+        best_record_keys={
+            f"best_val_{metric}{suffix}"
+            for metric in RecordKey()
+            for suffix in ("", "_epoch")
+        },
+    )
+    if epoch < 1 or any(
+        len(train[metric]) != epoch
+        or not any(value is not None for value in train[metric])
+        for metric in (RecordKey.LOSS, RecordKey.ACC)
+    ):
+        raise RuntimeError("training artifact has no completed epoch metrics")
+    checkpoint = artifact_dir / f"Epoch-{epoch}-model"
+    if not checkpoint.is_file() or not load_model_state_dict(checkpoint):
+        raise RuntimeError("training checkpoint could not be safely reloaded")
+    evaluation = EvalRecord.load(str(artifact_dir))
+    if (
+        evaluation is None
+        or len(evaluation.label) == 0
+        or len(evaluation.output) != len(evaluation.label)
+    ):
+        raise RuntimeError("evaluation artifact could not be safely reloaded")
 
 
-def write_synthetic_training_raw_fif() -> Path:
-    """Write a deterministic EEG fixture with epoch duration suitable for EEGNet."""
-    if _SOURCE_DIR.exists():
-        shutil.rmtree(_SOURCE_DIR)
-    return write_training_ready_raw_fif(_SOURCE_PATH)
+def data_split_capture_context() -> DatasetSplitContext:
+    """Small, deterministic context for layout captures, not allocation evidence."""
+    return DatasetSplitContext(
+        epoch_available=True,
+        subject_count=2,
+        session_count=1,
+        label_count=2,
+        trial_count=120,
+        subject_choices=(
+            DatasetSplitChoice(value="S01", label="S01"),
+            DatasetSplitChoice(value="S02", label="S02"),
+        ),
+        session_choices=(DatasetSplitChoice(value="session", label="session"),),
+    )
+
+
+def data_split_capture_provider(
+    request: DatasetSplitPreviewRequest,
+) -> DatasetSplitPreviewPublication:
+    """Render representative rows consistent with the selected layout mode."""
+    fold_count = 5 if request.specification.is_cross_validation else 1
+    validation_count = 20 if request.specification.val_splitters else 0
+    return DatasetSplitPreviewPublication(
+        request=request,
+        generation=request.publication_generation,
+        rows=tuple(
+            DatasetSplitPreviewRow(
+                name=(f"Fold_{index}" if fold_count > 1 else "Holdout"),
+                train_count=96 - validation_count,
+                validation_count=validation_count,
+                test_count=24,
+            )
+            for index in range(fold_count)
+        ),
+    )
 
 
 def prepare_training_dataset_ready_state(

@@ -44,25 +44,6 @@ VISIBLE_FORBIDDEN = (
 )
 
 
-class _RetainedApplicationService:
-    """Delegate to a real service while deferring runner-owned final close."""
-
-    def __init__(self, service: Any) -> None:
-        self.service = service
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self.service, name)
-
-    def close(self) -> None:
-        """Keep the final publication alive until Qt screenshots are complete."""
-
-    def wait_for_background_tasks(self, *, timeout: float | None = None) -> bool:
-        """Preserve the runner wait while making its deferred close non-owning."""
-        if timeout == 30.0:
-            return True
-        return bool(self.service.wait_for_background_tasks(timeout=timeout))
-
-
 def capture_all_datasets(
     *,
     app: Any,
@@ -306,20 +287,21 @@ def _capture_finished_journey(
 
     study = Study()
     service = get_application_service(study)
-    retained = _RetainedApplicationService(service)
     journey_root = dataset_dir / "application-service"
-    evidence = run_dataset_journey(
-        dataset,
-        run_root=journey_root,
-        source_artifacts=source_artifacts,
-        execution_profile=execution_profile,
-        confirm_resource_plan=confirm_resource_plan,
-        attempt=1,
-        previous_failure=None,
-        service_factory=lambda: retained,
-    )
     evidence_path = dataset_dir / "journey-evidence.json"
+    evidence: dict[str, Any] | None = None
     try:
+        evidence = run_dataset_journey(
+            dataset,
+            run_root=journey_root,
+            source_artifacts=source_artifacts,
+            execution_profile=execution_profile,
+            confirm_resource_plan=confirm_resource_plan,
+            attempt=1,
+            previous_failure=None,
+            service_factory=lambda: service,
+            close_service=False,
+        )
         if evidence.get("failures"):
             write_json_atomic(evidence_path, evidence)
             record["execution"] = _execution_record(
@@ -367,7 +349,27 @@ def _capture_finished_journey(
             profile=execution_profile,
         )
     finally:
-        service.close()
+        try:
+            service.close()
+            if service.is_closed is False:
+                raise TimeoutError(  # noqa: TRY301 - retain cleanup evidence below
+                    "ApplicationService close did not complete."
+                )
+        except Exception as exc:
+            failure = _failure(str(dataset.get("id") or ""), "cleanup", exc)
+            record["limitations"].append(failure["message"])
+            record.setdefault("execution", {})["status"] = "failed"
+            if evidence is not None:
+                evidence["failures"].append(failure)
+                if execution_profile == "showcase":
+                    evidence["quality_evidence_status"] = "failed"
+                write_json_atomic(evidence_path, evidence)
+                record["execution"] = _execution_record(
+                    evidence,
+                    evidence_path=evidence_path,
+                    output_root=output_root,
+                    profile=execution_profile,
+                )
         _process_events(app, 100)
 
 

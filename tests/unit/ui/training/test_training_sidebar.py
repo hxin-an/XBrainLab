@@ -29,6 +29,7 @@ from XBrainLab.backend.application.resource_guard import (
     TrainingResourcePreviewRequest,
     TrainingResourcePreviewResult,
 )
+from XBrainLab.backend.application.resource_preflight import ResourcePreflightView
 from XBrainLab.backend.application.training_recommendation import (
     TrainingRecommendation,
     TrainingRecommendationField,
@@ -295,45 +296,48 @@ def test_panel_close_abandons_preview_without_waiting_or_late_delivery(qtbot):
     qtbot.addWidget(sidebar)
     delivered: list[TrainingResourcePreviewResult] = []
 
-    assert sidebar._dispatch_training_resource_preview(
-        _resource_preview_request(1),
-        delivered.append,
-    )
-    qtbot.waitUntil(worker_started.is_set, timeout=1000)
-    worker = coordinator.worker_thread
-    assert worker is not None
-    assert worker.daemon is False
-
-    panel.show()
-    assert panel.close() is True
-    assert worker.is_alive() is True
-    assert (
-        sidebar._dispatch_training_resource_preview(
-            _resource_preview_request(2),
+    try:
+        assert sidebar._dispatch_training_resource_preview(
+            _resource_preview_request(1),
             delivered.append,
         )
-        is False
-    )
+        qtbot.waitUntil(worker_started.is_set, timeout=1000)
+        worker = coordinator.worker_thread
+        assert worker is not None
+        assert worker.daemon is False
 
-    release_worker.set()
-    qtbot.waitUntil(worker_finished.is_set, timeout=1000)
-    qtbot.waitUntil(
-        lambda: bool(coordinator.background_work_snapshot()["idle"]),
-        timeout=1000,
-    )
+        panel.show()
+        assert panel.close() is True
+        assert worker.is_alive() is True
+        assert (
+            sidebar._dispatch_training_resource_preview(
+                _resource_preview_request(2),
+                delivered.append,
+            )
+            is False
+        )
 
-    assert coordinator.background_work_snapshot()["remaining_workers"] == 0
-    assert delivered == []
+        release_worker.set()
+        qtbot.waitUntil(worker_finished.is_set, timeout=1000)
+        qtbot.waitUntil(
+            lambda: bool(coordinator.background_work_snapshot()["idle"]),
+            timeout=1000,
+        )
 
-    sidebar._cancel_training_resource_preview_shutdown()
-    retried: list[TrainingResourcePreviewResult] = []
-    assert sidebar._dispatch_training_resource_preview(
-        _resource_preview_request(2),
-        retried.append,
-    )
-    qtbot.waitUntil(lambda: len(retried) == 1, timeout=1000)
-    assert retried[0].request_generation == 2
-    assert coordinator.close(timeout=2.0)
+        assert coordinator.background_work_snapshot()["remaining_workers"] == 0
+        assert delivered == []
+
+        sidebar._cancel_training_resource_preview_shutdown()
+        retried: list[TrainingResourcePreviewResult] = []
+        assert sidebar._dispatch_training_resource_preview(
+            _resource_preview_request(2),
+            retried.append,
+        )
+        qtbot.waitUntil(lambda: len(retried) == 1, timeout=1000)
+        assert retried[0].request_generation == 2
+    finally:
+        release_worker.set()
+        assert coordinator.close(timeout=2.0)
 
 
 def test_training_sidebar_does_not_spawn_or_abandon_preview_workers() -> None:
@@ -532,11 +536,38 @@ def test_model_selection_receives_typed_training_query_port(sidebar):
     )
 
 
-def test_execution_section_does_not_show_persistent_resource_status(sidebar):
+@pytest.mark.parametrize(
+    ("risk", "label"),
+    [
+        (RISK_SAFE, "Safe"),
+        (RISK_WARNING, "Warning"),
+        (RISK_BLOCKING, "Too large"),
+        (RISK_UNKNOWN, "Unknown"),
+    ],
+)
+def test_resource_confirmation_message_preserves_risk_labels(sidebar, risk, label):
+    view = ResourcePreflightView.create(
+        risk_level=risk,
+        requires_confirmation=risk in {RISK_WARNING, RISK_UNKNOWN},
+        message="Resource preflight",
+        details={"dataset_ram_risk_level": risk, "vram_risk_level": risk},
+    )
+
+    message = sidebar._training_resource_dialog_message(view)
+
+    assert f"Risk level: {label}" in message
+    assert f"RAM risk level: {label}" in message
+    assert f"VRAM risk level: {label}" in message
+
+
+def test_execution_section_does_not_show_persistent_resource_status(sidebar, qtbot):
+    sidebar.show()
+    qtbot.waitUntil(sidebar.isVisible)
     visible_text = " ".join(
         label.text() for label in sidebar.findChildren(QLabel) if label.isVisible()
     )
 
+    assert sidebar.btn_start.isVisible()
     assert "Resource check" not in visible_text
     assert "GPU memory unavailable" not in visible_text
 
@@ -1419,8 +1450,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
         "settings",
         "capability_enabled",
         "capability_reason",
-        "expected_statuses",
-        "expected_next",
     ),
     [
         pytest.param(
@@ -1432,8 +1461,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             False,
             False,
             "Import EEG data before training.",
-            ("Needed", "Needed", "Needed"),
-            "Next: Import EEG data",
             id="import",
         ),
         pytest.param(
@@ -1445,8 +1472,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             False,
             False,
             "Preprocess the imported EEG data before training.",
-            ("Needed", "Needed", "Needed"),
-            "Next: Preprocess EEG",
             id="preprocess",
         ),
         pytest.param(
@@ -1458,8 +1483,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             False,
             False,
             "Create EEG epochs before configuring training datasets.",
-            ("Needed", "Needed", "Needed"),
-            "Next: Create EEG epochs",
             id="epochs-before-split",
         ),
         pytest.param(
@@ -1471,8 +1494,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             False,
             False,
             "Generate datasets before training.",
-            ("Needed", "Needed", "Needed"),
-            "Next: Configure dataset split",
             id="split",
         ),
         pytest.param(
@@ -1484,8 +1505,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             False,
             False,
             "Select a model before training.",
-            ("Ready", "Needed", "Needed"),
-            "Next: Select model",
             id="model",
         ),
         pytest.param(
@@ -1497,8 +1516,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             False,
             False,
             "Set training options before training.",
-            ("Ready", "Ready", "Needed"),
-            "Next: Set training options",
             id="settings",
         ),
         pytest.param(
@@ -1510,8 +1527,6 @@ def test_training_capability_blocks_start_without_rendering_readiness(sidebar, q
             True,
             True,
             "",
-            ("Ready", "Ready", "Ready"),
-            None,
             id="ready",
         ),
     ],
@@ -1526,8 +1541,6 @@ def test_training_start_availability_uses_one_application_publication(
     settings,
     capability_enabled,
     capability_reason,
-    expected_statuses,
-    expected_next,
 ):
     capability = CommandCapability(
         command_name="train",
@@ -1574,12 +1587,6 @@ def test_training_start_fails_closed_when_product_publication_is_unavailable(
     sidebar,
 ):
     publication = SimpleNamespace(usable=False, state=None)
-    capability = CommandCapability(
-        command_name="train",
-        enabled=False,
-        reasons=["Training state is unavailable."],
-    )
-
     with (
         patch(
             "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
@@ -1699,28 +1706,6 @@ def test_product_action_result_waits_for_the_next_publication(
 
     assert sidebar.btn_start.isEnabled()
     assert sidebar.btn_start.toolTip() == "Start Training"
-
-
-def test_check_ready_to_train_fails_closed_when_product_truth_is_missing(
-    sidebar,
-):
-    publication = SimpleNamespace(usable=False, state=None)
-
-    with (
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.get_application_view_publication",
-            return_value=publication,
-        ),
-        patch(
-            "XBrainLab.ui.panels.training.sidebar.get_command_capability",
-            return_value=None,
-        ),
-    ):
-        sidebar.check_ready_to_train()
-
-    assert not sidebar.btn_start.isEnabled()
-    assert sidebar.btn_start.toolTip() == "Training state is unavailable right now."
-    assert sidebar.findChild(QGroupBox, "TrainingReadiness") is None
 
 
 def test_check_ready_to_train_rejects_enabled_capability_from_unusable_publication(
@@ -2298,13 +2283,6 @@ def test_data_splitting_context_stale_publication_requires_review(sidebar):
         "Review Data Splitting Again",
         str(error),
     )
-
-
-def test_data_splitting_launch_uses_typed_detached_binding():
-    source = inspect.getsource(TrainingSidebar._data_splitting_dialog_context)
-
-    assert "get_dataset_split_dialog_binding" in source
-    assert "publication_generation" in source
 
 
 def test_on_training_stopped(sidebar):

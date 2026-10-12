@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 import torch
 
-from tests.integration.training_artifact_support import assert_real_training_artifacts
+from scripts.dev.training_evidence_fixture import verify_real_training_artifacts
 from XBrainLab.backend.application.evaluation_render import (
     EvaluationPlanIdentity,
     EvaluationRunIdentity,
@@ -140,7 +140,7 @@ class TestTrainerModelIntegration:
 
         # Eval record should exist
         assert record.eval_record is not None
-        assert_real_training_artifacts(Path(record.target_path))
+        verify_real_training_artifacts(Path(record.target_path))
 
         plan_identity = EvaluationPlanIdentity(plan_index=0)
         summary = build_evaluation_model_summary_result(
@@ -183,7 +183,7 @@ class TestTrainerModelIntegration:
         record = plan.train_record_list[0]
         assert RecordKey.LOSS in record.train
         assert record.eval_record is not None
-        assert_real_training_artifacts(Path(record.target_path))
+        verify_real_training_artifacts(Path(record.target_path))
 
 
 class TestMultiRepeatTraining:
@@ -216,4 +216,4 @@ class TestMultiRepeatTraining:
         for record in plan.train_record_list:
             assert RecordKey.LOSS in record.train
             assert record.eval_record is not None
-            assert_real_training_artifacts(Path(record.target_path))
+            verify_real_training_artifacts(Path(record.target_path))

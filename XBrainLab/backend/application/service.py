@@ -187,7 +187,6 @@ if TYPE_CHECKING:
     from .training_service import TrainingCommandService
 
 HandlerResult = str | tuple[str, dict[str, Any]]
-_ObserverCleanup = tuple[Callable[..., Any], tuple[Any, ...]]
 _CLOSED_SERVICE_MESSAGE = (
     "This XBrainLab application service is closed. Use the current application "
     "service instance."
@@ -4090,9 +4089,6 @@ class ApplicationService(Observable):
             CommandName.TRAIN: self._handle_train_with_saved_split,
             CommandName.DISCARD_TRAINING_PREPARATION: (
                 self._handle_discard_training_preparation
-            ),
-            CommandName.STOP_TRAINING: (
-                lambda command: self.training_commands.handle_stop_training(command)
             ),
             CommandName.CLEAR_TRAINING_HISTORY: (
                 lambda command: self.training_commands.handle_clear_training_history(

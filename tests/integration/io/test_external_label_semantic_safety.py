@@ -156,6 +156,7 @@ def _annotation_rows(
 
 def test_bids_artifact_and_boundary_rows_reject_overlapping_class_epoch(
     tmp_path: Path,
+    request: pytest.FixtureRequest,
 ) -> None:
     root = tmp_path / "bids"
     root.mkdir()
@@ -205,6 +206,7 @@ def test_bids_artifact_and_boundary_rows_reject_overlapping_class_epoch(
         },
     }
     service = ApplicationService()
+    request.addfinalizer(service.close)
 
     scan = service.execute(ScanSourceCommand(str(root), source_hint="bids"))
     preview = service.execute(PreviewInterpretationCommand(choices=choices))
@@ -264,6 +266,7 @@ def test_bids_artifact_and_boundary_rows_reject_overlapping_class_epoch(
 )
 def test_sample_index_contract_produces_consistent_events_through_epoch(
     tmp_path: Path,
+    request: pytest.FixtureRequest,
     carrier_format: str,
     index_base: str,
     index_origin: str,
@@ -327,6 +330,7 @@ def test_sample_index_contract_produces_consistent_events_through_epoch(
         },
     }
     service = ApplicationService()
+    request.addfinalizer(service.close)
 
     scan = service.execute(ScanSourceCommand(str(root)))
     preview = service.execute(PreviewInterpretationCommand(choices=choices))
@@ -369,6 +373,7 @@ def test_sample_index_contract_produces_consistent_events_through_epoch(
 
 def test_generic_timestamp_apply_rolls_back_when_any_row_is_out_of_range(
     tmp_path: Path,
+    request: pytest.FixtureRequest,
 ) -> None:
     root = tmp_path / "rollback"
     eeg_path = root / "rollback_raw.fif"
@@ -379,6 +384,7 @@ def test_generic_timestamp_apply_rolls_back_when_any_row_is_out_of_range(
         encoding="utf-8",
     )
     service = ApplicationService()
+    request.addfinalizer(service.close)
     service.execute(ScanSourceCommand(str(root)))
     preview = service.execute(
         PreviewInterpretationCommand(

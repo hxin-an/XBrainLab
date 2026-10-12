@@ -63,7 +63,7 @@ def test_filtering_notch(mock_raw_data):
     history = processed.get_preprocess_history()[-1]
 
     # Verify history contains Notch but NOT Filtering
-    assert "Notch 50.0 Hz" in history
+    assert "Notch 50 Hz" in history
     assert "Filtering" not in history
 
     # Verify 50Hz power is reduced
@@ -81,7 +81,7 @@ def test_filtering_combined(mock_raw_data):
     processed = filt.get_preprocessed_data_list()[0]
     history = processed.get_preprocess_history()[-1]
     assert "Filtering 1.0 ~ 100.0 Hz" in history
-    assert "Notch 50.0 Hz" in history
+    assert "Notch 50 Hz" in history
 
 
 def test_filtering_preserves_and_marks_nonfinite_raw_segments():
@@ -126,3 +126,37 @@ def test_filtering_rejects_nonfinite_epoched_input():
             l_freq=1.0,
             h_freq=30.0,
         )
+
+
+@pytest.mark.parametrize("dated", [False, True])
+def test_filtering_nonfinite_annotations_preserve_acquisition_time(dated):
+    from datetime import UTC, datetime
+
+    info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
+    samples = np.sin(2 * np.pi * 10 * np.arange(2000) / 100.0)[None, :]
+    samples[:, 1000:1020] = np.nan
+    raw = mne.io.RawArray(samples, info, first_samp=500, verbose="ERROR")
+    if dated:
+        raw.set_meas_date(datetime(2020, 1, 1, tzinfo=UTC))
+    raw.set_annotations(mne.Annotations([2.0], [0.0], ["cue"]))
+    original_onset = raw.annotations.onset.copy()
+    source = Raw("offset-raw.fif", raw)
+    original_events, original_ids = source.get_event_list()
+
+    result = Filtering([source]).data_preprocess(1.0, 30.0)[0]
+    annotations = result.get_mne().annotations
+
+    np.testing.assert_array_equal(
+        annotations.onset[annotations.description == "cue"], original_onset
+    )
+    np.testing.assert_allclose(
+        annotations.onset[annotations.description == "BAD_nonfinite"], [15.0]
+    )
+    filtered = result.get_mne().get_data()
+    assert np.isfinite(filtered[:, :1000]).all()
+    assert np.isnan(filtered[:, 1000:1020]).all()
+    assert np.isfinite(filtered[:, 1020:]).all()
+    events, event_ids = result.get_event_list()
+    np.testing.assert_array_equal(events, original_events)
+    assert event_ids == original_ids
+    np.testing.assert_array_equal(raw.annotations.onset, original_onset)

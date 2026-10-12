@@ -1084,13 +1084,14 @@ def test_pipeline_product_walkthrough_uses_user_facing_actions(
             },
         )
 
+    original_service = get_application_service(test_app.study)
     monkeypatch.setattr(
         training_service_module.TrainingCommandService,
         "start_train_after_preflight",
         fake_start_train_after_preflight,
     )
-    test_app.study._application_service = None
     service = get_application_service(test_app.study)
+    assert service is original_service
     test_app.init_agent()
     manager = test_app.agent_manager
     assert service._command_handlers[CommandName.TRAIN] == (

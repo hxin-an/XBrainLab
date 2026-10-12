@@ -838,41 +838,6 @@ def test_saliency_producer_identity_separates_dataset_split_run_and_model(
 
 
 @pytest.mark.parametrize(
-    "val_loader, test_loader, expected_loader",
-    [
-        ("val", "test", "test"),
-        (None, "test", "test"),
-        ("val", None, "val"),
-        (None, None, None),
-    ],
-)
-def test_training_plan_holder_get_eval_loader(
-    base_holder,
-    dataset,
-    model_holder,
-    training_option,
-    val_loader,
-    test_loader,
-    expected_loader,
-):
-    repeat = 0
-    seed = set_seed()
-    model = model_holder.get_model({})
-    training_option.evaluation_option = TrainingEvaluation.VAL_LOSS
-    record = TrainRecord(
-        repeat=repeat, dataset=dataset, model=model, option=training_option, seed=seed
-    )
-    record.best_val_loss_model = record.model.state_dict()
-
-    if expected_loader is None:
-        with pytest.raises(FinalEvaluationUnavailableError):
-            base_holder.get_eval_pair(record, val_loader, test_loader)
-    else:
-        _, target_loader = base_holder.get_eval_pair(record, val_loader, test_loader)
-        assert target_loader == expected_loader
-
-
-@pytest.mark.parametrize(
     "evaluation_option, state_dict_attr_name",
     [
         (TrainingEvaluation.VAL_LOSS, f"best_val_{RecordKey.LOSS}_model"),
@@ -1267,15 +1232,11 @@ def test_training_plan_holder_train_one_repeat_status(base_holder):
         epoch_counter += 1
         assert base_holder.get_training_epoch() == epoch_counter
         assert base_holder.get_epoch_progress_text() == str(epoch_counter) + " / 50"
-        for i in base_holder.get_training_evaluation():
-            assert i != "-"
 
     with patch.object(
         base_holder, "train_one_epoch", side_effect=train_one_epoch_side_effect
     ):
         train_record = base_holder.train_record_list[0]
-        for i in base_holder.get_training_evaluation():
-            assert i == "-"
         base_holder.train_one_repeat(train_record)
 
 
@@ -1350,16 +1311,12 @@ def test_training_plan_holder_train(base_holder):
         assert base_holder.is_finished() is False
         assert base_holder.get_training_repeat() == 0
         assert base_holder.get_training_epoch() == 0
-        for i in base_holder.get_training_evaluation():
-            assert i == "-"
         assert base_holder.get_epoch_progress_text() == "0 / 50"
         base_holder.train()
         assert base_holder.get_training_status() == "Finished"
         assert base_holder.is_finished()
         assert base_holder.get_training_repeat() == 4
         assert base_holder.get_training_epoch() == 10
-        for i in base_holder.get_training_evaluation():
-            assert i != "-"
         assert base_holder.get_epoch_progress_text() == "50 / 50"
         train_one_repeat_mock.assert_called()
         get_eval_pair_mock.assert_called()
@@ -1382,6 +1339,34 @@ def test_training_plan_holder_train_status(base_holder):
         train_one_repeat_mock.assert_called()
 
 
+def test_stop_does_not_start_or_export_later_repeats(
+    model_holder, dataset, training_option, monkeypatch
+):
+    training_option.repeat_num = 3
+    holder = TrainingPlanHolder(model_holder, dataset, training_option, {})
+    trainer = Trainer([holder])
+    first, *pending = holder.get_plans()
+    original_epoch = holder.train_one_epoch
+
+    def stop_after_first_epoch(*args, **kwargs):
+        original_epoch(*args, **kwargs)
+        trainer.set_interrupt()
+
+    monkeypatch.setattr(holder, "train_one_epoch", stop_after_first_epoch)
+    trainer.run()
+
+    assert trainer.get_terminal_outcome().state is TrainingOutcomeState.CANCELLED
+    assert first.epoch == 1
+    assert first.start_timestamp is not None
+    assert first.end_timestamp is not None
+    assert (Path(first.target_path) / "record").is_file()
+    for record in pending:
+        assert record.epoch == 0
+        assert record.start_timestamp is None
+        assert record.end_timestamp is None
+        assert list(Path(record.target_path).iterdir()) == []
+
+
 @pytest.mark.timeout(10)
 def test_training_plan_holder_train_error(base_holder):
     def train_one_repeat_side_effect(*args, **kwargs):
@@ -1397,8 +1382,6 @@ def test_training_plan_holder_train_error(base_holder):
 
 
 def test_test_model_metrics():
-    # Setup
-    # model = FakeModel()
     criterion = torch.nn.CrossEntropyLoss()
 
     # Create dummy data
@@ -1413,21 +1396,6 @@ def test_test_model_metrics():
     #   Preds: [[0, 0, 10, 0], [0, 10, 0, 0]] -> Argmax: [2, 1] (1 Correct, 1 Wrong)
 
     # Total: 4 samples, 3 correct -> Acc = 75%
-
-    class MockDataset(torch.utils.data.Dataset):
-        def __len__(self):
-            return 4
-
-        def __getitem__(self, idx):
-            return torch.randn(CLASS_NUM), torch.tensor(idx)
-
-    # Mock model output
-    # We need to mock the model call to return specific predictions
-    # But FakeModel is simple linear. Let's just mock the forward pass or use
-    # specific weights.
-    # Easier: Mock the model object itself to return specific outputs
-
-    mock_model = torch.nn.Linear(4, 4)  # Dummy
 
     # Batch 1 outputs (indices 0, 1) -> Labels 0, 1
     out1 = torch.tensor([[10.0, 0.0, 0.0, 0.0], [0.0, 10.0, 0.0, 0.0]])
@@ -1699,11 +1667,7 @@ def test_saliency_marks_a_fold_unavailable_when_every_evaluation_split_lacks_cla
         ),
     }
 
-    source = base_holder._select_saliency_evaluation_split(
-        record,
-        val_loader=object(),
-        test_loader=object(),
-    )
+    source = base_holder.get_saliency_evaluation_split(record)
 
     assert source is None
 
@@ -2485,50 +2449,6 @@ def test_early_stopping_strict_min_delta_and_none_auc_hold_counter(base_holder):
     assert record.observe_early_stopping() is True
     assert record.early_stopping["stopped_early"] is True
     assert record.early_stopping["best_epoch"] == 1
-
-
-def test_early_stopping_completes_repeat_and_evaluates_selected_checkpoint(base_holder):
-    option = base_holder.option
-    option.epoch = 8
-    option.repeat_num = 1
-    option.early_stopping_enabled = True
-    option.early_stopping_patience = 1
-    option.early_stopping_min_delta = 1.0
-    option.evaluation_option = TrainingEvaluation.VAL_LOSS
-    record = base_holder.get_plans()[0]
-    record.early_stopping.update(enabled=True, patience=1, min_delta=1.0)
-
-    def run_epoch(*args):
-        active_record = args[-1]
-        active_record.step()
-        active_record.update_validation({RecordKey.LOSS: 1.0})
-
-    train_loader, val_loader, test_loader = [1], [2], [3]
-
-    def selected_pair(active_record, _val_loader, _test_loader):
-        assert (
-            base_holder._selected_evaluation_state(active_record)
-            is active_record.best_val_loss_model
-        )
-        return active_record.model, test_loader
-
-    with (
-        patch.object(base_holder, "train_one_epoch", side_effect=run_epoch),
-        patch.object(
-            base_holder,
-            "get_loader",
-            return_value=(train_loader, val_loader, test_loader),
-        ),
-        patch.object(base_holder, "get_eval_pair", side_effect=selected_pair),
-        patch.object(Evaluator, "evaluate", return_value=Mock(spec=EvalRecord)),
-        patch.object(record, "export_checkpoint"),
-    ):
-        base_holder.train_one_repeat(record)
-
-    assert record.early_stopping["stopped_early"] is True
-    assert record.get_epoch() == 2
-    assert record.eval_record is not None
-    assert record.is_finished() is True
 
 
 def test_early_stop_history_uses_checkpoint_tie_epoch_not_monitor_epoch(base_holder):

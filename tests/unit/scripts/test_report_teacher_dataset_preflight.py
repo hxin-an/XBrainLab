@@ -236,11 +236,48 @@ def test_release_service_closes_every_raw_and_application_lifecycle() -> None:
             ]
         ),
         close=lambda: close_calls.append("service"),
+        is_closed=True,
     )
-
-    preflight._release_service(service)
+    result = {"status": "passed", "observations": {"epoch_count": 2243}}
+    preflight._release_service(service, result)
 
     assert close_calls == ["first", "second", "service"]
+    assert result["status"] == "failed"
+    assert result["failed_stage"] == "cleanup"
+    assert result["observations"] == {"epoch_count": 2243}
+    assert result["cleanup_failures"] == [
+        {"stage": "raw_close", "message": "close failed"}
+    ]
+
+
+@pytest.mark.parametrize("close_raises", [False, True])
+def test_epoch_preflight_keeps_scan_failure_and_reports_real_service_cleanup(
+    tmp_path, monkeypatch, close_raises
+):
+    from XBrainLab.backend.application import ApplicationService
+
+    (tmp_path / "tests/fixtures/data/public/openneuro-ds003061-p300").mkdir(
+        parents=True
+    )
+    service = ApplicationService()
+    real_close = service.close
+
+    def failed_close():
+        if close_raises:
+            raise OSError("preflight shutdown unavailable")
+
+    monkeypatch.setattr(service, "close", failed_close)
+    monkeypatch.setattr(preflight, "ApplicationService", lambda _study: service)
+    try:
+        result = preflight.run_openneuro_p300_case(tmp_path)
+        assert result["status"] == "failed"
+        assert result["failed_stage"] == "scan"
+        assert result["stages"]["scan"]["ok"] is False
+        assert result["message"] == result["stages"]["scan"]["message"]
+        assert result["cleanup_failures"]
+        assert result["cleanup_failures"][-1]["stage"] == "service_close"
+    finally:
+        real_close()
 
 
 def test_public_fixture_dir_uses_canonical_data_root_when_configured(
@@ -370,8 +407,11 @@ def test_import_performance_reads_recipe_trace_from_apply_diagnostics(
     class _Service:
         def __init__(self) -> None:
             self.study = SimpleNamespace(
-                loaded_data_list=[object(), object(), object()]
+                loaded_data_list=[
+                    SimpleNamespace(get_mne=lambda: None) for _ in range(3)
+                ]
             )
+            self.is_closed = True
 
         def execute(self, command: object) -> SimpleNamespace:
             if isinstance(command, preflight.ScanSourceCommand):

@@ -122,9 +122,6 @@ class TestModelSelection:
             "get_training_model_signal_context",
             lambda _context, **_kwargs: signal_context,
         )
-        controller = SimpleNamespace(
-            get_epoch_data=lambda: pytest.fail("dialog bypassed ApplicationService"),
-        )
         dialog = ModelSelectionDialog(
             None,
             provider_status=HEALTHY_PROVIDER,

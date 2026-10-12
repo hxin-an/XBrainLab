@@ -164,12 +164,9 @@ class PreprocessBase:
                 finished, _ = wait(active)
                 for future in finished:
                     active.remove(future)
-                    try:
-                        future.result()
-                    except BaseException:
-                        for remaining in active:
-                            remaining.cancel()
-                        raise
+                    # wait() drains this bounded batch; no queued futures remain
+                    # to cancel if one transform failed. Do not admit another batch.
+                    future.result()
                 completed += len(finished)
                 owned_work_checkpoint(
                     "Preprocessing EEG recordings",

@@ -209,11 +209,7 @@ class TrainingSidebar(QWidget):
             return None
         return get_application_view_publication(
             self,
-            runtime=(
-                cast(ApplicationUiRuntime, publication_port)
-                if publication_port is not None
-                else None
-            ),
+            runtime=cast(ApplicationUiRuntime, publication_port),
         )
 
     def _command_capability(self, command_name: CommandName | str):
@@ -223,11 +219,7 @@ class TrainingSidebar(QWidget):
         return get_command_capability(
             self,
             command_name,
-            runtime=(
-                cast(ApplicationUiRuntime, publication_port)
-                if publication_port is not None
-                else None
-            ),
+            runtime=cast(ApplicationUiRuntime, publication_port),
         )
 
     def _command_review_context(self, command_name: CommandName | str):
@@ -237,11 +229,7 @@ class TrainingSidebar(QWidget):
         return get_command_review_context(
             self,
             command_name,
-            runtime=(
-                cast(ApplicationUiRuntime, publication_port)
-                if publication_port is not None
-                else None
-            ),
+            runtime=cast(ApplicationUiRuntime, publication_port),
         )
 
     @staticmethod
@@ -270,11 +258,7 @@ class TrainingSidebar(QWidget):
         return execute_application_command(
             self,
             command,
-            runtime=(
-                cast(ApplicationUiRuntime, action_port)
-                if action_port is not None
-                else None
-            ),
+            runtime=cast(ApplicationUiRuntime, action_port),
             **kwargs,
         )
 
@@ -285,11 +269,7 @@ class TrainingSidebar(QWidget):
         return execute_application_command_async(
             self,
             command,
-            runtime=(
-                cast(ApplicationUiRuntime, action_port)
-                if action_port is not None
-                else None
-            ),
+            runtime=cast(ApplicationUiRuntime, action_port),
             **kwargs,
         )
 
@@ -487,12 +467,8 @@ class TrainingSidebar(QWidget):
         model_name = result.model_name or "Unknown"
         batch_size = result.batch_size
         gpu_name = result.vram.gpu_name
-        risk_level = self._training_resource_risk_level(result)
-        risk_label = {
-            RISK_BLOCKING: "Too large",
-            RISK_WARNING: "Warning",
-            RISK_UNKNOWN: "Unknown",
-        }.get(risk_level, "Safe")
+        risk_level = result.risk_level
+        risk_label = self._training_resource_risk_label(risk_level)
         message_title = str(
             next(iter(result.issues or result.warnings or result.unknowns), "")
             or result.message
@@ -544,10 +520,6 @@ class TrainingSidebar(QWidget):
         return "\n".join(lines)
 
     @staticmethod
-    def _training_resource_risk_level(result: ResourcePreflightView) -> str:
-        return result.risk_level
-
-    @staticmethod
     def _training_resource_risk_label(risk_level: Any) -> str:
         return {
             RISK_BLOCKING: "Too large",
@@ -555,20 +527,6 @@ class TrainingSidebar(QWidget):
             RISK_UNKNOWN: "Unknown",
             RISK_SAFE: "Safe",
         }.get(str(risk_level), "Unknown")
-
-    @staticmethod
-    def _training_model_name(model_holder: Any | None) -> str:
-        if model_holder is None:
-            return "Unknown"
-        target_model = getattr(model_holder, "target_model", None)
-        name = getattr(target_model, "__name__", None)
-        if name:
-            return str(name)
-        for attr in ("model_name", "name"):
-            value = getattr(model_holder, attr, None)
-            if value:
-                return str(value)
-        return "Unknown"
 
     @staticmethod
     def _training_resource_unknown_reasons(
@@ -592,13 +550,6 @@ class TrainingSidebar(QWidget):
             else:
                 reasons.append("CUDA did not report available GPU memory.")
         return list(dict.fromkeys(reasons))
-
-    def update_info(self):
-        """Refresh the aggregate info panel (delegated to InfoPanelService)."""
-        if not self.info_panel:
-            return
-
-        # Handled by InfoPanelService
 
     def _show_status(self, message: str) -> None:
         panel_status = getattr(self.panel, "show_status_message", None)
@@ -645,7 +596,7 @@ class TrainingSidebar(QWidget):
         """Open the data-splitting dialog and apply the configuration.
 
         Validates that epoched data exists and training is not running.
-        Warns if existing datasets/history will be cleared.
+        Saves the reviewed specification; datasets are built when training starts.
         """
         publication = self._application_publication()
         generate_capability = (
@@ -653,21 +604,8 @@ class TrainingSidebar(QWidget):
             if publication is not None
             else None
         )
-        if self._data_splitting_blocked(
-            generate_capability,
-            capability_resolved=True,
-        ):
+        if self._data_splitting_blocked(generate_capability):
             return InteractionOutcome.blocked("Data splitting is not available.")
-
-        if generate_capability is None:
-            show_warning(
-                self,
-                "Data Splitting Blocked",
-                CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
-            )
-            return InteractionOutcome.blocked(
-                "Data splitting prerequisites could not be verified."
-            )
 
         saved_specification, requires_reconfigure = self._saved_split_specification(
             publication,
@@ -774,14 +712,8 @@ class TrainingSidebar(QWidget):
 
     def _data_splitting_blocked(
         self,
-        generate_capability=None,
-        *,
-        capability_resolved: bool = False,
+        generate_capability: CommandCapability | None,
     ) -> bool:
-        if not capability_resolved:
-            generate_capability = self._command_capability(
-                CommandName.CONFIGURE_DATASET_SPLIT
-            )
         if generate_capability is None:
             show_warning(
                 self,
@@ -1096,6 +1028,7 @@ class TrainingSidebar(QWidget):
                 training_option=selection.option,
                 device=selection.device,
                 edited_recommendation_fields=(selection.edited_recommendation_fields),
+                resource_preview_receipt=selection.resource_preview_receipt,
             ),
             blocked_title="Training Settings Blocked",
             failed_title="Training Settings Failed",
@@ -1477,26 +1410,6 @@ class TrainingSidebar(QWidget):
             self._training_resource_preview_shutdown_requested = False
 
     @staticmethod
-    def _positive_summary_count(
-        summary: Any,
-        key: str,
-        *,
-        allow_zero: bool = False,
-    ) -> int | None:
-        if not isinstance(summary, dict):
-            return None
-        value = summary.get(key)
-        if value is None or isinstance(value, bool):
-            return None
-        try:
-            parsed = int(cast(Any, value))
-        except (TypeError, ValueError):
-            return None
-        if parsed > 0 or (allow_zero and parsed == 0):
-            return parsed
-        return None
-
-    @staticmethod
     def _configure_training_command(
         *,
         model_holder: Any | None = None,
@@ -1534,6 +1447,7 @@ class TrainingSidebar(QWidget):
                 batch_size=getattr(option, "bs", None),
                 learning_rate=getattr(option, "lr", None),
                 repeat=getattr(option, "repeat_num", 1),
+                seed=getattr(option, "seed", None),
                 device=(
                     device
                     if isinstance(device, str) and device.strip()
@@ -1679,19 +1593,15 @@ class TrainingSidebar(QWidget):
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
-            train_capability = (
-                getattr(review_context, "capability", None)
-                if review_context is not None
-                else self._command_capability(CommandName.TRAIN)
-            )
-            if review_context is not None and train_capability is None:
+            train_capability = getattr(review_context, "capability", None)
+            if train_capability is None:
                 show_warning(
                     self,
                     "Start Training Blocked",
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
-            if train_capability is not None and not train_capability.enabled:
+            if not train_capability.enabled:
                 show_warning(
                     self,
                     "Training Not Ready",
@@ -1701,14 +1611,9 @@ class TrainingSidebar(QWidget):
                     ),
                 )
                 return
-            if self._should_start_training(train_capability):
-                self._dispatch_start_training(
-                    expected_publication_generation=(
-                        review_context.publication_generation
-                        if review_context is not None
-                        else None
-                    ),
-                )
+            self._dispatch_start_training(
+                expected_publication_generation=review_context.publication_generation,
+            )
         except Exception:
             present_unexpected_error(
                 self,
@@ -1802,11 +1707,7 @@ class TrainingSidebar(QWidget):
             return
 
         preflight = self._resource_preflight_from_command_result(result)
-        risk_level = (
-            self._training_resource_risk_level(preflight)
-            if preflight is not None
-            else None
-        )
+        risk_level = preflight.risk_level if preflight is not None else None
         confirmation_required = result.error_type is ErrorType.CONFIRMATION_REQUIRED
 
         if confirmation_required and preflight is not None:
@@ -1894,11 +1795,6 @@ class TrainingSidebar(QWidget):
         outcome = getattr(training, "terminal_outcome", None)
         return outcome is not None and not bool(getattr(outcome, "is_terminal", True))
 
-    def _should_start_training(self, train_capability) -> bool:
-        if train_capability is None:
-            return False
-        return train_capability.enabled
-
     def stop_training(self):
         """Request ApplicationService to stop the current training run."""
         if (
@@ -1955,13 +1851,9 @@ class TrainingSidebar(QWidget):
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
-            clear_capability = (
-                self._published_capability(
-                    publication,
-                    CommandName.CLEAR_TRAINING_HISTORY,
-                )
-                if publication is not None
-                else None
+            clear_capability = self._published_capability(
+                publication,
+                CommandName.CLEAR_TRAINING_HISTORY,
             )
             if clear_capability is None:
                 show_warning(
@@ -1970,7 +1862,7 @@ class TrainingSidebar(QWidget):
                     CONTROLLER_COMPATIBILITY_UNAVAILABLE_MESSAGE,
                 )
                 return
-            if clear_capability is not None and not clear_capability.enabled:
+            if not clear_capability.enabled:
                 show_warning(
                     self,
                     "Clear History Blocked",
@@ -1992,9 +1884,7 @@ class TrainingSidebar(QWidget):
                 return
             result = self._execute_action(
                 ClearTrainingHistoryCommand(confirmed=True),
-                expected_publication_generation=(
-                    publication.generation if publication is not None else None
-                ),
+                expected_publication_generation=publication.generation,
             )
             if result is None:
                 show_warning(

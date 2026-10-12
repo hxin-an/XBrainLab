@@ -16,7 +16,7 @@ from scripts.dev.run_public_cross_source_training_smoke import (
     PUBLIC_TRAINING_FIXTURES,
     _apply_reviewed_internal_event_import,
 )
-from tests.integration.training_artifact_support import assert_real_training_artifacts
+from scripts.dev.training_evidence_fixture import verify_real_training_artifacts
 from XBrainLab.backend.application import (
     ApplicationService,
     CommandName,
@@ -53,6 +53,7 @@ class PublicTrainingFixture(TypedDict):
 
 def _build_public_training_service(
     fixture: PublicTrainingFixture,
+    request: pytest.FixtureRequest,
 ) -> ApplicationService:
     filepath = PUBLIC_DATA_DIR / str(fixture["filename"])
     if not filepath.exists():
@@ -69,6 +70,7 @@ def _build_public_training_service(
     assert facts["mismatches"] == []
 
     service = ApplicationService()
+    request.addfinalizer(service.close)
     _apply_reviewed_internal_event_import(service, filepath, fixture)
     return service
 
@@ -77,9 +79,10 @@ def _build_public_training_service(
 def test_public_cross_source_training_smoke(
     fixture: PublicTrainingFixture,
     tmp_path: Path,
+    request: pytest.FixtureRequest,
 ) -> None:
     """Event-rich public fixtures should support a one-epoch training smoke."""
-    service = _build_public_training_service(fixture)
+    service = _build_public_training_service(fixture, request)
 
     filter_result = service.execute(
         PreprocessCommand(
@@ -186,15 +189,16 @@ def test_public_cross_source_training_smoke(
     train_metrics = history.diagnostics["rows"][0]["metrics"]["train"]
     assert RecordKey.LOSS in train_metrics
     assert RecordKey.ACC in train_metrics
-    assert_real_training_artifacts(output_root)
+    verify_real_training_artifacts(output_root)
 
 
 @pytest.mark.parametrize("fixture", PUBLIC_EPOCH_ONLY_FIXTURES, ids=lambda f: f["name"])
 def test_public_cross_source_import_preprocess_boundary(
     fixture: PublicTrainingFixture,
+    request: pytest.FixtureRequest,
 ) -> None:
     """Boundary fixtures must not be relabeled to manufacture training evidence."""
-    service = _build_public_training_service(fixture)
+    service = _build_public_training_service(fixture, request)
 
     filter_result = service.execute(
         PreprocessCommand(

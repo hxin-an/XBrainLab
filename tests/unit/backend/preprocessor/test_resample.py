@@ -8,6 +8,28 @@ from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.preprocessor.resample import Resample
 
 
+@pytest.mark.parametrize("first_samp", [0, 500])
+def test_resample_keeps_last_sample_event_inside_recording(first_samp):
+    raw = mne.io.RawArray(
+        np.zeros((1, 1000)),
+        mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+        first_samp=first_samp,
+        verbose="ERROR",
+    )
+    source = Raw("last-event-raw.fif", raw)
+    source_events = np.array([[first_samp + 999, 0, 7]])
+    source.set_event(source_events.copy(), {"cue": 7})
+
+    result = Resample([source]).data_preprocess(10.0)[0]
+
+    events, event_ids = result.get_event_list()
+    assert events[0, 0] == result.get_mne().last_samp
+    assert event_ids == {"cue": 7}
+    np.testing.assert_array_equal(events[:, 1:], source_events[:, 1:])
+    np.testing.assert_array_equal(source.get_event_list()[0], source_events)
+    assert source.get_sfreq() == 100.0
+
+
 class TestResample:
     @pytest.fixture
     def mock_raw(self):

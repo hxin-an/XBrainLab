@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -22,6 +23,10 @@ from XBrainLab.backend.training.option import (
     resolve_class_weighting,
     validate_custom_class_weight_names,
 )
+from XBrainLab.backend.training.utils import (
+    get_optimizer_classes,
+    instantiate_optimizer,
+)
 from XBrainLab.backend.training_state_contract import (
     TrainingOutcomeState,
     TrainingTerminalOutcome,
@@ -32,7 +37,6 @@ from .commands import (
     ClearTrainingHistoryCommand,
     Command,
     ConfigureTrainingCommand,
-    StopTrainingCommand,
     TrainCommand,
 )
 from .errors import ApplicationError, PreconditionError
@@ -57,12 +61,18 @@ from .training_snapshot import (
     model_name as snapshot_model_name,
 )
 from .training_snapshot import (
+    model_params_snapshot,
+)
+from .training_snapshot import (
     model_signal_context_snapshot as build_model_signal_context_snapshot,
 )
 from .training_snapshot import (
     training_option_snapshot as build_training_option_snapshot,
 )
-from .training_submission import training_submission_edited_fields
+from .training_submission import (
+    training_submission_edited_fields,
+    training_submission_resource_preview_receipt,
+)
 
 HandlerResult = str | tuple[str, dict[str, Any]]
 
@@ -157,6 +167,10 @@ class TrainingCommandService:
                 early_stopping_patience=command.early_stopping_patience,
                 early_stopping_min_delta=command.early_stopping_min_delta,
             )
+            try:
+                instantiate_optimizer(optim_class, option.optim_params, lr=option.lr)
+            except (TypeError, ValueError) as exc:
+                raise PreconditionError(f"Optimizer configuration: {exc}") from exc
             self._validate_early_stopping_admission(option)
 
         holder: ModelHolder | None = None
@@ -175,11 +189,24 @@ class TrainingCommandService:
             update_option=option is not None,
         )
         if option is not None and self._recommendation is not None:
-            refinements = (
-                self._resource_refinement_provider(command)
-                if self._resource_refinement_provider is not None
-                else ()
-            )
+            refinements = ()
+            if (
+                self._resource_refinement_provider is not None
+                and training_submission_resource_preview_receipt(command) is not None
+            ):
+                refinement_command = command
+                if not command.model_name:
+                    current_model = (
+                        self.training_runtime.resource_context().model_holder
+                    )
+                    # Settings-only commands retain the saved model. Bind the
+                    # receipt comparison to that model without reapplying it.
+                    refinement_command = replace(
+                        command,
+                        model_name=snapshot_model_name(current_model),
+                        model_params=model_params_snapshot(current_model),
+                    )
+                refinements = self._resource_refinement_provider(refinement_command)
             edited_fields = training_submission_edited_fields(command)
             if refinements:
                 self._recommendation.note_configuration_submitted(
@@ -537,25 +564,6 @@ class TrainingCommandService:
     def _resource_preflight_context(self) -> dict[str, Any]:
         return self.training_runtime.resource_context().to_mapping()
 
-    def handle_stop_training(self, command: Command) -> HandlerResult:
-        if not isinstance(command, StopTrainingCommand):
-            raise TypeError("Invalid command for stop_training")
-        stopped = self.training_runtime.stop_training(
-            wait_timeout=command.wait_timeout,
-        )
-        outcome = self._training_terminal_outcome()
-        return (
-            "Training stopped." if stopped else "Training stop requested.",
-            {
-                "stopped": bool(stopped),
-                "wait_timeout": command.wait_timeout,
-                "terminal_outcome": outcome.state.value,
-                "training_run": (
-                    outcome.run.to_dict() if outcome.run is not None else None
-                ),
-            },
-        )
-
     def handle_clear_training_history(self, command: Command) -> HandlerResult:
         if not isinstance(command, ClearTrainingHistoryCommand):
             raise TypeError("Invalid command for clear_training_history")
@@ -602,10 +610,9 @@ class TrainingCommandService:
 
     @staticmethod
     def _resolve_optimizer(name: str) -> type[torch.optim.Optimizer]:
-        optimizers_map: dict[str, type[torch.optim.Optimizer]] = {
-            "adam": torch.optim.Adam,
-            "sgd": torch.optim.SGD,
-            "adamw": torch.optim.AdamW,
+        optimizers_map = {
+            key.casefold(): optimizer
+            for key, optimizer in get_optimizer_classes().items()
         }
         optimizer = optimizers_map.get(str(name).strip().lower())
         if optimizer is None:

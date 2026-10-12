@@ -278,10 +278,6 @@ class _TrainingController:
     def next_datasets(self, value: list[Any]) -> None:
         self.study.next_datasets = list(value)
 
-    def apply_data_splitting(self, generator: Any) -> None:
-        del generator
-        raise AssertionError("dataset generation must be staged before publication")
-
     def clean_datasets(self, *, force_update: bool) -> None:
         self.cleaned = True
         self.force_update = force_update
@@ -571,14 +567,11 @@ def test_failed_split_audit_snapshot_diagnostics_are_bounded(
     assert all(len(issue["details"]["samples"]) == 10 for issue in snapshot["issues"])
 
 
-def test_failed_split_audit_restores_shared_epoch_evidence_and_dataset_sequence(
+def test_failed_split_audit_restores_dataset_sequence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service, study, _training = _service()
-    shared_epoch = SimpleNamespace(
-        trial_selection_evidence=[{"source": "accepted", "count": 4}],
-        trial_selection_evidence_dropped=2,
-    )
+    shared_epoch = SimpleNamespace()
     study.data_manager.epoch_data = shared_epoch
     monkeypatch.setattr(Dataset, "SEQ", 41)
     candidate = _Dataset(
@@ -589,9 +582,6 @@ def test_failed_split_audit_restores_shared_epoch_evidence_and_dataset_sequence(
 
     def mutate_shared_generation_state() -> None:
         Dataset.SEQ = 1
-        shared_epoch.trial_selection_evidence[0]["source"] = "candidate"
-        shared_epoch.trial_selection_evidence.append({"source": "rejected"})
-        shared_epoch.trial_selection_evidence_dropped = 9
 
     generator = _Generator(
         [candidate],
@@ -604,18 +594,13 @@ def test_failed_split_audit_restores_shared_epoch_evidence_and_dataset_sequence(
         service.prepare_saved_split_candidate()
 
     assert Dataset.SEQ == 41
-    assert shared_epoch.trial_selection_evidence == [{"source": "accepted", "count": 4}]
-    assert shared_epoch.trial_selection_evidence_dropped == 2
 
 
-def test_successful_split_commit_publishes_epoch_evidence_and_dataset_sequence(
+def test_successful_split_commit_publishes_dataset_sequence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service, study, _training = _service()
-    shared_epoch = SimpleNamespace(
-        trial_selection_evidence=[{"source": "previous", "count": 4}],
-        trial_selection_evidence_dropped=1,
-    )
+    shared_epoch = SimpleNamespace()
     study.data_manager.epoch_data = shared_epoch
     monkeypatch.setattr(Dataset, "SEQ", 41)
     replacement = _Dataset(
@@ -624,14 +609,12 @@ def test_successful_split_commit_publishes_epoch_evidence_and_dataset_sequence(
         test=[False, False, False, True],
     )
 
-    def publish_candidate_provenance() -> None:
+    def publish_candidate_sequence() -> None:
         Dataset.SEQ = 3
-        shared_epoch.trial_selection_evidence = [{"source": "candidate", "count": 4}]
-        shared_epoch.trial_selection_evidence_dropped = 2
 
     generator = _Generator(
         [replacement],
-        before_prepare=publish_candidate_provenance,
+        before_prepare=publish_candidate_sequence,
     )
     monkeypatch.setattr(study, "get_datasets_generator", lambda _config: generator)
 
@@ -639,17 +622,11 @@ def test_successful_split_commit_publishes_epoch_evidence_and_dataset_sequence(
     candidate = service.prepare_saved_split_candidate()
 
     assert Dataset.SEQ == 41
-    assert shared_epoch.trial_selection_evidence == [{"source": "previous", "count": 4}]
-    assert shared_epoch.trial_selection_evidence_dropped == 1
 
     service.commit_prepared_split(candidate)
 
     assert study.data_manager.datasets == [replacement]
     assert Dataset.SEQ == 3
-    assert shared_epoch.trial_selection_evidence == [
-        {"source": "candidate", "count": 4}
-    ]
-    assert shared_epoch.trial_selection_evidence_dropped == 2
 
 
 def test_failed_deferred_audit_preserves_concrete_saliency_terminal_state() -> None:

@@ -22,7 +22,6 @@ from XBrainLab.backend.application import training_service as training_service_m
 from XBrainLab.backend.application.commands import (
     ClearTrainingHistoryCommand,
     ConfigureTrainingCommand,
-    StopTrainingCommand,
     TrainCommand,
 )
 from XBrainLab.backend.application.errors import ApplicationError, PreconditionError
@@ -37,6 +36,7 @@ from XBrainLab.backend.application.resource_guard import (
     TrainingResourcePreviewResult,
 )
 from XBrainLab.backend.application.results import ErrorType
+from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -62,6 +62,7 @@ from XBrainLab.backend.application.training_submission import (
     attach_training_submission_provenance,
 )
 from XBrainLab.backend.model_base import model_catalog as model_catalog_module
+from XBrainLab.backend.study import Study
 from XBrainLab.backend.training import option as training_option_module
 from XBrainLab.backend.training.option import ClassWeightMode, class_map_fingerprint
 from XBrainLab.backend.training_state_contract import (
@@ -77,9 +78,6 @@ class _TrainingController:
         self.training_option: Any | None = None
         self.started = False
         self.start_count = 0
-        self.stopped = False
-        self.stop_result = True
-        self.stop_wait_timeout: float | None = None
         self.history_cleared = False
         self.notifications: list[str] = []
         self.resource_context: dict[str, Any] | None = {
@@ -144,11 +142,6 @@ class _TrainingRuntime:
             training_option=context.get("training_option"),
             model_holder=context.get("model_holder"),
         )
-
-    def stop_training(self, *, wait_timeout: float | None = None) -> bool:
-        self.training.stopped = True
-        self.training.stop_wait_timeout = wait_timeout
-        return self.training.stop_result
 
     def wait_for_training_completion(
         self,
@@ -369,6 +362,68 @@ def test_training_service_configures_model_and_options() -> None:
         "early_stopping_patience": 3,
         "early_stopping_min_delta": 0.0,
     }
+
+
+@pytest.mark.parametrize("optimizer", ["Adam", "AdamW", "SGD"])
+def test_real_service_accepts_supported_optimizer_settings(optimizer, tmp_path):
+    service = ApplicationService(Study())
+    try:
+        result = service.execute(
+            ConfigureTrainingCommand(
+                epoch=2,
+                batch_size=4,
+                learning_rate=0.01,
+                device="cpu",
+                optimizer=optimizer,
+                optimizer_params={"weight_decay": 0.1},
+                output_dir=str(tmp_path),
+            )
+        )
+        assert result.ok, result.message
+        option = service.training_runtime.resource_context().training_option
+        assert option is not None
+        native_optimizer = option.get_optim(torch.nn.Linear(1, 1))
+        assert isinstance(native_optimizer, getattr(torch.optim, optimizer))
+        assert native_optimizer.param_groups[0]["lr"] == 0.01
+        assert native_optimizer.param_groups[0]["weight_decay"] == 0.1
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
+    "optimizer, parameters",
+    [
+        ("Adam", {"betas": (2.0, 0.999)}),
+        ("AdamW", {"weight_decay": -1.0}),
+        ("SGD", {"momentum": -1.0}),
+        ("Adam", {"unknown_parameter": 1}),
+        ("Adam", {"lr": 0.5}),
+    ],
+)
+def test_real_service_rejects_invalid_optimizer_without_replacing_configuration(
+    optimizer, parameters, tmp_path
+):
+    service = ApplicationService(Study())
+    command = ConfigureTrainingCommand(
+        epoch=2,
+        batch_size=4,
+        learning_rate=0.01,
+        device="cpu",
+        output_dir=str(tmp_path),
+    )
+    try:
+        assert service.execute(command).ok
+        before_snapshot = service.get_state().training.training_option
+        result = service.execute(
+            replace(command, optimizer=optimizer, optimizer_params=parameters)
+        )
+        assert not result.ok
+        assert service.get_state().training.training_option == before_snapshot
+        retained = service.training_runtime.resource_context().training_option
+        assert retained is not None
+        assert isinstance(retained.get_optim(torch.nn.Linear(1, 1)), torch.optim.Adam)
+    finally:
+        service.close()
 
 
 def test_configure_early_stopping_accepts_saved_unmaterialized_validation_preview() -> (
@@ -1147,7 +1202,7 @@ def test_training_service_maps_auto_device_without_facade(monkeypatch) -> None:
     assert payload["training_option"]["device"] == "cuda:0"
 
 
-def test_training_service_start_stop_and_clear_history() -> None:
+def test_training_service_start_and_clear_history() -> None:
     service, training = _service()
 
     start_message, start_payload = _expect_payload(
@@ -1159,7 +1214,6 @@ def test_training_service_start_stop_and_clear_history() -> None:
             ),
         ),
     )
-    stop = service.handle_stop_training(StopTrainingCommand(wait_timeout=1.5))
     clear_message, clear_payload = _expect_payload(
         service.handle_clear_training_history(ClearTrainingHistoryCommand()),
     )
@@ -1170,23 +1224,9 @@ def test_training_service_start_stop_and_clear_history() -> None:
     assert start_payload["training_handoff_generation"] == 1
     assert start_payload["resource_preflight"]["dataset_bytes"] == 0
     assert start_payload["resource_preflight"]["risk_level"] == "safe"
-    assert stop == (
-        "Training stopped.",
-        {
-            "stopped": True,
-            "wait_timeout": 1.5,
-            "terminal_outcome": "completed",
-            "training_run": {
-                "trainer_id": "test-trainer",
-                "run_id": 1,
-            },
-        },
-    )
     assert training.started is True
     assert training.started_append is False
     assert training.started_interactive is False
-    assert training.stopped is True
-    assert training.stop_wait_timeout == 1.5
     assert training.history_cleared is True
     assert training.notifications == ["training_updated"]
     assert clear_message == "Training history cleared."
@@ -1281,32 +1321,6 @@ def test_synchronous_training_requires_verified_completion(
         )
 
 
-def test_stop_command_reports_requested_while_worker_is_still_alive() -> None:
-    training = _TrainingController()
-    training.stop_result = False
-    training.terminal_outcome = TrainingTerminalOutcome(
-        state=TrainingOutcomeState.STOP_REQUESTED,
-        run=TrainingRunIdentity(trainer_id="test-trainer", run_id=3),
-    )
-    service = TrainingCommandService(
-        training=training,
-        training_runtime=_TrainingRuntime(training),
-        get_state=lambda: _state(),
-    )
-
-    message, diagnostics = _expect_payload(
-        service.handle_stop_training(StopTrainingCommand(wait_timeout=0.01))
-    )
-
-    assert message == "Training stop requested."
-    assert diagnostics == {
-        "stopped": False,
-        "wait_timeout": 0.01,
-        "terminal_outcome": "stop_requested",
-        "training_run": {"trainer_id": "test-trainer", "run_id": 3},
-    }
-
-
 def test_training_service_blocks_training_when_dataset_exceeds_available_ram(
     monkeypatch,
 ) -> None:
@@ -1318,7 +1332,6 @@ def test_training_service_blocks_training_when_dataset_exceeds_available_ram(
         ),
     }
     monkeypatch.setattr(resource_guard, "available_ram_bytes", lambda: 5_000)
-    monkeypatch.setattr(resource_guard, "available_vram_bytes", lambda _idx=None: None)
 
     with pytest.raises(PreconditionError, match="available RAM"):
         service.handle_train(TrainCommand())

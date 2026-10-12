@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import Any, ClassVar
 
-from PyQt6.QtCore import QEvent, QRect, QSize, Qt, QTimer
+from PyQt6.QtCore import QEvent, QRect, QSignalBlocker, QSize, Qt, QTimer
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -44,8 +44,13 @@ from XBrainLab.backend.training import (
 )
 from XBrainLab.backend.training.input_contract import DEFAULT_TRAINING_OUTPUT_DIR
 from XBrainLab.backend.training.option import ClassWeightMode
-from XBrainLab.backend.training.utils import get_optimizer_classes
+from XBrainLab.backend.training.utils import (
+    get_device_count,
+    get_device_name,
+    get_optimizer_classes,
+)
 from XBrainLab.ui.components.modal_presentation import show_warning
+from XBrainLab.ui.components.presentation import ElidingComboBox
 from XBrainLab.ui.components.user_error_presentation import (
     UnexpectedErrorContext,
     present_unexpected_error,
@@ -55,9 +60,36 @@ from XBrainLab.ui.dialogs.common import (
     dark_dialog_stylesheet,
     normalize_dialog_button_box,
 )
+from XBrainLab.ui.dialogs.preprocess.common import create_preprocess_switch
+from XBrainLab.ui.styles.theme import Theme
 
-from .device_setting_dialog import DeviceSettingDialog
 from .optimizer_setting_dialog import OptimizerSettingDialog
+
+
+class _DeviceComboBox(ElidingComboBox):
+    """Discover hardware on explicit expansion, not on settings construction."""
+
+    def showPopup(self) -> None:  # noqa: N802
+        selected = self.currentData()
+        choices = [("Auto", "auto"), ("CPU", "cpu")]
+        choices.extend(
+            (f"GPU {index} — {get_device_name(index)}", f"cuda:{index}")
+            for index in range(get_device_count())
+        )
+        if selected not in {value for _, value in choices}:
+            choices.append((self.currentText(), selected))
+        with QSignalBlocker(self):
+            self.clear()
+            for label, value in choices:
+                self.addItem(label, value)
+            self.setCurrentIndex(self.findData(selected))
+        self.setToolTip(self.currentText())
+        # The popup frame is a separate window outside the styled item view.
+        view = self.view()
+        popup = view.window() if view is not None else None
+        if popup is not None:
+            popup.setStyleSheet(f"background-color: {Theme.METRICS_TABLE_BG};")
+        super().showPopup()
 
 
 class TrainingSettingDialog(BaseDialog):
@@ -153,11 +185,10 @@ class TrainingSettingDialog(BaseDialog):
         self.early_stopping_patience_entry: QLineEdit | None = None
         self.early_stopping_min_delta_entry: QLineEdit | None = None
         self._validation_samples_available: bool | None = None
-        self._validation_sample_count: int | None = None
         self.validation_status_label: QLabel | None = None
-        self.opt_label: QLabel | None = None
-        self.dev_label: QLabel | None = None
-        self.output_dir_label: QLabel | None = None
+        self.opt_label: QLineEdit | None = None
+        self.device_combo: QComboBox | None = None
+        self.output_dir_label: QLineEdit | None = None
         self.evaluation_combo: QComboBox | None = None
         self.class_weight_combo: QComboBox | None = None
         self.class_weight_entries: dict[str, QLineEdit] = {}
@@ -168,7 +199,15 @@ class TrainingSettingDialog(BaseDialog):
         self.section_layouts: dict[str, QGridLayout] = {}
 
         super().__init__(parent, title="Training Settings")
-        self.setStyleSheet(dark_dialog_stylesheet())
+        self.setStyleSheet(
+            dark_dialog_stylesheet()
+            + f"""
+            QLabel#TrainingSettingLabel:disabled,
+            QLineEdit:disabled, QCheckBox:disabled {{
+                color: {Theme.BTN_DISABLED_TEXT};
+            }}
+            """
+        )
         self._fit_dialog_to_content()
 
         # Set default values in UI
@@ -176,8 +215,6 @@ class TrainingSettingDialog(BaseDialog):
             self.opt_label.setText(
                 self._optimizer_summary(self.optim, self.optim_params)
             )
-        if self.dev_label:
-            self.dev_label.setText(self._device_display_name(self.device))
         if self.output_dir_label:
             self.output_dir_label.setText(self.output_dir)
 
@@ -343,17 +380,15 @@ class TrainingSettingDialog(BaseDialog):
             self.evaluation_combo.setCurrentIndex(index)
 
     def _load_settings_snapshot(self, option: dict[str, Any]) -> None:
-        """Load saved settings from an ApplicationService state snapshot."""
-        validation_available = option.get("validation_samples_available")
-        self._validation_samples_available = (
-            validation_available if isinstance(validation_available, bool) else None
-        )
-        validation_count = option.get("validation_sample_count")
-        self._validation_sample_count = (
-            validation_count
-            if type(validation_count) is int and validation_count >= 0
-            else None
-        )
+        """Apply supplied fields without resetting other draft values."""
+        if "validation_samples_available" in option:
+            validation_available = option["validation_samples_available"]
+            self._validation_samples_available = (
+                validation_available if isinstance(validation_available, bool) else None
+            )
+        evaluation = option.get("evaluation_option")
+        if evaluation and self.evaluation_combo:
+            self._set_evaluation_option(evaluation)
         if self.epoch_entry and option.get("epoch") is not None:
             self.epoch_entry.setText(str(option["epoch"]))
         if self.bs_entry and option.get("batch_size") is not None:
@@ -364,18 +399,21 @@ class TrainingSettingDialog(BaseDialog):
             self.checkpoint_entry.setText(str(option["checkpoint_epoch"]))
         if self.repeat_entry and option.get("repeat") is not None:
             self.repeat_entry.setText(str(option["repeat"]))
-        if self.early_stopping_check is not None:
-            self.early_stopping_check.setChecked(
-                bool(option.get("early_stopping_enabled", False))
-            )
-            self._sync_early_stopping_inputs()
-        if self.early_stopping_patience_entry is not None:
+        if self.early_stopping_check is not None and "early_stopping_enabled" in option:
+            self.early_stopping_check.setChecked(bool(option["early_stopping_enabled"]))
+        if (
+            self.early_stopping_patience_entry is not None
+            and "early_stopping_patience" in option
+        ):
             self.early_stopping_patience_entry.setText(
-                str(option.get("early_stopping_patience", 3))
+                str(option["early_stopping_patience"])
             )
-        if self.early_stopping_min_delta_entry is not None:
+        if (
+            self.early_stopping_min_delta_entry is not None
+            and "early_stopping_min_delta" in option
+        ):
             self.early_stopping_min_delta_entry.setText(
-                str(option.get("early_stopping_min_delta", 0.0))
+                str(option["early_stopping_min_delta"])
             )
 
         optimizer_name = option.get("optimizer")
@@ -400,8 +438,16 @@ class TrainingSettingDialog(BaseDialog):
             self.device = self._normalize_device_value(device)
             self.use_cpu = not self.device.startswith("cuda")
             self.gpu_idx = self._gpu_index_from_device(self.device)
-            if self.dev_label:
-                self.dev_label.setText(self._device_display_name(self.device))
+            if self.device_combo is not None:
+                with QSignalBlocker(self.device_combo):
+                    index = self.device_combo.findData(self.device)
+                    if index < 0:
+                        self.device_combo.addItem(
+                            self._device_display_name(self.device), self.device
+                        )
+                        index = self.device_combo.count() - 1
+                    self.device_combo.setCurrentIndex(index)
+                self.device_combo.setToolTip(self.device_combo.currentText())
 
         output_dir = option.get("output_dir")
         if output_dir:
@@ -409,11 +455,8 @@ class TrainingSettingDialog(BaseDialog):
             if self.output_dir_label:
                 self.output_dir_label.setText(self.output_dir)
 
-        evaluation = option.get("evaluation_option")
-        if evaluation and self.evaluation_combo:
-            self._set_evaluation_option(evaluation)
-        mode = option.get("class_weight_mode", "off")
-        if self.class_weight_combo is not None:
+        mode = option.get("class_weight_mode")
+        if self.class_weight_combo is not None and mode is not None:
             index = self.class_weight_combo.findData(str(mode))
             if index >= 0:
                 self.class_weight_combo.setCurrentIndex(index)
@@ -422,6 +465,7 @@ class TrainingSettingDialog(BaseDialog):
             for name, entry in self.class_weight_entries.items():
                 if name in custom:
                     entry.setText(str(custom[name]))
+        self._sync_early_stopping_inputs()
 
     def apply_recommendation(
         self,
@@ -656,35 +700,48 @@ class TrainingSettingDialog(BaseDialog):
         self.content_widget = content_widget
         content_widget.setObjectName("TrainingSettingContent")
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(0, 0, 30, 0)
+        content_layout.setContentsMargins(0, 0, 10, 0)
         content_layout.setSpacing(12)
 
         page_header = QLabel("Training Settings")
         page_header.setObjectName("TrainingSettingPageHeader")
-        page_header.setStyleSheet("font-size: 18px; font-weight: 600; color: #eef1f4;")
+        page_header.setStyleSheet(
+            f"font-size: 18px; font-weight: 600; color: {Theme.TEXT_PRIMARY};"
+        )
         content_layout.addWidget(page_header)
         page_subtitle = QLabel(
             "Configure training, validation, runtime, and output preferences."
         )
         page_subtitle.setObjectName("TrainingSettingPageSubtitle")
         page_subtitle.setWordWrap(True)
-        page_subtitle.setStyleSheet("color: #b9c6d4; background: transparent;")
+        page_subtitle.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; background: transparent;"
+        )
         content_layout.addWidget(page_subtitle)
 
-        def add_section(title: str) -> QGridLayout:
+        def add_section(title: str, toggle: QCheckBox | None = None) -> QGridLayout:
             section = QFrame()
             section.setObjectName("TrainingSettingSectionCard")
             section.setStyleSheet(
-                "QFrame#TrainingSettingSectionCard { background: #222426; "
-                "border: 1px solid #3b3f45; border-radius: 6px; }"
+                "QFrame#TrainingSettingSectionCard { "
+                f"background: {Theme.BACKGROUND_MID}; "
+                f"border: 1px solid {Theme.BACKGROUND_MID}; border-radius: 6px; "
+                "}"
             )
             section_box = QVBoxLayout(section)
             section_box.setContentsMargins(12, 9, 12, 10)
             section_box.setSpacing(8)
             header = QLabel(title)
             header.setObjectName("TrainingSettingSectionHeader")
-            header.setStyleSheet("font-weight: 600; color: #eef1f4;")
-            section_box.addWidget(header)
+            header.setStyleSheet(
+                f"font-size: 14px; font-weight: 700; color: {Theme.TEXT_PRIMARY};"
+            )
+            header_row = QHBoxLayout()
+            header_row.addWidget(header)
+            header_row.addStretch()
+            if toggle is not None:
+                header_row.addWidget(toggle)
+            section_box.addLayout(header_row)
             section_layout = QGridLayout()
             section_layout.setContentsMargins(0, 0, 0, 0)
             section_layout.setHorizontalSpacing(12)
@@ -699,11 +756,16 @@ class TrainingSettingDialog(BaseDialog):
         training_run_layout = add_section("Training Run")
         optimization_layout = add_section("Optimization")
         validation_layout = add_section("Validation & Checkpoints")
+        early_stopping = create_preprocess_switch(checked=False)
+        early_stopping.setAccessibleName("Early stopping")
+        self.early_stopping_check = early_stopping
+        early_stopping_layout = add_section("Early stopping", early_stopping)
         runtime_layout = add_section("Runtime & Output")
 
         def add_simple_row(layout: QGridLayout, row: int, label: str, widget) -> QLabel:
             lbl = QLabel(label)
             lbl.setObjectName("TrainingSettingLabel")
+            lbl.setBuddy(widget)
             lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             layout.addWidget(lbl, row, 0)
             widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -714,24 +776,56 @@ class TrainingSettingDialog(BaseDialog):
             layout: QGridLayout,
             row: int,
             label: str,
-            value_label: QLabel,
+            value_label: QLineEdit,
             button: QPushButton,
         ) -> None:
             lbl = QLabel(label)
             lbl.setObjectName("TrainingSettingLabel")
+            lbl.setBuddy(value_label)
             lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            value_label.setObjectName("TrainingSettingValue")
-            value_label.setMinimumHeight(28)
+            value_label.setReadOnly(True)
+            value_label.setAccessibleName(label)
+            value_label.textChanged.connect(value_label.setToolTip)
+            value_label.setMinimumWidth(0)
             value_label.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Ignored,
                 QSizePolicy.Policy.Fixed,
             )
-            button.setText("Set")
-            button.setFixedWidth(72)
-            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            button.setText("…")
+            button.setAccessibleName(button.toolTip())
+            button.setFixedWidth(36)
+            button.setAutoDefault(False)
+            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+            field = QFrame()
+            field.setObjectName("TrainingSelectionField")
+            field.setStyleSheet(
+                f"""
+                QFrame#TrainingSelectionField {{
+                    background: {Theme.METRICS_TABLE_BG};
+                    border: 1px solid {Theme.METRICS_TABLE_BORDER};
+                    border-radius: 4px;
+                }}
+                QLineEdit {{ background: transparent; border: none; }}
+                QPushButton {{
+                    background: transparent;
+                    border: 1px solid transparent;
+                    padding: 0;
+                    color: {Theme.TEXT_SECONDARY};
+                }}
+                QPushButton:hover, QPushButton:focus {{
+                    background: {Theme.BACKGROUND_LIGHT};
+                    color: {Theme.TEXT_PRIMARY};
+                }}
+                QPushButton:focus {{ border-color: {Theme.BLUE_FOCUS_BORDER}; }}
+                """
+            )
+            field_layout = QHBoxLayout(field)
+            field_layout.setContentsMargins(1, 1, 1, 1)
+            field_layout.setSpacing(0)
+            field_layout.addWidget(value_label, stretch=1)
+            field_layout.addWidget(button)
             layout.addWidget(lbl, row, 0)
-            layout.addWidget(value_label, row, 1)
-            layout.addWidget(button, row, 2)
+            layout.addWidget(field, row, 1)
 
         # Entries with default values for easier testing
         epoch_entry = QLineEdit("10")
@@ -750,28 +844,33 @@ class TrainingSettingDialog(BaseDialog):
         add_simple_row(optimization_layout, 0, "Learning rate", lr_entry)
 
         # Optimizer
-        opt_label = QLabel("")
+        opt_label = QLineEdit()
         self.opt_label = opt_label
         opt_label.setObjectName("TrainingOptimizerValue")
-        self.opt_btn = QPushButton("Set")
+        self.opt_btn = QPushButton()
+        self.opt_btn.setToolTip("Configure optimizer")
         self.opt_btn.clicked.connect(self.set_optimizer)
         add_set_row(optimization_layout, 1, "Optimizer", opt_label, self.opt_btn)
 
         # Device
-        dev_label = QLabel("")
-        self.dev_label = dev_label
-        dev_label.setObjectName("TrainingDeviceValue")
-        self.dev_btn = QPushButton("Set")
-        self.dev_btn.clicked.connect(self.set_device)
-        add_set_row(runtime_layout, 1, "Device", dev_label, self.dev_btn)
+        device_combo = _DeviceComboBox()
+        self.device_combo = device_combo
+        device_combo.setObjectName("TrainingDeviceValue")
+        device_combo.setAccessibleName("Device")
+        device_combo.setMinimumWidth(1)
+        device_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        device_combo.addItem("Auto", "auto")
+        device_combo.addItem("CPU", "cpu")
+        device_combo.currentIndexChanged.connect(self._on_device_changed)
+        add_simple_row(runtime_layout, 1, "Device", device_combo)
 
         # Output Directory
-        output_dir_label = QLabel("")
+        output_dir_label = QLineEdit()
         self.output_dir_label = output_dir_label
-        output_dir_label.setTextInteractionFlags(
-            output_dir_label.textInteractionFlags()
-        )
-        self.out_btn = QPushButton("Set")
+        self.out_btn = QPushButton()
+        self.out_btn.setToolTip("Choose output directory")
         self.out_btn.clicked.connect(self.set_output_dir)
         add_set_row(
             runtime_layout, 2, "Output directory", output_dir_label, self.out_btn
@@ -780,7 +879,7 @@ class TrainingSettingDialog(BaseDialog):
         self.checkpoint_entry = QLineEdit("0")
         add_simple_row(
             validation_layout,
-            4,
+            1,
             "Checkpoint interval (training epochs)",
             self.checkpoint_entry,
         )
@@ -798,22 +897,21 @@ class TrainingSettingDialog(BaseDialog):
         evaluation_combo.currentIndexChanged.connect(self._sync_early_stopping_inputs)
         add_simple_row(validation_layout, 0, "Evaluation", evaluation_combo)
 
-        early_stopping = QCheckBox("Enabled")
-        self.early_stopping_check = early_stopping
         early_stopping.toggled.connect(self._sync_early_stopping_inputs)
-        add_simple_row(validation_layout, 1, "Early stopping", early_stopping)
         patience = QLineEdit("3")
         self.early_stopping_patience_entry = patience
-        add_simple_row(validation_layout, 2, "Patience", patience)
+        add_simple_row(early_stopping_layout, 1, "Patience", patience)
         min_delta = QLineEdit("0")
         self.early_stopping_min_delta_entry = min_delta
-        add_simple_row(validation_layout, 3, "Minimum improvement", min_delta)
+        add_simple_row(early_stopping_layout, 2, "Minimum improvement", min_delta)
         validation_status = QLabel("")
         validation_status.setObjectName("TrainingValidationStatus")
         validation_status.setWordWrap(True)
-        validation_status.setStyleSheet("color: #b9c6d4; background: transparent;")
+        validation_status.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; background: transparent;"
+        )
         self.validation_status_label = validation_status
-        validation_layout.addWidget(validation_status, 5, 0, 1, 3)
+        early_stopping_layout.addWidget(validation_status, 0, 0, 1, 2)
 
         class_weight_combo = QComboBox()
         self.class_weight_combo = class_weight_combo
@@ -857,7 +955,7 @@ class TrainingSettingDialog(BaseDialog):
         resource_preview_note.setWordWrap(True)
         resource_preview_note.setStyleSheet(
             "QLabel#TrainingResourcePreviewNote {"
-            "color: #b9c6d4; background: transparent; padding: 2px 0;"
+            f"color: {Theme.TEXT_SECONDARY}; background: transparent; padding: 2px 0;"
             "}"
         )
         resource_preview_note.hide()
@@ -925,22 +1023,25 @@ class TrainingSettingDialog(BaseDialog):
                     "stopping."
                 )
             elif validation_available:
-                count = self._validation_sample_count
-                suffix = f" · {count} samples" if count is not None else ""
-                self.validation_status_label.setText(
-                    f"Validation split configured{suffix}"
-                )
+                self.validation_status_label.clear()
             else:
                 self.validation_status_label.setText(
                     "Close this dialog and configure a validation split in Data "
                     "Splitting to enable early stopping."
                 )
-        for entry in (
+            self.validation_status_label.setVisible(
+                bool(self.validation_status_label.text())
+            )
+        entries = (
             self.early_stopping_patience_entry,
             self.early_stopping_min_delta_entry,
-        ):
+        )
+        for entry in entries:
             if entry is not None:
                 entry.setEnabled(enabled)
+        for label in self.findChildren(QLabel, "TrainingSettingLabel"):
+            if label.buddy() is not None and label.buddy() in entries:
+                label.setEnabled(enabled)
 
     def set_optimizer(self):
         """Open the optimizer setting dialog and apply the result."""
@@ -962,24 +1063,19 @@ class TrainingSettingDialog(BaseDialog):
                 self._track_recommendation_edit(TrainingRecommendationField.OPTIMIZER)
                 self._schedule_resource_preview()
 
-    def set_device(self):
-        """Open the device setting dialog and apply the result."""
-        setter = DeviceSettingDialog(self)
-        if setter.exec():
-            previous_device = self.device
-            use_cpu, self.gpu_idx = setter.get_result()
-            self.use_cpu = bool(use_cpu)
-            self.device = (
-                "cpu"
-                if self.use_cpu
-                else f"cuda:{self.gpu_idx if self.gpu_idx is not None else 0}"
-            )
-            if self.dev_label:
-                self.dev_label.setText(self._device_display_name(self.device))
-            if self.device != previous_device:
-                self._accepted_resource_preview_receipt = None
-                self._resource_preview_generation += 1
-                self._refresh_recommendation_for_device()
+    def _on_device_changed(self, _index: int) -> None:
+        """Update only this dialog's draft and invalidate device-sensitive advice."""
+        if self.device_combo is None:
+            return
+        device = self.device_combo.currentData()
+        if device == self.device:
+            return
+        self.device = device
+        self.use_cpu = not device.startswith("cuda")
+        self.gpu_idx = self._gpu_index_from_device(device)
+        self._accepted_resource_preview_receipt = None
+        self._resource_preview_generation += 1
+        self._refresh_recommendation_for_device()
 
     def _refresh_recommendation_for_device(self) -> None:
         """Refresh device-sensitive defaults while retaining explicit edits."""
@@ -1179,6 +1275,11 @@ class TrainingSettingDialog(BaseDialog):
                 ckpt,
                 evaluation_option,
                 repeat,
+                seed=(
+                    self.initial_option.get("seed")
+                    if isinstance(self.initial_option, dict)
+                    else None
+                ),
                 class_weight_mode=class_weight_mode,
                 custom_class_weights=(
                     {

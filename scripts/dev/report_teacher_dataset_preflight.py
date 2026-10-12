@@ -168,16 +168,31 @@ def _failed(
     return result
 
 
-def _release_service(service: ApplicationService | None) -> None:
+def _release_service(
+    service: ApplicationService | None, result: dict[str, Any]
+) -> None:
+    failures: list[dict[str, str]] = []
     if service is not None:
         for data in list(service.study.loaded_data_list):
-            with contextlib.suppress(Exception):
+            try:
                 raw = data.get_mne()
                 close = getattr(raw, "close", None)
                 if callable(close):
                     close()
-        with contextlib.suppress(Exception):
+            except Exception as exc:
+                failures.append({"stage": "raw_close", "message": str(exc)})
+        try:
             service.close()
+            if service.is_closed is False:
+                raise TimeoutError(  # noqa: TRY301 - retain cleanup evidence below
+                    "ApplicationService close did not complete."
+                )
+        except Exception as exc:
+            failures.append({"stage": "service_close", "message": str(exc)})
+    if failures:
+        result.setdefault("cleanup_failures", []).extend(failures)
+        if result.get("status") == "passed":
+            _failed(result, "cleanup", "; ".join(item["message"] for item in failures))
     gc.collect()
 
 
@@ -473,7 +488,7 @@ def _run_openneuro_import_performance_pass(
     except Exception as exc:
         return _failed(result, "exception", f"{type(exc).__name__}: {exc}")
     finally:
-        _release_service(service)
+        _release_service(service, result)
 
 
 def build_openneuro_import_performance_snapshot(
@@ -754,7 +769,7 @@ def run_openneuro_p300_case(repo_root: Path = ROOT) -> dict[str, Any]:
             f"{type(exc).__name__}: {exc}",
         )
     finally:
-        _release_service(service)
+        _release_service(service, result)
 
 
 def _find_capability(
@@ -921,8 +936,8 @@ def _run_raw_edf_case(
             f"{type(exc).__name__}: {exc}",
         )
     finally:
-        _release_service(folder_service)
-        _release_service(service)
+        _release_service(folder_service, result)
+        _release_service(service, result)
 
 
 def run_chbmit_case(repo_root: Path = ROOT) -> dict[str, Any]:

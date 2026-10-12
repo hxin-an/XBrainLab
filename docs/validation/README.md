@@ -42,6 +42,9 @@ The approved quality-hardening gate collects branch coverage for the full Linux 
 (`covered_lines / num_statements`) and requires branch data to be present. The branch percentage is a
 recorded baseline, not a pass/fail threshold. Both the CI aggregate and an explicitly coverage-enabled
 local aggregate use this verifier; focused shards only contribute raw coverage evidence.
+Coverage instrumentation includes both multiprocessing and Python worker threads;
+the real-thread regression protects this configuration. Aggregate percentages alone
+do not establish lifecycle, numerical correctness, or native UI acceptance.
 `poe test-cov` selects that same full local aggregate with `XBL_TEST_COVERAGE=1`; it does not
 bypass the line-only verifier through a separate direct pytest command.
 

@@ -152,10 +152,6 @@ class EEGNet(nn.Module):
             nn.Dropout(0.5),
         )
 
-        ## (floor((sf/4))/2 * timepoint//32, n_class)
-        # self.classifier = nn.Linear(
-        #     self.F2* math.ceil(self.tp//32), self.n_class, bias=True
-        # )
         fc_in_size = self._get_size(self.ch, self.tp)[1]
         self.classifier = nn.Linear(fc_in_size, self.n_class, bias=True)
 
@@ -177,7 +173,6 @@ class EEGNet(nn.Module):
         x = self.conv3(x)
         # (-1, sf/8* timepoint//32)
         x = x.contiguous().view(x.size()[0], -1)
-        # x = x.view(-1, self.F2* (self.tp//32))
         x = self.classifier(x)
         return x
 

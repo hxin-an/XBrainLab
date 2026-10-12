@@ -1,4 +1,4 @@
-"""Training record module for per-epoch statistics, checkpoints, and figures."""
+"""Training record module for per-epoch statistics and checkpoints."""
 
 from __future__ import annotations
 
@@ -12,8 +12,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import torch
-from matplotlib import pyplot as plt
-from matplotlib.figure import Figure
 
 from ...dataset import Dataset
 from ...training import TrainingOption
@@ -124,7 +122,13 @@ def _normalize_early_stopping(value: object) -> dict[str, object]:
         or (stop_epoch is not None and (type(stop_epoch) is not int or stop_epoch <= 0))
     ):
         raise ArtifactStoreError("Training early-stopping metadata is malformed.")
-    if not enabled and value != _disabled_early_stopping():
+    if not enabled and (
+        stopped
+        or best_value is not None
+        or best_epoch is not None
+        or count != 0
+        or stop_epoch is not None
+    ):
         raise ArtifactStoreError("Training early-stopping metadata is malformed.")
     if enabled and (
         (best_value is None) != (best_epoch is None)
@@ -330,27 +334,6 @@ def _validate_loaded_model_identity(
             "Training artifact model identity does not match the configured model. "
             "Start a new training run."
         )
-
-
-def _prepare_figure(
-    fig: Figure | None,
-    figsize: tuple,
-    dpi: int,
-) -> tuple[Figure, bool]:
-    """Return a cleared figure and whether this call created it."""
-    if fig is None:
-        fig = cast(Figure, plt.figure(figsize=figsize, dpi=dpi))
-        return fig, True
-    fig.clf()
-    return fig, False
-
-
-def _numeric_series(values: list[float | None]) -> np.ndarray:
-    """Convert optional metrics to a plottable series with explicit gaps."""
-    return np.asarray(
-        [np.nan if value is None else float(value) for value in values],
-        dtype=float,
-    )
 
 
 def _serialize_history(
@@ -1160,178 +1143,6 @@ class TrainRecord:
                     )
                     if loaded is not None:
                         self.evaluation_records[split] = loaded
-
-    # figure
-    def get_loss_figure(
-        self,
-        fig: Figure | None = None,
-        figsize: tuple = (6.4, 4.8),
-        dpi: int = 100,
-    ) -> Figure | None:
-        """Generate a line chart of training, validation, and test loss over epochs.
-
-        Args:
-            fig: Existing figure to plot on. If ``None``, a new figure is created.
-            figsize: Width and height of the figure in inches.
-            dpi: Dots per inch for the figure.
-
-        Returns:
-            The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
-            if no loss data is available.
-
-        """
-        figure, created_figure = _prepare_figure(fig, figsize, dpi)
-
-        training_loss_list = self.train[RecordKey.LOSS]
-        val_loss_list = self.val[RecordKey.LOSS]
-        test_loss_list = self._legacy_test_history[RecordKey.LOSS]
-        if (
-            len(training_loss_list) == 0
-            and len(val_loss_list) == 0
-            and len(test_loss_list) == 0
-        ):
-            if created_figure:
-                plt.close(figure)
-            return None
-
-        ax = figure.add_subplot(111)
-        if len(training_loss_list) > 0:
-            ax.plot(_numeric_series(training_loss_list), "g", label="Training loss")
-        if len(val_loss_list) > 0:
-            ax.plot(_numeric_series(val_loss_list), "b", label="validation loss")
-        if len(test_loss_list) > 0:
-            ax.plot(_numeric_series(test_loss_list), "r", label="testing loss")
-        ax.set_title("Training loss")
-        ax.set_xlabel("Training epochs")
-        ax.set_ylabel("Loss")
-        _ = ax.legend(loc="center left")
-
-        return figure
-
-    def get_acc_figure(
-        self,
-        fig: Figure | None = None,
-        figsize: tuple = (6.4, 4.8),
-        dpi: int = 100,
-    ) -> Figure | None:
-        """Generate a line chart of training, validation, and test accuracy over epochs.
-
-        Args:
-            fig: Existing figure to plot on. If ``None``, a new figure is created.
-            figsize: Width and height of the figure in inches.
-            dpi: Dots per inch for the figure.
-
-        Returns:
-            The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
-            if no accuracy data is available.
-
-        """
-        figure, created_figure = _prepare_figure(fig, figsize, dpi)
-
-        training_acc_list = self.train[RecordKey.ACC]
-        val_acc_list = self.val[RecordKey.ACC]
-        test_acc_list = self._legacy_test_history[RecordKey.ACC]
-        if (
-            len(training_acc_list) == 0
-            and len(val_acc_list) == 0
-            and len(test_acc_list) == 0
-        ):
-            if created_figure:
-                plt.close(figure)
-            return None
-
-        ax = figure.add_subplot(111)
-        if len(training_acc_list) > 0:
-            ax.plot(_numeric_series(training_acc_list), "g", label="Training accuracy")
-        if len(val_acc_list) > 0:
-            ax.plot(_numeric_series(val_acc_list), "b", label="validation accuracy")
-        if len(test_acc_list) > 0:
-            ax.plot(_numeric_series(test_acc_list), "r", label="testing accuracy")
-        ax.set_title("Training Accuracy")
-        ax.set_xlabel("Training epochs")
-        ax.set_ylabel("Accuracy (%)")
-        _ = ax.legend(loc="upper left")
-
-        return figure
-
-    def get_auc_figure(
-        self,
-        fig: Figure | None = None,
-        figsize: tuple = (6.4, 4.8),
-        dpi: int = 100,
-    ) -> Figure | None:
-        """Generate a line chart of training, validation, and test AUC over epochs.
-
-        Args:
-            fig: Existing figure to plot on. If ``None``, a new figure is created.
-            figsize: Width and height of the figure in inches.
-            dpi: Dots per inch for the figure.
-
-        Returns:
-            The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
-            if no AUC data is available.
-
-        """
-        figure, created_figure = _prepare_figure(fig, figsize, dpi)
-
-        training_auc_list = self.train[RecordKey.AUC]
-        val_auc_list = self.val[RecordKey.AUC]
-        test_auc_list = self._legacy_test_history[RecordKey.AUC]
-        if (
-            len(training_auc_list) == 0
-            and len(val_auc_list) == 0
-            and len(test_auc_list) == 0
-        ):
-            if created_figure:
-                plt.close(figure)
-            return None
-
-        ax = figure.add_subplot(111)
-        if len(training_auc_list) > 0:
-            ax.plot(_numeric_series(training_auc_list), "g", label="Training AUC")
-        if len(val_auc_list) > 0:
-            ax.plot(_numeric_series(val_auc_list), "b", label="validation AUC")
-        if len(test_auc_list) > 0:
-            ax.plot(_numeric_series(test_auc_list), "r", label="testing AUC")
-        ax.set_title("Training AUC")
-        ax.set_xlabel("Training epochs")
-        ax.set_ylabel("AUC")
-        _ = ax.legend(loc="upper left")
-
-        return figure
-
-    def get_lr_figure(
-        self,
-        fig: Figure | None = None,
-        figsize: tuple = (6.4, 4.8),
-        dpi: int = 100,
-    ) -> Figure | None:
-        """Generate a line chart of learning rate over epochs.
-
-        Args:
-            fig: Existing figure to plot on. If ``None``, a new figure is created.
-            figsize: Width and height of the figure in inches.
-            dpi: Dots per inch for the figure.
-
-        Returns:
-            The matplotlib :class:`~matplotlib.figure.Figure`, or ``None``
-            if no learning rate data is available.
-
-        """
-        figure, created_figure = _prepare_figure(fig, figsize, dpi)
-
-        lr_list = self.train[TrainRecordKey.LR]
-        if len(lr_list) == 0:
-            if created_figure:
-                plt.close(figure)
-            return None
-
-        ax = figure.add_subplot(111)
-        ax.plot(_numeric_series(lr_list), "g")
-        ax.set_title("Learning Rate")
-        ax.set_xlabel("Training epochs")
-        ax.set_ylabel("lr")
-        return figure
 
     def get_eval_record(self) -> EvalRecord | None:
         """Return the evaluation record, or ``None`` if training is not complete.

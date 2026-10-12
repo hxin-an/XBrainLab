@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from threading import Event
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -40,6 +41,7 @@ def test_training_plan_marks_cuda_oom_as_failed_and_releases_cache(monkeypatch) 
     calls: list[str] = []
     holder = cast(Any, TrainingPlanHolder.__new__(TrainingPlanHolder))
     holder.option = SimpleNamespace(repeat_num=1)
+    holder._interrupt = Event()
     holder.dataset = _finite_dataset()
     holder.train_record_list = [_Record()]
     holder.status = Status.PENDING.value
@@ -73,6 +75,7 @@ def test_training_plan_preserves_oom_when_cuda_cache_release_fails(
     calls: list[str] = []
     holder = cast(Any, TrainingPlanHolder.__new__(TrainingPlanHolder))
     holder.option = SimpleNamespace(repeat_num=1)
+    holder._interrupt = Event()
     holder.dataset = _finite_dataset()
     holder.train_record_list = [_Record()]
     holder.status = Status.PENDING.value

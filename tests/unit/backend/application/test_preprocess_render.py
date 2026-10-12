@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import mne
 import numpy as np
 import pytest
 
@@ -12,6 +13,7 @@ from XBrainLab.backend.application.preprocess_render import (
     PreprocessRenderRequest,
     PreprocessSignalState,
 )
+from XBrainLab.backend.load_data import Raw
 
 
 class _Signal:
@@ -172,6 +174,37 @@ def test_no_data_publication_has_no_signal_payload() -> None:
     assert publication.data.events == ()
 
 
+@pytest.mark.parametrize("first_samp", [0, 500])
+def test_real_recording_event_markers_share_signal_relative_timeline(first_samp):
+    signal = mne.io.RawArray(
+        np.zeros((1, 1000)),
+        mne.create_info(["Cz"], 100.0, "eeg"),
+        first_samp=first_samp,
+    )
+    signal.set_annotations(mne.Annotations([1.5], [0.4], ["cue"]))
+    original_onsets = signal.annotations.onset.copy()
+    wrapped = Raw("offset.fif", signal)
+    publisher = PreprocessRenderPublisher(
+        dataset=SimpleNamespace(
+            get_preprocessed_data_list=lambda: [wrapped],
+            get_loaded_data_list=list,
+        ),
+        get_publication=lambda: _publication(),
+    )
+    data = publisher.publish(
+        PreprocessRenderRequest(
+            publication_generation=3, start_seconds=1.0, duration_seconds=2.0
+        )
+    ).data
+    assert data.current is not None
+    assert data.current.time_seconds[0] == pytest.approx(1.0)
+    assert len(data.events) == 1
+    assert data.events[0].onset_seconds == pytest.approx(1.5)
+    assert data.events[0].duration_seconds == pytest.approx(0.4)
+    assert data.events[0].label == "cue"
+    np.testing.assert_array_equal(signal.annotations.onset, original_onsets)
+
+
 def test_epoched_data_publishes_locked_state_without_reading_samples() -> None:
     signal = _Signal(np.ones((2, 100)), sfreq=100.0)
     data = _Data(signal, raw=False, history=("Epoching",))
@@ -238,3 +271,84 @@ def test_publication_change_discards_copied_signal() -> None:
     assert exc_info.value.diagnostics["preprocess_render_stale"] is True
     assert exc_info.value.diagnostics["publication_generation_before"] == 3
     assert exc_info.value.diagnostics["publication_generation_after"] == 4
+
+
+@pytest.mark.parametrize(
+    ("start", "duration", "samples"),
+    [
+        (0.0, 30.0, (0, 999)),
+        (9.9, 5.0, (990, 999)),
+        (100.0, 5.0, (999, 999)),
+        (0.0, 0.001, (0, 0)),
+    ],
+)
+def test_real_preview_window_clips_to_recording_without_padding(
+    start, duration, samples
+):
+    values = np.arange(1000, dtype=float)[None, :]
+    wrapped = Raw(
+        "bounds.fif", mne.io.RawArray(values, mne.create_info(["Cz"], 100, "eeg"))
+    )
+    publisher = PreprocessRenderPublisher(
+        dataset=SimpleNamespace(
+            get_preprocessed_data_list=lambda: [wrapped], get_loaded_data_list=list
+        ),
+        get_publication=lambda: _publication(),
+    )
+    data = publisher.publish(
+        PreprocessRenderRequest(
+            publication_generation=3, start_seconds=start, duration_seconds=duration
+        )
+    ).data
+    assert data.current is not None
+    first, last = samples
+    np.testing.assert_array_equal(
+        data.current.values_volts, values[0, first : last + 1]
+    )
+    np.testing.assert_array_equal(
+        data.current.time_seconds, np.arange(first, last + 1) / 100
+    )
+    assert data.cursor_max_seconds == 9.99
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("publication_generation", True, ValueError),
+        ("publication_generation", 0, ValueError),
+        ("channel_index", -1, ValueError),
+        ("channel_index", 0.5, ValueError),
+        ("start_seconds", -0.1, ValueError),
+        ("start_seconds", float("nan"), ValueError),
+        ("duration_seconds", float("inf"), ValueError),
+        ("duration_seconds", 0.0, ValueError),
+        ("duration_seconds", 30.01, ValueError),
+        ("duration_seconds", True, TypeError),
+        ("start_seconds", "0", TypeError),
+    ],
+)
+def test_preview_request_rejects_unbounded_or_invalid_coordinates(field, value, error):
+    kwargs = {"publication_generation": 3, field: value}
+    with pytest.raises(error, match=field):
+        PreprocessRenderRequest(**kwargs)
+
+
+@pytest.mark.parametrize(("rate", "n_times"), [(100, 30), (250, 1002)])
+def test_preview_final_cursor_uses_final_sample_despite_float_roundoff(rate, n_times):
+    values = np.arange(n_times, dtype=float)[None, :]
+    wrapped = Raw(
+        "final-sample.fif",
+        mne.io.RawArray(values, mne.create_info(["Cz"], rate, "eeg")),
+    )
+    publisher = PreprocessRenderPublisher(
+        dataset=SimpleNamespace(
+            get_preprocessed_data_list=lambda: [wrapped], get_loaded_data_list=list
+        ),
+        get_publication=lambda: _publication(),
+    )
+    data = publisher.publish(
+        PreprocessRenderRequest(publication_generation=3, start_seconds=100.0)
+    ).data
+    assert data.current is not None
+    np.testing.assert_array_equal(data.current.values_volts, [n_times - 1])
+    np.testing.assert_array_equal(data.current.time_seconds, [data.cursor_max_seconds])

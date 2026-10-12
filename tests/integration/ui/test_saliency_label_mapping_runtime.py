@@ -94,10 +94,13 @@ def _render_evidence(widget: Any) -> dict[str, Any]:
     not GDF_PATH.exists() or not LABEL_PATH.exists(),
     reason="Graz label-mapping fixtures are not available.",
 )
-def test_data_import_label_mapping_renders_saliency_maps(qtbot, tmp_path) -> None:
+def test_data_import_label_mapping_renders_saliency_maps(
+    qtbot, tmp_path, request
+) -> None:
     """Wizard-applied external labels must survive through saliency rendering."""
 
     service = ApplicationService()
+    request.addfinalizer(service.close)
     scan_result = service.execute(
         ScanSourceCommand(
             source_path=str(GDF_PATH),
@@ -229,11 +232,12 @@ def test_data_import_label_mapping_renders_saliency_maps(qtbot, tmp_path) -> Non
     reason="Graz label-mapping fixtures are not available.",
 )
 def test_training_is_metric_only_until_explicit_saliency_command(
-    tmp_path,
+    tmp_path, request
 ) -> None:
     """Training publishes metrics without computing saliency on its own."""
 
     service = ApplicationService()
+    request.addfinalizer(service.close)
     scan_result = service.execute(
         ScanSourceCommand(
             source_path=str(GDF_PATH),

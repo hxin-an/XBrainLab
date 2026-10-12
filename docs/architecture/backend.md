@@ -1,6 +1,6 @@
 # Backend architecture
 
-最後更新：`2026-09-23`
+最後更新：`2026-10-11`
 
 這份文件說明目前 source 的 backend 邊界與責任，不是功能清單、歷史改造紀錄或本次施工的
 驗收紀錄。可對外宣稱的產品能力以 [current.md](../current.md) 為準；正在施工的範圍、
@@ -132,6 +132,12 @@ methods, and before result assembly. In-flight Torch/Captum calls are not preemp
 releases the model in `finally`, and current-job checks plus batch publication prevent partial or
 cancelled updates from replacing previously published results.
 
+Saliency resource admission follows those same retained training holders: evaluation split
+selection is shared with recomputation, and batch size, model and device come from the
+completed runs rather than later training settings. It accounts for completed records and
+checks every device used by the selected holders. These are conservative memory estimates,
+not a promise that every model or native allocation fits the available memory.
+
 ## Persistence and artifact filesystem boundary
 
 Training/evaluation persistence passes through `training/record/artifact_store.py`, not arbitrary object
@@ -146,6 +152,12 @@ artifact identity or integrity checks.
 - Temporary leaves are exclusively created and a verified retained parent performs the atomic replacement.
   Readers use the same trusted-parent/regular-leaf checks, so a leaf substitution cannot be accepted between
   validation and publication.
+- JSON/NPZ publication is atomic per file, not per pair. Before overwriting an existing numeric payload,
+  the writer retains a bounded-memory backup under the same directory identity. An ordinary manifest
+  replacement failure restores that payload; a failed restoration retains the recovery file and reports
+  both failures. Identity failure prevents further recovery through an untrusted path. This does not
+  promise crash durability or concurrent-reader/writer snapshots; readers reject mismatched hashes.
+  A cleanup failure after successful publication may still report an error with the new pair committed.
 - Source/training/result identity is validated before a result is considered current. This protection is
   distinct from the admission boundary for a user-selected pretrained weight or EEG source reader.
 - Generated validation evidence belongs under ignored `build/` locations described in
@@ -194,9 +206,9 @@ zero data leakage, a deployment security certification, or a complete platform s
 - Existing domain controllers/adapters may remain behind `Study` ports or in low-level tests where they
   express domain operations. They are not a permitted alternate product command surface, and no retired
   facade/controller compatibility layer should be reintroduced merely for old callers.
-- New backend abstractions need at least two real production callers or a necessary unsafe/external seam.
-  They must remove duplicated policy in the same change and preserve the command spine, state publication,
-  cancellation and privacy contracts above.
+- New backend abstractions must clarify responsibility, remove duplicated policy or isolate a necessary
+  unsafe/external seam; caller count alone does not justify or prohibit extraction. They must preserve
+  the command spine, state publication, cancellation and privacy contracts above.
 
 ## Related architecture references
 

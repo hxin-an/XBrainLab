@@ -3,6 +3,7 @@ from copy import deepcopy
 from dataclasses import replace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from PyQt6.QtWidgets import QApplication
 
 from XBrainLab.backend.application import (
@@ -369,3 +370,166 @@ def test_training_panel_delayed_transient_tick_keeps_terminal_render_idempotent(
     qtbot.waitUntil(lambda: panel.log_text.toPlainText() == before_log)
     assert panel.current_plotting_identity == before_identity
     assert panel.sidebar.btn_stop.isEnabled() is False
+
+
+def test_training_panel_terminal_fallback_only_applies_while_history_is_unavailable(
+    qtbot,
+):
+    ports = _typed_training_ports()
+    panel = _panel(ports)
+    qtbot.addWidget(panel)
+    running = replace(ports.get_view_publication(), training_history=(_history_row(),))
+    ports.get_view_publication.return_value = running
+    panel.update_loop()
+    terminal = replace(
+        running,
+        generation=2,
+        revision=2,
+        state=replace(
+            running.state,
+            training=replace(
+                running.state.training,
+                terminal_outcome=TrainingTerminalOutcome(
+                    TrainingOutcomeState.FAILED, detail="Final artifact export failed"
+                ),
+            ),
+        ),
+        training_history=None,
+    )
+    ports.get_view_publication.return_value = terminal
+    ports.query_training_history.return_value = CommandResult.failure_result(
+        "history",
+        "busy",
+        None,
+        ChangedState(),
+        ErrorType.PRECONDITION,
+        True,
+    )
+    panel.update_panel()
+
+    assert panel.history_table.item(0, 3).text() == "Failed"
+    assert "Final artifact export failed" in panel.log_text.toPlainText()
+    assert panel.tab_acc.train_vals == [0.7]
+    panel.close()
+
+
+@pytest.mark.parametrize("previous_status", ["Completed early", "Completed", "Pending"])
+def test_training_panel_terminal_fallback_does_not_guess_a_noncurrent_row(
+    qtbot, previous_status
+):
+    ports = _typed_training_ports()
+    panel = _panel(ports)
+    qtbot.addWidget(panel)
+    previous = replace(
+        ports.get_view_publication(),
+        training_history=(_history_row(status=previous_status),),
+    )
+    ports.get_view_publication.return_value = previous
+    panel.update_loop()
+    terminal = replace(
+        previous,
+        generation=2,
+        revision=2,
+        state=replace(
+            previous.state,
+            training=replace(
+                previous.state.training,
+                terminal_outcome=TrainingTerminalOutcome(
+                    TrainingOutcomeState.FAILED, detail="New attempt failed"
+                ),
+            ),
+        ),
+        training_history=None,
+    )
+    ports.get_view_publication.return_value = terminal
+    ports.query_training_history.return_value = CommandResult.failure_result(
+        "history",
+        "busy",
+        None,
+        ChangedState(),
+        ErrorType.PRECONDITION,
+        True,
+    )
+    panel.update_panel()
+
+    assert panel.history_table.item(0, 3).text() == previous_status
+    assert panel._last_verified_history_rows[0]["status"] == previous_status
+    panel.close()
+
+
+@pytest.mark.parametrize("selection", ["automatic", "historical", "current"])
+@pytest.mark.parametrize(
+    ("outcome", "message"),
+    [
+        (TrainingOutcomeState.CANCELLED, "Training stopped before completion."),
+        (TrainingOutcomeState.FAILED, "Training failed: Failed before epoch one"),
+    ],
+)
+def test_zero_epoch_terminal_log_preserves_row_truth_and_historical_selection(
+    qtbot, selection, outcome, message
+):
+    pinned_history = selection == "historical"
+    ports = _typed_training_ports()
+    panel = _panel(ports)
+    qtbot.addWidget(panel)
+    old = _history_row(status="Completed early", epochs=(0.6,), run_index=0)
+    old["status_detail"] = "Earlier run stopped early at epoch 1."
+    active = _history_row(status="Running", epochs=(), run_index=1)
+    initial = ports.get_view_publication()
+    running = replace(
+        initial,
+        state=replace(
+            initial.state, training=replace(initial.state.training, is_running=True)
+        ),
+        training_history=(old, active),
+    )
+    ports.get_view_publication.return_value = running
+    panel.update_panel()
+    if selection != "automatic":
+        panel.on_history_selection_changed(
+            old["identity"] if pinned_history else active["identity"]
+        )
+    pending = _history_row(status="Pending", epochs=(), run_index=1)
+    terminal = replace(
+        running,
+        generation=2,
+        revision=2,
+        state=replace(
+            running.state,
+            training=replace(
+                running.state.training,
+                is_running=False,
+                terminal_outcome=TrainingTerminalOutcome(
+                    outcome,
+                    detail="Failed before epoch one"
+                    if outcome is TrainingOutcomeState.FAILED
+                    else None,
+                ),
+            ),
+        ),
+        training_history=(old, pending),
+    )
+    ports.get_view_publication.return_value = terminal
+    panel.update_panel()
+    if not pinned_history:
+        assert message in panel.log_text.toPlainText()
+    panel.update_loop(log_epochs=True)
+    assert (message in panel.log_text.toPlainText()) is (not pinned_history)
+    # The delayed command reconciliation path must obey the same selection.
+    panel.refresh_terminal_publication()
+    log = panel.log_text.toPlainText()
+    assert panel.history_table.item(0, 3).text() == "Completed early"
+    assert panel.history_table.item(1, 3).text() == "Pending"
+    assert panel.current_plotting_identity == (0, 0 if pinned_history else 1)
+    if pinned_history:
+        assert old["status_detail"] in log
+        assert message not in log
+        assert panel.tab_acc.train_vals == [0.6]
+    else:
+        assert log.count(message) == 1
+        assert panel.tab_acc.train_vals == []
+        panel.on_history_selection_changed(old["identity"])
+        panel.update_loop(log_epochs=True)
+        assert old["status_detail"] in panel.log_text.toPlainText()
+        assert message not in panel.log_text.toPlainText()
+    panel.close()

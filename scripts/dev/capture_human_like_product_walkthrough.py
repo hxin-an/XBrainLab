@@ -633,20 +633,6 @@ def _git_revision() -> str:
     return completed.stdout.strip() if completed.returncode == 0 else "unknown"
 
 
-def _git_worktree_dirty() -> bool | None:
-    git_executable = shutil.which("git")
-    if git_executable is None:
-        return None
-    completed = subprocess.run(  # noqa: S603 - executable resolved from PATH
-        [git_executable, "status", "--porcelain"],
-        cwd=ROOT,
-        capture_output=True,
-        check=False,
-        text=True,
-    )
-    return bool(completed.stdout.strip()) if completed.returncode == 0 else None
-
-
 def capture_walkthrough(app: QApplication, output_dir: Path) -> dict[str, Any]:
     """Run the walkthrough and return the artifact payload."""
     started_at = time.monotonic()
@@ -3831,6 +3817,13 @@ def _classify_persistent_runtime_threads(
     }
     cuda_initialized = bool(after_close.get("cuda_runtime_initialized", False))
     platform_name = str(after_close.get("platform_name", "")).strip().lower()
+    foreign_python_ids = {
+        record.get("native_id")
+        for record in after_close.get("python_thread_records", [])
+        if isinstance(record, Mapping)
+        and record.get("kind") == "_DummyThread"
+        and record.get("backed_by_os_thread") is True
+    }
     idle_qt_ids: set[int] = set()
     cuda_runtime_ids: set[int] = set()
     unexpected_ids: set[int] = set()
@@ -3876,6 +3869,10 @@ def _classify_persistent_runtime_threads(
             )
             and qt_active_threads == 0
             and wait_channel in LINUX_DORMANT_QT_WAIT_CHANNELS
+            and (
+                native_id not in known_live_python_ids
+                or native_id in foreign_python_ids
+            )
         ):
             # Some Linux CI builds preserve Qt's native thread name, while
             # others expose the process name ("python") for the same inactive

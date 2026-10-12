@@ -60,12 +60,11 @@ from scripts.dev.human_like_walkthrough.readiness import (
     assert_region_matches_reference,
     frame_readiness_payload,
 )
-from XBrainLab.backend.application.dataset_split_preview import (
-    DatasetSplitChoice,
-    DatasetSplitContext,
-    DatasetSplitPreviewPublication,
-    DatasetSplitPreviewRequest,
-    DatasetSplitPreviewRow,
+from scripts.dev.training_evidence_fixture import (
+    data_split_capture_context as _data_split_capture_context,
+)
+from scripts.dev.training_evidence_fixture import (
+    data_split_capture_provider as _data_split_capture_provider,
 )
 from XBrainLab.backend.application.epoch_context import (
     EpochContextAvailability,
@@ -78,6 +77,7 @@ from XBrainLab.backend.application.training_recommendation import (
     TrainingSettingProvenance,
 )
 from XBrainLab.backend.dataset import (
+    DataSplitter,
     DataSplittingConfig,
     SplitByType,
     TrainingType,
@@ -98,7 +98,6 @@ from XBrainLab.ui.chat.panel import ChatPanel
 from XBrainLab.ui.chat.presentation import present_assistant_activity
 from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import DataSplittingDialog
 from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
-    DataSplitterHolder,
     DataSplittingPreviewDialog,
 )
 from XBrainLab.ui.dialogs.preprocess.epoching_dialog import EpochingDialog
@@ -511,7 +510,6 @@ def _data_splitting_dialog() -> QWidget:
         preview_provider=_data_split_capture_provider,
         preview_canceller=lambda _request_id: True,
     )
-    dialog.resize(QSize(820, 470))
     return dialog
 
 
@@ -522,8 +520,8 @@ def _data_splitting_dialog_narrow() -> QWidget:
 
 
 def _data_splitting_preview_dialog() -> DataSplittingPreviewDialog:
-    val_splitter = DataSplitterHolder(True, ValSplitByType.TRIAL)
-    test_splitter = DataSplitterHolder(True, SplitByType.TRIAL)
+    val_splitter = DataSplitter(ValSplitByType.TRIAL)
+    test_splitter = DataSplitter(SplitByType.TRIAL)
     config = DataSplittingConfig(
         TrainingType.FULL,
         True,
@@ -553,39 +551,6 @@ def _data_splitting_preview_dialog() -> DataSplittingPreviewDialog:
     dialog.adjustSize()
     dialog.resize(QSize(980, dialog.sizeHint().height()))
     return dialog
-
-
-def _data_split_capture_context() -> DatasetSplitContext:
-    return DatasetSplitContext(
-        epoch_available=True,
-        subject_count=2,
-        session_count=1,
-        label_count=2,
-        trial_count=120,
-        subject_choices=(
-            DatasetSplitChoice(value="S01", label="S01"),
-            DatasetSplitChoice(value="S02", label="S02"),
-        ),
-        session_choices=(DatasetSplitChoice(value="session", label="session"),),
-    )
-
-
-def _data_split_capture_provider(
-    request: DatasetSplitPreviewRequest,
-) -> DatasetSplitPreviewPublication:
-    return DatasetSplitPreviewPublication(
-        request=request,
-        generation=request.publication_generation,
-        rows=tuple(
-            DatasetSplitPreviewRow(
-                name=f"Fold_{index}",
-                train_count=76,
-                validation_count=20,
-                test_count=24,
-            )
-            for index in range(5)
-        ),
-    )
 
 
 def _assistant_setup_required_narrow() -> ChatPanel:
@@ -2178,7 +2143,7 @@ def _write_readme(output_dir: Path = DEFAULT_OUTPUT_DIR) -> None:
         "- `preprocess-filtering-notch-only.png`\n"
         "- `preprocess-epoching-internal-events-dialog.png`\n"
         "- `preprocess-epoching-bids-interval-duration-dialog.png`\n"
-        "- `data-splitting-dialog.png` (820 x 470 requested; scroll fallback)\n"
+        "- `data-splitting-dialog.png` (product default size; scroll fallback)\n"
         "- `data-splitting-dialog-narrow.png` (752 x 700 full reflow)\n"
         "- `data-splitting-preview-dialog.png`\n"
         "- `assistant-setup-required-narrow.png` (320 x 650, setup-required "

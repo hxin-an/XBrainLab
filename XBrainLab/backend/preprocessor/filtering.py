@@ -37,8 +37,11 @@ class Filtering(PreprocessBase):
         if l_freq is not None or h_freq is not None:
             desc_parts.append(f"Filtering {l_freq} ~ {h_freq} Hz")
 
-        if notch_freqs:
-            desc_parts.append(f"Notch {notch_freqs} Hz")
+        if notch_freqs is not None:
+            frequencies = np.atleast_1d(notch_freqs)
+            if frequencies.size:
+                values = ", ".join(str(freq).removesuffix(".0") for freq in frequencies)
+                desc_parts.append(f"Notch {values} Hz")
 
         return ", ".join(desc_parts)
 
@@ -202,4 +205,9 @@ class Filtering(PreprocessBase):
             description=["BAD_nonfinite"] * len(spans),
             orig_time=annotations.orig_time,
         )
-        mne_data.set_annotations(annotations + nonfinite)
+        combined = annotations + nonfinite
+        if combined.orig_time is None:
+            # Stored onsets include first_time; the setter expects relative
+            # onsets when no acquisition date is available and adds it back.
+            combined.onset -= mne_data.first_time
+        mne_data.set_annotations(combined)

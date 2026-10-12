@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import mne
+import numpy as np
 import pytest
 
 from XBrainLab.backend.application.commands import (
     NewSessionCommand,
+    PreprocessCommand,
+    PreprocessOperation,
     ResetPreprocessCommand,
     ResetSessionCommand,
 )
@@ -17,6 +21,7 @@ from XBrainLab.backend.application.lifecycle_service import (
     LifecycleCommandService,
 )
 from XBrainLab.backend.application.pipeline_transaction import PipelineStateTransaction
+from XBrainLab.backend.application.service import ApplicationService
 from XBrainLab.backend.application.state import (
     ActiveDatasetSnapshot,
     ActiveTrainingSnapshot,
@@ -31,6 +36,8 @@ from XBrainLab.backend.application.state import (
     VisualizationStateSnapshot,
 )
 from XBrainLab.backend.exceptions import StaleTrainingPipelineMutationError
+from XBrainLab.backend.load_data import Raw
+from XBrainLab.backend.study import Study
 from XBrainLab.backend.training_state_contract import (
     PostTrainingSaliencyStatus,
     TrainingOutcomeState,
@@ -329,3 +336,48 @@ def test_lifecycle_service_reset_session_and_new_session_clear_dependent_state()
     assert dataset.cleaned is True
     assert training_commands.clear_count == 2
     assert interpretation.cleared is True
+
+
+def test_reset_rollback_failure_keeps_original_error_and_marks_unrestored_state(
+    monkeypatch,
+):
+    study = Study()
+    source = Raw(
+        "reset-source.fif",
+        mne.io.RawArray(
+            np.arange(100, dtype=float)[None, :], mne.create_info(["Cz"], 100, "eeg")
+        ),
+    )
+    study.set_loaded_data_list([source], force_update=True)
+    service = ApplicationService(study)
+    try:
+        assert service.execute(
+            PreprocessCommand(operation=PreprocessOperation.NORMALIZE, method="z-score")
+        ).ok
+        processed = study.preprocessed_data_list[0]
+        assert processed is not source
+        assert processed.get_preprocess_history()
+        reset = study.reset_preprocess
+
+        def reset_then_fail(*, force_update):
+            reset(force_update=force_update)
+            raise RuntimeError("reset publication failed")
+
+        def restore_failure(_snapshot):
+            raise RuntimeError("reset rollback failed")
+
+        monkeypatch.setattr(study, "reset_preprocess", reset_then_fail)
+        monkeypatch.setattr(service.pipeline_transaction, "restore", restore_failure)
+        result = service.execute(ResetPreprocessCommand(confirmed=True))
+
+        assert result.failed
+        assert "reset publication failed" in result.message
+        assert result.diagnostics["state_preserved"] is False
+        assert result.diagnostics["rollback_failed"] is True
+        assert result.diagnostics["rollback_errors"] == ["reset rollback failed"]
+        assert study.preprocessed_data_list == [source]
+        assert source.get_preprocess_history() == []
+        assert processed.get_preprocess_history()
+        np.testing.assert_array_equal(source.get_mne().get_data()[0], np.arange(100))
+    finally:
+        service.close()

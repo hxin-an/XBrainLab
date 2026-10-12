@@ -52,14 +52,13 @@ from scripts.dev.human_like_walkthrough.readiness import (
     assert_region_has_no_unpainted_block,
     assert_region_matches_reference,
 )
-from XBrainLab.backend.application.capabilities import build_capability_policy
-from XBrainLab.backend.application.dataset_split_preview import (
-    DatasetSplitChoice,
-    DatasetSplitContext,
-    DatasetSplitPreviewPublication,
-    DatasetSplitPreviewRequest,
-    DatasetSplitPreviewRow,
+from scripts.dev.training_evidence_fixture import (
+    data_split_capture_context as _data_split_capture_context,
 )
+from scripts.dev.training_evidence_fixture import (
+    data_split_capture_provider as _data_split_capture_provider,
+)
+from XBrainLab.backend.application.capabilities import build_capability_policy
 from XBrainLab.backend.application.preprocess_render import (
     PreprocessRenderPublication,
     PreprocessRenderPublisher,
@@ -75,6 +74,7 @@ from XBrainLab.backend.application.view_publication import (
     ApplicationViewPublication,
 )
 from XBrainLab.backend.dataset import (
+    DataSplitter,
     DataSplittingConfig,
     SplitByType,
     TrainingType,
@@ -85,7 +85,6 @@ from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
 )
 from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
-    DataSplitterHolder,
     DataSplittingPreviewDialog,
 )
 from XBrainLab.ui.dialogs.dataset.smart_parser_dialog import SmartParserDialog
@@ -701,10 +700,12 @@ def _observe_training_setting_geometry(
         for row_index in range(form_layout.rowCount()):
             label_item = form_layout.itemAtPosition(row_index, 0)
             input_item = form_layout.itemAtPosition(row_index, 1)
-            button_item = form_layout.itemAtPosition(row_index, 2)
             label = label_item.widget() if label_item is not None else None
             input_widget = input_item.widget() if input_item is not None else None
-            set_button = button_item.widget() if button_item is not None else None
+            set_button = None
+            if input_widget is not None and input_widget.layout() is not None:
+                set_button = input_widget.findChild(QAbstractButton)
+                input_widget = input_widget.findChild(QLineEdit)
             if (
                 not isinstance(label, QLabel)
                 or label.objectName() != "TrainingSettingLabel"
@@ -742,7 +743,7 @@ def _observe_training_setting_geometry(
                     "contained_in_dialog": set_contained,
                     "visible": set_button.isVisibleTo(dialog),
                     "passed": bool(
-                        set_button.text() == "Set"
+                        set_button.text() == "…"
                         and not set_overlap
                         and set_gap >= 0
                         and not set_text_clipped
@@ -789,6 +790,26 @@ def _observe_training_setting_geometry(
     failed_set_buttons = [
         row for row in rows if row["set_button"] and not row["set_button"]["passed"]
     ]
+    early_stopping = dialog.early_stopping_check
+    if early_stopping is None:
+        raise RuntimeError("Training Setting Early stopping control is missing.")
+    early_stop_rect = _widget_rect_in(content_ancestor, early_stopping)
+    early_stop = {
+        "geometry_in_content": _rect_payload(early_stop_rect),
+        "visible": early_stopping.isVisibleTo(dialog),
+        "contained_in_content": content_ancestor.rect().contains(early_stop_rect),
+        "text_clipped": _control_text_is_clipped(early_stopping),
+    }
+    early_stop["passed"] = bool(
+        early_stop["visible"]
+        and early_stop["contained_in_content"]
+        and not early_stop["text_clipped"]
+        and not early_stop_rect.isEmpty()
+    )
+    if not early_stop["passed"]:
+        raise RuntimeError(
+            "Training Setting Early stopping control is hidden or clipped."
+        )
     button_box = dialog.findChild(QDialogButtonBox)
     if button_box is None:
         raise RuntimeError("Training Setting footer button box is missing.")
@@ -853,7 +874,7 @@ def _observe_training_setting_geometry(
         "set_horizontal_gaps_px": [int(gap) for gap in set_to_scrollbar_gaps],
         "passed": bool(
             scrollbar_right_gap <= 1
-            and all(gap >= 30 for gap in set_to_scrollbar_gaps)
+            and all(gap >= 20 for gap in set_to_scrollbar_gaps)
             and all(
                 not set_rect.intersects(scroll_bar_rect)
                 for set_rect in set_button_rects
@@ -954,6 +975,7 @@ def _observe_training_setting_geometry(
         "footer": footer,
         "scrollbar": scrollbar,
         "resource_preview": resource_preview,
+        "early_stopping": early_stop,
         "rows": rows,
         "passed": bool(rows)
         and all(bool(row["passed"]) for row in rows)
@@ -1115,8 +1137,8 @@ def _data_splitting_step_two_dialog(
     config = DataSplittingConfig(
         TrainingType.FULL,
         cross_validation,
-        [DataSplitterHolder(True, ValSplitByType.TRIAL)],
-        [DataSplitterHolder(True, SplitByType.TRIAL)],
+        [DataSplitter(ValSplitByType.TRIAL)],
+        [DataSplitter(SplitByType.TRIAL)],
     )
     dialog = DataSplittingPreviewDialog(
         None,
@@ -1168,40 +1190,6 @@ def _expand_data_splitting_capture(
         layout.activate()
     dialog.adjustSize()
     dialog.resize(QSize(capture_width, dialog.sizeHint().height()))
-
-
-def _data_split_capture_context() -> DatasetSplitContext:
-    return DatasetSplitContext(
-        epoch_available=True,
-        subject_count=2,
-        session_count=1,
-        label_count=2,
-        trial_count=120,
-        subject_choices=(
-            DatasetSplitChoice(value="S01", label="S01"),
-            DatasetSplitChoice(value="S02", label="S02"),
-        ),
-        session_choices=(DatasetSplitChoice(value="session", label="session"),),
-    )
-
-
-def _data_split_capture_provider(
-    request: DatasetSplitPreviewRequest,
-) -> DatasetSplitPreviewPublication:
-    fold_count = 5 if request.specification.is_cross_validation else 1
-    return DatasetSplitPreviewPublication(
-        request=request,
-        generation=request.publication_generation,
-        rows=tuple(
-            DatasetSplitPreviewRow(
-                name=(f"Fold_{index}" if fold_count > 1 else "Holdout"),
-                train_count=76,
-                validation_count=20,
-                test_count=24,
-            )
-            for index in range(fold_count)
-        ),
-    )
 
 
 def _ready_import_dialog(

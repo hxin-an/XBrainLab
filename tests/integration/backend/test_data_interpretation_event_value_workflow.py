@@ -7,6 +7,7 @@ from pathlib import Path
 
 import mne
 import numpy as np
+import pytest
 
 from XBrainLab.backend.application import (
     ApplicationService,
@@ -22,7 +23,19 @@ from XBrainLab.backend.application import (
 )
 
 
-def test_save_reload_apply_epoch_preserves_event_value_truth(tmp_path: Path) -> None:
+@pytest.fixture
+def service_factory(request):
+    def create():
+        service = ApplicationService()
+        request.addfinalizer(service.close)
+        return service
+
+    return create
+
+
+def test_save_reload_apply_epoch_preserves_event_value_truth(
+    tmp_path: Path, service_factory
+) -> None:
     bids_root, eeg, events = _bids_fixture(tmp_path)
     recipe_path = tmp_path / "mixed-events-recipe.json"
     choices = {
@@ -46,7 +59,7 @@ def test_save_reload_apply_epoch_preserves_event_value_truth(tmp_path: Path) -> 
         },
     }
 
-    writer = ApplicationService()
+    writer = service_factory()
     assert writer.execute(
         ScanSourceCommand(source_path=str(bids_root), source_hint="bids")
     ).ok
@@ -81,7 +94,7 @@ def test_save_reload_apply_epoch_preserves_event_value_truth(tmp_path: Path) -> 
         == preview.diagnostics["candidate"]["label_carrier_plan"][0]["value_decisions"]
     )
 
-    reader = ApplicationService()
+    reader = service_factory()
     reloaded = reader.execute(
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path))
     )
@@ -126,7 +139,7 @@ def test_save_reload_apply_epoch_preserves_event_value_truth(tmp_path: Path) -> 
         "4.5\t0\tboundary\t5\n",
         encoding="utf-8",
     )
-    changed = ApplicationService().execute(
+    changed = service_factory().execute(
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path))
     )
     assert changed.ok
@@ -140,9 +153,10 @@ def test_save_reload_apply_epoch_preserves_event_value_truth(tmp_path: Path) -> 
 
 def test_confirmed_apply_cannot_override_unresolved_bids_values(
     tmp_path: Path,
+    service_factory,
 ) -> None:
     bids_root, eeg, events = _bids_fixture(tmp_path)
-    service = ApplicationService()
+    service = service_factory()
     assert service.execute(
         ScanSourceCommand(source_path=str(bids_root), source_hint="bids")
     ).ok
@@ -181,13 +195,15 @@ def test_confirmed_apply_cannot_override_unresolved_bids_values(
     assert apply.state.raw.loaded is False
 
 
-def test_channels_name_mismatch_fails_apply_and_rolls_back(tmp_path: Path) -> None:
+def test_channels_name_mismatch_fails_apply_and_rolls_back(
+    tmp_path: Path, service_factory
+) -> None:
     bids_root, eeg, events = _bids_fixture(tmp_path)
     events.with_name("sub-01_task-mi_channels.tsv").write_text(
         "name\tstatus\nC3\tgood\nPO10\tbad\n",
         encoding="utf-8",
     )
-    service = ApplicationService()
+    service = service_factory()
     assert service.execute(
         ScanSourceCommand(source_path=str(bids_root), source_hint="bids")
     ).ok

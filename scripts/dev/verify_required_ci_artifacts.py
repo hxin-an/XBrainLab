@@ -79,20 +79,14 @@ def _ui_baseline_failure(payload: Mapping[str, Any]) -> str | None:
 
 
 def _dpi_gate_failure(payload: Mapping[str, Any]) -> str | None:
-    captures = payload.get("captures")
-    if (
-        payload.get("schema_version") != 1
-        or payload.get("artifact_type") != "xbrainlab.app_polish_windows_dpi"
-        or not isinstance(captures, list)
-        or not captures
-        or any(
-            not isinstance(capture, Mapping)
-            or capture.get("evidence_valid") is not True
-            for capture in captures
-        )
-    ):
-        return "Windows DPI artifact is not a valid successful capture matrix"
-    return None
+    from scripts.dev.run_app_polish_ui_dpi_gate import validate_dpi_gate_manifest
+
+    source = payload.get("source_identity")
+    digest = source.get("source_digest") if isinstance(source, Mapping) else None
+    if not isinstance(digest, str) or not digest:
+        return "Windows DPI source identity is missing"
+    valid, reason = validate_dpi_gate_manifest(payload, expected_source_digest=digest)
+    return None if valid else reason
 
 
 def _strict_validation_failure(payload: Mapping[str, Any]) -> str | None:

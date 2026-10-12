@@ -125,59 +125,80 @@ def run_native_product_smoke(
 
     study = Study()
     service = get_application_service(study)
-    initial_publication = service.get_view_publication()
-    initial_query = service.execute(QueryStateCommand(query="state"))
-    new_session_capability = service.get_capabilities().get(CommandName.NEW_SESSION)
-    if not initial_query.ok:
-        raise RuntimeError(f"Initial state query failed: {initial_query.message}")
-    if new_session_capability.confirmation_required:
-        raise RuntimeError(
-            "An empty native session unexpectedly requires confirmation."
-        )
-
-    window = MainWindow(study)
+    window: MainWindow | None = None
     shutdown_snapshots: list[dict[str, Any]] = []
-    window.shutdown_completed.connect(shutdown_snapshots.append)
-    window.show()
-    app.processEvents()
-
     materialized_panels: list[dict[str, str]] = []
-    for index, name in enumerate(PANEL_NAMES):
-        panel = open_workflow_panel(window, index, timeout_ms=panel_timeout_ms)
-        materialized_panels.append(
-            {"index": str(index), "name": name, "class": type(panel).__name__}
-        )
+    try:
+        initial_publication = service.get_view_publication()
+        initial_query = service.execute(QueryStateCommand(query="state"))
+        new_session_capability = service.get_capabilities().get(CommandName.NEW_SESSION)
+        if not initial_query.ok:
+            raise RuntimeError(f"Initial state query failed: {initial_query.message}")
+        if new_session_capability.confirmation_required:
+            raise RuntimeError(
+                "An empty native session unexpectedly requires confirmation."
+            )
 
-    new_session_result = service.execute(NewSessionCommand())
-    final_publication = service.get_view_publication()
-    if not new_session_result.ok:
-        raise RuntimeError(f"New Session failed: {new_session_result.message}")
-    if final_publication.generation <= initial_publication.generation:
-        raise RuntimeError(
-            "New Session did not advance application publication generation."
-        )
+        window = MainWindow(study)
+        window.shutdown_completed.connect(shutdown_snapshots.append)
+        window.show()
+        app.processEvents()
 
-    shutdown_loop = QEventLoop()
+        for index, name in enumerate(PANEL_NAMES):
+            panel = open_workflow_panel(window, index, timeout_ms=panel_timeout_ms)
+            materialized_panels.append(
+                {"index": str(index), "name": name, "class": type(panel).__name__}
+            )
 
-    def _finish_shutdown(snapshot: dict[str, Any]) -> None:
-        if shutdown_loop.isRunning():
-            shutdown_loop.quit()
+        new_session_result = service.execute(NewSessionCommand())
+        final_publication = service.get_view_publication()
+        if not new_session_result.ok:
+            raise RuntimeError(f"New Session failed: {new_session_result.message}")
+        if final_publication.generation <= initial_publication.generation:
+            raise RuntimeError(
+                "New Session did not advance application publication generation."
+            )
+    finally:
+        primary_error = sys.exception()
+        try:
+            if window is None:
+                service.close()
+                if not service.is_closed:
+                    raise RuntimeError(  # noqa: TRY301 - preserve primary failure
+                        "ApplicationService shutdown did not complete."
+                    )
+            else:
+                shutdown_loop = QEventLoop()
 
-    window.shutdown_completed.connect(_finish_shutdown)
-    shutdown_timer = QTimer()
-    shutdown_timer.setSingleShot(True)
-    shutdown_timer.timeout.connect(shutdown_loop.quit)
-    shutdown_timer.start(SHUTDOWN_TIMEOUT_MS)
-    QTimer.singleShot(0, window.close)
-    shutdown_loop.exec()
-    shutdown_timer.stop()
-    app.processEvents()
+                def _finish_shutdown(snapshot: dict[str, Any]) -> None:
+                    if shutdown_loop.isRunning():
+                        shutdown_loop.quit()
+
+                window.shutdown_completed.connect(_finish_shutdown)
+                shutdown_timer = QTimer()
+                shutdown_timer.setSingleShot(True)
+                shutdown_timer.timeout.connect(shutdown_loop.quit)
+                shutdown_timer.start(SHUTDOWN_TIMEOUT_MS)
+                QTimer.singleShot(0, window.close)
+                try:
+                    shutdown_loop.exec()
+                finally:
+                    shutdown_timer.stop()
+                    window.shutdown_completed.disconnect(_finish_shutdown)
+                app.processEvents()
+                snapshot = shutdown_snapshots[-1] if shutdown_snapshots else None
+                if not _shutdown_snapshot_is_clean(snapshot):
+                    raise RuntimeError(  # noqa: TRY301 - preserve primary failure
+                        "MainWindow did not publish a clean terminal shutdown snapshot."
+                    )
+        except Exception as cleanup_error:
+            if primary_error is None:
+                raise
+            detail = f"Native smoke cleanup failed: {cleanup_error}"
+            primary_error.add_note(detail)
+            print(detail, file=sys.stderr)
 
     shutdown_snapshot = shutdown_snapshots[-1] if shutdown_snapshots else None
-    if not _shutdown_snapshot_is_clean(shutdown_snapshot):
-        raise RuntimeError(
-            "MainWindow did not publish a clean terminal shutdown snapshot."
-        )
 
     return {
         "schema_version": 1,

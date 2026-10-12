@@ -235,3 +235,59 @@ def test_parallel_preprocess_falls_back_when_detached_rows_share_one_buffer(raw)
 
     assert processor._has_distinct_mne_instances() is False
     assert execution_threads == ["MainThread", "MainThread"]
+
+
+def test_parallel_failure_drains_started_workers_without_admitting_more(raw):
+    second_started = Event()
+    first_failed = Event()
+    release_second = Event()
+    second_finished = Event()
+    started: list[str] = []
+    errors: list[BaseException] = []
+    failure = RuntimeError("first recording failed")
+
+    class FailingPreprocessor(PreprocessBase):
+        max_parallel_recordings = 2
+
+        def get_preprocess_desc(self, *_args, **_kwargs):
+            return "parallel transform"
+
+        def _data_preprocess(self, row, *_args, **_kwargs):
+            subject = row.get_subject_name()
+            started.append(subject)
+            row.get_mne()._data[:] = 42.0
+            if subject == "0":
+                assert second_started.wait(timeout=2.0)
+                first_failed.set()
+                raise failure
+            second_started.set()
+            assert release_second.wait(timeout=2.0)
+            second_finished.set()
+
+    rows = [raw.copy() for _ in range(4)]
+    for index, row in enumerate(rows):
+        row.set_subject_name(str(index))
+    source_values = raw.get_mne().get_data().copy()
+
+    def run():
+        try:
+            FailingPreprocessor(rows).data_preprocess()
+        except BaseException as exc:
+            errors.append(exc)
+
+    worker = Thread(target=run, daemon=True)
+    worker.start()
+    try:
+        assert first_failed.wait(timeout=2.0)
+        assert worker.is_alive(), "admitted native work must be drained before return"
+        assert not second_finished.is_set()
+    finally:
+        release_second.set()
+        worker.join(timeout=2.0)
+    assert not worker.is_alive()
+    assert second_finished.is_set()
+    assert errors == [failure]
+    assert sorted(started) == ["0", "1"]
+    for row in rows:
+        np.testing.assert_array_equal(row.get_mne().get_data(), source_values)
+        assert row.get_preprocess_history() == []

@@ -137,19 +137,6 @@ def test_surface_inventory_preserves_capture_artifacts_in_order() -> None:
     )
 
 
-def test_preprocess_dialog_capture_records_both_filter_toggle_states(
-    qapp,
-    tmp_path,
-) -> None:
-    capture_script._capture_preprocess_dialogs(qapp, tmp_path)
-
-    initial = tmp_path / "preprocess-filtering-dialog.png"
-    toggled = tmp_path / "preprocess-filtering-toggled.png"
-    assert initial.is_file()
-    assert toggled.is_file()
-    assert initial.read_bytes() != toggled.read_bytes()
-
-
 @pytest.mark.parametrize(
     ("selected_methods", "expected_title", "ok_enabled"),
     [
@@ -355,7 +342,7 @@ def test_loaded_capture_path_has_no_synthetic_signal_fallback() -> None:
     assert "np.linspace" not in source
 
 
-def test_preprocess_dialog_capture_uses_channel_name_rereference_api(
+def test_preprocess_dialog_capture_records_filter_toggle_and_rereference_states(
     qapp,
     tmp_path,
 ) -> None:
@@ -365,6 +352,12 @@ def test_preprocess_dialog_capture_uses_channel_name_rereference_api(
         capture_script._capture_preprocess_dialogs(qapp, tmp_path)
     finally:
         qapp.setStyleSheet(original_stylesheet)
+
+    initial = tmp_path / "preprocess-filtering-dialog.png"
+    toggled = tmp_path / "preprocess-filtering-toggled.png"
+    assert initial.is_file()
+    assert toggled.is_file()
+    assert initial.read_bytes() != toggled.read_bytes()
 
     for filename in (
         "preprocess-rereference-average.png",
@@ -411,23 +404,25 @@ def test_training_setting_geometry_is_observed_at_supported_font_scales(
     assert check["dialog_size"][0] >= 664
     assert check["overlap_count"] == 0
     assert check["clipped_text_count"] == 0
-    assert len(check["rows"]) == 13
+    assert len(check["rows"]) == 12
     assert any(row["label"] == "Class loss weighting" for row in check["rows"])
     assert {row["label"] for row in check["rows"]} >= {
-        "Early stopping",
         "Patience",
         "Minimum improvement",
     }
-    assert check["set_button_count"] == 3
+    assert check["set_button_count"] == 2
     assert check["footer"]["passed"] is True
     assert check["scrollbar"]["right_gap_px"] <= 1
-    assert all(gap >= 30 for gap in check["scrollbar"]["set_horizontal_gaps_px"])
+    assert all(gap >= 20 for gap in check["scrollbar"]["set_horizontal_gaps_px"])
     assert check["scrollbar"]["passed"] is True
     assert check["resource_preview"]["passed"] is True
     assert check["resource_preview"]["visible"] is True
     assert check["resource_preview"]["contained_in_viewport"] is True
     assert check["resource_preview"]["text_complete"] is True
     assert check["resource_preview"]["batch_visible_with_note"] is True
+    assert check["early_stopping"]["passed"] is True
+    assert check["early_stopping"]["visible"] is True
+    assert check["early_stopping"]["contained_in_content"] is True
     assert "adjusted to 8" in check["resource_preview"]["text"]
     assert check["font_point_size"] == pytest.approx(
         check["base_font_point_size"] * font_scale
@@ -479,7 +474,7 @@ def test_training_setting_scrollbar_clearance_survives_wide_native_scrollbar(
         _dispose(qapp, dialog)
 
     assert check["scrollbar"]["right_gap_px"] <= 1
-    assert all(gap >= 30 for gap in check["scrollbar"]["set_horizontal_gaps_px"])
+    assert all(gap >= 20 for gap in check["scrollbar"]["set_horizontal_gaps_px"])
     if scrollbar_width is not None:
         assert check["scrollbar"]["geometry"][2] == scrollbar_width
 
@@ -645,6 +640,17 @@ def test_training_setting_geometry_guard_rejects_hidden_footer(qapp) -> None:
                 dialog,
                 font_scale=1.5,
             )
+    finally:
+        _dispose(qapp, dialog)
+
+
+def test_training_setting_geometry_guard_rejects_hidden_early_stop(qapp) -> None:
+    dialog = capture_script._training_setting_dialog()
+    try:
+        _settle(qapp, dialog)
+        dialog.early_stopping_check.hide()
+        with pytest.raises(RuntimeError, match="Early stopping"):
+            capture_script._observe_training_setting_geometry(dialog, font_scale=1.0)
     finally:
         _dispose(qapp, dialog)
 

@@ -73,18 +73,46 @@ def _class_value_decisions(
 
 
 def _close_service(service: ApplicationService) -> None:
-    assert service.wait_for_background_tasks(timeout=30.0)
-    service.close()
+    try:
+        assert service.wait_for_background_tasks(timeout=30.0)
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("wait_raises", [False, True])
+def test_handoff_cleanup_closes_service_after_background_wait_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+    wait_raises: bool,
+) -> None:
+    service = ApplicationService()
+    request.addfinalizer(service.close)
+
+    def failed_wait(*, timeout: float) -> bool:
+        assert timeout == 30.0
+        if wait_raises:
+            raise RuntimeError("background wait failed")
+        return False
+
+    monkeypatch.setattr(service, "wait_for_background_tasks", failed_wait)
+    expected_error = RuntimeError if wait_raises else AssertionError
+    with pytest.raises(expected_error) as failure:
+        _close_service(service)
+    if wait_raises:
+        assert str(failure.value) == "background wait failed"
+    assert service.is_closed
 
 
 def test_graz_external_labels_reach_real_training_through_interpretation_spine(
     tmp_path: Path,
+    request: pytest.FixtureRequest,
 ) -> None:
     """GDF plus external MAT labels must reach a real one-epoch EEGNet run."""
     if not GRAZ_GDF.exists() or not GRAZ_LABELS.exists():
         pytest.skip("Checked-in Graz GDF/MAT fixtures are unavailable.")
 
     service = ApplicationService()
+    request.addfinalizer(lambda: _close_service(service))
     choices = {
         "selected_eeg_files": [str(GRAZ_GDF)],
         "excluded_label_carriers": [str(path) for path in OTHER_GRAZ_LABELS],
@@ -100,121 +128,120 @@ def test_graz_external_labels_reach_real_training_through_interpretation_spine(
         },
     }
 
-    try:
-        scan = service.execute(
-            ScanSourceCommand(
-                source_path=str(FIXTURE_ROOT),
-                source_hint="folder",
-                label_sources=[str(GRAZ_LABELS)],
-            )
+    scan = service.execute(
+        ScanSourceCommand(
+            source_path=str(FIXTURE_ROOT),
+            source_hint="folder",
+            label_sources=[str(GRAZ_LABELS)],
         )
-        preview = service.execute(PreviewInterpretationCommand(choices=choices))
-        validation = service.execute(ValidateInterpretationCommand())
-        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+    )
+    preview = service.execute(PreviewInterpretationCommand(choices=choices))
+    validation = service.execute(ValidateInterpretationCommand())
+    applied = service.execute(ApplyInterpretationCommand(confirmed=True))
 
-        assert scan.ok, scan.message
-        scan_payload = scan.diagnostics["scan_result"]
-        assert scan_payload["source_path"] == str(FIXTURE_ROOT.resolve())
-        assert len(scan_payload["eeg_files"]) > len(choices["selected_eeg_files"])
-        assert preview.ok, preview.message
-        candidate = preview.diagnostics["candidate"]
-        assert candidate["selected_eeg_files"] == [str(GRAZ_GDF)]
-        assert [
-            carrier["path"]
-            for carrier in preview.diagnostics["preview"]["label_carrier_preview"]
-        ] == [str(GRAZ_LABELS)]
-        assert validation.ok, validation.message
-        validation_decision = validation.diagnostics["validation_decision"]
-        assert validation_decision["decision"] == "needs_confirmation"
-        assert validation_decision["blocked_reasons"] == []
-        assert validation_decision["required_confirmations"]
-        assert applied.ok, applied.message
-        assert applied.diagnostics["label_apply"]["mode"] == "sequence"
-        assert applied.state.raw.files == [GRAZ_GDF.name]
-        assert applied.state.interpretation.label_sources == [str(GRAZ_LABELS)]
-        assert applied.state.interpretation.class_map == GRAZ_CLASS_NAMES
-        handoff = applied.state.interpretation.epoch_handoff
-        assert handoff["label_source"] == "loaded_label_files"
-        assert handoff["default_epoch_events"] == sorted(
-            GRAZ_CLASS_NAMES.values(),
-            key=str.casefold,
-        )
+    assert scan.ok, scan.message
+    scan_payload = scan.diagnostics["scan_result"]
+    assert scan_payload["source_path"] == str(FIXTURE_ROOT.resolve())
+    assert len(scan_payload["eeg_files"]) > len(choices["selected_eeg_files"])
+    assert preview.ok, preview.message
+    candidate = preview.diagnostics["candidate"]
+    assert candidate["selected_eeg_files"] == [str(GRAZ_GDF)]
+    assert [
+        carrier["path"]
+        for carrier in preview.diagnostics["preview"]["label_carrier_preview"]
+    ] == [str(GRAZ_LABELS)]
+    assert validation.ok, validation.message
+    validation_decision = validation.diagnostics["validation_decision"]
+    assert validation_decision["decision"] == "needs_confirmation"
+    assert validation_decision["blocked_reasons"] == []
+    assert validation_decision["required_confirmations"]
+    assert applied.ok, applied.message
+    assert applied.diagnostics["label_apply"]["mode"] == "sequence"
+    assert applied.state.raw.files == [GRAZ_GDF.name]
+    assert applied.state.interpretation.label_sources == [str(GRAZ_LABELS)]
+    assert applied.state.interpretation.class_map == GRAZ_CLASS_NAMES
+    handoff = applied.state.interpretation.epoch_handoff
+    assert handoff["label_source"] == "loaded_label_files"
+    assert handoff["default_epoch_events"] == sorted(
+        GRAZ_CLASS_NAMES.values(),
+        key=str.casefold,
+    )
 
-        filtered = service.execute(
-            PreprocessCommand(
-                operation=PreprocessOperation.BANDPASS,
-                low_freq=4,
-                high_freq=38,
-            )
+    filtered = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.BANDPASS,
+            low_freq=4,
+            high_freq=38,
         )
-        epoch = service.execute(
-            CreateEpochCommand(
-                t_min=-0.2,
-                t_max=1.0,
-                event_ids=list(GRAZ_CLASS_NAMES.values()),
-            )
+    )
+    epoch = service.execute(
+        CreateEpochCommand(
+            t_min=-0.2,
+            t_max=1.0,
+            event_ids=list(GRAZ_CLASS_NAMES.values()),
         )
-        generated = service.execute(
-            SaveDatasetSplitCommand(
-                test_ratio=0.2,
-                val_ratio=0.2,
-                split_strategy="trial",
-                training_mode="individual",
-            )
+    )
+    generated = service.execute(
+        SaveDatasetSplitCommand(
+            test_ratio=0.2,
+            val_ratio=0.2,
+            split_strategy="trial",
+            training_mode="individual",
         )
+    )
 
-        assert filtered.ok, filtered.message
-        assert epoch.ok, epoch.message
-        assert epoch.state.epoch.epoch_count == 273
-        assert generated.ok, generated.message
-        assert generated.diagnostics["materialized"] is False
-        assert generated.state.dataset.available is False
-        assert generated.state.dataset.split_spec_saved is True
-        assert generated.state.dataset.split_materialized is False
+    assert filtered.ok, filtered.message
+    assert epoch.ok, epoch.message
+    assert epoch.state.epoch.epoch_count == 273
+    assert generated.ok, generated.message
+    assert generated.diagnostics["materialized"] is False
+    assert generated.state.dataset.available is False
+    assert generated.state.dataset.split_spec_saved is True
+    assert generated.state.dataset.split_materialized is False
 
-        model = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
-        options = service.execute(
-            ConfigureTrainingCommand(
-                output_dir=str(tmp_path / "graz-handoff-training"),
-                device="cpu",
-                epoch=1,
-                batch_size=64,
-                learning_rate=0.001,
-                save_checkpoints_every=0,
-                evaluation_option="val_acc",
-            )
+    model = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
+    options = service.execute(
+        ConfigureTrainingCommand(
+            output_dir=str(tmp_path / "graz-handoff-training"),
+            device="cpu",
+            epoch=1,
+            batch_size=64,
+            learning_rate=0.001,
+            save_checkpoints_every=0,
+            evaluation_option="val_acc",
         )
-        train_capability = service.get_capabilities().get(CommandName.TRAIN)
+    )
+    train_capability = service.get_capabilities().get(CommandName.TRAIN)
 
-        assert model.ok, model.message
-        assert options.ok, options.message
-        assert train_capability.available is True
+    assert model.ok, model.message
+    assert options.ok, options.message
+    assert train_capability.available is True
 
-        trained = service.execute(
-            TrainCommand(confirmed=True, interactive=False),
-        )
-        history = service.execute(
-            QueryStateCommand(query="training_history"),
-        )
+    trained = service.execute(
+        TrainCommand(confirmed=True, interactive=False),
+    )
+    history = service.execute(
+        QueryStateCommand(query="training_history"),
+    )
 
-        assert trained.ok, trained.message
-        assert trained.diagnostics["split_preparation"]["materialized"] is True
-        assert trained.diagnostics["split_preparation"]["split_audit"]["ok"] is True
-        assert trained.state.dataset.available is True
-        assert trained.state.dataset.split_materialized is True
-        assert trained.state.training.run_count == 1
-        assert trained.state.training.finished_run_count == 1
-        assert history.ok, history.message
-        assert history.diagnostics["row_count"] == 1
-        train_metrics = history.diagnostics["rows"][0]["metrics"]["train"]
-        assert RecordKey.LOSS in train_metrics
-        assert RecordKey.ACC in train_metrics
-    finally:
-        _close_service(service)
+    assert trained.ok, trained.message
+    assert trained.diagnostics["split_preparation"]["materialized"] is True
+    assert trained.diagnostics["split_preparation"]["split_audit"]["ok"] is True
+    assert trained.state.dataset.available is True
+    assert trained.state.dataset.split_materialized is True
+    assert trained.state.training.run_count == 1
+    assert trained.state.training.finished_run_count == 1
+    assert history.ok, history.message
+    assert history.diagnostics["row_count"] == 1
+    train_metrics = history.diagnostics["rows"][0]["metrics"]["train"]
+    assert RecordKey.LOSS in train_metrics
+    assert RecordKey.ACC in train_metrics
 
 
 @pytest.mark.optional_public_fixture
-def test_public_bids_reaches_epoch_and_split_configuration_readiness() -> None:
+def test_public_bids_reaches_epoch_and_split_configuration_readiness(
+    request: pytest.FixtureRequest,
+) -> None:
     """A different public source must materialize BIDS timing into real epochs."""
     if not PUBLIC_BIDS_EEG.exists() or not PUBLIC_BIDS_EVENTS.exists():
         pytest.skip(
@@ -222,6 +249,7 @@ def test_public_bids_reaches_epoch_and_split_configuration_readiness() -> None:
         )
 
     service = ApplicationService()
+    request.addfinalizer(lambda: _close_service(service))
     choices = {
         "selected_eeg_files": [str(PUBLIC_BIDS_EEG)],
         "label_carrier_choices": {
@@ -241,81 +269,77 @@ def test_public_bids_reaches_epoch_and_split_configuration_readiness() -> None:
         },
     }
 
-    try:
-        scan = service.execute(
-            ScanSourceCommand(
-                source_path=str(PUBLIC_BIDS_ROOT),
-                source_hint="bids",
-            )
+    scan = service.execute(
+        ScanSourceCommand(
+            source_path=str(PUBLIC_BIDS_ROOT),
+            source_hint="bids",
         )
-        preview = service.execute(PreviewInterpretationCommand(choices=choices))
-        validation = service.execute(ValidateInterpretationCommand())
-        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+    )
+    preview = service.execute(PreviewInterpretationCommand(choices=choices))
+    validation = service.execute(ValidateInterpretationCommand())
+    applied = service.execute(ApplyInterpretationCommand(confirmed=True))
 
-        assert scan.ok, scan.message
-        scan_payload = scan.diagnostics["scan_result"]
-        assert scan_payload["source_path"] == str(PUBLIC_BIDS_ROOT)
-        assert preview.ok, preview.message
-        candidate = preview.diagnostics["candidate"]
-        assert candidate["selected_eeg_files"] == [str(PUBLIC_BIDS_EEG)]
-        assert preview.diagnostics["preview"]["bids"]["scan_location"] == str(
-            PUBLIC_BIDS_ROOT
-        )
-        assert preview.diagnostics["preview"]["bids"]["selected_scope"][
-            "eeg_files"
-        ] == [str(PUBLIC_BIDS_EEG)]
-        assert validation.ok, validation.message
-        assert validation.diagnostics["validation_decision"]["decision"] == "safe"
-        assert applied.ok, applied.message
+    assert scan.ok, scan.message
+    scan_payload = scan.diagnostics["scan_result"]
+    assert scan_payload["source_path"] == str(PUBLIC_BIDS_ROOT)
+    assert preview.ok, preview.message
+    candidate = preview.diagnostics["candidate"]
+    assert candidate["selected_eeg_files"] == [str(PUBLIC_BIDS_EEG)]
+    assert preview.diagnostics["preview"]["bids"]["scan_location"] == str(
+        PUBLIC_BIDS_ROOT
+    )
+    assert preview.diagnostics["preview"]["bids"]["selected_scope"]["eeg_files"] == [
+        str(PUBLIC_BIDS_EEG)
+    ]
+    assert validation.ok, validation.message
+    assert validation.diagnostics["validation_decision"]["decision"] == "safe"
+    assert applied.ok, applied.message
 
-        handoff = applied.state.interpretation.epoch_handoff
-        assert handoff["label_source"] == "bids_events"
-        assert handoff["label_carrier_plan"][0]["selected_anchor"] == "onset"
-        assert handoff["label_carrier_plan"][0]["selected_duration_field"] == (
-            "duration"
-        )
-        assert handoff["label_carrier_plan"][0]["selected_target_file"] == str(
-            PUBLIC_BIDS_EEG
-        )
+    handoff = applied.state.interpretation.epoch_handoff
+    assert handoff["label_source"] == "bids_events"
+    assert handoff["label_carrier_plan"][0]["selected_anchor"] == "onset"
+    assert handoff["label_carrier_plan"][0]["selected_duration_field"] == ("duration")
+    assert handoff["label_carrier_plan"][0]["selected_target_file"] == str(
+        PUBLIC_BIDS_EEG
+    )
 
-        normalized = service.execute(
-            PreprocessCommand(
-                operation=PreprocessOperation.NORMALIZE,
-                method="z-score",
-            )
+    normalized = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.NORMALIZE,
+            method="z-score",
         )
-        epoch = service.execute(
-            CreateEpochCommand(
-                t_min=0.0,
-                t_max=0.3,
-            )
+    )
+    epoch = service.execute(
+        CreateEpochCommand(
+            t_min=0.0,
+            t_max=0.3,
         )
+    )
 
-        assert normalized.ok, normalized.message
-        assert epoch.ok, epoch.message
-        assert epoch.state.epoch.available is True
-        assert epoch.state.epoch.epoch_count == 2
-        assert set(epoch.state.epoch.event_ids) == {
-            "show_stimulus",
-            "start_experiment",
-        }
-        dataset_capability = service.get_capabilities().get(
-            CommandName.CONFIGURE_DATASET_SPLIT
-        )
-        train_capability = service.get_capabilities().get(CommandName.TRAIN)
-        assert dataset_capability.available is True
-        assert train_capability.available is False
-        assert (
-            "Save a valid data splitting specification before training."
-            in train_capability.reasons
-        )
-    finally:
-        _close_service(service)
+    assert normalized.ok, normalized.message
+    assert epoch.ok, epoch.message
+    assert epoch.state.epoch.available is True
+    assert epoch.state.epoch.epoch_count == 2
+    assert set(epoch.state.epoch.event_ids) == {
+        "show_stimulus",
+        "start_experiment",
+    }
+    dataset_capability = service.get_capabilities().get(
+        CommandName.CONFIGURE_DATASET_SPLIT
+    )
+    train_capability = service.get_capabilities().get(CommandName.TRAIN)
+    assert dataset_capability.available is True
+    assert train_capability.available is False
+    assert (
+        "Save a valid data splitting specification before training."
+        in train_capability.reasons
+    )
 
 
 @pytest.mark.optional_public_fixture
 def test_physionet_internal_events_reach_real_training_through_interpretation_spine(
     tmp_path: Path,
+    request: pytest.FixtureRequest,
 ) -> None:
     """A second public source must reach training through reviewed internal events."""
     if not PHYSIONET_MOTOR_EDF.exists():
@@ -326,6 +350,7 @@ def test_physionet_internal_events_reach_real_training_through_interpretation_sp
 
     class_map = {"T1": "left fist", "T2": "right fist"}
     service = ApplicationService()
+    request.addfinalizer(lambda: _close_service(service))
     choices = {
         "selected_eeg_files": [str(PHYSIONET_MOTOR_EDF)],
         "label_carrier": "embedded_events",
@@ -339,112 +364,107 @@ def test_physionet_internal_events_reach_real_training_through_interpretation_sp
         },
     }
 
-    try:
-        scan = service.execute(
-            ScanSourceCommand(
-                source_path=str(PHYSIONET_MOTOR_EDF),
-                source_hint="file",
-            )
+    scan = service.execute(
+        ScanSourceCommand(
+            source_path=str(PHYSIONET_MOTOR_EDF),
+            source_hint="file",
         )
-        preview = service.execute(PreviewInterpretationCommand(choices=choices))
-        validation = service.execute(ValidateInterpretationCommand())
-        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+    )
+    preview = service.execute(PreviewInterpretationCommand(choices=choices))
+    validation = service.execute(ValidateInterpretationCommand())
+    applied = service.execute(ApplyInterpretationCommand(confirmed=True))
 
-        assert scan.ok, scan.message
-        scan_payload = scan.diagnostics["scan_result"]
-        assert scan_payload["source_path"] == str(PHYSIONET_MOTOR_EDF)
-        assert scan_payload["eeg_files"] == [str(PHYSIONET_MOTOR_EDF)]
-        assert preview.ok, preview.message
-        candidate = preview.diagnostics["candidate"]
-        assert candidate["selected_eeg_files"] == [str(PHYSIONET_MOTOR_EDF)]
-        assert validation.ok, validation.message
-        validation_decision = validation.diagnostics["validation_decision"]
-        assert validation_decision["blocked_reasons"] == []
-        assert applied.ok, applied.message
-        assert applied.state.raw.files == [PHYSIONET_MOTOR_EDF.name]
-        assert applied.state.interpretation.label_sources == []
-        assert applied.state.interpretation.class_map == class_map
-        assert applied.state.interpretation.run_event_mappings == {
-            PHYSIONET_MOTOR_EDF.name: class_map,
-        }
-        assert applied.state.interpretation.epoch_handoff["label_source"] == (
-            "internal_events"
+    assert scan.ok, scan.message
+    scan_payload = scan.diagnostics["scan_result"]
+    assert scan_payload["source_path"] == str(PHYSIONET_MOTOR_EDF)
+    assert scan_payload["eeg_files"] == [str(PHYSIONET_MOTOR_EDF)]
+    assert preview.ok, preview.message
+    candidate = preview.diagnostics["candidate"]
+    assert candidate["selected_eeg_files"] == [str(PHYSIONET_MOTOR_EDF)]
+    assert validation.ok, validation.message
+    validation_decision = validation.diagnostics["validation_decision"]
+    assert validation_decision["blocked_reasons"] == []
+    assert applied.ok, applied.message
+    assert applied.state.raw.files == [PHYSIONET_MOTOR_EDF.name]
+    assert applied.state.interpretation.label_sources == []
+    assert applied.state.interpretation.class_map == class_map
+    assert applied.state.interpretation.run_event_mappings == {
+        PHYSIONET_MOTOR_EDF.name: class_map,
+    }
+    assert applied.state.interpretation.epoch_handoff["label_source"] == (
+        "internal_events"
+    )
+
+    filtered = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.BANDPASS,
+            low_freq=4,
+            high_freq=38,
         )
-
-        filtered = service.execute(
-            PreprocessCommand(
-                operation=PreprocessOperation.BANDPASS,
-                low_freq=4,
-                high_freq=38,
-            )
+    )
+    epoch = service.execute(
+        CreateEpochCommand(
+            t_min=0.0,
+            t_max=2.0,
+            event_ids=list(class_map),
         )
-        epoch = service.execute(
-            CreateEpochCommand(
-                t_min=0.0,
-                t_max=2.0,
-                event_ids=list(class_map),
-            )
+    )
+    generated = service.execute(
+        SaveDatasetSplitCommand(
+            test_ratio=0.2,
+            val_ratio=0.2,
+            split_strategy="trial",
+            training_mode="individual",
         )
-        generated = service.execute(
-            SaveDatasetSplitCommand(
-                test_ratio=0.2,
-                val_ratio=0.2,
-                split_strategy="trial",
-                training_mode="individual",
-            )
+    )
+
+    assert filtered.ok, filtered.message
+    assert epoch.ok, epoch.message
+    assert epoch.state.epoch.epoch_count == 15
+    assert set(epoch.state.epoch.event_ids) == set(class_map.values())
+    assert generated.ok, generated.message
+    assert generated.diagnostics["materialized"] is False
+    assert generated.state.dataset.available is False
+    assert generated.state.dataset.split_spec_saved is True
+    assert generated.state.dataset.split_materialized is False
+
+    model = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
+    options = service.execute(
+        ConfigureTrainingCommand(
+            output_dir=str(tmp_path / "physionet-handoff-training"),
+            device="cpu",
+            epoch=1,
+            batch_size=4,
+            learning_rate=0.001,
+            save_checkpoints_every=0,
+            evaluation_option="val_acc",
         )
+    )
+    train_capability = service.get_capabilities().get(CommandName.TRAIN)
 
-        assert filtered.ok, filtered.message
-        assert epoch.ok, epoch.message
-        assert epoch.state.epoch.epoch_count == 15
-        assert set(epoch.state.epoch.event_ids) == set(class_map.values())
-        assert generated.ok, generated.message
-        assert generated.diagnostics["materialized"] is False
-        assert generated.state.dataset.available is False
-        assert generated.state.dataset.split_spec_saved is True
-        assert generated.state.dataset.split_materialized is False
+    assert model.ok, model.message
+    assert options.ok, options.message
+    assert train_capability.available is True
 
-        model = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
-        options = service.execute(
-            ConfigureTrainingCommand(
-                output_dir=str(tmp_path / "physionet-handoff-training"),
-                device="cpu",
-                epoch=1,
-                batch_size=4,
-                learning_rate=0.001,
-                save_checkpoints_every=0,
-                evaluation_option="val_acc",
-            )
-        )
-        train_capability = service.get_capabilities().get(CommandName.TRAIN)
+    trained = service.execute(TrainCommand(confirmed=True, interactive=False))
+    history = service.execute(QueryStateCommand(query="training_history"))
 
-        assert model.ok, model.message
-        assert options.ok, options.message
-        assert train_capability.available is True
-
-        trained = service.execute(TrainCommand(confirmed=True, interactive=False))
-        history = service.execute(QueryStateCommand(query="training_history"))
-
-        assert trained.ok, trained.message
-        assert trained.diagnostics["split_preparation"]["materialized"] is True
-        assert trained.diagnostics["split_preparation"]["split_audit"]["ok"] is True
-        assert trained.state.dataset.available is True
-        assert trained.state.dataset.split_materialized is True
-        assert set(
-            service.study.datasets[0].get_epoch_data().label_map.values()
-        ) == set(class_map.values())
-        assert trained.state.training.run_count == 1
-        assert trained.state.training.finished_run_count == 1
-        assert history.ok, history.message
-        assert history.diagnostics["row_count"] == 1
-        train_metrics = history.diagnostics["rows"][0]["metrics"]["train"]
-        assert RecordKey.LOSS in train_metrics
-        assert RecordKey.ACC in train_metrics
-        training_record = service.training_runtime.training_plan_holders()[
-            0
-        ].get_plans()[0]
-        assert set(training_record.dataset.get_epoch_data().label_map.values()) == set(
-            class_map.values()
-        )
-    finally:
-        _close_service(service)
+    assert trained.ok, trained.message
+    assert trained.diagnostics["split_preparation"]["materialized"] is True
+    assert trained.diagnostics["split_preparation"]["split_audit"]["ok"] is True
+    assert trained.state.dataset.available is True
+    assert trained.state.dataset.split_materialized is True
+    assert set(service.study.datasets[0].get_epoch_data().label_map.values()) == set(
+        class_map.values()
+    )
+    assert trained.state.training.run_count == 1
+    assert trained.state.training.finished_run_count == 1
+    assert history.ok, history.message
+    assert history.diagnostics["row_count"] == 1
+    train_metrics = history.diagnostics["rows"][0]["metrics"]["train"]
+    assert RecordKey.LOSS in train_metrics
+    assert RecordKey.ACC in train_metrics
+    training_record = service.training_runtime.training_plan_holders()[0].get_plans()[0]
+    assert set(training_record.dataset.get_epoch_data().label_map.values()) == set(
+        class_map.values()
+    )

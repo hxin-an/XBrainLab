@@ -467,7 +467,7 @@ def test_cancel_after_commit_admission_is_rejected_and_commit_completes(
 
     class _Processor:
         def __init__(self, rows: list[Raw]) -> None:
-            self.rows = rows
+            self.rows = [row.copy() for row in rows]
 
         def data_preprocess(self, *_args: Any, **_kwargs: Any) -> list[Raw]:
             for row in self.rows:
@@ -499,6 +499,7 @@ def test_cancel_after_commit_admission_is_rejected_and_commit_completes(
     assert registry.snapshot(operation.operation_id).cancellable is False
     assert registry.cancel(operation.operation_id) is False
     assert study.preprocessed_data_list is original
+    assert original[0].get_preprocess_history() == ["loaded"]
 
     release_commit.set()
     worker.join(timeout=2.0)

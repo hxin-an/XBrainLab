@@ -65,6 +65,71 @@ from XBrainLab.backend.application.results import ErrorType
 from XBrainLab.ui.interaction_outcome import InteractionOutcome
 
 
+@pytest.mark.parametrize("unexpected", [False, True])
+def test_failed_training_preparation_releases_real_service_and_exception_hook(
+    qapp, tmp_path, monkeypatch, unexpected
+) -> None:
+    from XBrainLab.backend import study as study_module
+    from XBrainLab.backend.application import get_application_service
+
+    study = study_module.Study()
+    service = get_application_service(study)
+    original_hook = capture_script.sys.excepthook
+    monkeypatch.setattr(study_module, "Study", lambda: study)
+    monkeypatch.setattr(capture_script, "collect_source_identity", lambda *_a, **_k: {})
+    if unexpected:
+
+        def fail_preparation(*_args):
+            raise OSError("preparation failed")
+
+        monkeypatch.setattr(
+            capture_script, "prepare_training_dataset_ready_state", fail_preparation
+        )
+    try:
+        if unexpected:
+            with pytest.raises(OSError, match="preparation failed"):
+                capture_script.run_visualization_render_walkthrough(
+                    qapp,
+                    tmp_path,
+                    tmp_path / "training",
+                    1,
+                    source_path=tmp_path / "missing.fif",
+                )
+        else:
+            payload = capture_script.run_visualization_render_walkthrough(
+                qapp,
+                tmp_path,
+                tmp_path / "training",
+                1,
+                source_path=tmp_path / "missing.fif",
+            )
+            assert payload["status"] == "failed"
+            assert payload["failure_reason"] == "Dataset preparation failed."
+        assert service.is_closed
+        assert capture_script.sys.excepthook is original_hook
+    finally:
+        service.close()
+        capture_script.sys.excepthook = original_hook
+
+
+def test_main_output_failure_preserves_exception_hook(tmp_path, monkeypatch):
+    output = tmp_path / "not-a-directory"
+    output.write_text("existing caller data", encoding="utf-8")
+    original_hook = capture_script.sys.excepthook
+    monkeypatch.setattr(
+        capture_script.sys,
+        "argv",
+        ["capture", "--output-dir", str(output)],
+    )
+    try:
+        with pytest.raises(FileExistsError):
+            capture_script.main()
+        assert capture_script.sys.excepthook is original_hook
+        assert output.read_text(encoding="utf-8") == "existing caller data"
+    finally:
+        capture_script.sys.excepthook = original_hook
+
+
 @pytest.mark.parametrize("existing", [False, True])
 @pytest.mark.parametrize(("status", "exit_code"), [("passed", 0), ("failed", 1)])
 def test_main_preserves_training_directory_on_rerun(
@@ -78,8 +143,12 @@ def test_main_preserves_training_directory_on_rerun(
     output_dir = tmp_path / "capture artifacts"
     produced = training_dir / "earlier-run.bin"
     calls = []
+    sources = []
 
-    def capture(app, output, training, timeout):
+    def capture(app, output, training, timeout, *, source_path=None):
+        assert source_path is not None, "Each capture must own its EEG source"
+        assert source_path.is_file()
+        sources.append(source_path)
         assert app is qapp
         assert output == output_dir
         assert training == training_dir
@@ -99,8 +168,6 @@ def test_main_preserves_training_directory_on_rerun(
 
     monkeypatch.setattr(capture_script, "QApplication", lambda _argv: qapp)
     monkeypatch.setattr(capture_script, "run_visualization_render_walkthrough", capture)
-    # main installs a hook; register the original for restoration after this test.
-    monkeypatch.setattr(capture_script.sys, "excepthook", capture_script.sys.excepthook)
     monkeypatch.setattr(
         capture_script.sys,
         "argv",
@@ -123,6 +190,8 @@ def test_main_preserves_training_directory_on_rerun(
             output_dir / capture_script.MD_ARTIFACT
         ).read_text(encoding="utf-8")
     assert len(calls) == 2
+    assert sources[0] != sources[1]
+    assert all(not source.parent.exists() for source in sources)
 
 
 def test_capture_saliency_uses_explicit_panel_action_and_waits_for_terminal(

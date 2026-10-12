@@ -147,7 +147,6 @@ def run_stress(fixture: Path, cycles: int) -> dict[str, Any]:
         )
         original_hook(exctype, value, tb)
 
-    sys.excepthook = _record_exception
     raw = load_gdf_file(str(fixture))
     if raw is None:
         raise RuntimeError(f"Could not load real GDF fixture: {fixture}")
@@ -183,6 +182,7 @@ def run_stress(fixture: Path, cycles: int) -> dict[str, Any]:
     destroy_recreate_cycles = 0
     explicit_plot_finalization_cycles = 0
     widget: PreviewWidget | None = None
+    sys.excepthook = _record_exception
     try:
         for _cycle in range(cycles):
             widget = PreviewWidget()
@@ -257,10 +257,23 @@ def run_stress(fixture: Path, cycles: int) -> dict[str, Any]:
                 else min(minimum_psd_bins, psd_bins)
             )
             psd_render_cycles += 1
-            widget._on_plot_param_changed()
+            callbacks_before_wait = plot_update_callbacks
             wait_loop = QEventLoop()
-            QTimer.singleShot(70, wait_loop.quit)
-            wait_loop.exec()
+            wait_timeout = QTimer()
+            wait_timeout.setSingleShot(True)
+            wait_timeout.timeout.connect(wait_loop.quit)
+            widget.request_plot_update.connect(wait_loop.quit)
+            try:
+                wait_timeout.start(1_000)
+                widget._on_plot_param_changed()
+                wait_loop.exec()
+            finally:
+                wait_timeout.stop()
+                widget.request_plot_update.disconnect(wait_loop.quit)
+            if plot_update_callbacks == callbacks_before_wait:
+                raise TimeoutError(
+                    "Preprocess plot update did not arrive before timeout."
+                )
 
             widget.prepare_for_shutdown()
             final_shutdown = widget._native_plot_shutdown

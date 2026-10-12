@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -24,9 +23,6 @@ class PipelineStateSnapshot:
     dataset_generator: Any | None
     dataset_locked: bool
     dataset_sequence: int
-    epoch_trial_selection_evidence_present: bool
-    epoch_trial_selection_evidence: Any
-    epoch_trial_selection_evidence_dropped: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,9 +69,6 @@ class DatasetPublicationSnapshot:
     dataset_locked: bool
     dataset_sequence: int
     epoch_data: Any | None
-    epoch_trial_selection_evidence_present: bool
-    epoch_trial_selection_evidence: Any
-    epoch_trial_selection_evidence_dropped: int | None
 
 
 class PipelineStateTransaction:
@@ -94,15 +87,6 @@ class PipelineStateTransaction:
         data_manager = self._study.data_manager
         backup = getattr(data_manager, "backup_loaded_data_list", None)
         epoch_data = getattr(data_manager, "epoch_data", None)
-        epoch_data_runtime: Any = epoch_data
-        evidence_present = bool(
-            epoch_data is not None and hasattr(epoch_data, "trial_selection_evidence")
-        )
-        trial_selection_evidence = (
-            deepcopy(epoch_data_runtime.trial_selection_evidence)
-            if evidence_present
-            else None
-        )
         from XBrainLab.backend.dataset.dataset import Dataset  # noqa: PLC0415
 
         return PipelineStateSnapshot(
@@ -116,13 +100,6 @@ class PipelineStateTransaction:
             dataset_generator=getattr(data_manager, "dataset_generator", None),
             dataset_locked=bool(getattr(data_manager, "dataset_locked", False)),
             dataset_sequence=int(Dataset.SEQ),
-            epoch_trial_selection_evidence_present=evidence_present,
-            epoch_trial_selection_evidence=trial_selection_evidence,
-            epoch_trial_selection_evidence_dropped=(
-                int(getattr(epoch_data, "trial_selection_evidence_dropped", 0))
-                if evidence_present
-                else None
-            ),
         )
 
     def restore(self, snapshot: PipelineStateSnapshot) -> None:
@@ -142,23 +119,6 @@ class PipelineStateTransaction:
         from XBrainLab.backend.dataset.dataset import Dataset  # noqa: PLC0415
 
         Dataset.SEQ = snapshot.dataset_sequence
-        if (
-            snapshot.epoch_trial_selection_evidence_present
-            and snapshot.epoch_data is not None
-        ):
-            snapshot.epoch_data.trial_selection_evidence = deepcopy(
-                snapshot.epoch_trial_selection_evidence
-            )
-            snapshot.epoch_data.trial_selection_evidence_dropped = int(
-                snapshot.epoch_trial_selection_evidence_dropped or 0
-            )
-        elif snapshot.epoch_data is not None:
-            for attribute in (
-                "trial_selection_evidence",
-                "trial_selection_evidence_dropped",
-            ):
-                if hasattr(snapshot.epoch_data, attribute):
-                    delattr(snapshot.epoch_data, attribute)
 
     def publish_datasets(self, datasets: list[Any], generator: Any) -> None:
         """Publish already-generated datasets without touching training runtime."""
@@ -174,7 +134,7 @@ class PipelineStateTransaction:
         self,
         snapshot: DatasetPublicationSnapshot,
     ) -> None:
-        """Publish one prepared split with its sequence and epoch evidence."""
+        """Publish one prepared split with its dataset sequence."""
         data_manager = self._study.data_manager
         if getattr(data_manager, "epoch_data", None) is not snapshot.epoch_data:
             raise RuntimeError(
@@ -182,21 +142,12 @@ class PipelineStateTransaction:
             )
         self.publish_datasets(list(snapshot.datasets), snapshot.dataset_generator)
         data_manager.dataset_locked = snapshot.dataset_locked
-        self._restore_dataset_provenance(snapshot)
+        self._restore_dataset_sequence(snapshot)
 
     def capture_dataset_publication(self) -> DatasetPublicationSnapshot:
         """Capture dataset identities without copying epochs, masks, or history."""
         data_manager = self._study.data_manager
         epoch_data = getattr(data_manager, "epoch_data", None)
-        epoch_data_runtime: Any = epoch_data
-        evidence_present = bool(
-            epoch_data is not None and hasattr(epoch_data, "trial_selection_evidence")
-        )
-        trial_selection_evidence = (
-            deepcopy(epoch_data_runtime.trial_selection_evidence)
-            if evidence_present
-            else None
-        )
         from XBrainLab.backend.dataset.dataset import Dataset  # noqa: PLC0415
 
         return DatasetPublicationSnapshot(
@@ -205,13 +156,6 @@ class PipelineStateTransaction:
             dataset_locked=bool(getattr(data_manager, "dataset_locked", False)),
             dataset_sequence=int(Dataset.SEQ),
             epoch_data=epoch_data,
-            epoch_trial_selection_evidence_present=evidence_present,
-            epoch_trial_selection_evidence=trial_selection_evidence,
-            epoch_trial_selection_evidence_dropped=(
-                int(getattr(epoch_data, "trial_selection_evidence_dropped", 0))
-                if evidence_present
-                else None
-            ),
         )
 
     def restore_dataset_publication(
@@ -227,31 +171,14 @@ class PipelineStateTransaction:
         data_manager.datasets = list(snapshot.datasets)
         data_manager.dataset_generator = snapshot.dataset_generator
         data_manager.dataset_locked = snapshot.dataset_locked
-        self._restore_dataset_provenance(snapshot)
+        self._restore_dataset_sequence(snapshot)
 
     @staticmethod
-    def _restore_dataset_provenance(snapshot: DatasetPublicationSnapshot) -> None:
-        """Restore dataset sequence and detached trial-selection evidence."""
+    def _restore_dataset_sequence(snapshot: DatasetPublicationSnapshot) -> None:
+        """Restore the dataset naming sequence."""
         from XBrainLab.backend.dataset.dataset import Dataset  # noqa: PLC0415
 
         Dataset.SEQ = snapshot.dataset_sequence
-        if snapshot.epoch_trial_selection_evidence_present:
-            epoch_data = snapshot.epoch_data
-            if epoch_data is None:
-                raise RuntimeError("Dataset publication evidence has no epoch data.")
-            epoch_data.trial_selection_evidence = deepcopy(
-                snapshot.epoch_trial_selection_evidence
-            )
-            epoch_data.trial_selection_evidence_dropped = int(
-                snapshot.epoch_trial_selection_evidence_dropped or 0
-            )
-        elif snapshot.epoch_data is not None:
-            for attribute in (
-                "trial_selection_evidence",
-                "trial_selection_evidence_dropped",
-            ):
-                if hasattr(snapshot.epoch_data, attribute):
-                    delattr(snapshot.epoch_data, attribute)
 
     def commit_dataset_replacement(
         self,

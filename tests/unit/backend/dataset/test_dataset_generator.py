@@ -15,7 +15,6 @@ from XBrainLab.backend.dataset import (
     ValSplitByType,
     audit_dataset_splits,
 )
-from XBrainLab.backend.study import Study
 
 from .test_epochs import (
     block_size,
@@ -38,7 +37,12 @@ def test_dataset_generator(
     )
     with pytest.raises(ValueError):
         DatasetGenerator(epochs, config, ["test"])
-    DatasetGenerator(epochs, config)
+    generator = DatasetGenerator(epochs, config)
+    assert generator.datasets == []
+    assert generator.interrupted is False
+    assert generator.preview_failed is False
+    assert generator.done is False
+    assert generator.is_clean()
 
 
 def test_dataset_generator_failed(
@@ -60,9 +64,6 @@ def test_dataset_generator_failed(
 
     with pytest.raises(ValueError):
         generator.generate()
-
-    generator.reset()
-    assert generator.is_clean()
 
 
 def test_dataset_generator_handle_individual(
@@ -353,16 +354,3 @@ def test_dataset_generator_prepare_result(
         else:
             generator.prepare_result()
             assert generator.is_clean()
-
-
-def test_dataset_generator_apply(epochs):  # noqa: F811
-    study = Study()
-    is_cross_validation = False
-    test_splitter_list = val_splitter_list = []
-    config = DataSplittingConfig(
-        TrainingType.IND, is_cross_validation, val_splitter_list, test_splitter_list
-    )
-    generator = DatasetGenerator(epochs, config)
-    generator.datasets = [Dataset(epochs, config)]
-    generator.apply(study)
-    assert study.datasets == generator.datasets

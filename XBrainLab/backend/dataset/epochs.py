@@ -9,7 +9,6 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
 
 import mne
 import numpy as np
@@ -41,7 +40,6 @@ class EpochWindowProvenance:
     source_coordinates_verified: bool
 
 
-MAX_TRIAL_SELECTION_EVIDENCE = 100
 SOURCE_PATH_FINGERPRINT_PREFIX = "path-sha256:"
 SOURCE_CONTENT_FINGERPRINT_PREFIX = "content-sha256:"
 UNVERIFIED_SOURCE_FINGERPRINT_PREFIX = "unverified-wrapper-sha256:"
@@ -510,7 +508,7 @@ class Epochs:
             if not isinstance(data, mne.BaseEpochs):
                 raise TypeError("Preprocessed epoch data must contain MNE epochs")
             epoch_sources.append(data)
-        self._validate_channel_identity(epoch_sources)
+        self._validate_signal_axes(epoch_sources)
 
         self.sfreq = None
         # maps
@@ -529,8 +527,6 @@ class Epochs:
         self.idx: np.ndarray = np.array([])
         self.epoch_window_provenance: tuple[EpochWindowProvenance, ...] = ()
         self.trial_group: np.ndarray = np.array([], dtype=int)
-        self.trial_selection_evidence: list[dict[str, Any]] = []
-        self.trial_selection_evidence_dropped = 0
 
         self.data: np.ndarray = np.array([])
 
@@ -638,14 +634,26 @@ class Epochs:
         self.subject_map = {map_subject[i]: i for i in map_subject}
 
     @staticmethod
-    def _validate_channel_identity(epoch_sources: list[mne.BaseEpochs]) -> None:
-        """Reject multi-file epochs whose channel axes have different meaning."""
+    def _validate_signal_axes(epoch_sources: list[mne.BaseEpochs]) -> None:
+        """Reject incompatible channel/time axes before source events are changed."""
         if not epoch_sources:
             return
         reference = epoch_sources[0]
         reference_names = list(reference.info["ch_names"])
         reference_types = list(reference.get_channel_types())
         for index, data in enumerate(epoch_sources[1:], start=1):
+            if data.info["sfreq"] != reference.info["sfreq"]:
+                raise ValueError(
+                    "Epoch sampling frequency differs between files: "
+                    f"source 0 has {reference.info['sfreq']} Hz, source {index} "
+                    f"has {data.info['sfreq']} Hz."
+                )
+            if not np.array_equal(data.times, reference.times):
+                raise ValueError(
+                    "Epoch time axis differs between files: "
+                    f"source {index} must use the same event-relative start and "
+                    "sample times as source 0."
+                )
             channel_names = list(data.info["ch_names"])
             if channel_names != reference_names:
                 raise ValueError(
@@ -740,25 +748,6 @@ class Epochs:
         if len(groups) != self.get_data_length():
             return np.arange(self.get_data_length(), dtype=int)
         return groups.copy()
-
-    def get_trial_selection_evidence(self) -> list[dict[str, Any]]:
-        """Return bounded structured evidence from trial split selections."""
-        return deepcopy(getattr(self, "trial_selection_evidence", []))
-
-    def get_trial_selection_evidence_dropped(self) -> int:
-        """Return the number of old selection evidence records discarded."""
-        return int(getattr(self, "trial_selection_evidence_dropped", 0))
-
-    def reset_trial_selection_evidence(self) -> None:
-        """Clear trial selection evidence before a new generation run."""
-        self.trial_selection_evidence = []
-        self.trial_selection_evidence_dropped = 0
-
-    def _record_trial_selection_evidence(self, evidence: dict[str, Any]) -> None:
-        if len(self.trial_selection_evidence) >= MAX_TRIAL_SELECTION_EVIDENCE:
-            self.trial_selection_evidence.pop(0)
-            self.trial_selection_evidence_dropped += 1
-        self.trial_selection_evidence.append(deepcopy(evidence))
 
     ## get by index
     def get_subject_name(self, idx: int) -> str:

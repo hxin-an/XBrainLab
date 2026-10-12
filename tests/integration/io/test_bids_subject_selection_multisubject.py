@@ -155,8 +155,12 @@ def _trial_split_specification() -> DatasetSplitSpecification:
     )
 
 
-def test_catalog_reports_three_complete_subjects_and_nine_recordings() -> None:
-    result = ApplicationService().execute(
+def test_catalog_reports_three_complete_subjects_and_nine_recordings(
+    request: pytest.FixtureRequest,
+) -> None:
+    service = ApplicationService()
+    request.addfinalizer(service.close)
+    result = service.execute(
         ScanSourceCommand(
             source_path=str(OPENNEURO_P300_ROOT),
             source_hint="bids",
@@ -195,8 +199,11 @@ def test_catalog_reports_three_complete_subjects_and_nine_recordings() -> None:
 )
 def test_scan_uses_only_the_exact_selected_subject_scope(
     subjects: tuple[str, ...],
+    request: pytest.FixtureRequest,
 ) -> None:
-    result = ApplicationService().execute(
+    service = ApplicationService()
+    request.addfinalizer(service.close)
+    result = service.execute(
         ScanSourceCommand(
             source_path=str(OPENNEURO_P300_ROOT),
             source_hint="bids",
@@ -217,9 +224,13 @@ def test_scan_uses_only_the_exact_selected_subject_scope(
     assert scan["bids"]["selected_scope"] == expected_scope
 
 
-def test_review_pairs_events_only_with_selected_subjects_002_and_003() -> None:
+def test_review_pairs_events_only_with_selected_subjects_002_and_003(
+    request: pytest.FixtureRequest,
+) -> None:
     subjects = ("002", "003")
-    result = ApplicationService().execute(
+    service = ApplicationService()
+    request.addfinalizer(service.close)
+    result = service.execute(
         ReviewInterpretationCommand(
             source_path=str(OPENNEURO_P300_ROOT),
             source_hint="bids",
@@ -259,9 +270,9 @@ def test_review_pairs_events_only_with_selected_subjects_002_and_003() -> None:
     assert _subjects_in_paths(reviewed_paths) == set(subjects)
 
 
-def test_selected_subjects_reach_epochs_and_deferred_split_without_scope_leakage() -> (
-    None
-):
+def test_selected_subjects_reach_epochs_and_deferred_split_without_scope_leakage(
+    request: pytest.FixtureRequest,
+) -> None:
     subjects = ("002", "003")
     expected_eeg_files = _run_paths(subjects, "eeg.set")
     expected_events_files = _run_paths(subjects, "events.tsv")
@@ -269,143 +280,135 @@ def test_selected_subjects_reach_epochs_and_deferred_split_without_scope_leakage
         f"Subject-{subject}_0": subject for subject in subjects
     }
     service = ApplicationService()
+    request.addfinalizer(service.close)
 
-    try:
-        review = service.execute(
-            ReviewInterpretationCommand(
-                source_path=str(OPENNEURO_P300_ROOT),
-                source_hint="bids",
-                choices=_p300_choices(subjects),
-            )
-        )
-        validation = service.execute(ValidateInterpretationCommand())
-        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
-
-        assert review.ok, review.message
-        assert validation.ok, validation.message
-        assert validation.diagnostics["validation_decision"]["blocked_reasons"] == []
-        assert applied.ok, applied.message
-        assert applied.state.raw.count == len(expected_eeg_files)
-        assert applied.state.raw.files == [
-            Path(path).name for path in expected_eeg_files
-        ]
-        assert {row["subject"] for row in applied.state.raw.metadata} == set(subjects)
-        assert applied.state.interpretation.bids["selected_scope"]["eeg_files"] == (
-            expected_eeg_files
-        )
-
-        handoff = applied.state.interpretation.epoch_handoff
-        handoff_paths = [
-            *[row["path"] for row in handoff["label_carrier_plan"]],
-            *[row["selected_target_file"] for row in handoff["label_carrier_plan"]],
-        ]
-        assert set(handoff_paths) == {*expected_eeg_files, *expected_events_files}
-        assert _subjects_in_paths(handoff_paths) == set(subjects)
+    def wait_for_background_tasks() -> None:
         assert service.wait_for_background_tasks(timeout=30.0)
 
-        normalized = service.execute(
-            PreprocessCommand(
-                operation=PreprocessOperation.NORMALIZE,
-                method="z-score",
-            )
+    request.addfinalizer(wait_for_background_tasks)
+    request.addfinalizer(service.dataset_generation.discard_prepared_split)
+
+    review = service.execute(
+        ReviewInterpretationCommand(
+            source_path=str(OPENNEURO_P300_ROOT),
+            source_hint="bids",
+            choices=_p300_choices(subjects),
         )
-        epoch = service.execute(
-            CreateEpochCommand(
-                t_min=-0.2,
-                t_max=0.5,
-                event_ids=list(P300_CLASS_VALUES),
-            )
+    )
+    validation = service.execute(ValidateInterpretationCommand())
+    applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+
+    assert review.ok, review.message
+    assert validation.ok, validation.message
+    assert validation.diagnostics["validation_decision"]["blocked_reasons"] == []
+    assert applied.ok, applied.message
+    assert applied.state.raw.count == len(expected_eeg_files)
+    assert applied.state.raw.files == [Path(path).name for path in expected_eeg_files]
+    assert {row["subject"] for row in applied.state.raw.metadata} == set(subjects)
+    assert applied.state.interpretation.bids["selected_scope"]["eeg_files"] == (
+        expected_eeg_files
+    )
+
+    handoff = applied.state.interpretation.epoch_handoff
+    handoff_paths = [
+        *[row["path"] for row in handoff["label_carrier_plan"]],
+        *[row["selected_target_file"] for row in handoff["label_carrier_plan"]],
+    ]
+    assert set(handoff_paths) == {*expected_eeg_files, *expected_events_files}
+    assert _subjects_in_paths(handoff_paths) == set(subjects)
+    assert service.wait_for_background_tasks(timeout=30.0)
+
+    normalized = service.execute(
+        PreprocessCommand(
+            operation=PreprocessOperation.NORMALIZE,
+            method="z-score",
         )
-
-        assert normalized.ok, normalized.message
-        assert epoch.ok, epoch.message
-        assert epoch.state.epoch.available is True
-        assert epoch.state.epoch.epoch_count is not None
-        assert epoch.state.epoch.epoch_count > 0
-
-        epoch_data = service.study.epoch_data
-        assert epoch_data is not None
-        assert set(epoch_data.get_subject_map().values()) == set(subjects)
-        assert len(epoch_data.get_epoch_window_provenance()) == (
-            epoch.state.epoch.epoch_count
+    )
+    epoch = service.execute(
+        CreateEpochCommand(
+            t_min=-0.2,
+            t_max=0.5,
+            event_ids=list(P300_CLASS_VALUES),
         )
+    )
 
-        epoched_sources = service.study.preprocessed_data_list
-        assert len(epoched_sources) == len(expected_eeg_files)
-        assert [item.get_filepath() for item in epoched_sources] == expected_eeg_files
-        expected_source_ids: set[str] = set()
-        for item in epoched_sources:
-            identity = item.get_source_content_identity()
-            assert identity is not None
-            assert identity["algorithm"] == "sha256"
-            expected_source_ids.add(f"content-sha256:{identity['sha256']}")
-        assert len(expected_source_ids) == len(expected_eeg_files)
+    assert normalized.ok, normalized.message
+    assert epoch.ok, epoch.message
+    assert epoch.state.epoch.available is True
+    assert epoch.state.epoch.epoch_count is not None
+    assert epoch.state.epoch.epoch_count > 0
 
-        epoch_provenance = epoch_data.get_epoch_window_provenance()
-        assert all(item.source_coordinates_verified for item in epoch_provenance)
+    epoch_data = service.study.epoch_data
+    assert epoch_data is not None
+    assert set(epoch_data.get_subject_map().values()) == set(subjects)
+    assert len(epoch_data.get_epoch_window_provenance()) == (
+        epoch.state.epoch.epoch_count
+    )
+
+    epoched_sources = service.study.preprocessed_data_list
+    assert len(epoched_sources) == len(expected_eeg_files)
+    assert [item.get_filepath() for item in epoched_sources] == expected_eeg_files
+    expected_source_ids: set[str] = set()
+    for item in epoched_sources:
+        identity = item.get_source_content_identity()
+        assert identity is not None
+        assert identity["algorithm"] == "sha256"
+        expected_source_ids.add(f"content-sha256:{identity['sha256']}")
+    assert len(expected_source_ids) == len(expected_eeg_files)
+
+    epoch_provenance = epoch_data.get_epoch_window_provenance()
+    assert all(item.source_coordinates_verified for item in epoch_provenance)
+    assert {
+        item.source_recording_id for item in epoch_provenance
+    } == expected_source_ids
+
+    split_specification = _trial_split_specification()
+    split_generation = service.get_view_publication().generation
+    split_preview = service.get_dataset_split_preview(
+        DatasetSplitPreviewRequest(
+            request_id="selected-multisubject-split",
+            publication_generation=split_generation,
+            specification=split_specification,
+        )
+    )
+    assert {row.name for row in split_preview.rows} == set(expected_dataset_subjects)
+
+    saved = service.execute(
+        SaveDatasetSplitCommand(
+            split_config=split_specification.to_payload(),
+            preview_receipt=split_preview.receipt,
+        ),
+        expected_publication_generation=split_generation,
+    )
+
+    assert saved.ok, saved.message
+    assert saved.state.dataset.split_spec_saved is True
+    assert saved.state.dataset.split_materialized is False
+    assert saved.state.dataset.available is False
+    assert saved.state.dataset.count == 0
+    assert service.study.datasets == []
+
+    candidate = service.dataset_generation.prepare_saved_split_candidate()
+
+    assert candidate.summary["audit"]["ok"] is True
+    assert {dataset.get_name() for dataset in candidate.datasets} == set(
+        expected_dataset_subjects
+    )
+    for dataset in candidate.datasets:
+        materialized_epoch_data = dataset.get_epoch_data()
+        assert set(materialized_epoch_data.get_subject_map().values()) == set(subjects)
         assert {
-            item.source_recording_id for item in epoch_provenance
+            item.source_recording_id
+            for item in materialized_epoch_data.get_epoch_window_provenance()
         } == expected_source_ids
+        materialized_mask = dataset.train_mask | dataset.val_mask | dataset.test_mask
+        materialized_subjects = {
+            materialized_epoch_data.get_subject_name(int(subject_index))
+            for subject_index in materialized_epoch_data.get_subject_list_by_mask(
+                materialized_mask
+            ).tolist()
+        }
+        assert materialized_subjects == {expected_dataset_subjects[dataset.get_name()]}
 
-        split_specification = _trial_split_specification()
-        split_generation = service.get_view_publication().generation
-        split_preview = service.get_dataset_split_preview(
-            DatasetSplitPreviewRequest(
-                request_id="selected-multisubject-split",
-                publication_generation=split_generation,
-                specification=split_specification,
-            )
-        )
-        assert {row.name for row in split_preview.rows} == set(
-            expected_dataset_subjects
-        )
-
-        saved = service.execute(
-            SaveDatasetSplitCommand(
-                split_config=split_specification.to_payload(),
-                preview_receipt=split_preview.receipt,
-            ),
-            expected_publication_generation=split_generation,
-        )
-
-        assert saved.ok, saved.message
-        assert saved.state.dataset.split_spec_saved is True
-        assert saved.state.dataset.split_materialized is False
-        assert saved.state.dataset.available is False
-        assert saved.state.dataset.count == 0
-        assert service.study.datasets == []
-
-        candidate = service.dataset_generation.prepare_saved_split_candidate()
-
-        assert candidate.summary["audit"]["ok"] is True
-        assert {dataset.get_name() for dataset in candidate.datasets} == set(
-            expected_dataset_subjects
-        )
-        for dataset in candidate.datasets:
-            materialized_epoch_data = dataset.get_epoch_data()
-            assert set(materialized_epoch_data.get_subject_map().values()) == set(
-                subjects
-            )
-            assert {
-                item.source_recording_id
-                for item in materialized_epoch_data.get_epoch_window_provenance()
-            } == expected_source_ids
-            materialized_mask = (
-                dataset.train_mask | dataset.val_mask | dataset.test_mask
-            )
-            materialized_subjects = {
-                materialized_epoch_data.get_subject_name(int(subject_index))
-                for subject_index in materialized_epoch_data.get_subject_list_by_mask(
-                    materialized_mask
-                ).tolist()
-            }
-            assert materialized_subjects == {
-                expected_dataset_subjects[dataset.get_name()]
-            }
-
-        assert service.study.datasets == []
-        assert service.get_state().dataset.split_materialized is False
-    finally:
-        service.dataset_generation.discard_prepared_split()
-        assert service.wait_for_background_tasks(timeout=30.0)
-        service.close()
+    assert service.study.datasets == []
+    assert service.get_state().dataset.split_materialized is False

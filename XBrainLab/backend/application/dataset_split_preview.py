@@ -5,13 +5,13 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Mapping, Sequence
-from copy import copy, deepcopy
 from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
 import numpy as np
 
+from XBrainLab.backend.dataset.dataset import Dataset
 from XBrainLab.backend.dataset.split_audit import (
     audit_dataset_splits,
     blocking_split_audit_issues,
@@ -22,8 +22,6 @@ from XBrainLab.backend.dataset.split_audit import (
 
 from .errors import PreconditionError
 from .view_publication import ApplicationViewPublication
-
-_MISSING = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -469,14 +467,6 @@ class _ActivePreview:
     cancelled: bool = False
 
 
-@dataclass(frozen=True, slots=True)
-class _PreviewStateSnapshot:
-    dataset_sequence: int
-    evidence_reference: Any
-    evidence_value: Any
-    evidence_dropped: Any
-
-
 class DatasetSplitPreviewPublisher:
     """Keep Epochs and DatasetGenerator behind the application boundary."""
 
@@ -550,9 +540,8 @@ class DatasetSplitPreviewPublisher:
                         "Dataset split preview was cancelled.",
                         diagnostics={"request_id": request.request_id},
                     )
-                snapshot = _capture_preview_state(epoch_data)
+                dataset_sequence = int(Dataset.SEQ)
                 try:
-                    _detach_generator_epoch_evidence(generator, epoch_data)
                     try:
                         generated = generator.generate()
                     except ValueError as exc:
@@ -629,7 +618,7 @@ class DatasetSplitPreviewPublisher:
                             diagnostics={"request_id": request.request_id},
                         )
                 finally:
-                    _restore_preview_state(epoch_data, snapshot)
+                    Dataset.SEQ = dataset_sequence
             after = self._get_publication()
             self._validate_stable_generation(
                 request.publication_generation,
@@ -775,69 +764,6 @@ class DatasetSplitPreviewPublisher:
 def _validate_generation(value: int) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError("publication_generation must be a positive integer")
-
-
-def _capture_preview_state(epoch_data: Any) -> _PreviewStateSnapshot:
-    from XBrainLab.backend.dataset.dataset import Dataset  # noqa: PLC0415
-
-    evidence_reference = getattr(epoch_data, "trial_selection_evidence", _MISSING)
-    evidence_value = (
-        _MISSING if evidence_reference is _MISSING else deepcopy(evidence_reference)
-    )
-    return _PreviewStateSnapshot(
-        dataset_sequence=int(Dataset.SEQ),
-        evidence_reference=evidence_reference,
-        evidence_value=evidence_value,
-        evidence_dropped=getattr(
-            epoch_data,
-            "trial_selection_evidence_dropped",
-            _MISSING,
-        ),
-    )
-
-
-def _restore_preview_state(
-    epoch_data: Any,
-    snapshot: _PreviewStateSnapshot,
-) -> None:
-    from XBrainLab.backend.dataset.dataset import Dataset  # noqa: PLC0415
-
-    Dataset.SEQ = snapshot.dataset_sequence
-    if snapshot.evidence_reference is _MISSING:
-        if hasattr(epoch_data, "trial_selection_evidence"):
-            delattr(epoch_data, "trial_selection_evidence")
-    else:
-        evidence_reference = snapshot.evidence_reference
-        if isinstance(evidence_reference, list):
-            evidence_reference[:] = deepcopy(snapshot.evidence_value)
-        epoch_data.trial_selection_evidence = evidence_reference
-
-    if snapshot.evidence_dropped is _MISSING:
-        if hasattr(epoch_data, "trial_selection_evidence_dropped"):
-            delattr(epoch_data, "trial_selection_evidence_dropped")
-    else:
-        epoch_data.trial_selection_evidence_dropped = snapshot.evidence_dropped
-
-
-def _detach_generator_epoch_evidence(generator: Any, epoch_data: Any) -> None:
-    if getattr(generator, "epoch_data", None) is not epoch_data:
-        return
-    try:
-        detached_epoch_data = copy(epoch_data)
-        evidence = getattr(epoch_data, "trial_selection_evidence", _MISSING)
-        if evidence is not _MISSING:
-            detached_epoch_data.trial_selection_evidence = deepcopy(evidence)
-        evidence_dropped = getattr(
-            epoch_data,
-            "trial_selection_evidence_dropped",
-            _MISSING,
-        )
-        if evidence_dropped is not _MISSING:
-            detached_epoch_data.trial_selection_evidence_dropped = evidence_dropped
-        generator.epoch_data = detached_epoch_data
-    except (AttributeError, TypeError):
-        # The state snapshot still protects custom generators that cannot be rebound.
-        return
 
 
 def _rules_from_payload(raw: Any) -> tuple[DatasetSplitRule, ...]:

@@ -187,9 +187,6 @@ def test_generator_interrupts_between_individual_subject_scopes_and_restores_sta
 ) -> None:
     """A real generator must cooperate with cancellation at a bounded scope edge."""
     epoch_data = _multi_subject_kfold_epochs()
-    original_evidence = [{"source": "before-preview"}]
-    epoch_data.trial_selection_evidence = original_evidence
-    epoch_data.trial_selection_evidence_dropped = 4
     initial_sequence = Dataset.SEQ
     generator = DatasetGenerator(
         epoch_data,
@@ -217,9 +214,6 @@ def test_generator_interrupts_between_individual_subject_scopes_and_restores_sta
     assert completed_scopes == 1
     assert generator.datasets == []
     assert initial_sequence == Dataset.SEQ
-    assert epoch_data.trial_selection_evidence is original_evidence
-    assert epoch_data.trial_selection_evidence == [{"source": "before-preview"}]
-    assert epoch_data.trial_selection_evidence_dropped == 4
 
 
 @pytest.mark.parametrize("split_type", [SplitByType.TRIAL, SplitByType.SESSION])

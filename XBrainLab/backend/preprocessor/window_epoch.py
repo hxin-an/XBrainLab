@@ -110,6 +110,11 @@ class WindowEpoch(PreprocessBase):
             preload=True,
             id=fixed_id,
         )
+        if len(epoch) == 0:
+            raise ValueError(
+                "No usable epochs remain after MNE rejected the sliding windows. "
+                "Review bad annotations before creating epochs."
+            )
         _, event_id = preprocessed_data.get_event_list()
         epoch.event_id = {next(iter(event_id.keys())): fixed_id}
         preprocessed_data.set_mne_and_wipe_events(epoch)

@@ -195,6 +195,8 @@ def _completed_training_service(
     dataset = SimpleNamespace(
         get_name=lambda: "saliency-publication",
         get_epoch_data=lambda: epoch_data,
+        get_test_len=lambda: int(dataset.test_mask.sum()),
+        get_val_len=lambda: int(dataset.val_mask.sum()),
         train_mask=np.array([False]),
         val_mask=np.array([False]),
         test_mask=np.array([True]),

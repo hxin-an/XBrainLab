@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
 from PIL import Image
 
 from scripts.dev.capture_ui_baseline import (
@@ -18,6 +19,65 @@ from scripts.dev.capture_ui_baseline import (
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
     collect_source_identity,
 )
+
+
+@pytest.mark.parametrize("failure_phase", ["prepare", "first_frame", "stable_frame"])
+def test_capture_callback_failure_closes_real_service(
+    qapp, qtbot, tmp_path, monkeypatch, failure_phase
+):
+    from PyQt6.QtCore import QTimer
+
+    from scripts.dev import capture_ui_baseline as capture
+    from XBrainLab.backend.application import runtime
+
+    services = []
+    original_get_service = runtime.get_application_service
+
+    def observe_service(study):
+        service = original_get_service(study)
+        services.append(service)
+        return service
+
+    monkeypatch.setattr(runtime, "get_application_service", observe_service)
+    calls = []
+
+    def frame(_window, _path, **_kwargs):
+        calls.append("frame")
+        if failure_phase == "first_frame" or len(calls) == 2:
+            raise OSError("baseline frame readback unavailable")
+        return 0
+
+    def prepare(_window, _target):
+        raise OSError("baseline panel preparation unavailable")
+
+    if failure_phase == "prepare":
+        monkeypatch.setattr(capture, "_prepare_capture_step", prepare)
+    else:
+        monkeypatch.setattr(capture, "_capture_window_frame", frame)
+    fallback = QTimer()
+    fallback.setSingleShot(True)
+    fallback.timeout.connect(qapp.quit)
+    fallback.start(6000)
+    previous_quit_policy = qapp.quitOnLastWindowClosed()
+    try:
+        with qtbot.captureExceptions() as exceptions:
+            code, shutdown = capture.capture_window(qapp, tmp_path / "baseline.png")
+        assert code == 5
+        assert shutdown["ok"], shutdown
+        assert services and all(service.is_closed for service in services)
+        assert exceptions == []
+        assert fallback.isActive(), "capture only exited via the test safety timer"
+    finally:
+        fallback.stop()
+        for widget in qapp.topLevelWidgets():
+            if getattr(widget, "study", None) in [
+                service.study for service in services
+            ]:
+                widget.close()
+                widget.deleteLater()
+        for service in services:
+            service.close()
+        qapp.setQuitOnLastWindowClosed(previous_quit_policy)
 
 
 def test_default_baseline_covers_both_filter_section_states():

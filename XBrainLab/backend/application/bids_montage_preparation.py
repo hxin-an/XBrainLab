@@ -939,16 +939,13 @@ def _resolve_resources(
             raise _StaleBidsIndexError(
                 "BIDS dataset index changed before montage inheritance resolution."
             )
-        if not _index_contains_recording(active_index, recording):
+        if not active_index.contains_recording(recording):
             raise _MontageResourceError(
                 "Selected recording is outside the supplied BIDS recording index."
             )
     else:
         active_index = current_bids_dataset_index_for_path(recording)
-        if active_index is not None and not _index_contains_recording(
-            active_index,
-            recording,
-        ):
+        if active_index is not None and not active_index.contains_recording(recording):
             active_index = None
         if active_index is None:
             dataset_root = _find_dataset_root(recording)
@@ -1014,10 +1011,6 @@ def _resolve_resources(
         electrodes=best[0][0],
         coordsystem=best[0][1],
     )
-
-
-def _index_contains_recording(index: BidsDatasetIndex, recording: Path) -> bool:
-    return index.contains_recording(recording)
 
 
 def _discover_candidates(

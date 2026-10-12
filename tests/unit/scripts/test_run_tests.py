@@ -121,6 +121,45 @@ def test_poe_coverage_task_uses_the_verified_aggregate_runner() -> None:
     assert task["env"]["XBL_TEST_COVERAGE"] == "1"
 
 
+def test_repository_coverage_records_python_worker_thread_execution(
+    tmp_path: Path,
+) -> None:
+    """Measure an actual worker using the repository's coverage configuration."""
+    root = Path(run_tests.__file__).resolve().parents[2]
+    worker = tmp_path / "worker_probe.py"
+    worker.write_text(
+        "def worker(results):\n    results.append('worker executed')\n",
+        encoding="utf-8",
+    )
+    probe = (
+        "import coverage, threading\n"
+        "from worker_probe import worker\n"
+        f"cov = coverage.Coverage(config_file={str(root / 'pyproject.toml')!r}, "
+        f"data_file={str(tmp_path / '.coverage')!r}, source=[{str(tmp_path)!r}])\n"
+        "results = []\n"
+        "cov.start()\n"
+        "thread = threading.Thread(target=worker, args=(results,))\n"
+        "thread.start()\n"
+        "thread.join(timeout=5)\n"
+        "cov.stop()\n"
+        "assert not thread.is_alive()\n"
+        "assert results == ['worker executed']\n"
+        f"assert 2 in (cov.get_data().lines({str(worker.resolve())!r}) or [])\n"
+    )
+    environment = os.environ.copy()
+    environment.pop("COVERAGE_PROCESS_START", None)
+    completed = subprocess.run(  # noqa: S603 - fixed coverage probe, no shell
+        [sys.executable, "-c", probe],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
 def test_run_shards_executes_every_declared_domain(monkeypatch) -> None:
     calls: list[tuple[str, ...]] = []
 
