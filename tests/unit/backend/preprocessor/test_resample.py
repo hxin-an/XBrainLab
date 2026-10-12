@@ -6,6 +6,7 @@ import pytest
 
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.preprocessor.resample import Resample
+from XBrainLab.backend.preprocessor.time_epoch import TimeEpoch
 
 
 @pytest.mark.parametrize("first_samp", [0, 500])
@@ -28,6 +29,36 @@ def test_resample_keeps_last_sample_event_inside_recording(first_samp):
     np.testing.assert_array_equal(events[:, 1:], source_events[:, 1:])
     np.testing.assert_array_equal(source.get_event_list()[0], source_events)
     assert source.get_sfreq() == 100.0
+
+
+def test_epoch_resample_rejects_changed_event_grid_without_mutating_source(monkeypatch):
+    source = Raw(
+        "reviewed-source.fif",
+        mne.io.RawArray(
+            np.zeros((1, 500)),
+            mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg"),
+            verbose=False,
+        ),
+    )
+    source.set_event(np.asarray([[100, 0, 1]]), {"rest": 1})
+    epoched = TimeEpoch([source]).data_preprocess(None, None, 0.0, 0.99)[0]
+    events = epoched.get_mne().events.copy()
+    metadata = epoched.get_mne().metadata.copy()
+    original_resample = mne.BaseEpochs.resample
+
+    def change_event_grid(epochs, *args, **kwargs):
+        result = original_resample(epochs, *args, **kwargs)
+        epochs.events[0, 0] += 1
+        return result
+
+    monkeypatch.setattr(mne.BaseEpochs, "resample", change_event_grid)
+    with pytest.raises(ValueError, match="source event grid"):
+        Resample([epoched]).data_preprocess(50.0)
+
+    assert epoched.get_sfreq() == 100.0
+    np.testing.assert_array_equal(epoched.get_mne().events, events)
+    assert epoched.get_mne().metadata.equals(metadata)
+    assert len(epoched.get_preprocess_history()) == 1
 
 
 class TestResample:

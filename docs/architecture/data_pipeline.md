@@ -1,6 +1,6 @@
 # Data Pipeline Architecture
 
-最後更新：`2026-09-12`
+最後更新：`2026-10-12`
 
 ## 可信度
 
@@ -264,6 +264,15 @@ event-relative sample times，拒絕相同shape但不同tmin等不相容時間�
 - 提供按 subject / session / trial picking 的基礎。
 
 注意：`Epochs` constructor 會對 input `Raw` 做 event normalization，文件中已明確註記這是 in-place 影響。因此這一層後續若要重構，需要小心資料複製與狀態 ownership。
+
+Source-coordinate provenance 由實際 `TimeEpoch`／`WindowEpoch` producer 寫入 MNE metadata；
+`Epochs` 彙整時讀取並驗證，不從 preprocessing history 的顯示文字推論來源權威。Epoched
+resampling 只更新先前已驗證的 provenance，保留原 recording identity／event sample grid，
+更新重採樣後的 rate／window；沒有有效來源或 metadata 的輸入仍是 unverified，不因改變
+檔案位置或補一段 history 而升級。既有 metadata schema 與 trial-wise split 的 fail-closed
+規則不變。Reader 同時核對目前 rate／time bounds 與 encoded window；FIF 的 float32 rate
+與整數 first-sample 捨入只接受其已知序列化結果。再次 resample 前，在 detached copy 還原
+已驗證的原時間起點，避免存檔捨入累積成來源 sample 偏移；不更動輸入檔或 live source。
 
 `DatasetGenerator` 以 `DataSplittingConfig` 產生 `Dataset`。
 

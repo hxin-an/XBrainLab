@@ -1,8 +1,11 @@
 """Preprocessor for segmenting continuous EEG using a sliding window."""
 
+from contextlib import suppress
+
 import mne
 
 from ..application.owned_work import owned_work_checkpoint
+from ..dataset.epochs import mark_xbrainlab_raw_event_source_epochs
 from ..load_data import Raw
 from .base import PreprocessBase
 from .normalize import Normalize
@@ -118,3 +121,6 @@ class WindowEpoch(PreprocessBase):
         _, event_id = preprocessed_data.get_event_list()
         epoch.event_id = {next(iter(event_id.keys())): fixed_id}
         preprocessed_data.set_mne_and_wipe_events(epoch)
+        # Missing or malformed source identity remains unverified for split audit.
+        with suppress(TypeError, ValueError):
+            mark_xbrainlab_raw_event_source_epochs(preprocessed_data)

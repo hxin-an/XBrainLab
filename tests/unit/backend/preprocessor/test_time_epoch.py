@@ -41,12 +41,12 @@ class TestTimeEpoch:
         raw.is_raw.return_value = True
         raw.get_event_list.return_value = (events, event_id)
 
-        # Mock set_mne to update the internal mne object
+        # Model the Raw transition that clears source events after selection.
         def set_mne_side_effect(new_mne):
             raw.get_mne.return_value = new_mne
             raw.is_raw.return_value = False  # Becomes epoched
 
-        raw.set_mne.side_effect = set_mne_side_effect
+        raw.set_mne_and_wipe_events.side_effect = set_mne_side_effect
 
         return raw, events, event_id
 
@@ -59,8 +59,7 @@ class TestTimeEpoch:
             raw, selected_event_names=["Event1"], tmin=-0.1, tmax=0.5, baseline=None
         )
 
-        # Verify set_mne was called with Epochs
-        args, _ = raw.set_mne.call_args
+        args, _ = raw.set_mne_and_wipe_events.call_args
         new_mne = args[0]
         assert isinstance(new_mne, mne.Epochs)
         assert len(new_mne) == 1  # Only 1 event selected
@@ -89,7 +88,7 @@ class TestTimeEpoch:
             raw, selected_event_names=["Event1"], tmin=-0.1, tmax=0.5, baseline=None
         )
 
-        args, _ = raw.set_mne.call_args
+        args, _ = raw.set_mne_and_wipe_events.call_args
         new_mne = args[0]
         assert len(new_mne) == 1  # Duplicate dropped
 
@@ -113,7 +112,7 @@ class TestTimeEpoch:
                 baseline=None,
             )
 
-        raw.set_mne.assert_not_called()
+        raw.set_mne_and_wipe_events.assert_not_called()
 
     def test_time_epoch_can_exclude_reviewed_boundary_event(self, mock_raw):
         raw, _, event_id = mock_raw
@@ -146,7 +145,7 @@ class TestTimeEpoch:
         assert summary.selected_event_count == 2
         assert summary.excluded_event_count == 1
         assert summary.remaining_event_count == 1
-        args, _ = raw.set_mne.call_args
+        args, _ = raw.set_mne_and_wipe_events.call_args
         assert len(args[0]) == 1
 
     def test_time_epoch_rejects_when_mne_drops_every_selected_event(self, mock_raw):
@@ -174,7 +173,7 @@ class TestTimeEpoch:
                 baseline=None,
             )
 
-        raw.set_mne.assert_not_called()
+        raw.set_mne_and_wipe_events.assert_not_called()
 
     def test_time_epoch_already_epoched(self, mock_raw):
         raw, _, _ = mock_raw

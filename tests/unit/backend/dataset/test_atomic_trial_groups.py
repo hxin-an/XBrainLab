@@ -7,6 +7,9 @@ import numpy as np
 import pytest
 
 import XBrainLab.backend.dataset.epochs as epochs_module
+from XBrainLab.backend.application.dataset_split_preview import (
+    DatasetSplitSpecification,
+)
 from XBrainLab.backend.dataset import (
     Dataset,
     DatasetGenerator,
@@ -299,12 +302,8 @@ def test_session_kfold_generates_exact_folds_for_full_and_individual_scopes(
 
 
 def test_individual_subject_kfold_is_rejected_by_the_public_config_contract() -> None:
-    from XBrainLab.backend.application.dataset_generation_service import (
-        DatasetGenerationCommandService,
-    )
-
     with pytest.raises(ValueError, match=r"Individual.*Subject"):
-        DatasetGenerationCommandService.config_from_payload(
+        DatasetSplitSpecification.from_payload(
             {
                 "train_type": "Individual",
                 "is_cross_validation": True,
@@ -318,7 +317,7 @@ def test_individual_subject_kfold_is_rejected_by_the_public_config_contract() ->
                     }
                 ],
             }
-        )
+        ).to_config()
 
 
 @pytest.mark.parametrize("fold_count", [2, 3, 5, 7])

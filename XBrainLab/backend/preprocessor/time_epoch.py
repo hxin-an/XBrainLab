@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
@@ -10,6 +11,7 @@ import mne
 import numpy as np
 
 from ..application.owned_work import owned_work_checkpoint
+from ..dataset.epochs import mark_xbrainlab_raw_event_source_epochs
 from ..load_data import Raw
 from .base import PreprocessBase
 from .normalize import Normalize
@@ -345,12 +347,10 @@ class TimeEpoch(PreprocessBase):
                 "before creating epochs."
             )
 
-        # FIX: Clear raw events to prevent set_mne from overwriting the correct
-        # epoch events with the original (larger) raw events list.
-        preprocessed_data.raw_events = None
-        preprocessed_data.raw_event_id = None
-
-        preprocessed_data.set_mne(data)
+        preprocessed_data.set_mne_and_wipe_events(data)
+        # Missing or malformed source identity remains unverified for split audit.
+        with suppress(TypeError, ValueError):
+            mark_xbrainlab_raw_event_source_epochs(preprocessed_data)
 
     def _validated_aliases_by_source(
         self,

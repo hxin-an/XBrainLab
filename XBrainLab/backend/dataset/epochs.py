@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 import os
-from contextlib import suppress
 from copy import deepcopy
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 
@@ -46,8 +45,6 @@ UNVERIFIED_SOURCE_FINGERPRINT_PREFIX = "unverified-wrapper-sha256:"
 EPOCH_SOURCE_PROVENANCE_METADATA_COLUMN = "xbrainlab_source_coordinate_provenance_v1"
 EPOCH_SOURCE_PROVENANCE_SCHEMA_VERSION = 1
 EPOCH_SOURCE_PROVENANCE_ORIGIN = "xbrainlab_raw_event_source"
-_XBRAINLAB_EVENT_EPOCH_HISTORY_MARKER = " by event ("
-_XBRAINLAB_WINDOW_EPOCH_HISTORY_SUFFIX = " by sliding window"
 _SHA256_HEX_LENGTH = 64
 
 
@@ -334,9 +331,10 @@ def _deserialize_epoch_window_provenance(
     return item
 
 
-def _embedded_epoch_window_provenance(
+def read_verified_epoch_window_provenance(
     data: mne.BaseEpochs,
 ) -> tuple[EpochWindowProvenance, ...] | None:
+    """Read explicit source metadata only when it matches the epoch collection."""
     metadata = data.metadata
     if (
         metadata is None
@@ -351,6 +349,8 @@ def _embedded_epoch_window_provenance(
         return None
     if times.ndim != 1 or len(times) == 0:
         return None
+    epoch_sfreq = float(data.info["sfreq"])
+    bounds = (float(times[0]), float(times[-1]))
     records: list[EpochWindowProvenance] = []
     for index, encoded in enumerate(
         metadata[EPOCH_SOURCE_PROVENANCE_METADATA_COLUMN].tolist(),
@@ -358,6 +358,24 @@ def _embedded_epoch_window_provenance(
         item = _deserialize_epoch_window_provenance(encoded)
         if item is None or item.event_sample != int(events[index, 0]):
             return None
+        duration = (len(times) - 1) / item.epoch_sfreq
+        roundoff = np.finfo(float).eps * (
+            abs(item.tmin_seconds) + abs(item.tmax_seconds) + 2 * duration
+        )
+        if abs(item.tmax_seconds - item.tmin_seconds - duration) > roundoff:
+            return None
+        # FIF stores sfreq as float32 and timing as integer first/last samples.
+        # Admit that exact serialization transform, not arbitrary stale timing.
+        fif_sfreq = float(np.float32(item.epoch_sfreq))
+        if epoch_sfreq not in (item.epoch_sfreq, fif_sfreq):
+            return None
+        if bounds != (item.tmin_seconds, item.tmax_seconds):
+            if epoch_sfreq != fif_sfreq:
+                return None
+            first = round(item.tmin_seconds * item.epoch_sfreq)
+            fif_bounds = (first / fif_sfreq, (first + len(times) - 1) / fif_sfreq)
+            if bounds != fif_bounds:
+                return None
         expected_start = item.event_sample + int(
             np.rint(item.tmin_seconds * item.source_sfreq),
         )
@@ -413,23 +431,34 @@ def mark_xbrainlab_raw_event_source_epochs(
     return provenance
 
 
-def _has_xbrainlab_epoch_creation_record(preprocessed_data: Raw) -> bool:
-    """Return whether XBrainLab recorded an in-session raw epoch operation."""
-    try:
-        history = preprocessed_data.get_preprocess_history()
-    except (AttributeError, TypeError, ValueError):
-        return False
-    if not isinstance(history, list):
-        return False
-    return any(
-        isinstance(record, str)
-        and record.startswith("Epoching ")
-        and (
-            _XBRAINLAB_EVENT_EPOCH_HISTORY_MARKER in record
-            or record.endswith(_XBRAINLAB_WINDOW_EPOCH_HISTORY_SUFFIX)
+def resampled_epoch_source_metadata(
+    data: mne.BaseEpochs,
+    provenance: tuple[EpochWindowProvenance, ...],
+) -> pd.DataFrame:
+    """Reproject previously verified source coordinates after epoch resampling."""
+    if data.metadata is None or len(provenance) != len(data):
+        raise ValueError("Resampling changed the source provenance row count.")
+    epoch_sfreq = float(data.info["sfreq"])
+    tmin, tmax = float(data.times[0]), float(data.times[-1])
+    updated: list[str] = []
+    for item in provenance:
+        start = item.event_sample + int(np.rint(tmin * item.source_sfreq))
+        samples = int(np.rint(len(data.times) * item.source_sfreq / epoch_sfreq))
+        updated.append(
+            _serialize_epoch_window_provenance(
+                replace(
+                    item,
+                    window_start_sample=start,
+                    window_end_sample_exclusive=start + samples,
+                    epoch_sfreq=epoch_sfreq,
+                    tmin_seconds=tmin,
+                    tmax_seconds=tmax,
+                )
+            )
         )
-        for record in history
-    )
+    metadata = data.metadata.copy()
+    metadata[EPOCH_SOURCE_PROVENANCE_METADATA_COLUMN] = updated
+    return metadata
 
 
 def _epoch_window_provenance(
@@ -439,7 +468,7 @@ def _epoch_window_provenance(
     source_wrapper_index: int,
 ) -> tuple[EpochWindowProvenance, ...]:
     """Read explicit provenance or fail closed to unverified coordinates."""
-    embedded = _embedded_epoch_window_provenance(data)
+    embedded = read_verified_epoch_window_provenance(data)
     if embedded is not None:
         return embedded
     return _computed_epoch_window_provenance(
@@ -587,13 +616,6 @@ class Epochs:
             preprocessed_data_list,
         ):
             data = epoch_sources[source_wrapper_index]
-            if _embedded_epoch_window_provenance(
-                data
-            ) is None and _has_xbrainlab_epoch_creation_record(preprocessed_data):
-                # A producer record without usable source identity remains
-                # unverified and will be blocked by a trial-wise audit.
-                with suppress(TypeError, ValueError):
-                    mark_xbrainlab_raw_event_source_epochs(preprocessed_data)
             epoch_len = preprocessed_data.get_epochs_length()
             subject_name = preprocessed_data.get_subject_name()
             session_name = preprocessed_data.get_session_name()
