@@ -982,6 +982,28 @@ class TrainRecord:
             self.evaluation_records = normalized
             self.eval_record = normalized[normalized_primary]
 
+    def complete_evaluation(
+        self,
+        records: dict[str, EvalRecord],
+        *,
+        primary_split: str,
+    ) -> None:
+        """Publish completion only after exporting its final artifacts.
+
+        Failed export restores the previous in-memory record identities. Disk
+        export remains a sequence of files, not a crash-atomic transaction.
+        """
+        with self._state_mutation():
+            previous_primary = self.eval_record
+            previous_records = self.evaluation_records
+            try:
+                self.set_evaluation_records(records, primary_split=primary_split)
+                self.export_checkpoint()
+            except BaseException:
+                self.eval_record = previous_primary
+                self.evaluation_records = previous_records
+                raise
+
     def export_checkpoint(self) -> None:
         """Save the current training state, best models, and evaluation record to disk.
 

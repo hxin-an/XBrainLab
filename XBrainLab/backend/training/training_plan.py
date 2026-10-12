@@ -834,22 +834,10 @@ class TrainingPlanHolder:
                     loader,
                     evaluation_split=split,
                 )
-            # Completion is visible only after its final artifacts are exported.
-            # Roll back in-memory results on failure; disk export is not a
-            # multi-file transaction and may retain partially written artifacts.
-            with self._state_mutation():
-                previous_primary = train_record.eval_record
-                previous_records = train_record.evaluation_records
-                try:
-                    train_record.set_evaluation_records(
-                        evaluation_records,
-                        primary_split=evaluation_split,
-                    )
-                    train_record.export_checkpoint()
-                except BaseException:
-                    train_record.eval_record = previous_primary
-                    train_record.evaluation_records = previous_records
-                    raise
+            train_record.complete_evaluation(
+                evaluation_records,
+                primary_split=evaluation_split,
+            )
             return
 
         train_record.export_checkpoint()
