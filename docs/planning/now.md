@@ -152,7 +152,12 @@ Current：PR #162 已合併；task worktree 建於 main `620a4341`，分支
   與確認行為不動。1 production file 預估 net -15，無新 owner；保留兩種現有 UI flow tests，
   加強同 draft/model/generation 的 observable request 斷言。
 
-Next：上述 slices 已實作並有 focused characterization；shared spine、Training、Preprocess、
-tests／scripts 的保留比較已逐組完成，manager/sidebar 與 scripts 的獨立結構覆核無阻擋。
-先閉合 provenance 的 FIF→再次 resample 邊界與獨立覆核、manager 最後 postcheck，
-再凍結 source、分段 commit 與完整候選同 head CI／必要 Windows handoff；尚非 handoff-ready。
+Current validation：上述 slices、FIF→再次 resample 修正及各責任組保留比較已完成；
+独立整合覆核已接受 `9b961b2a` 的實際 committed tree。最後 provenance 221 項、
+manager/sidebar 與 user-facing walkthrough 448 項通過，已有分段 commits 與 PR #163。
+首輪 CI Static Quality 指出兩個新 argument-type diagnostics：domain splitter conversion
+用了 unnecessary optional getattr，及 provenance 已驗證時的 event-array 型別未被 analyzer
+連動縮窄。修正 typed domain access 與明確 array annotation，不放寬 allowlist。
+
+Next：驗證這兩個直接修正、保留首輪失敗證據，再取得最終 head 全部適用 CI／Windows
+handoff。UI／功能沒有新增變更；新 PR 的手測與 merge 批准仍待使用者，尚非 handoff-ready。

@@ -274,13 +274,13 @@ class DatasetSplitSpecification:
         """Copy a domain configuration without a payload round trip."""
 
         def rule(splitter: DataSplitter) -> DatasetSplitRule:
-            split_type = getattr(splitter, "split_type", None)
-            split_unit = getattr(splitter, "split_unit", None)
             return DatasetSplitRule(
-                split_type=getattr(split_type, "value", split_type),
-                split_unit=getattr(split_unit, "value", split_unit),
-                value=getattr(splitter, "value_var", None),
-                is_option=bool(getattr(splitter, "is_option", True)),
+                split_type=splitter.split_type.value,
+                split_unit=(
+                    None if splitter.split_unit is None else splitter.split_unit.value
+                ),
+                value=splitter.value_var,
+                is_option=bool(splitter.is_option),
             )
 
         return cls(

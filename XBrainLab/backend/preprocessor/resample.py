@@ -68,7 +68,7 @@ class Resample(PreprocessBase):
                 mne_data.shift_time(provenance[0].tmin_seconds, relative=False)
             mne_data.resample(sfreq=sfreq)
             if provenance is not None:
-                if not np.array_equal(mne_data.events, source_events):
+                if not np.array_equal(mne_data.events, cast(np.ndarray, source_events)):
                     raise ValueError("Resampling changed the source event grid.")
                 mne_data.metadata = resampled_epoch_source_metadata(
                     mne_data, provenance
