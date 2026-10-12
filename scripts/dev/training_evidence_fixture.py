@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from XBrainLab.backend.application import (
     ApplyInterpretationCommand,
@@ -31,6 +31,11 @@ from XBrainLab.backend.training.record.artifact_store import (
     read_json_npz_artifact,
 )
 from XBrainLab.backend.training.record.train import _decode_training_artifact
+
+if TYPE_CHECKING:
+    from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
+        DataSplittingPreviewDialog,
+    )
 
 
 def verify_real_training_artifacts(output_root: Path) -> None:
@@ -106,6 +111,67 @@ def data_split_capture_provider(
             for index in range(fold_count)
         ),
     )
+
+
+def data_split_capture_dialog(
+    *, cross_validation: bool = True
+) -> DataSplittingPreviewDialog:
+    """Build a settled Step 2 example; the successful caller owns its lifetime."""
+    from PyQt6.QtCore import QSize, Qt
+
+    from XBrainLab.backend.dataset import (
+        DataSplitter,
+        DataSplittingConfig,
+        SplitByType,
+        TrainingType,
+        ValSplitByType,
+    )
+    from XBrainLab.ui.dialogs.dataset.data_splitting_preview_dialog import (
+        DataSplittingPreviewDialog,
+    )
+
+    dialog = DataSplittingPreviewDialog(
+        None,
+        "Data Splitting Step 2",
+        split_context=data_split_capture_context(),
+        publication_generation=1,
+        config=DataSplittingConfig(
+            TrainingType.FULL,
+            cross_validation,
+            [DataSplitter(ValSplitByType.TRIAL)],
+            [DataSplitter(SplitByType.TRIAL)],
+        ),
+        preview_provider=data_split_capture_provider,
+        preview_canceller=lambda _request_id: True,
+    )
+    try:
+        worker = dialog.preview_worker
+        if worker is not None:
+            worker.join(timeout=2)
+            if worker.is_alive():
+                raise RuntimeError(  # noqa: TRY301 - close this partially prepared dialog
+                    "Data-splitting capture preview did not finish."
+                )
+        dialog.update_table()
+        if dialog.preview_debounce_timer is not None:
+            dialog.preview_debounce_timer.stop()
+        if dialog.timer is not None:
+            dialog.timer.stop()
+        if dialog.tree is None:
+            raise RuntimeError(  # noqa: TRY301 - close this partially prepared dialog
+                "Data-splitting capture tree is unavailable."
+            )
+        dialog._clear_tree_current_item()
+        dialog._resize_tree_to_rows()
+        dialog.adjustSize()
+        dialog.resize(QSize(980, dialog.sizeHint().height()))
+    except BaseException:
+        # closeEvent retains the dialog while a worker is still stopping; defer
+        # deletion through that existing lifecycle instead of deleting it early.
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.close()
+        raise
+    return dialog
 
 
 def prepare_training_dataset_ready_state(

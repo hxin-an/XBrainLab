@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from PIL import Image
+from PyQt6 import sip
 from PyQt6.QtCore import QPoint, QRect, QSize
 from PyQt6.QtWidgets import (
     QApplication,
@@ -190,9 +191,7 @@ def test_data_splitting_step_two_capture_factory_builds_representative_states(
     expected_split_labels,
     expected_test_unit,
 ) -> None:
-    dialog = capture_script._data_splitting_step_two_dialog(
-        cross_validation=cross_validation
-    )
+    dialog = capture_script.data_split_capture_dialog(cross_validation=cross_validation)
     try:
         _settle(qapp, dialog)
         assert dialog.tree is not None
@@ -210,6 +209,79 @@ def test_data_splitting_step_two_capture_factory_builds_representative_states(
         )
     finally:
         _dispose(qapp, dialog)
+
+
+def test_split_capture_factory_disposes_dialog_after_settle_failure(
+    qapp, qtbot, monkeypatch
+):
+    dialog_type = capture_script.DataSplittingPreviewDialog
+    initialize = dialog_type.__init__
+    created = []
+
+    def track_dialog(dialog, *args, **kwargs):
+        initialize(dialog, *args, **kwargs)
+        created.append(dialog)
+
+    def fail_table_update(_dialog):
+        raise RuntimeError("capture table failed")
+
+    monkeypatch.setattr(dialog_type, "__init__", track_dialog)
+    monkeypatch.setattr(dialog_type, "update_table", fail_table_update)
+    try:
+        with pytest.raises(RuntimeError, match="capture table failed"):
+            capture_script.data_split_capture_dialog(cross_validation=True)
+        assert len(created) == 1
+        dialog = created[0]
+        assert not dialog.timer.isActive()
+        assert not dialog.preview_worker.is_alive()
+        qtbot.waitUntil(lambda: sip.isdeleted(dialog), timeout=1000)
+    finally:
+        for dialog in created:
+            if not sip.isdeleted(dialog):
+                _dispose(qapp, dialog)
+
+
+def test_split_capture_timeout_waits_for_real_worker_before_deleting_dialog(
+    qapp, qtbot, monkeypatch
+):
+    from threading import Event
+
+    from scripts.dev import training_evidence_fixture as fixture
+
+    dialog_type = capture_script.DataSplittingPreviewDialog
+    initialize = dialog_type.__init__
+    provider = fixture.data_split_capture_provider
+    release = Event()
+    created = []
+
+    def track_dialog(dialog, *args, **kwargs):
+        initialize(dialog, *args, **kwargs)
+        created.append(dialog)
+
+    def delayed_provider(request):
+        assert release.wait(5)
+        return provider(request)
+
+    monkeypatch.setattr(dialog_type, "__init__", track_dialog)
+    monkeypatch.setattr(fixture, "data_split_capture_provider", delayed_provider)
+    try:
+        with pytest.raises(RuntimeError, match="preview did not finish"):
+            fixture.data_split_capture_dialog()
+        dialog = created[0]
+        worker = dialog.preview_worker
+        assert worker.is_alive()
+        assert not sip.isdeleted(dialog)
+        assert not dialog.timer.isActive()
+        release.set()
+        worker.join(timeout=2)
+        assert not worker.is_alive()
+        qtbot.waitUntil(lambda: sip.isdeleted(dialog), timeout=1000)
+    finally:
+        release.set()
+        for dialog in created:
+            if not sip.isdeleted(dialog):
+                dialog.preview_worker.join(timeout=2)
+                _dispose(qapp, dialog)
 
 
 def test_extended_review_capture_writes_all_full_content_frames(qapp, tmp_path) -> None:

@@ -97,12 +97,24 @@ def _strict_validation_failure(payload: Mapping[str, Any]) -> str | None:
 
 
 def _public_cross_source_failure(payload: Mapping[str, Any]) -> str | None:
+    from scripts.dev.run_public_cross_source_training_smoke import (
+        summarize_public_smoke_results,
+    )
+
     summary = payload.get("summary")
     if (
         not isinstance(summary, Mapping)
         or summary.get("all_required_passed") is not True
     ):
         return "required public cross-source cases did not all pass"
+    try:
+        observed_summary = summarize_public_smoke_results(
+            payload.get("results"), summary.get("configured_case_ids")
+        )
+    except ValueError as error:
+        return str(error)
+    if observed_summary != summary or not observed_summary["all_required_passed"]:
+        return "public cross-source summary does not match the required case results"
     return None
 
 

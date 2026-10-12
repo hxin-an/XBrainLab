@@ -33,7 +33,6 @@ from XBrainLab.backend.application import (
     PreprocessOperation,
     PreviewInterpretationCommand,
     QueryStateCommand,
-    SaliencyCommand,
     SaveDatasetSplitCommand,
     ScanSourceCommand,
     TrainCommand,
@@ -251,240 +250,52 @@ def _apply_reviewed_internal_event_import(
 
 def run_fixture_smoke(fixture: dict[str, object]) -> SmokeResult:
     """Execute one public-fixture training smoke and return structured status."""
-    filepath = _public_data_dir() / str(fixture["filename"])
-    if not filepath.exists():
-        return SmokeResult(
-            name=str(fixture["name"]),
-            filename=str(fixture["filename"]),
-            source_family=str(fixture["source_family"]),
-            status="missing",
-            dataset_count=0,
-            message=f"fixture not downloaded: {filepath}",
-        )
+    return _run_fixture_case(fixture, training=True)
 
-    study = Study()
-    service = get_application_service(study)
+
+def run_fixture_boundary_smoke(fixture: dict[str, object]) -> SmokeResult:
+    """Prove import/preprocess support without inventing supervised class semantics."""
+    return _run_fixture_case(fixture, training=False)
+
+
+def _run_fixture_case(fixture: dict[str, object], *, training: bool) -> SmokeResult:
+    filepath = _public_data_dir() / str(fixture["filename"])
+    result = SmokeResult(
+        name=str(fixture["name"]),
+        filename=str(fixture["filename"]),
+        source_family=str(fixture["source_family"]),
+        status="missing",
+        dataset_count=0,
+        message=f"fixture not downloaded: {filepath}",
+        protocol="training" if training else "import-preprocess-only",
+    )
+    if not filepath.exists():
+        return result
+
+    service = get_application_service(Study())
+    output_root: Path | None = None
+    imported = False
     try:
         _apply_reviewed_internal_event_import(service, filepath, fixture)
-    except Exception as exc:
-        service.close()
-        return SmokeResult(
-            name=str(fixture["name"]),
-            filename=str(fixture["filename"]),
-            source_family=str(fixture["source_family"]),
-            status="failed",
-            dataset_count=0,
-            message=f"reviewed import failed: {type(exc).__name__}: {exc}",
-        )
-
-    output_root: Path | None = None
-    try:
-        validation_root = ROOT / "build" / "validation" / "public-cross-source"
-        validation_root.mkdir(parents=True, exist_ok=True)
-        output_root = Path(
-            tempfile.mkdtemp(
-                prefix=f"{fixture['name']}-",
-                dir=validation_root,
+        imported = True
+        if training:
+            validation_root = ROOT / "build" / "validation" / "public-cross-source"
+            validation_root.mkdir(parents=True, exist_ok=True)
+            output_root = Path(
+                tempfile.mkdtemp(prefix=f"{fixture['name']}-", dir=validation_root)
             )
-        )
-        filter_result = service.execute(
+        for command in (
             PreprocessCommand(
                 operation=PreprocessOperation.BANDPASS,
                 low_freq=4,
                 high_freq=38,
             ),
-        )
-        _raise_if_failed(filter_result)
-        normalize_result = service.execute(
             PreprocessCommand(
                 operation=PreprocessOperation.NORMALIZE,
                 method="z score",
             ),
-        )
-        _raise_if_failed(normalize_result)
-        event_ids = [
-            str(item) for item in cast(list[object], fixture["epoch_event_ids"])
-        ]
-        epoch_result = service.execute(
-            CreateEpochCommand(
-                t_min=float(cast(float | int | str, fixture["tmin"])),
-                t_max=float(cast(float | int | str, fixture["tmax"])),
-                event_ids=event_ids,
-            ),
-        )
-        _raise_if_failed(epoch_result)
-        split_ratio = float(cast(float | int | str, fixture.get("split_ratio", 0.2)))
-        dataset_result = service.execute(
-            SaveDatasetSplitCommand(
-                test_ratio=split_ratio,
-                val_ratio=split_ratio,
-                split_strategy="trial",
-                training_mode="individual",
-            ),
-        )
-        _raise_if_failed(dataset_result)
-
-        if not dataset_result.state.dataset.split_spec_saved:
-            return SmokeResult(
-                name=str(fixture["name"]),
-                filename=str(fixture["filename"]),
-                source_family=str(fixture["source_family"]),
-                status="failed",
-                dataset_count=0,
-                message="data splitting specification was not saved",
-            )
-
-        configure_model = service.execute(ConfigureTrainingCommand(model_name="EEGNet"))
-        _raise_if_failed(configure_model)
-        configure_training = service.execute(
-            ConfigureTrainingCommand(
-                output_dir=str(output_root),
-                device="cpu",
-                epoch=1,
-                batch_size=8,
-                learning_rate=0.001,
-                save_checkpoints_every=1,
-                evaluation_option="val_acc",
-            ),
-        )
-        _raise_if_failed(configure_training)
-        saliency_result = service.execute(
-            SaliencyCommand(
-                params={
-                    "SmoothGrad": {"nt_samples": 1, "stdevs": 0.1},
-                    "SmoothGrad_Squared": {"nt_samples": 1, "stdevs": 0.1},
-                    "VarGrad": {"nt_samples": 1, "stdevs": 0.1},
-                },
-            ),
-        )
-        _raise_if_failed(saliency_result)
-
-        train_result = service.execute(
-            TrainCommand(confirmed=True, interactive=False),
-        )
-        _raise_if_failed(train_result)
-
-        dataset_count = int(train_result.state.dataset.count or 0)
-        if dataset_count <= 0:
-            return SmokeResult(
-                name=str(fixture["name"]),
-                filename=str(fixture["filename"]),
-                source_family=str(fixture["source_family"]),
-                status="failed",
-                dataset_count=0,
-                message="training preparation produced no datasets",
-            )
-
-        if train_result.state.training.run_count <= 0:
-            return SmokeResult(
-                name=str(fixture["name"]),
-                filename=str(fixture["filename"]),
-                source_family=str(fixture["source_family"]),
-                status="failed",
-                dataset_count=dataset_count,
-                message="training produced no trainer",
-            )
-        history = service.execute(
-            QueryStateCommand(query="training_history"),
-        )
-        _raise_if_failed(history)
-        rows = history.diagnostics.get("rows")
-        if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
-            return SmokeResult(
-                name=str(fixture["name"]),
-                filename=str(fixture["filename"]),
-                source_family=str(fixture["source_family"]),
-                status="failed",
-                dataset_count=dataset_count,
-                message="training history did not include a run record",
-            )
-        metrics = rows[0].get("metrics")
-        train_metrics = metrics.get("train") if isinstance(metrics, dict) else None
-        if not isinstance(train_metrics, dict) or (
-            RecordKey.LOSS not in train_metrics or RecordKey.ACC not in train_metrics
         ):
-            return SmokeResult(
-                name=str(fixture["name"]),
-                filename=str(fixture["filename"]),
-                source_family=str(fixture["source_family"]),
-                status="failed",
-                dataset_count=dataset_count,
-                message="training record missing loss/acc metrics",
-            )
-        verify_real_training_artifacts(output_root)
-
-        return SmokeResult(
-            name=str(fixture["name"]),
-            filename=str(fixture["filename"]),
-            source_family=str(fixture["source_family"]),
-            status="passed",
-            dataset_count=dataset_count,
-            message="one-epoch CPU smoke and safe artifact reload passed",
-            artifacts_reloaded=True,
-        )
-    except Exception as exc:
-        return SmokeResult(
-            name=str(fixture["name"]),
-            filename=str(fixture["filename"]),
-            source_family=str(fixture["source_family"]),
-            status="failed",
-            dataset_count=0,
-            message=f"{type(exc).__name__}: {exc}",
-        )
-    finally:
-        service.close()
-        if output_root is not None:
-            shutil.rmtree(output_root, ignore_errors=True)
-
-
-def run_fixture_boundary_smoke(fixture: dict[str, object]) -> SmokeResult:
-    """Prove import/preprocess support without inventing supervised class semantics."""
-    filepath = _public_data_dir() / str(fixture["filename"])
-    if not filepath.exists():
-        return SmokeResult(
-            name=str(fixture["name"]),
-            filename=str(fixture["filename"]),
-            source_family=str(fixture["source_family"]),
-            status="missing",
-            dataset_count=0,
-            message=f"fixture not downloaded: {filepath}",
-            protocol="import-preprocess-only",
-        )
-
-    study = Study()
-    service = get_application_service(study)
-    try:
-        _apply_reviewed_internal_event_import(service, filepath, fixture)
-    except Exception as exc:
-        service.close()
-        return SmokeResult(
-            name=str(fixture["name"]),
-            filename=str(fixture["filename"]),
-            source_family=str(fixture["source_family"]),
-            status="failed",
-            dataset_count=0,
-            message=f"reviewed import failed: {type(exc).__name__}: {exc}",
-            protocol="import-preprocess-only",
-        )
-
-    try:
-        _raise_if_failed(
-            service.execute(
-                PreprocessCommand(
-                    operation=PreprocessOperation.BANDPASS,
-                    low_freq=4,
-                    high_freq=38,
-                ),
-            )
-        )
-        _raise_if_failed(
-            service.execute(
-                PreprocessCommand(
-                    operation=PreprocessOperation.NORMALIZE,
-                    method="z score",
-                ),
-            )
-        )
+            _raise_if_failed(service.execute(command))
         event_ids = [
             str(item) for item in cast(list[object], fixture["epoch_event_ids"])
         ]
@@ -495,35 +306,91 @@ def run_fixture_boundary_smoke(fixture: dict[str, object]) -> SmokeResult:
                 event_ids=event_ids,
             ),
         )
-        _require_supervised_epoch_block(
-            epoch_result,
-            str(fixture["expected_epoch_block"]),
-        )
-        return SmokeResult(
-            name=str(fixture["name"]),
-            filename=str(fixture["filename"]),
-            source_family=str(fixture["source_family"]),
-            status="passed",
-            dataset_count=0,
-            message=(
+        if output_root is not None:
+            _raise_if_failed(epoch_result)
+            _complete_fixture_training(service, fixture, output_root, result)
+            result.artifacts_reloaded = True
+            result.message = "one-epoch CPU smoke and safe artifact reload passed"
+        else:
+            _require_supervised_epoch_block(
+                epoch_result, str(fixture["expected_epoch_block"])
+            )
+            result.message = (
                 "load/preprocess smoke passed and supervised epoch creation was "
                 "blocked without inventing class semantics; "
                 f"{fixture['boundary_reason']}"
-            ),
-            protocol="import-preprocess-only",
-        )
+            )
+        result.status = "passed"
     except Exception as exc:
-        return SmokeResult(
-            name=str(fixture["name"]),
-            filename=str(fixture["filename"]),
-            source_family=str(fixture["source_family"]),
-            status="failed",
-            dataset_count=0,
-            message=f"{type(exc).__name__}: {exc}",
-            protocol="import-preprocess-only",
-        )
+        result.status = "failed"
+        prefix = "" if imported else "reviewed import failed: "
+        result.message = f"{prefix}{type(exc).__name__}: {exc}"
     finally:
-        service.close()
+        try:
+            service.close()
+            if not service.is_closed:
+                raise TimeoutError(  # noqa: TRY301 - retain alongside the primary failure
+                    "ApplicationService close did not complete"
+                )
+        except Exception as exc:
+            result.status = "failed"
+            result.message += f"; cleanup failed: {type(exc).__name__}: {exc}"
+        finally:
+            if output_root is not None:
+                shutil.rmtree(output_root, ignore_errors=True)
+    return result
+
+
+def _complete_fixture_training(
+    service: Any,
+    fixture: dict[str, object],
+    output_root: Path,
+    result: SmokeResult,
+) -> None:
+    split_ratio = float(cast(float | int | str, fixture.get("split_ratio", 0.2)))
+    dataset_result = service.execute(
+        SaveDatasetSplitCommand(
+            test_ratio=split_ratio,
+            val_ratio=split_ratio,
+            split_strategy="trial",
+            training_mode="individual",
+        ),
+    )
+    _raise_if_failed(dataset_result)
+    if not dataset_result.state.dataset.split_spec_saved:
+        raise RuntimeError("data splitting specification was not saved")
+    for command in (
+        ConfigureTrainingCommand(model_name="EEGNet"),
+        ConfigureTrainingCommand(
+            output_dir=str(output_root),
+            device="cpu",
+            epoch=1,
+            batch_size=8,
+            learning_rate=0.001,
+            save_checkpoints_every=1,
+            evaluation_option="val_acc",
+        ),
+    ):
+        _raise_if_failed(service.execute(command))
+    train_result = service.execute(TrainCommand(confirmed=True, interactive=False))
+    _raise_if_failed(train_result)
+    result.dataset_count = int(train_result.state.dataset.count or 0)
+    if result.dataset_count <= 0:
+        raise RuntimeError("training preparation produced no datasets")
+    if train_result.state.training.run_count <= 0:
+        raise RuntimeError("training produced no trainer")
+    history = service.execute(QueryStateCommand(query="training_history"))
+    _raise_if_failed(history)
+    rows = history.diagnostics.get("rows")
+    if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
+        raise RuntimeError("training history did not include a run record")
+    metrics = rows[0].get("metrics")
+    train_metrics = metrics.get("train") if isinstance(metrics, dict) else None
+    if not isinstance(train_metrics, dict) or (
+        RecordKey.LOSS not in train_metrics or RecordKey.ACC not in train_metrics
+    ):
+        raise RuntimeError("training record missing loss/acc metrics")
+    verify_real_training_artifacts(output_root)
 
 
 def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
@@ -539,6 +406,40 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
         asdict(run_fixture_boundary_smoke(fixture))
         for fixture in PUBLIC_EPOCH_ONLY_FIXTURES
     )
+    return {
+        "repo_root": str(repo_root),
+        "public_data_dir": str(_public_data_dir(repo_root)),
+        "results": results,
+        "summary": summarize_public_smoke_results(results, configured_case_ids),
+    }
+
+
+def summarize_public_smoke_results(
+    results: object, configured_case_ids: object
+) -> dict[str, Any]:
+    """Derive the fixed public-case denominator for producers and file consumers."""
+    if not isinstance(configured_case_ids, list) or any(
+        not isinstance(case_id, str) for case_id in configured_case_ids
+    ):
+        raise ValueError("public smoke configured case IDs are malformed")
+    if not isinstance(results, list) or any(
+        not isinstance(row, dict)
+        or not isinstance(row.get("name"), str)
+        or row.get("status") not in ("passed", "failed", "missing")
+        or not isinstance(row.get("protocol"), str)
+        or not isinstance(row.get("artifacts_reloaded"), bool)
+        or type(row.get("dataset_count")) is not int
+        or row["dataset_count"] < 0
+        or (
+            row["status"] == "passed"
+            and row["protocol"] == "training"
+            and row["dataset_count"] == 0
+        )
+        for row in results
+    ):
+        raise ValueError("public smoke result rows are malformed")
+    results = cast(list[dict[str, Any]], results)
+    configured_case_ids = cast(list[str], configured_case_ids)
     passed = sum(1 for result in results if result["status"] == "passed")
     missing = sum(1 for result in results if result["status"] == "missing")
     failed = sum(1 for result in results if result["status"] == "failed")
@@ -603,6 +504,8 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
     )
     all_required_passed = (
         len(passed_required_case_ids) == len(REQUIRED_PUBLIC_SMOKE_CASE_IDS)
+        and set(configured_case_ids) == REQUIRED_PUBLIC_SMOKE_CASE_IDS
+        and set(result_case_ids) == REQUIRED_PUBLIC_SMOKE_CASE_IDS
         and not missing_required_case_ids
         and not wrong_protocol_case_ids
         and not failed_required_case_ids
@@ -612,34 +515,29 @@ def build_snapshot(repo_root: Path = ROOT) -> dict[str, Any]:
         and not duplicate_result_case_ids
     )
     return {
-        "repo_root": str(repo_root),
-        "public_data_dir": str(_public_data_dir(repo_root)),
-        "results": results,
-        "summary": {
-            "passed": passed,
-            "missing": missing,
-            "failed": failed,
-            "required_case_count": len(REQUIRED_PUBLIC_SMOKE_CASE_IDS),
-            "required_case_ids": sorted(REQUIRED_PUBLIC_SMOKE_CASE_IDS),
-            "configured_case_ids": configured_case_ids,
-            "result_case_ids": result_case_ids,
-            "duplicate_configured_case_ids": duplicate_configured_case_ids,
-            "duplicate_result_case_ids": duplicate_result_case_ids,
-            "passed_required_case_count": len(passed_required_case_ids),
-            "passed_required_case_ids": passed_required_case_ids,
-            "missing_required_case_ids": missing_required_case_ids,
-            "missing_fixture_case_ids": missing_fixture_case_ids,
-            "missing_artifact_reload_case_ids": missing_artifact_reload_case_ids,
-            "failed_required_case_ids": failed_required_case_ids,
-            "wrong_protocol_case_ids": wrong_protocol_case_ids,
-            "all_required_passed": all_required_passed,
-            "message": (
-                "PhysioNet EDF and BBCI GDF provide class-grounded training smoke. "
-                "SCCN EEGLAB and MNE CNT provide import/preprocess evidence and prove "
-                "that supervised epoch creation remains blocked without two reviewed "
-                "class labels."
-            ),
-        },
+        "passed": passed,
+        "missing": missing,
+        "failed": failed,
+        "required_case_count": len(REQUIRED_PUBLIC_SMOKE_CASE_IDS),
+        "required_case_ids": sorted(REQUIRED_PUBLIC_SMOKE_CASE_IDS),
+        "configured_case_ids": configured_case_ids,
+        "result_case_ids": result_case_ids,
+        "duplicate_configured_case_ids": duplicate_configured_case_ids,
+        "duplicate_result_case_ids": duplicate_result_case_ids,
+        "passed_required_case_count": len(passed_required_case_ids),
+        "passed_required_case_ids": passed_required_case_ids,
+        "missing_required_case_ids": missing_required_case_ids,
+        "missing_fixture_case_ids": missing_fixture_case_ids,
+        "missing_artifact_reload_case_ids": missing_artifact_reload_case_ids,
+        "failed_required_case_ids": failed_required_case_ids,
+        "wrong_protocol_case_ids": wrong_protocol_case_ids,
+        "all_required_passed": all_required_passed,
+        "message": (
+            "PhysioNet EDF and BBCI GDF provide class-grounded training smoke. "
+            "SCCN EEGLAB and MNE CNT provide import/preprocess evidence and prove "
+            "that supervised epoch creation remains blocked without two reviewed "
+            "class labels."
+        ),
     }
 
 

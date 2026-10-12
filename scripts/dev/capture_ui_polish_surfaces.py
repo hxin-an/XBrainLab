@@ -64,6 +64,9 @@ from scripts.dev.training_evidence_fixture import (
     data_split_capture_context as _data_split_capture_context,
 )
 from scripts.dev.training_evidence_fixture import (
+    data_split_capture_dialog,
+)
+from scripts.dev.training_evidence_fixture import (
     data_split_capture_provider as _data_split_capture_provider,
 )
 from XBrainLab.backend.application.epoch_context import (
@@ -75,13 +78,6 @@ from XBrainLab.backend.application.training_recommendation import (
     TrainingRecommendationField,
     TrainingRecommendationValues,
     TrainingSettingProvenance,
-)
-from XBrainLab.backend.dataset import (
-    DataSplitter,
-    DataSplittingConfig,
-    SplitByType,
-    TrainingType,
-    ValSplitByType,
 )
 from XBrainLab.backend.model_base.model_catalog import BraindecodeProviderStatus
 from XBrainLab.backend.study import Study
@@ -519,40 +515,6 @@ def _data_splitting_dialog_narrow() -> QWidget:
     return dialog
 
 
-def _data_splitting_preview_dialog() -> DataSplittingPreviewDialog:
-    val_splitter = DataSplitter(ValSplitByType.TRIAL)
-    test_splitter = DataSplitter(SplitByType.TRIAL)
-    config = DataSplittingConfig(
-        TrainingType.FULL,
-        True,
-        [val_splitter],
-        [test_splitter],
-    )
-    dialog = DataSplittingPreviewDialog(
-        None,
-        "Data Splitting Step 2",
-        split_context=_data_split_capture_context(),
-        publication_generation=1,
-        config=config,
-        preview_provider=_data_split_capture_provider,
-        preview_canceller=lambda _request_id: True,
-    )
-    if dialog.preview_worker is not None:
-        dialog.preview_worker.join(timeout=2)
-    dialog.update_table()
-    if dialog.preview_debounce_timer is not None:
-        dialog.preview_debounce_timer.stop()
-    if dialog.timer is not None:
-        dialog.timer.stop()
-    if dialog.tree is None:
-        raise RuntimeError("Data splitting preview tree was not initialized.")
-    dialog._clear_tree_current_item()
-    dialog._resize_tree_to_rows()
-    dialog.adjustSize()
-    dialog.resize(QSize(980, dialog.sizeHint().height()))
-    return dialog
-
-
 def _assistant_setup_required_narrow() -> ChatPanel:
     panel = ChatPanel()
     panel.set_runtime_state("idle")
@@ -904,7 +866,7 @@ def _capture_factories() -> tuple[tuple[str, Callable[[], QWidget]], ...]:
         (BIDS_EPOCH_SCREENSHOT, _epoching_bids_interval_duration_dialog),
         ("data-splitting-dialog.png", _data_splitting_dialog),
         ("data-splitting-dialog-narrow.png", _data_splitting_dialog_narrow),
-        ("data-splitting-preview-dialog.png", _data_splitting_preview_dialog),
+        ("data-splitting-preview-dialog.png", data_split_capture_dialog),
         ("assistant-setup-required-narrow.png", _assistant_setup_required_narrow),
         ("assistant-active-turn-narrow.png", _assistant_active_turn_narrow),
         ("assistant-loading.png", _assistant_loading_standard),

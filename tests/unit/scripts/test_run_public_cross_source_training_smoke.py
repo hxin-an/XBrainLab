@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import inspect
 import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +29,114 @@ from XBrainLab.backend.application import ApplicationService
 from XBrainLab.backend.model_base import EEGNet
 from XBrainLab.backend.training import ModelHolder, TrainingEvaluation, TrainingOption
 from XBrainLab.backend.training.record import EvalRecord, RecordKey, TrainRecord
+
+
+@pytest.fixture
+def real_smoke_case(monkeypatch, request):
+    # Training adds model/plan/run names below this root; keep Windows artifact
+    # paths below MAX_PATH even in a deeply nested task checkout.
+    directory = tempfile.TemporaryDirectory(prefix="xbl-public-")
+    request.addfinalizer(directory.cleanup)
+    tmp_path = Path(directory.name)
+    source = write_training_ready_raw_fif(tmp_path / "training_raw.fif")
+    boundary = request.param == "boundary"
+    fixture = {
+        **(PUBLIC_EPOCH_ONLY_FIXTURES[0] if boundary else PUBLIC_TRAINING_FIXTURES[0]),
+        "filename": source.name,
+        "label_event_ids": [] if boundary else ["left", "right"],
+        "epoch_event_ids": ["left", "right"],
+        "not_label_event_ids": ["left", "right"] if boundary else [],
+        "class_map": {} if boundary else {"left": "left", "right": "right"},
+        "run_event_mappings": {},
+        "tmax": 1.5,
+    }
+    service = ApplicationService()
+    request.addfinalizer(service.close)
+    monkeypatch.setattr(smoke_script, "get_application_service", lambda _study: service)
+    monkeypatch.setattr(smoke_script, "_public_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(smoke_script, "ROOT", tmp_path)
+    runner = (
+        smoke_script.run_fixture_boundary_smoke
+        if boundary
+        else smoke_script.run_fixture_smoke
+    )
+    return service, fixture, runner, tmp_path / "build/validation/public-cross-source"
+
+
+@pytest.mark.parametrize("real_smoke_case", ["training", "boundary"], indirect=True)
+def test_public_runner_real_case_finishes_and_releases_resources(real_smoke_case):
+    service, fixture, runner, output_parent = real_smoke_case
+
+    result = runner(fixture)
+
+    assert result.status == "passed", result.message
+    assert service.is_closed
+    assert result.artifacts_reloaded is (result.protocol == "training")
+    assert result.dataset_count == (1 if result.protocol == "training" else 0)
+    assert not output_parent.exists() or not list(output_parent.iterdir())
+
+
+@pytest.mark.parametrize("real_smoke_case", ["training"], indirect=True)
+def test_public_runner_rejects_corrupted_actual_training_export(
+    real_smoke_case, monkeypatch
+):
+    service, fixture, runner, output_parent = real_smoke_case
+    export = TrainRecord.export_checkpoint
+    exported = []
+
+    def corrupt_export(record):
+        export(record)
+        artifact = Path(record.target_path) / "record.npz"
+        assert artifact.is_file()
+        artifact.write_bytes(b"damaged training history")
+        exported.append(artifact)
+
+    monkeypatch.setattr(TrainRecord, "export_checkpoint", corrupt_export)
+    result = runner(fixture)
+
+    assert exported
+    assert result.status == "failed", result.message
+    assert result.artifacts_reloaded is False
+    assert service.is_closed
+    assert not list(output_parent.iterdir())
+
+
+@pytest.mark.parametrize("real_smoke_case", ["training", "boundary"], indirect=True)
+@pytest.mark.parametrize("close_fault", ["incomplete", "exception"])
+def test_public_runner_reports_incomplete_cleanup(
+    real_smoke_case, monkeypatch, close_fault
+):
+    service, fixture, runner, output_parent = real_smoke_case
+
+    def failed_close():
+        if close_fault == "exception":
+            raise RuntimeError("close fault")
+
+    monkeypatch.setattr(service, "close", failed_close)
+    result = runner(fixture)
+
+    assert not service.is_closed
+    assert result.status == "failed"
+    assert "close" in result.message.lower()
+    assert not output_parent.exists() or not list(output_parent.iterdir())
+
+
+@pytest.mark.parametrize("real_smoke_case", ["training", "boundary"], indirect=True)
+def test_public_runner_keeps_primary_failure_when_close_raises(
+    real_smoke_case, monkeypatch
+):
+    service, fixture, runner, output_parent = real_smoke_case
+    (output_parent.parents[2] / fixture["filename"]).write_bytes(b"damaged FIF")
+
+    def failed_close():
+        raise RuntimeError("close fault")
+
+    monkeypatch.setattr(service, "close", failed_close)
+    result = runner(fixture)
+
+    assert result.status == "failed"
+    assert "reviewed import failed" in result.message
+    assert "close fault" in result.message
 
 
 @pytest.mark.parametrize("failure_stage", ["parent_directory", "output_allocation"])
@@ -524,13 +632,3 @@ def test_strict_smoke_rejects_training_without_real_artifact_reload(
     ]
     assert summary["passed_required_case_count"] == 2
     assert summary["all_required_passed"] is False
-
-
-def test_required_training_smoke_does_not_mock_persistence() -> None:
-    source = inspect.getsource(smoke_script.run_fixture_smoke)
-
-    assert "unittest.mock" not in source
-    assert "patch(" not in source
-    assert "torch.save" not in source
-    assert "numpy.savetxt" not in source
-    assert "os.makedirs" not in source
