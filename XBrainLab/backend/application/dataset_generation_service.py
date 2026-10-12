@@ -123,7 +123,7 @@ class DatasetGenerationCommandService:
         if not isinstance(command, SaveDatasetSplitCommand):
             raise TypeError("Invalid command for configure_dataset_split")
         specification = self._specification_from_command(command)
-        self.config_from_payload(specification.to_payload())
+        specification.to_config()
         preview_summary = self._validated_preview_summary(
             command.preview_receipt,
             specification=specification,
@@ -229,7 +229,7 @@ class DatasetGenerationCommandService:
         candidate_publication: DatasetPublicationSnapshot | None = None
         self._materializing_key = (epoch_revision, saved.fingerprint)
         try:
-            config = self.config_from_payload(saved.specification.to_payload())
+            config = saved.specification.to_config()
             generator = self.study.get_datasets_generator(config)
             datasets = self._prepare_datasets(generator)
             expected_digest = str(
@@ -668,118 +668,7 @@ class DatasetGenerationCommandService:
         if command.split_config is not None:
             return DatasetSplitSpecification.from_payload(command.split_config)
         config = self._build_data_splitting_config(command)
-        return DatasetSplitSpecification.from_payload(
-            self._config_payload(config),
-        )
-
-    @staticmethod
-    def _config_payload(config: DataSplittingConfig) -> dict[str, Any]:
-        def splitter_payload(splitter: DataSplitter) -> dict[str, Any]:
-            split_type = getattr(splitter, "split_type", None)
-            split_unit = getattr(splitter, "split_unit", None)
-            return {
-                "split_type": getattr(split_type, "value", split_type),
-                "split_unit": getattr(split_unit, "value", split_unit),
-                "value": getattr(splitter, "value_var", None),
-                "is_option": bool(getattr(splitter, "is_option", True)),
-            }
-
-        return {
-            "train_type": config.train_type.value,
-            "is_cross_validation": bool(config.is_cross_validation),
-            "val_splitters": [
-                splitter_payload(splitter) for splitter in config.val_splitter_list
-            ],
-            "test_splitters": [
-                splitter_payload(splitter) for splitter in config.test_splitter_list
-            ],
-        }
-
-    @staticmethod
-    def _validate_split_config(config: DataSplittingConfig) -> None:
-        DatasetGenerationCommandService._validate_split_contract(config)
-        splitters = [
-            *list(config.val_splitter_list or []),
-            *list(config.test_splitter_list or []),
-        ]
-        for splitter in splitters:
-            if not bool(getattr(splitter, "is_option", True)):
-                continue
-            split_unit = getattr(splitter, "split_unit", None)
-            value = getattr(splitter, "value_var", None)
-            if split_unit is None or value is None or not str(value).strip():
-                raise ValueError(
-                    "Enabled dataset split rules require a unit and amount."
-                )
-            if not splitter.is_valid():
-                raise ValueError("Dataset split rule has an invalid unit or amount.")
-            if split_unit is SplitUnit.RATIO:
-                try:
-                    ratio = float(value)
-                except (TypeError, ValueError) as exc:
-                    raise ValueError(
-                        "Dataset split ratios must be numeric values between 0 and 1."
-                    ) from exc
-                if not 0 < ratio < 1:
-                    raise ValueError(
-                        "Dataset split ratios must be numeric values between 0 and 1."
-                    )
-
-    @staticmethod
-    def _validate_split_contract(config: DataSplittingConfig) -> None:
-        """Reject configurations the supported workflow cannot materialize."""
-        if any(
-            not bool(rule.is_option)
-            for rule in (*config.test_splitter_list, *config.val_splitter_list)
-        ):
-            raise ValueError(
-                "Inactive split rules are not supported; reconfigure data splitting."
-            )
-        test_rules = [
-            rule for rule in config.test_splitter_list if bool(rule.is_option)
-        ]
-        val_rules = [rule for rule in config.val_splitter_list if bool(rule.is_option)]
-        if len(test_rules) != 1:
-            raise ValueError(
-                "Dataset splitting requires exactly one supported test rule."
-            )
-        if len(val_rules) > 1:
-            raise ValueError("Dataset splitting supports at most one validation rule.")
-
-        test_rule = test_rules[0]
-        allowed_test = {SplitByType.TRIAL, SplitByType.SESSION, SplitByType.SUBJECT}
-        if test_rule.split_type not in allowed_test:
-            raise ValueError("Test split strategy is not supported by this workflow.")
-        allowed_val = {
-            ValSplitByType.TRIAL,
-            ValSplitByType.SESSION,
-            ValSplitByType.SUBJECT,
-        }
-        if val_rules and val_rules[0].split_type not in allowed_val:
-            raise ValueError(
-                "Validation split strategy is not supported by this workflow."
-            )
-
-        if config.train_type is TrainingType.IND and (
-            test_rule.split_type is SplitByType.SUBJECT
-            or (val_rules and val_rules[0].split_type is ValSplitByType.SUBJECT)
-        ):
-            raise ValueError("Individual training does not support By Subject splits.")
-
-        if config.is_cross_validation:
-            if test_rule.split_unit is not SplitUnit.KFOLD:
-                raise ValueError("Cross-validation test split must use K Fold.")
-            if val_rules and val_rules[0].split_unit not in {
-                SplitUnit.RATIO,
-                SplitUnit.NUMBER,
-            }:
-                raise ValueError(
-                    "Cross-validation validation split cannot use Manual or K Fold."
-                )
-        elif test_rule.split_unit is SplitUnit.KFOLD:
-            raise ValueError("K Fold test splits require cross-validation.")
-        if val_rules and val_rules[0].split_unit is SplitUnit.KFOLD:
-            raise ValueError("Validation split cannot use K Fold.")
+        return DatasetSplitSpecification.from_config(config)
 
     def _validated_preview_summary(
         self,
@@ -993,90 +882,6 @@ class DatasetGenerationCommandService:
                 ),
             ],
         )
-
-    @staticmethod
-    def config_from_payload(payload: dict[str, Any]) -> DataSplittingConfig:
-        """Build the canonical domain config from a detached UI payload."""
-        if "train_type" not in payload or not str(payload["train_type"] or "").strip():
-            raise ValueError("split_config train_type is required.")
-        if "is_cross_validation" not in payload:
-            raise ValueError("split_config is_cross_validation is required.")
-        train_type = DatasetGenerationCommandService._enum_from_value(
-            TrainingType,
-            payload.get("train_type"),
-        )
-        is_cross_validation = payload.get("is_cross_validation", False)
-        if type(is_cross_validation) is not bool:
-            raise ValueError("split_config is_cross_validation must be a bool.")
-        config = DataSplittingConfig(
-            train_type=train_type,
-            is_cross_validation=is_cross_validation,
-            val_splitter_list=DatasetGenerationCommandService._splitters_from_payload(
-                payload.get("val_splitters"),
-                ValSplitByType,
-            ),
-            test_splitter_list=DatasetGenerationCommandService._splitters_from_payload(
-                payload.get("test_splitters"),
-                SplitByType,
-            ),
-        )
-        DatasetGenerationCommandService._validate_split_config(config)
-        return config
-
-    @staticmethod
-    def _splitters_from_payload(
-        raw_splitters: Any,
-        split_type_enum: type[SplitByType] | type[ValSplitByType],
-    ) -> list[DataSplitter]:
-        if raw_splitters is None:
-            return []
-        if not isinstance(raw_splitters, list):
-            raise ValueError("split_config must include at least one splitter.")
-        if not raw_splitters:
-            return []
-        splitters: list[DataSplitter] = []
-        for raw in raw_splitters:
-            if not isinstance(raw, dict):
-                raise ValueError("split_config splitters must be objects.")
-            try:
-                split_type = DatasetGenerationCommandService._enum_from_value(
-                    split_type_enum,
-                    raw.get("split_type"),
-                )
-            except ValueError as error:
-                raise ValueError(
-                    "Unsupported split strategy; reconfigure data splitting."
-                ) from error
-            split_unit = DatasetGenerationCommandService._enum_from_value(
-                SplitUnit,
-                raw.get("split_unit"),
-            )
-            value = raw.get("value")
-            if value is None:
-                value = raw.get("value_var")
-            is_option = raw.get("is_option", True)
-            if type(is_option) is not bool:
-                raise ValueError("split_config is_option must be a bool.")
-            splitter = DataSplitter(
-                split_type=split_type,
-                value_var=str(value) if value is not None else None,
-                split_unit=split_unit,
-                is_option=is_option,
-            )
-            splitters.append(splitter)
-        return splitters
-
-    @staticmethod
-    def _enum_from_value(
-        enum_type: Any,
-        value: Any,
-    ) -> Any:
-        text = str(value or "").strip()
-        for item in enum_type:
-            enum_repr = f"{item.__class__.__name__}.{item.name}"
-            if text in {item.value, item.name, enum_repr}:
-                return item
-        raise ValueError(f"Unknown {enum_type.__name__} value: {value}")
 
     def _require_preview_evidence_matches(
         self,

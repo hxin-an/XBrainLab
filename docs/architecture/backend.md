@@ -1,6 +1,6 @@
 # Backend architecture
 
-最後更新：`2026-10-11`
+最後更新：`2026-10-12`
 
 這份文件說明目前 source 的 backend 邊界與責任，不是功能清單、歷史改造紀錄或本次施工的
 驗收紀錄。可對外宣稱的產品能力以 [current.md](../current.md) 為準；正在施工的範圍、
@@ -41,7 +41,7 @@ surface 不在 current architecture 內。Headless JSON command CLI 與專屬 au
 | Query-only access | `ApplicationService` owns the non-blocking published `state` and `data_summary` fast paths. `QueryStateCommandService` handles the other typed queries (lists, label targets, diagnostics, suggestions and history) after the command spine obtains its try-lock; a busy mutable-object query returns a recoverable retry result, never an independent UI cache. |
 | Import and data interpretation | `DataInterpretationCommandService` owns scan, review, preview, validation, recipe and apply orchestration; `DataInterpretationApplyService` performs reviewed metadata/label application. `DataInterpretationSessionState` carries the staged review session, while the command spine retains admission and result policy. |
 | Preprocess, epoch and montage | `PreprocessCommandService` owns preprocessing commands and pipeline invalidation. `BidsMontagePreparationCoordinator` prepares BIDS montage promotion and only commits through the application publication boundary. |
-| Split and training | Dataset generation first materializes and audits a saved split as an unpublished candidate. Training then admits resources for that candidate, commits the verified split and starts training; failures preserve or restore the earlier publication. Training configuration, preview receipts and terminal lifecycle stay scoped to this workflow. |
+| Split and training | `TrainingCommandService` owns saved-split start/discard orchestration: it asks dataset generation for an unpublished audited candidate, admits its resources, commits it and starts training. Failed starts restore the earlier dataset/trainer publication. `ApplicationService` retains command admission and synchronous terminal publication, not a second training-start path. |
 | Evaluation, visualization and saliency | `AnalysisCommandService` owns those analysis commands. Detached render publishers/work controllers publish only against an admitted, current training/publication boundary. |
 | Reset, close and cancellation | `LifecycleCommandService`, `ApplicationShutdownLifecycleCoordinator`, `OwnedWorkRegistry` and the synchronous-training coordinator own reset/close/terminal-delivery seams. No view owns worker lifetime. |
 
@@ -49,6 +49,12 @@ Epoch dialog setup and command execution share the validated setup builder in `P
 Interpretation, dataset generation and training command services are cached lazily on first use;
 handler bindings and state/reset callbacks do not materialize those owners during cold queries.
 There is no method-by-method lazy proxy layer.
+
+Preprocessing preparation receives the captured source sequence explicitly through the existing
+Study-owned service; it does not create a temporary Study or another observable service. Processors
+own detached copies, and commit rechecks the source identity before replacing the pipeline.
+`DatasetSplitSpecification` owns pure domain-config conversion and workflow validation shared by
+preview and generation; UI readiness checks do not import the mutable dataset-generation owner.
 
 `TrainingOperationMonitor` owns the physical monitor threads for admitted training and saliency work,
 including exact producer-generation matching and physical-exit joins. `OwnedWorkRegistry` remains the
@@ -109,6 +115,11 @@ preview as a result. Each completed run persists separate inference records for 
 validation and test loaders after checkpoint selection. An evaluation/render request binds one exact
 plan/run-or-aggregate/split identity: a run never borrows another run's predictions, and an aggregate pools
 only the requested split across its eligible completed runs.
+
+`TrainRecord.complete_evaluation()` owns final record publication, export and in-memory rollback.
+The holder supplies computed split evaluations, not direct restoration of record storage fields.
+Its existing state tracker keeps completion unstable until export succeeds; this is not a multi-file
+disk transaction or crash-durability guarantee.
 
 `TrainRecord` owns result selection rather than exposing its raw storage map. The legacy primary `eval`
 record remains the held-out compatibility/saliency record; split-qualified sidecars remain distinct.

@@ -11,7 +11,15 @@ from typing import Any
 
 import numpy as np
 
-from XBrainLab.backend.dataset.dataset import Dataset
+from XBrainLab.backend.dataset import (
+    Dataset,
+    DataSplitter,
+    DataSplittingConfig,
+    SplitByType,
+    SplitUnit,
+    TrainingType,
+    ValSplitByType,
+)
 from XBrainLab.backend.dataset.split_audit import (
     audit_dataset_splits,
     blocking_split_audit_issues,
@@ -192,6 +200,24 @@ class DatasetSplitRule:
             "is_option": self.is_option,
         }
 
+    def to_config(
+        self,
+        split_type_enum: type[SplitByType] | type[ValSplitByType],
+    ) -> DataSplitter:
+        """Build one validated strategy using the domain's value semantics."""
+        try:
+            split_type = _enum_from_value(split_type_enum, self.split_type)
+        except ValueError as error:
+            raise ValueError(
+                "Unsupported split strategy; reconfigure data splitting."
+            ) from error
+        return DataSplitter(
+            split_type=split_type,
+            value_var=self.value,
+            split_unit=_enum_from_value(SplitUnit, self.split_unit),
+            is_option=self.is_option,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class DatasetSplitSpecification:
@@ -242,6 +268,132 @@ class DatasetSplitSpecification:
             "val_splitters": [rule.to_payload() for rule in self.val_splitters],
             "test_splitters": [rule.to_payload() for rule in self.test_splitters],
         }
+
+    @classmethod
+    def from_config(cls, config: DataSplittingConfig) -> DatasetSplitSpecification:
+        """Copy a domain configuration without a payload round trip."""
+
+        def rule(splitter: DataSplitter) -> DatasetSplitRule:
+            split_type = getattr(splitter, "split_type", None)
+            split_unit = getattr(splitter, "split_unit", None)
+            return DatasetSplitRule(
+                split_type=getattr(split_type, "value", split_type),
+                split_unit=getattr(split_unit, "value", split_unit),
+                value=getattr(splitter, "value_var", None),
+                is_option=bool(getattr(splitter, "is_option", True)),
+            )
+
+        return cls(
+            train_type=config.train_type.value,
+            is_cross_validation=bool(config.is_cross_validation),
+            val_splitters=tuple(
+                rule(splitter) for splitter in config.val_splitter_list
+            ),
+            test_splitters=tuple(
+                rule(splitter) for splitter in config.test_splitter_list
+            ),
+        )
+
+    def to_config(self) -> DataSplittingConfig:
+        """Validate supported workflow rules and build a fresh domain config."""
+        config = DataSplittingConfig(
+            train_type=_enum_from_value(TrainingType, self.train_type),
+            is_cross_validation=self.is_cross_validation,
+            val_splitter_list=[
+                rule.to_config(ValSplitByType) for rule in self.val_splitters
+            ],
+            test_splitter_list=[
+                rule.to_config(SplitByType) for rule in self.test_splitters
+            ],
+        )
+        self._validate_split_config(config)
+        return config
+
+    @staticmethod
+    def _validate_split_config(config: DataSplittingConfig) -> None:
+        DatasetSplitSpecification._validate_split_contract(config)
+        splitters = [
+            *list(config.val_splitter_list or []),
+            *list(config.test_splitter_list or []),
+        ]
+        for splitter in splitters:
+            if not bool(getattr(splitter, "is_option", True)):
+                continue
+            split_unit = getattr(splitter, "split_unit", None)
+            value = getattr(splitter, "value_var", None)
+            if split_unit is None or value is None or not str(value).strip():
+                raise ValueError(
+                    "Enabled dataset split rules require a unit and amount."
+                )
+            if not splitter.is_valid():
+                raise ValueError("Dataset split rule has an invalid unit or amount.")
+            if split_unit is SplitUnit.RATIO:
+                try:
+                    ratio = float(value)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        "Dataset split ratios must be numeric values between 0 and 1."
+                    ) from exc
+                if not 0 < ratio < 1:
+                    raise ValueError(
+                        "Dataset split ratios must be numeric values between 0 and 1."
+                    )
+
+    @staticmethod
+    def _validate_split_contract(config: DataSplittingConfig) -> None:
+        """Reject configurations the supported workflow cannot materialize."""
+        if any(
+            not bool(rule.is_option)
+            for rule in (*config.test_splitter_list, *config.val_splitter_list)
+        ):
+            raise ValueError(
+                "Inactive split rules are not supported; reconfigure data splitting."
+            )
+        test_rules = [
+            rule for rule in config.test_splitter_list if bool(rule.is_option)
+        ]
+        val_rules = [rule for rule in config.val_splitter_list if bool(rule.is_option)]
+        if len(test_rules) != 1:
+            raise ValueError(
+                "Dataset splitting requires exactly one supported test rule."
+            )
+        if len(val_rules) > 1:
+            raise ValueError("Dataset splitting supports at most one validation rule.")
+
+        test_rule = test_rules[0]
+        allowed_test = {SplitByType.TRIAL, SplitByType.SESSION, SplitByType.SUBJECT}
+        if test_rule.split_type not in allowed_test:
+            raise ValueError("Test split strategy is not supported by this workflow.")
+        allowed_val = {
+            ValSplitByType.TRIAL,
+            ValSplitByType.SESSION,
+            ValSplitByType.SUBJECT,
+        }
+        if val_rules and val_rules[0].split_type not in allowed_val:
+            raise ValueError(
+                "Validation split strategy is not supported by this workflow."
+            )
+
+        if config.train_type is TrainingType.IND and (
+            test_rule.split_type is SplitByType.SUBJECT
+            or (val_rules and val_rules[0].split_type is ValSplitByType.SUBJECT)
+        ):
+            raise ValueError("Individual training does not support By Subject splits.")
+
+        if config.is_cross_validation:
+            if test_rule.split_unit is not SplitUnit.KFOLD:
+                raise ValueError("Cross-validation test split must use K Fold.")
+            if val_rules and val_rules[0].split_unit not in {
+                SplitUnit.RATIO,
+                SplitUnit.NUMBER,
+            }:
+                raise ValueError(
+                    "Cross-validation validation split cannot use Manual or K Fold."
+                )
+        elif test_rule.split_unit is SplitUnit.KFOLD:
+            raise ValueError("K Fold test splits require cross-validation.")
+        if val_rules and val_rules[0].split_unit is SplitUnit.KFOLD:
+            raise ValueError("Validation split cannot use K Fold.")
 
     @property
     def fingerprint(self) -> str:
@@ -476,12 +628,10 @@ class DatasetSplitPreviewPublisher:
         dataset: Any,
         generator_factory: Callable[[Any], Any],
         get_publication: Callable[[], ApplicationViewPublication],
-        config_factory: Callable[[dict[str, Any]], Any],
     ) -> None:
         self._dataset = dataset
         self._generator_factory = generator_factory
         self._get_publication = get_publication
-        self._config_factory = config_factory
         self._active_lock = Lock()
         self._generation_lock = Lock()
         self._active: dict[str, _ActivePreview] = {}
@@ -525,7 +675,7 @@ class DatasetSplitPreviewPublisher:
             )
 
         try:
-            config = self._config_factory(request.specification.to_payload())
+            config = request.specification.to_config()
         except ValueError as exc:
             raise PreconditionError(
                 f"Dataset split preview is infeasible: {exc}"
@@ -764,6 +914,15 @@ class DatasetSplitPreviewPublisher:
 def _validate_generation(value: int) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError("publication_generation must be a positive integer")
+
+
+def _enum_from_value(enum_type: Any, value: Any) -> Any:
+    text = str(value or "").strip()
+    for item in enum_type:
+        enum_repr = f"{item.__class__.__name__}.{item.name}"
+        if text in {item.value, item.name, enum_repr}:
+            return item
+    raise ValueError(f"Unknown {enum_type.__name__} value: {value}")
 
 
 def _rules_from_payload(raw: Any) -> tuple[DatasetSplitRule, ...]:

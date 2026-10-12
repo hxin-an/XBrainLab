@@ -52,7 +52,6 @@ from .commands import (
     Command,
     CommandName,
     CreateEpochCommand,
-    DiscardTrainingPreparationCommand,
     EvaluateCommand,
     PreprocessCommand,
     PreprocessOperation,
@@ -128,7 +127,6 @@ from .preprocess_render import (
 from .preprocess_service import PreprocessCommandService
 from .query_state_service import QueryStateCommandService
 from .resource_guard import (
-    ResourceConfirmationRequiredError,
     ResourcePreflightResult,
     TrainingResourcePreviewContext,
     TrainingResourcePreviewRequest,
@@ -453,7 +451,6 @@ class ApplicationService(Observable):
             dataset=self.dataset_state,
             generator_factory=self.study.get_datasets_generator,
             get_publication=self._committed_view_publication,
-            config_factory=self._dataset_config_from_payload,
         )
         self.query_state_commands = QueryStateCommandService(
             dataset=self.dataset_state,
@@ -553,6 +550,7 @@ class ApplicationService(Observable):
         return TrainingCommandService(
             training=self.training,
             training_runtime=self.training_runtime,
+            dataset_generation=lambda: self.dataset_generation,
             get_state=self.get_state,
             recommendation=self.training_recommendation,
             resource_refinement_provider=self.training_resource_preview.refinements_for_configuration,
@@ -573,15 +571,6 @@ class ApplicationService(Observable):
             "active_split_summary": {},
             "last_split_attempt": {},
         }
-
-    @staticmethod
-    def _dataset_config_from_payload(payload: dict[str, Any]) -> Any:
-        """Parse preview input without constructing mutable split lifecycle state."""
-        from .dataset_generation_service import (  # noqa: PLC0415
-            DatasetGenerationCommandService,
-        )
-
-        return DatasetGenerationCommandService.config_from_payload(payload)
 
     @cached_property
     def analysis(self) -> AnalysisCommandService:
@@ -660,100 +649,6 @@ class ApplicationService(Observable):
         """Reject direct API reads after this service released ownership."""
         if self.shutdown_lifecycle.snapshot().closed:
             raise RuntimeError(_CLOSED_SERVICE_MESSAGE)
-
-    def _handle_train_with_saved_split(self, command: Command) -> HandlerResult:
-        """Admit candidate resources before publishing the saved data split."""
-        if not isinstance(command, TrainCommand):
-            raise TypeError("Invalid command for train")
-        candidate = self.dataset_generation.prepare_saved_split_candidate()
-        try:
-            preflight, receipt_reused = self.training_commands.resolve_train_preflight(
-                command,
-                datasets=candidate.datasets,
-            )
-        except ResourceConfirmationRequiredError:
-            raise
-        except Exception as exc:
-            candidate_discarded = self.dataset_generation.discard_prepared_split()
-            application_error = map_exception(exc)
-            raise ApplicationError(
-                message=application_error.message,
-                error_type=application_error.error_type,
-                recoverable=application_error.recoverable,
-                diagnostics={
-                    **application_error.diagnostics,
-                    "state_preserved": True,
-                    "split_candidate_discarded": candidate_discarded,
-                },
-            ) from exc
-
-        split_preparation: dict[str, Any] | None = None
-        try:
-            split_preparation = self.dataset_generation.commit_prepared_split(candidate)
-            result = self.training_commands.start_train_after_preflight(
-                command,
-                preflight=preflight,
-                receipt_reused=receipt_reused,
-                defer_synchronous_completion=not command.interactive,
-            )
-        except Exception as exc:
-            if split_preparation is not None:
-                try:
-                    self.dataset_generation.restore_committed_candidate(candidate)
-                except Exception as rollback_exc:
-                    rollback_error = map_exception(rollback_exc)
-                    raise ApplicationError(
-                        message=rollback_error.message,
-                        error_type=rollback_error.error_type,
-                        recoverable=rollback_error.recoverable,
-                        diagnostics={
-                            **rollback_error.diagnostics,
-                            "state_preserved": False,
-                            "split_rollback": False,
-                            "rollback_failed": True,
-                        },
-                    ) from rollback_exc
-                application_error = map_exception(exc)
-                raise ApplicationError(
-                    message=application_error.message,
-                    error_type=application_error.error_type,
-                    recoverable=application_error.recoverable,
-                    diagnostics={
-                        **application_error.diagnostics,
-                        "state_preserved": True,
-                        "split_rollback": True,
-                    },
-                ) from exc
-            else:
-                self.dataset_generation.discard_prepared_split()
-            raise
-        message, diagnostics = self._normalize_handler_result(result)
-        return message, {
-            **diagnostics,
-            "split_preparation": split_preparation,
-        }
-
-    def _handle_discard_training_preparation(
-        self,
-        command: Command,
-    ) -> HandlerResult:
-        """Discard warning confirmation and candidate without active mutation."""
-        if not isinstance(command, DiscardTrainingPreparationCommand):
-            raise TypeError("Invalid command for discard_training_preparation")
-        try:
-            self.training_commands.discard_train_preflight(
-                command.resource_preflight_token
-            )
-        finally:
-            candidate_discarded = self.dataset_generation.discard_prepared_split()
-        return (
-            "Training preparation discarded.",
-            {
-                "candidate_discarded": candidate_discarded,
-                "resource_preflight_discarded": bool(command.resource_preflight_token),
-                "state_preserved": True,
-            },
-        )
 
     def get_state(self) -> ApplicationStateSnapshot:
         """Return a fresh serializable snapshot of backend state."""
@@ -1824,10 +1719,7 @@ class ApplicationService(Observable):
             return None
         return PostTrainingSaliencyTarget(
             run=outcome.run,
-            finished_runs_before=0,
             finished_runs_after=finished_runs,
-            append=False,
-            explicit=True,
         )
 
     def _owned_operation_cancelled_result(
@@ -4086,9 +3978,13 @@ class ApplicationService(Observable):
                     command
                 )
             ),
-            CommandName.TRAIN: self._handle_train_with_saved_split,
+            CommandName.TRAIN: lambda command: self.training_commands.handle_train(
+                command
+            ),
             CommandName.DISCARD_TRAINING_PREPARATION: (
-                self._handle_discard_training_preparation
+                lambda command: (
+                    self.training_commands.handle_discard_training_preparation(command)
+                )
             ),
             CommandName.CLEAR_TRAINING_HISTORY: (
                 lambda command: self.training_commands.handle_clear_training_history(

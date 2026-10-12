@@ -26,9 +26,6 @@ from XBrainLab.backend.application import (
     StopTrainingCommand,
     TrainCommand,
 )
-from XBrainLab.backend.application.dataset_generation_service import (
-    DatasetGenerationCommandService,
-)
 from XBrainLab.backend.application.dataset_split_preview import (
     DatasetSplitSpecification,
 )
@@ -820,9 +817,7 @@ class TrainingSidebar(QWidget):
             # persisted payload back into controls.  Context membership alone
             # cannot detect malformed legacy payloads such as two validation
             # rules or an invalid enabled amount.
-            DatasetGenerationCommandService.config_from_payload(
-                specification.to_payload()
-            )
+            specification.to_config()
         except (TypeError, ValueError):
             return False
         return True
@@ -901,32 +896,12 @@ class TrainingSidebar(QWidget):
         prospective_model = self._configure_training_command(
             model_holder=model_holder,
         )
-        recommendation = self._training_setting_recommendation(
+        selection = self._collect_training_draft(
+            initial_option,
+            suggested_values=suggested_values,
             expected_publication_generation=expected_generation,
             prospective_model_name=prospective_model.model_name,
             prospective_model_params=dict(prospective_model.model_params),
-        )
-        resource_preview_request = self._training_resource_preview_request(
-            initial_option,
-            recommendation=recommendation,
-            proposed_values=suggested_values,
-            expected_publication_generation=expected_generation,
-            prospective_model_name=prospective_model.model_name,
-            prospective_model_params=dict(prospective_model.model_params),
-        )
-        selection = self._collect_training_option(
-            initial_option,
-            recommendation=recommendation,
-            proposed_values=suggested_values,
-            device_recommendation_provider=lambda device: (
-                self._training_device_recommendation(
-                    device,
-                    expected_publication_generation=expected_generation,
-                    prospective_model_name=prospective_model.model_name,
-                    prospective_model_params=dict(prospective_model.model_params),
-                )
-            ),
-            resource_preview_request=resource_preview_request,
         )
         if isinstance(selection, InteractionOutcome):
             return selection
@@ -1000,26 +975,12 @@ class TrainingSidebar(QWidget):
         )
         if isinstance(initial_option, InteractionOutcome):
             return initial_option
-        recommendation = self._training_setting_recommendation(
-            expected_publication_generation=expected_generation,
-        )
-        resource_preview_request = self._training_resource_preview_request(
+        selection = self._collect_training_draft(
             initial_option,
-            recommendation=recommendation,
-            proposed_values=suggested_values,
+            suggested_values=suggested_values,
             expected_publication_generation=expected_generation,
-        )
-        selection = self._collect_training_option(
-            initial_option,
-            recommendation=recommendation,
-            proposed_values=suggested_values,
-            device_recommendation_provider=lambda device: (
-                self._training_device_recommendation(
-                    device,
-                    expected_publication_generation=expected_generation,
-                )
-            ),
-            resource_preview_request=resource_preview_request,
+            prospective_model_name=None,
+            prospective_model_params=None,
         )
         if isinstance(selection, InteractionOutcome):
             return selection
@@ -1034,6 +995,38 @@ class TrainingSidebar(QWidget):
             failed_title="Training Settings Failed",
             success_status="Training settings saved",
             expected_publication_generation=expected_generation,
+        )
+
+    def _collect_training_draft(
+        self,
+        initial_option: dict[str, Any],
+        *,
+        suggested_values: dict[str, str] | None,
+        expected_publication_generation: int | None,
+        prospective_model_name: str | None,
+        prospective_model_params: dict[str, Any] | None,
+    ) -> _TrainingSettingSelection | InteractionOutcome:
+        """Keep recommendation, resource preview and device edits on one draft."""
+        context: dict[str, Any] = {
+            "expected_publication_generation": expected_publication_generation,
+            "prospective_model_name": prospective_model_name,
+            "prospective_model_params": prospective_model_params,
+        }
+        recommendation = self._training_setting_recommendation(**context)
+        resource_preview_request = self._training_resource_preview_request(
+            initial_option,
+            recommendation=recommendation,
+            proposed_values=suggested_values,
+            **context,
+        )
+        return self._collect_training_option(
+            initial_option,
+            recommendation=recommendation,
+            proposed_values=suggested_values,
+            device_recommendation_provider=lambda device: (
+                self._training_device_recommendation(device, **context)
+            ),
+            resource_preview_request=resource_preview_request,
         )
 
     def _training_setting_initial_option(

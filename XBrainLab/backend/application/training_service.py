@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
@@ -37,11 +37,13 @@ from .commands import (
     ClearTrainingHistoryCommand,
     Command,
     ConfigureTrainingCommand,
+    DiscardTrainingPreparationCommand,
     TrainCommand,
 )
-from .errors import ApplicationError, PreconditionError
+from .errors import ApplicationError, PreconditionError, map_exception
 from .owned_work import owned_work_checkpoint
 from .resource_guard import (
+    ResourceConfirmationRequiredError,
     ResourcePreflightResult,
     TrainingResourcePreviewContext,
     TrainingResourcePreviewRequest,
@@ -74,6 +76,9 @@ from .training_submission import (
     training_submission_resource_preview_receipt,
 )
 
+if TYPE_CHECKING:
+    from .dataset_generation_service import DatasetGenerationCommandService
+
 HandlerResult = str | tuple[str, dict[str, Any]]
 
 
@@ -85,6 +90,7 @@ class TrainingCommandService:
         *,
         training: Any,
         training_runtime: TrainingCommandRuntimePort,
+        dataset_generation: Callable[[], DatasetGenerationCommandService],
         get_state: Callable[[], ApplicationStateSnapshot],
         recommendation: TrainingRecommendationService | None = None,
         resource_refinement_provider: (
@@ -94,6 +100,7 @@ class TrainingCommandService:
     ) -> None:
         self.training = training
         self.training_runtime = training_runtime
+        self._dataset_generation = dataset_generation
         self._get_state = get_state
         self._recommendation = recommendation
         self._resource_refinement_provider = resource_refinement_provider
@@ -242,56 +249,99 @@ class TrainingCommandService:
             raise PreconditionError("Reviewed epoch class mapping is unavailable.")
         return class_map
 
-    def handle_train(
-        self,
-        command: Command,
-        *,
-        defer_synchronous_completion: bool = False,
-    ) -> HandlerResult:
+    def handle_train(self, command: Command) -> HandlerResult:
+        """Admit candidate resources before publishing the saved data split."""
         if not isinstance(command, TrainCommand):
             raise TypeError("Invalid command for train")
-        preflight, receipt_reused = self.resolve_train_preflight(command)
-        return self.start_train_after_preflight(
-            command,
-            preflight=preflight,
-            receipt_reused=receipt_reused,
-            defer_synchronous_completion=defer_synchronous_completion,
-        )
+        dataset_generation = self._dataset_generation()
+        candidate = dataset_generation.prepare_saved_split_candidate()
+        try:
+            preflight, receipt_reused = self._resolve_train_preflight(
+                command,
+                datasets=candidate.datasets,
+            )
+        except ResourceConfirmationRequiredError:
+            raise
+        except Exception as exc:
+            candidate_discarded = dataset_generation.discard_prepared_split()
+            application_error = map_exception(exc)
+            raise ApplicationError(
+                message=application_error.message,
+                error_type=application_error.error_type,
+                recoverable=application_error.recoverable,
+                diagnostics={
+                    **application_error.diagnostics,
+                    "state_preserved": True,
+                    "split_candidate_discarded": candidate_discarded,
+                },
+            ) from exc
 
-    def resolve_train_preflight(
+        split_preparation: dict[str, Any] | None = None
+        try:
+            split_preparation = dataset_generation.commit_prepared_split(candidate)
+            message, diagnostics = self._start_train_after_preflight(
+                command,
+                preflight=preflight,
+                receipt_reused=receipt_reused,
+            )
+        except Exception as exc:
+            if split_preparation is not None:
+                try:
+                    dataset_generation.restore_committed_candidate(candidate)
+                except Exception as rollback_exc:
+                    rollback_error = map_exception(rollback_exc)
+                    raise ApplicationError(
+                        message=rollback_error.message,
+                        error_type=rollback_error.error_type,
+                        recoverable=rollback_error.recoverable,
+                        diagnostics={
+                            **rollback_error.diagnostics,
+                            "state_preserved": False,
+                            "split_rollback": False,
+                            "rollback_failed": True,
+                        },
+                    ) from rollback_exc
+                application_error = map_exception(exc)
+                raise ApplicationError(
+                    message=application_error.message,
+                    error_type=application_error.error_type,
+                    recoverable=application_error.recoverable,
+                    diagnostics={
+                        **application_error.diagnostics,
+                        "state_preserved": True,
+                        "split_rollback": True,
+                    },
+                ) from exc
+            dataset_generation.discard_prepared_split()
+            raise
+        return message, {**diagnostics, "split_preparation": split_preparation}
+
+    def _resolve_train_preflight(
         self,
-        command: Command,
+        command: TrainCommand,
         *,
-        datasets: Sequence[Any] | None = None,
+        datasets: Sequence[Any],
     ) -> tuple[ResourcePreflightResult, bool]:
-        """Authorize one train command against active or speculative datasets."""
-        if not isinstance(command, TrainCommand):
-            raise TypeError("Invalid command for train")
+        """Authorize one train command against its prepared dataset candidate."""
         context = self._resource_preflight_context()
-        if datasets is not None:
-            context["datasets"] = list(datasets)
+        context["datasets"] = list(datasets)
         preflight = self._build_resource_preflight(command, context)
         receipt_reused = self._resource_receipts.authorize(command, preflight)
         return preflight, receipt_reused
 
-    def start_train_after_preflight(
+    def _start_train_after_preflight(
         self,
-        command: Command,
+        command: TrainCommand,
         *,
         preflight: ResourcePreflightResult,
         receipt_reused: bool,
-        defer_synchronous_completion: bool = False,
-    ) -> HandlerResult:
+    ) -> tuple[str, dict[str, Any]]:
         """Start training after the application transaction commits its split."""
-        if not isinstance(command, TrainCommand):
-            raise TypeError("Invalid command for train")
-        if not isinstance(preflight, ResourcePreflightResult):
-            raise TypeError("preflight must be a ResourcePreflightResult")
         self._validate_class_weighting_start_admission()
         self._validate_early_stopping_admission()
         handoff_generation = self.training.start_training(
             append=command.append,
-            interactive=command.interactive or defer_synchronous_completion,
+            interactive=True,
         )
         if (
             isinstance(handoff_generation, bool)
@@ -305,18 +355,10 @@ class TrainingCommandService:
             self._training_terminal_outcome()
         )
         completion_diagnostics: dict[str, Any] = {}
-        if defer_synchronous_completion and not command.interactive:
+        if not command.interactive:
             completion_diagnostics["synchronous_completion_deferred"] = True
-        elif not command.interactive:
-            _message, completion_diagnostics = self.complete_synchronous_training(
-                trainer_identity
-            )
         return (
-            (
-                "Training started."
-                if command.interactive or defer_synchronous_completion
-                else "Training completed."
-            ),
+            "Training started.",
             {
                 "append": command.append,
                 "interactive": command.interactive,
@@ -397,9 +439,22 @@ class TrainingCommandService:
         ):
             raise PreconditionError("Early stopping requires a validation split")
 
-    def discard_train_preflight(self, token: str | None) -> None:
-        """Invalidate a pending training-resource confirmation receipt."""
-        self._resource_receipts.discard(token)
+    def handle_discard_training_preparation(self, command: Command) -> HandlerResult:
+        """Discard warning confirmation and candidate without active mutation."""
+        if not isinstance(command, DiscardTrainingPreparationCommand):
+            raise TypeError("Invalid command for discard_training_preparation")
+        try:
+            self._resource_receipts.discard(command.resource_preflight_token)
+        finally:
+            candidate_discarded = self._dataset_generation().discard_prepared_split()
+        return (
+            "Training preparation discarded.",
+            {
+                "candidate_discarded": candidate_discarded,
+                "resource_preflight_discarded": bool(command.resource_preflight_token),
+                "state_preserved": True,
+            },
+        )
 
     def complete_synchronous_training(
         self,
