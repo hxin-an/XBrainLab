@@ -842,7 +842,7 @@ def _normalize_subjects(
 
 
 def _files_with_suffix(
-    files: tuple[str, ...],
+    files: Iterable[str],
     *,
     names: tuple[str, ...],
     suffixes: tuple[str, ...],

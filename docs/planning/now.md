@@ -88,7 +88,7 @@ red/green 與既有 async suite 81 passed。這些組有重疊，不能相加作
 Negative absolute sample coordinates 維持拒絕；不宣稱新增任意座標或 BIDS format 能力。
 腳本補綁 participants 與 generic inherited metadata，未列入 inputs 時在 admission 拒絕。
 
-Production 相對 52d3a615：16 files、+534/-214、net +320，已觸發並完成獨立 complexity
+Production 相對 52d3a615：16 files、net +320，已觸發並完成獨立 complexity
 review。Owners、production modules/classes 與 receipts 均不增加；換算函式由 Apply 移至既有
 loader 共用，不保留第二套；既有 duration parser 只改為可共用入口。額外檔案是同一資料流的
 admission／recipe／render 接線，不另建平台。主 agent 已核對實際 diff。
@@ -99,3 +99,8 @@ E 槽於 2026-10-20 再查未掛載，G 槽也不是既有資料根目錄；cano
 仍因必要資料不可得而 blocked。已詢問接回或提供新位置，不重新下載、不拿 D261 或舊134
 冒充通過。完成其他檢查後若此 blocker 仍存在，明確交代未達 handoff-ready 與所需資源；
 待同版本必要 gate 齊備才開 Windows app 交集中手測，未經另外批准不 merge。
+
+首輪 CI f0330d07 發現四項型別診斷（index helper 接收 list／tuple 宣告、selected timing
+nullable narrowing）。逐筆 campaign 已停止，保留不完整證據；不改 baseline 或弱化 gate。
+修正 helper 的 iterable 契約並明確拒絕 unavailable timing；獨立覆核無阻擋，
+locked Basedpyright 1.39.2 回到零診斷、直接回歸 87 passed。以新 head 重啟必要檢查。

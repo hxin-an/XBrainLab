@@ -578,7 +578,7 @@ def _review_one_run(
             placement_status = "blocked"
             placement_code = "selected_timing_invalid"
             placement_message = timing_error
-        elif selected_onset is None:
+        elif selected_onset is None or selected_duration is None:
             placement_status = "blocked"
             placement_code = "onset_unknown"
             placement_message = "onset is unknown and cannot be placed on stored EEG"
