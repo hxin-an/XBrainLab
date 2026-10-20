@@ -110,4 +110,10 @@ locked Basedpyright 1.39.2 回到零診斷、直接回歸 87 passed。以新 hea
 失敗，無法進入既有明確 remap 流程。已恢復「有缺檔 blocker 的可修復 review」，保留對任意
 未知 choice 的拒絕、不讀取不存在檔案、不允許未完成 remap 的 Apply。108 項相關測試通過，
 含明確 remap 後實際 Apply 的 sample 檢查；獨立覆核無阻擋，最終 Basedpyright 零診斷。
-下一步提交此修正並重啟同 head CI、Windows native／junction IO 與完整 D261 campaign。
+ee52bb6c 的 Windows native 13 passed、junction IO 43 passed／8 missing-fixture skips，
+CI Basedpyright 與 source-diverse 通過；架構 gate 發現新增 workflow test 直接讀 Study。
+改用既有公開 query／detached render DTO 保留未 publication、成功匯入與 sample 128 斷言，
+新增分類使用不同名稱，完整核對保留原始事件與新增分類，避免只驗到原始 annotations。
+14 個相關測試、完整 architecture compliance 與獨立覆核通過，不放寬 guard。
+D261 再次停止並保留 partial artifacts；完成此測試修正後固定新 head，
+先確認架構 gate，再重啟同 head CI、Windows native／junction IO 與完整 D261 campaign。
