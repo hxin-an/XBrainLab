@@ -70,27 +70,32 @@ UI 狀態：已批准修正既有 validation／取消重試行為；layout／五
 
 ### Current / next
 
-修復前已完成獨立資料語意／生命週期審查與主 agent 重現；
-168 focused unit passed、canonical fixture IO 30 passed／8 缺資料 skipped。
-原 junction IO 的 2 failures 保留：一個是測試字串假設，一個確認 Command alias choices 遺失。
-D 槽 15 roots／261 recordings 完成清單與事件表結構檢查，每 root 一個 recording
-實際匯入＋fresh recipe 共 15 passed；不等同全 cohort。
+六類修復與直接相依邊界已完成施工，進入固定 source 的整合驗證。
+[修復前審查](../validation/bids-import-audit-20261020.md) 與原 red artifacts 保留，
+不把歷史發現改寫為修復後證據。`build/bids-audit` 保存本輪測試輸出；PR 記錄 exact head、
+適用 CI／native／retained-campaign 結果，恢復工作時先核對實際結果，不依計畫推定通過。
 
-Windows native wizard／Assistant cancel 共 11 passed（13 個非本輪案例 deselected）。
-兩位獨立 reviewer 已覆核報告，主 agent 已核對實際 artifacts 與 diff。
-審查報告：[BIDS 深度檢查](../validation/bids-import-audit-20261020.md)，含六類確認發現、
-測試品質缺口及修正邊界；不是產品已修好或 handoff-ready。
+Focused 證據：最終資料／recipe／header suite 299 passed；JSON/alias 109 passed；
+conformance script 24 passed；shared BIDS widget 14 passed；取消四分支 real-Command
+red/green 與既有 async suite 81 passed。這些組有重疊，不能相加作唯一測試數。
+原 junction 的路徑字串假設已改為 exact resolved file identities；仍需重跑原 junction IO。
 
-現有可用資源的審查已完成，現進入已批准修復。Windows 上次確認未掛載 E 槽，canonical134／expanded1205 仍因
-資料不可得而 blocked；已詢問使用者接回或提供新位置，不推定資料已刪除，不用舊結果補通過。
-正式 red 證據已建立：recipe/review 10 failed、cancel 3 failed、JSON/alias 6 failed、
-inheritance/input-binding 13 failed（各自含正向 controls）。失敗 artifacts 保留在 build/bids-audit。
-正在實作並逐組 green；原生測試串行輪用 shared Windows Python。
-取消測試另重現 Preview 取消後可能直接 apply 舊候選，已納入同一取消邊界修復。
-共用 inherited events 需逐 recording 保留 review／placement evidence，不能讓後者覆蓋前者，
-也不能重複過濾同一份來源 rows；沿用 plan DTO 與既有 atomic apply。
+獨立覆核已涵蓋資料、取消／publication、測試 oracle、腳本、文件與複雜度。
+並修正審查再現的直接缺口：catalog 不被未選 subject 的 sidecar 歧義擋住；
+共用 events 逐 recording 保留證據／原始 rows；selected sample anchor 與 onset 不一致時
+重用既有 converter／duration parser，使 Validate 與 Apply 一致。既有 header admission
+傳遞 first_samp，非零 origin、異取樣率、end field、unknown duration 有直接測試。
+Negative absolute sample coordinates 維持拒絕；不宣稱新增任意座標或 BIDS format 能力。
+腳本補綁 participants 與 generic inherited metadata，未列入 inputs 時在 admission 拒絕。
 
-本輪已觸及 >8 個 production files，觸發 complexity review；目前不增加 authoritative owner、
-production module／class 或 receipt。獨立 reviewer 正覆核 index／跨層接線及必要性。
-下一步：完成 green 與獨立審查，整合後才跑同 source D261／CI。E 槽再查仍未掛載，
-不阻止其他已授權施工，不宣稱已通過 canonical134。
+Production 相對 52d3a615：16 files、+534/-214、net +320，已觸發並完成獨立 complexity
+review。Owners、production modules/classes 與 receipts 均不增加；換算函式由 Apply 移至既有
+loader 共用，不保留第二套；既有 duration parser 只改為可共用入口。額外檔案是同一資料流的
+admission／recipe／render 接線，不另建平台。主 agent 已核對實際 diff。
+
+剩餘交付步驟：固定 clean head → 最終 Windows native／junction IO、D261、CI/source-diverse；
+對實際失敗修復後驗受影響邊界。原生檢查中不執行會 stash 工作樹的 commit hooks。
+E 槽於 2026-10-20 再查未掛載，G 槽也不是既有資料根目錄；canonical134／expanded1205
+仍因必要資料不可得而 blocked。已詢問接回或提供新位置，不重新下載、不拿 D261 或舊134
+冒充通過。完成其他檢查後若此 blocker 仍存在，明確交代未達 handoff-ready 與所需資源；
+待同版本必要 gate 齊備才開 Windows app 交集中手測，未經另外批准不 merge。

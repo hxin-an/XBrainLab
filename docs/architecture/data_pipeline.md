@@ -108,6 +108,14 @@ entities、events / channels / electrodes / coordsystem / JSON sidecars、warnin
 Scan、subject selection、review/apply、EEGLAB dependency preflight 和 montage preparation 只重用
 仍通過 retained directory identities 的同一 index；subject projection 不再各自重掃整棵資料樹。
 
+Events/channels TSV 在同一 inventory 的祖先目錄中依 recording entities 配對，採最近的
+適用整份 TSV；不逐列合併。單一目錄有多份適用 TSV 時保留逐 recording 的歧義，
+catalog 仍可開啟，但選到受影響 recording 的候選必須在 Validate 解決，不能任選檔案。
+共用 events TSV 仍逐 recording 保留 timing review、placement 與 epoch hint；
+Apply 不會把前一份 recording 已過濾／換算的 rows 當成下一份的來源。
+明確 label-carrier 選項先按原始 scan 的檔案身分綁定，再縮小實際讀取範圍；
+路徑別名不能讓選項遺失，同名但不同來源也不能誤套選項。
+
 Small BIDS metadata、JSON、CSV / TSV sidecars 使用 content-identified parsed cache。Cache key 包含
 完整 bytes SHA-256、parser ID、schema version、payload size / kind，保留 immutable value 並限制
 單檔、總 bytes 與 entry 數。Path/stat 只可作安全捷徑；Windows 仍重新讀完整 payload 再以 content

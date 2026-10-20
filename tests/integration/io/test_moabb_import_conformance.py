@@ -141,6 +141,30 @@ def test_import_case_replays_real_bids_commands_and_preserves_input(
     assert Path(result["recipe"]["path"]).is_file()
 
 
+@pytest.mark.parametrize("bind_participants", [False, True])
+def test_import_case_requires_participant_metadata_in_input_identity(
+    tmp_path: Path, bind_participants: bool
+) -> None:
+    data_root, case = _write_case_fixture(tmp_path)
+    participants = data_root / "tiny-bids" / "participants.tsv"
+    participants.write_text("participant_id\tage\nsub-01\t29\n", encoding="utf-8")
+    if bind_participants:
+        case["input_files"].append(
+            {
+                "path": participants.relative_to(data_root).as_posix(),
+                "sha256": _sha256(participants),
+            }
+        )
+    result = run_import_case(case, data_root=data_root, output_root=tmp_path / "out")
+    if bind_participants:
+        assert result["status"] == "passed", result
+        assert result["input_files_before"] == result["input_files_after"]
+    else:
+        assert result["status"] == "failed", result
+        assert "unbound selected BIDS dependency" in result["failure"]["message"]
+        assert "participants.tsv" in result["failure"]["message"]
+
+
 @pytest.mark.parametrize("context_only_review", [False, True])
 def test_import_case_preserves_context_without_inventing_classes(
     tmp_path: Path,
@@ -317,6 +341,34 @@ def test_import_case_rejects_unbound_matching_bids_sidecar(tmp_path: Path) -> No
     assert result["status"] == "failed"
     assert result["failure"]["stage"] == "admission"
     assert "unbound selected BIDS dependency" in result["failure"]["message"]
+
+
+@pytest.mark.parametrize(
+    "name", ["events.tsv", "channels.tsv", "events.json", "eeg.json"]
+)
+@pytest.mark.parametrize("bind_input", [False, True])
+def test_import_case_binds_generic_inherited_sidecars(
+    tmp_path: Path, name: str, bind_input: bool
+) -> None:
+    data_root, case = _write_case_fixture(tmp_path)
+    root = data_root / "tiny-bids"
+    local = root / "sub-01" / "eeg" / f"sub-01_task-mi_{name}"
+    inherited = root / name
+    inherited.write_bytes(local.read_bytes() if local.exists() else b"{}")
+    if bind_input:
+        case["input_files"].append(
+            {
+                "path": inherited.relative_to(data_root).as_posix(),
+                "sha256": _sha256(inherited),
+            }
+        )
+    result = run_import_case(case, data_root=data_root, output_root=tmp_path / "out")
+    if bind_input:
+        assert result["status"] == "passed", result.get("failure")
+    else:
+        assert result["status"] == "failed"
+        assert result["failure"]["stage"] == "admission"
+        assert "unbound selected BIDS dependency" in result["failure"]["message"]
 
 
 def test_import_case_uses_independent_event_expectation(tmp_path: Path) -> None:
