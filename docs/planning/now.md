@@ -1,163 +1,96 @@
 # XBrainLab Now
 
-最後更新：`2026-10-12`
+最後更新：`2026-10-20`
 
-## Accepted baseline
+## Active — BIDS 審查缺陷整合修復
 
-PR #162 已於 2026-10-12 合併；main `620a4341` 與手測產品 `c4885f44` 的
-source tree 一致。使用者已明確手測通過並同意 merge。既有 Training Settings、
-Data Splitting、狀態列與 Preprocess history 設計保留；不再將功能驗收推論成結構已理想。
-歷史驗收、失敗與閱讀證據已保存於主 checkout 的 ignored
-`build/handoff-evidence/pr162-accepted/`；不改寫歷史結論或研究資料。
+### 授權、基線與 outcome
 
-## Active — Training／Preprocess 保留決定核查與結構收斂
+使用者已於 2026-10-20 批准六類缺陷修復計畫，做到整合驗證、獨立覆核後集中手測。
+2026-10-20 fetch origin/main 後建立
+`audit/bids-import`，基線 `52d3a615`（已合併 PR #163）。舊 Training／Preprocess 施工紀錄
+留在 Git；不重新啟動已合併工作。研究 checkout 與文件預覽 worktree 均保持原狀。
 
-### 問題、證據與 outcome
+既有 134 個資料入口／1,205 recordings 證據屬歷史 source，不能算本版本通過。
+Outcome：六類已確認缺陷修復，有直接回歸證據；Preview／Validate／Apply／recipe 語意一致，
+metadata 與使用者選項不靜默遺失，取消／失敗／重試保留既有資料與 freshness 保護。
+不承諾任何 BIDS 零缺陷，也不把沒有例外等同資料語意正確。
 
-使用者已多次要求逐模組深入整理，既有 reviewer 與檢查角度未充分阻止過早結案。
-前輪從 519 路徑補成 554 路徑，已修正直接交界漏列；但完整閱讀、無回歸與「有理由保留」
-仍不能單獨證明可維護性已達標。ApplicationService 4,211 行、共用 application tests
-10,810 行、Training sidebar 1,924 行，是需核查責任集中與修改成本的訊號，不是刪碼配額。
+### Scope / non-goals
 
-本輪不重新盤點全專案，而是沿既有責任分組核查保留決定，將站不住腳的結構實際收斂。
-Outcome：具體減少責任混雜、重複 policy／轉接與測試查找成本；保留項有源碼與可行替代
-方案的比較，不只「有 caller／怕拆壞／CI 綠」。不承諾零 bug、100% coverage 或全面消除大檔。
+- 主流程：選 root → subject selection → 五步 wizard → Confirm and Import →
+  Dataset／Preprocess 就緒；延伸到 recipe fresh-service 重播與必要 epoch 語意檢查。
+- 六面向：發現與範圍、metadata／伴隨檔繼承配對、events／labels、
+  時間／波形保真、確認／取消／失敗恢復、recipe／GUI／Assistant／Command 一致性。
+- 同時審查相關 production、tests／fixtures、scripts、設定與文件；核對 oracle、mock、
+  漏選／多載、stale review、半套 publication、重複掃描／資料複製與等待。
+- 修復 inherited events/channels TSV 配對、JSON 欄位覆寫、BIDS/generic review 一致性、
+  sample-index recipe、Preview 已發布後取消 Validate 的 retry、Command alias choices。
+  補齊實際 metadata 輸入身分與 Assistant 成功開窗匯入測試。
+- 已批准補齊上述通用 BIDS 繼承，不按資料集名稱加特例；以 BIDS 1.11.1 為界，
+  保留既有五步 wizard，歧義透過現有 validation surface 明確拒絕，不新增流程／確認頁。
+- 不改原始 EEG、研究封存、模型／RAG、使用者 settings.json；不下載新資料、
+  自動接受授權、搬移／刪除資料或新建環境。不跑全部訓練。單一主題 PR、小 commit；
+  merge 必須待手測與另外批准。超出既有複雜度門檻先 review，不暗中擴張 scope。
 
-### 範圍、責任與 non-goals
+### 執行與分工
 
-| 組別 | 既有保留對象／需解決的問題 | 寫入責任 |
-| --- | --- | --- |
-| Shared command spine | ApplicationService 初始化／公開查詢／两階段 prepare→commit／錯誤與發布；比較 focused owners 的既有責任，檢查不必要的跨域知識與重複傳遞 | Main |
-| Training | manager／holder／record／split generation／resource／sidebar 保留決定；配置、訓練與 terminal／artifact 責任能否局部收斂 | Training worker；先提具體方案 |
-| Preprocess | command／processor／pipeline transaction、Raw／Epochs 直接語意、render／preview、下游失效與 rollback；不另立 publication owner | Preprocess worker；先提具體方案 |
-| Tests | 對應單元、共用與 integration tests 的組織、duplicated fixture／mock choreography；實際行為 oracle 與低 mock 流程 | 跟隨對應 owner；shared test 由 Main |
-| Scripts／validation | 既有本輪 runner／capture／handoff／CI 入口，重複用途或 setup、無用途 wrapper 與 false-green 風險 | Validation worker；先提具體方案 |
+1. 保留審查探針及原失敗，以正式測試先重現，再修正。基線仍為 52d3a615。
+2. 主 agent 負責 index 繼承、腳本與整合；分工 recipe/review、UI cancellation、
+   JSON suggestions/alias choices，各自專屬寫入檔案。獨立覆核由非實作者進行。
+3. 依序整合 sidecar、review/apply、recipe、cancel、JSON、alias；必要相依界面先協調。
+   使用非零波形與獨立事件／通道預期值，避免 product 自己產生 oracle。
+4. 補來源變動／新增 sidecar freshness、participants input binding，維持現有 owners，
+   不新增 state machine、receipt 或 compatibility 層；移除重複／錯誤政策取代旁掛補丁。
+5. focused／IO／epoch 相鄰檢查後，D 槽 261 recordings 逐份匯入＋fresh recipe，
+   E 可用時補 canonical134／expanded1205，缺資料不算通過。重型 native 串行、明確 timeout。
+6. 同一版本 Windows native wizard／Assistant 完整成功與取消流程、必要 CI／source-diverse，
+   獨立資料與 lifecycle/test 覆核，主 agent 核對實際 diff／artifacts。
+7. 同步 current/target/support/validation 的實際事實；直接開 Windows app 與 PowerShell log
+   交一次集中手測。既有使用者程式不得未確認關閉。
 
-相關設定與 canonical docs 隨真實決策同步，不另立第二份 plan／通用盤點平台。
-三組 product/tests/scripts 都必須有決定，不因只完成 ApplicationService 就宣稱整輪結束。
-第三方模型數學、全 Import／Agent／Evaluation／Saliency 重做、論文與資料下載、環境搬遷
-不在範圍。直接資料／取消／publication 邊界仍必須檢查。
-UI 狀態：既有全部可見布局、文案、功能、互動已接受，本輪只授權保持行為的內部變更。
-正式 Command／query／Assistant／artifact 契約不默改；必要新決策另行報告。
+### 責任與複雜度檢查
 
-### 施工順序與 complexity review
+Owners before/after 維持 BidsDatasetIndex（發現／配對）、既有 candidate/review/apply、
+recipe serializer、UI coordinator、ApplicationService publication。DTO／純 helper 不另成 owner。
+刪除候選為同層專用配對的限制、first-nonempty Levels fallback、重複時間驗證與
+忽略最新 review state 的 closures；保留 freshness、root containment、atomic apply 及明確確認。
+每切片回報實際 production +/-，有 >300 net／>8 product files／新 module 等觸發時先獨立
+complexity review；整合不以行數少取代語意完整。每小 commit 可獨立回退。
 
-1. 先核查既有結案理由對應的實際 source、入口、caller、state reader/writer、error／cleanup。
-   每責任組比較 deletion、局部收斂、重用既有 owner、抽出純邏輯與保留；原摘要不是證明。
-   不新增逐 helper 台帳。既有 ignored review notes 作工作材料，canonical 決策放原有文件。
-2. 先處理 shared ApplicationService 與 Training 執行鏈，再接 Preprocess 交界，tests/scripts
-   同步整理；可獨立的只讀比較平行做，source 寫入不重疊。跨 owner 移動先協調。
-3. 每 slice 先列 entry/callers、deletion candidates、owners before/after、預期 source delta、
-   passing characterization、rollback 與停止條件，再寫碼。新增 production module/public class、
-   owner/state machine/receipt/compatibility 或跨數量門檻先 complexity review。
-   不為消除大檔引入 generic dispatcher、mixin 或每方法 proxy；純搬檔不稱責任簡化。
-4. Refactor 先同範圍 passing baseline；bug 先真實可觀察 red。保護功能／語意／數值、
-   stale/cancel/stop/retry、publication、artifact 與 cleanup，不靠減 assertion 換綠燈。
-5. 高風險獨立 reviewer 先讀原碼／契約／問題，再比較改動与保留方案；分開判斷回歸安全、
-   原維護問題是否解決、剩餘結構理由是否成立。Main 看實際 diff／原始證據並承擔結論。
-   無新 defect 不等於結構合格；無可證明改善也不強拆湊數。
+### 驗證與停止條件
 
-### 驗證、資源與停止條件
+使用現有 Windows shared Python；Qt／MNE／native 測試採 prlimit --core=0 與明確 timeout。
+不並行多個重型 native suite。重用既有 gates，不建新驗證平台。
 
-- 使用既有 Windows shared Python／models；native abort 風險採 prlimit 與明確 timeout。
-  Baseline/focused 順序協調，不同 agent 不併發跑重型 native suite。
-- 每 slice 只跑直接相關 tests／lint；完整候選依 validation contract 取同 head CI、
-  source-diverse、平台與適用 native/UI evidence，不重跑 CI 等價本機全套。
-- 七個缺指定 OpenNeuro sub002/sub003 的 optional cases 仍是未執行，不藉本輪隱藏或刪 marker。
-- 原手測批准僅限 PR #162。新版本需一次集中手測；不每小切片要求使用者驗收。
-  PR/worktree 維持單一主要目標，超過 root complexity/PR 門檻不自行假定例外。
-- 完成必須：所有本輪保留責任組有可驗證決定、已確認冗餘物理清除、沒有未決 scope 內
-  結構問題、測試保障未下降、獨立覆核接受結構與回歸、最終同版 gates 通過。
-  交付需前後責任差異、產品／測試／腳本／文件／設定各別行數、實際限制與 Windows 完整程式。
-- 不在完成一個 slice、compaction 或 CI pending 停工；不擴成新功能，也不自行 merge 新候選。
-  若只有閱讀／搬檔而無可證明的改善，明確報告，不能換成「已完全乾淨」。
+完成：六類缺陷都有 regression，相關資料／狀態邊界經實際流程與獨立覆核，
+無未分類失敗，同 exact commit 必要 gates 通過才稱 handoff-ready。
+若必要資料／資源不可得，完成其他檢查後精確列 blocker；不得拿舊134/134補成本次通過。
+UI 狀態：已批准修正既有 validation／取消重試行為；layout／五步流程維持。
 
 ### Current / next
 
-Current：PR #162 已合併；task worktree 建於 main `620a4341`，分支
-`refactor/training-preprocess-boundaries`。主 research checkout 的 dirty docs/settings 不動。
-舊 task tracked source／Git 登記已清，Windows preview console 仍持有的空目錄暫不強制終止
-不明程序；必要 evidence/manual artifacts 已逐位元核對保存，shared環境與原始資料保留。
-已確認第一組 coherent slices（不是整輪完成）：
-- Training：ApplicationService 的 saved-split start/discard 約 95 行實際組織 split candidate、
-  resource receipt、commit／rollback，TrainingCommandService.handle_train 卻只有 23 處 unit
-  caller、繞過 saved split。移入既有 TrainingCommandService 的唯一 train/discard 入口，
-  required lazy split-service getter 保持冷啟動；刪除原 shortcut，不能保留第二條便利入口。
-  Admission／lock／synchronous terminal publication 仍屬 ApplicationService；owner 數不變，
-  預估 2 production files +110/-120、net -10，不新增 module。Main 改 service glue，worker
-  改 training_service／專屬 tests；先 passing baseline，保留 public saved-split、receipt、
-  startup rollback、synchronous/interactive 結果與 artifact tests。回退為獨立 commit。
-- Preprocess：_DetachedPreprocessStudy 只用來讓 fresh PreprocessStateService 讀取 captured
-  source，且提供四個只會 throw 的 mutation 方法。既有 prepare_* 改接明確 source_data，
-  移除 fake Study／temporary Observable service；commit_prepared 的單一 mutation owner
-  不變。預估 2 production files net -20～-50，無新 module／owner；先既有 prepare/command
-  characterization，再驗 live source 不被 prepare 改動、cancel/stale 與正常 commit。
-- Validation：public cross-source runner 的兩條路徑重複 import／preprocess／close，未檢查
-  is_closed，疑有未完成 close／exception 錯判通過或蓋原錯誤；先真 service cleanup 故障重現，再在既有 runner 局部
-  收斂。四個固定 case、兩種 protocol、數值／artifact oracle 不減少；不是新增 runner owner。
-  未使用的 saliency 配置須先證明不影響結果或契約，不能只因沒有 compute 就直接刪除。
-- Validation consumer：已重現 required CI verifier 接受 empty results + 成功 summary。
-  在既有 public runner 抽出純 summary 計算，由 producer／consumer 共用四個 required case
-  規則；consumer 核對真實 rows 與宣稱的一致性，不新增 schema owner。先檔案破壞 red，
-  再保護 missing／duplicate／failed／protocol／reload 與正常完整報告；script 預估 net
-  +40～80、product 0。既有 source provenance 檢查獨立保留。
-- Split representation：pure config parsing 現位於 mutable DatasetGenerationCommandService，
-  preview、ApplicationService shim 與 sidebar 因此依賴 mutation owner。改由既有 immutable
-  DatasetSplitSpecification 提供 to_config／from_config，保留 payload normalization、fingerprint、
-  workflow rejection 與錯誤文字；刪 callback/shim 與 payload round trips，不改 domain config
-  廣義 constructor。預估 4～5 production files 約 230 行移位、net -30～60，owner 不增加。
-  先 parser/preview/deferred/UI saved-split baseline；preview→save→train allocation 要一致。
-- Final training result：holder 直接保存/回填 TrainRecord 兩個 storage fields 的 rollback 移入
-  既有 TrainRecord completion/export 操作；holder 只管計算與 terminal，record 管原子可見性。
-  disk 多檔 crash atomicity 不擴張。2 production files 預估 net +7；先實際 artifact roundtrip
-  與 final export failure baseline，保護原 record identity／tracker stable token／先前 repeats。
-- Epoch provenance：已核對 Raw loader 不會載入 preprocess history；真實 TimeEpoch／WindowEpoch
-  才是來源 producer。將既有 provenance stamp 放在這兩個 producer，刪 aggregate 以顯示文字
-  推論權威的路徑。保留 metadata schema／來源座標／split 語意；僅不再接受手工捏造 history
-  作為來源證明，這不是支援的 import 契約。3 production files 預估 net -10～30，無新 owner。
-  先 real producer→resample→FIF reload baseline，再 forged-history red；舊 fixture 改走真 producer，
-  不用直接 stamp 掩蓋風險。無有效來源仍 unverified；正常 import/epoch 數值與分類不改。
-  直接依賴：Resample 必須在重採樣前讀取已驗證 metadata，成功後沿用原 source identity/grid
-  更新 rate/window metadata；不能從匯入路徑重新造出來源權威。既有 reader 改為命名純函式，
-  在同 epochs module 小函式處理更新，不新建 owner。4 production files 合計預估 net +5～45；
-  真 producer→epoch-resample→FIF reload 與 malformed/unverified/event-grid 檢查一起驗證。
-  獨立覆核指出既有 reader 未核對 metadata rate/tmin/tmax 與 live MNE timing；新 Resample
-  使用這個 reader 作 admission，因此需先補 stale timing 的 real-data red 與窄幅核對。
-  已知來源 window 必須和實際資料一致，無效 metadata 保持 unverified；FIF 非整數 sfreq
-  roundtrip 用來界定數值容差，不改 schema 或為缺資料推論 provenance。
-  實測採 exact FIF serialization match，而非任意容差。獨立覆核另追蹤到 off-grid tmin
-  存檔捨入後再次 resample 會偏移 source window；先 red，再只對已驗證的 detached epochs
-  還原 metadata 記錄的原時間起點。原始 samples／events／live source 不變，必須驗證
-  第二次 resample 的 source start／end 與來源資料未被改動；未驗證資料不得走此修復。
-- Shared application tests：10,810 行混合 import、publication、training、analysis、montage。
-  依責任分組移至明確 test modules；單組 helper 留在該組，共用小型 fixtures 集中，禁止
-  跨 test module imports。AST 核對每個 test body／decorator 保留與 collection case IDs 對應，
-  baseline 為本輪既有 395 passed；唯一已刪案例是完全 mock 的私有 start-wrapper choreography，
-  無 saliency assertion，真正 public split→train／rollback coverage 保留。此項改善查找與
-  修改邊界，不宣稱搬檔提高覆蓋率或產品縮碼；production delta 0。
-- Capture fixtures：polish/reviewer 兩份相同 Step 2 construction／settle 移入既有
-  training_evidence_fixture，兩路直接重用；刪 wrapper，保留各自 capture coverage／width。
-  Product 0，script 預估 net -40～55；先現有真 Qt holdout/CV/layout baseline，再 failure
-  cleanup 測試，不改 screenshot 期待或可見 UI。不同 Training Settings 場景不強合併。
-- Training manager 歷史模式：全 repo production constructor 已只有 explicit compute、全已完成
-  run set；自動 baseline／append-only saliency target 的欄位、分支與專屬測試無產品入口。
-  刪這條舊模式，保留 run identity/count、command completion barrier、CAS、取消、terminal
-  retry 與手動 no-target domain 路徑。先所有現行 manual/async/terminal characterization，
-  逐一區分測試中的舊模式與仍必要競態，不刪一般 race oracle。預估 manager/service/contract
-  3 production files net -50～90，owner 不增加；非 UI/功能移除，不改已退役狀態。
-  先確認 diagnostic reason 無 artifact reader，再移除舊模式專屬 reason。
-- Sidebar draft 收斂：combined configure 與 settings-only 重複傳遞同一 publication generation／
-  prospective model 到 recommendation、resource preview、device provider。以既有 sidebar 私有
-  helper 統一這個 draft 的查詢與 collect；初始 snapshot、model dialog 次序、文案、command
-  與確認行為不動。1 production file 預估 net -15，無新 owner；保留兩種現有 UI flow tests，
-  加強同 draft/model/generation 的 observable request 斷言。
+修復前已完成獨立資料語意／生命週期審查與主 agent 重現；
+168 focused unit passed、canonical fixture IO 30 passed／8 缺資料 skipped。
+原 junction IO 的 2 failures 保留：一個是測試字串假設，一個確認 Command alias choices 遺失。
+D 槽 15 roots／261 recordings 完成清單與事件表結構檢查，每 root 一個 recording
+實際匯入＋fresh recipe 共 15 passed；不等同全 cohort。
 
-Current validation：上述 slices、FIF→再次 resample 修正及各責任組保留比較已完成；
-独立整合覆核已接受 `9b961b2a` 的實際 committed tree。最後 provenance 221 項、
-manager/sidebar 與 user-facing walkthrough 448 項通過，已有分段 commits 與 PR #163。
-首輪 CI Static Quality 指出兩個新 argument-type diagnostics：domain splitter conversion
-用了 unnecessary optional getattr，及 provenance 已驗證時的 event-array 型別未被 analyzer
-連動縮窄。修正 typed domain access 與明確 array annotation，不放寬 allowlist。
+Windows native wizard／Assistant cancel 共 11 passed（13 個非本輪案例 deselected）。
+兩位獨立 reviewer 已覆核報告，主 agent 已核對實際 artifacts 與 diff。
+審查報告：[BIDS 深度檢查](../validation/bids-import-audit-20261020.md)，含六類確認發現、
+測試品質缺口及修正邊界；不是產品已修好或 handoff-ready。
 
-Next：驗證這兩個直接修正、保留首輪失敗證據，再取得最終 head 全部適用 CI／Windows
-handoff。UI／功能沒有新增變更；新 PR 的手測與 merge 批准仍待使用者，尚非 handoff-ready。
+現有可用資源的審查已完成，現進入已批准修復。Windows 上次確認未掛載 E 槽，canonical134／expanded1205 仍因
+資料不可得而 blocked；已詢問使用者接回或提供新位置，不推定資料已刪除，不用舊結果補通過。
+正式 red 證據已建立：recipe/review 10 failed、cancel 3 failed、JSON/alias 6 failed、
+inheritance/input-binding 13 failed（各自含正向 controls）。失敗 artifacts 保留在 build/bids-audit。
+正在實作並逐組 green；原生測試串行輪用 shared Windows Python。
+取消測試另重現 Preview 取消後可能直接 apply 舊候選，已納入同一取消邊界修復。
+共用 inherited events 需逐 recording 保留 review／placement evidence，不能讓後者覆蓋前者，
+也不能重複過濾同一份來源 rows；沿用 plan DTO 與既有 atomic apply。
+
+本輪已觸及 >8 個 production files，觸發 complexity review；目前不增加 authoritative owner、
+production module／class 或 receipt。獨立 reviewer 正覆核 index／跨層接線及必要性。
+下一步：完成 green 與獨立審查，整合後才跑同 source D261／CI。E 槽再查仍未掛載，
+不阻止其他已授權施工，不宣稱已通過 canonical134。
