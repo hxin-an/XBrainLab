@@ -712,7 +712,9 @@ def test_bids_recommendation_keeps_target_nontarget_trial_type_over_stimulus_ids
 def test_bids_recommendation_requires_review_when_row_sample_is_truncated(tmp_path):
     plans = []
     for order in ("late_refinement", "early_refinement"):
-        events = tmp_path / f"sub-01_task-P300_{order}_events.tsv"
+        case_dir = tmp_path / order
+        case_dir.mkdir()
+        events = case_dir / "sub-01_task-P300_events.tsv"
         repeated = [f"{index}\t0\tstimulus\tstandard" for index in range(2048)]
         refinements = [
             "2048\t0\tstimulus\toddball",

@@ -125,3 +125,10 @@ Complexity：前一整合 production 16 files、+551/-216（net +335），已獨
 這是施工 evidence，不是 final-head conformance。下一步固定 clean commit，依序補
 native／完整 fixture、D261、canonical134 與 frozen expanded1205，並核對同 head CI；
 執行狀態保存在該候選的 ignored output，不以先前候選結果替代。
+
+`b931e514` 的 CI backend shard（run 39438413109）有一個舊 row-truncation fixture
+失敗，其兩種排列放在同層、檔名無可區分 entity，形成真正 JSON 歧義；另 3,842 項通過。
+本切片只隔離該測試的兩種資料排列，保留 row budget／推薦拒絕斷言，不放寬產品規則。
+D replay 已於 53/261 通過時停止自有程序，原輸出保留；新候選重新跑完整 gates。
+Focused validation：該 label-carriers test file 全部案例及既有 JSON regression；
+獨立 reviewer 確認 fixture 修正未遮蔽產品 defect，通過後重新凍結。
