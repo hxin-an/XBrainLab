@@ -231,6 +231,7 @@ def build_interpretation_candidate(
     candidate_id: str,
     scan: ScanResult,
     choices: dict[str, Any] | None = None,
+    known_label_carriers: list[str] | None = None,
     bids_events_json_reader: BidsEventsJsonReader | None = None,
     resource_reader: AdmittedResourceReader | None = None,
     resource_scope: InterpretationResourceScope | None = None,
@@ -238,6 +239,9 @@ def build_interpretation_candidate(
 ) -> InterpretationCandidate:
     """Build a candidate interpretation from a scan result and user choices."""
     choices = dict(choices or {})
+    known_label_carriers = (
+        scan.label_carriers if known_label_carriers is None else known_label_carriers
+    )
     resource_scope = resource_scope or resolve_interpretation_resource_scope(
         scan,
         choices,
@@ -306,6 +310,13 @@ def build_interpretation_candidate(
     )
     active_label_carriers = list(resource_scope.label_carriers)
     bids = dict(resource_scope.bids)
+    if bids.get("is_bids"):
+        selected_keys = {normalized_path_identity(path) for path in selected_files}
+        for row in bids.get("layout", []):
+            if normalized_path_identity(str(row.get("file") or "")) in selected_keys:
+                blocked_reasons.extend(row.get("channels_issues", []))
+                if use_external_label_carriers:
+                    blocked_reasons.extend(row.get("events_issues", []))
     if (
         scan.source_kind == "bids"
         and scan.bids.get("is_bids")
@@ -327,9 +338,25 @@ def build_interpretation_candidate(
             choices.get("label_carrier_remap"),
         )
     )
+    missing_required_carriers = {
+        path
+        for path in _remapped_required_label_carriers(
+            _string_list(choices.get("required_label_carriers")),
+            _string_mapping(choices.get("label_carrier_remap")),
+        )
+        if use_external_label_carriers
+        and resolve_scan_path(path, known_label_carriers).status == "missing"
+    }
+    # Keep missing recipe choices in candidate.choices for explicit repair.
+    # They remain blocked below, but cannot bind to or admit a phantom carrier.
     label_carrier_plan = _build_label_carrier_plan(
         active_label_carriers,
-        label_carrier_choices,
+        {
+            path: choice
+            for path, choice in label_carrier_choices.items()
+            if path not in missing_required_carriers
+        },
+        known_carriers=known_label_carriers,
         carrier_sources=scan.label_carrier_sources,
         sidecar_reader=sidecar_reader,
         resource_reader=resource_reader,
@@ -527,6 +554,7 @@ def build_interpretation_candidate(
     missing_label_carriers = _required_label_carriers_missing_from_scan(
         choices,
         active_label_carriers,
+        known_carriers=known_label_carriers,
     )
     if missing_label_carriers:
         blocked_reasons.append(
@@ -1068,6 +1096,8 @@ def _remapped_per_file_choices(
 def _required_label_carriers_missing_from_scan(
     choices: dict[str, Any],
     scanned_carriers: list[str],
+    *,
+    known_carriers: list[str],
 ) -> list[str]:
     if _label_carrier_source_choice(choices) == "embedded_events" or bool(
         choices.get("skip_labels")
@@ -1078,14 +1108,18 @@ def _required_label_carriers_missing_from_scan(
         _string_list(choices.get("required_label_carriers")),
         remap,
     )
+    missing = _paths_missing_from_scan(required, scanned_carriers)
     label_carrier_choices = choices.get("label_carrier_choices")
     if isinstance(label_carrier_choices, dict):
-        required.extend(
+        chosen = [
             remap.get(str(key).strip(), str(key).strip())
             for key in label_carrier_choices
             if str(key).strip()
-        )
-    return _paths_missing_from_scan(required, scanned_carriers)
+        ]
+        # Choices may remain for discovered runs that the user deselected.
+        # Only explicitly required carriers must belong to the active scope.
+        missing.extend(_paths_missing_from_scan(chosen, known_carriers))
+    return list(dict.fromkeys(missing))
 
 
 def _label_carrier_source_choice(choices: dict[str, Any]) -> str:

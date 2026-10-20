@@ -12,6 +12,7 @@ from typing import Any, Protocol, cast
 import numpy as np
 
 from XBrainLab.backend.event_semantics import mark_gdf_rejected_trials
+from XBrainLab.backend.load_data.event_loader import timestamp_rows_from_sample_index
 from XBrainLab.backend.load_data.raw import (
     SOURCE_CONTENT_IDENTITY_RUNTIME_KEY,
     Raw,
@@ -29,7 +30,10 @@ from XBrainLab.backend.utils.logger import logger
 
 from .commands import LabelImportPlan
 from .data_interpretation import InterpretationCandidate
-from .data_interpretation_bids import prepare_bids_timestamp_rows_for_placement
+from .data_interpretation_bids import (
+    bids_plan_for_target,
+    prepare_bids_timestamp_rows_for_placement,
+)
 from .data_interpretation_bids_channels import apply_bids_channel_review
 from .data_interpretation_content_identity import assert_review_content_unchanged
 from .data_interpretation_event_values import (
@@ -738,13 +742,14 @@ class DataInterpretationApplyService:
         }
         placement_records: list[dict[str, Any]] = []
         prepared: list[tuple[Any, str, str, dict[str, Any], list[dict[str, Any]]]] = []
+        source_label_map = dict(label_map)
         for target in target_files:
             data_path = self._data_filepath(target)
             carrier_path = file_mapping.get(data_path)
             if not carrier_path or carrier_path not in label_map:
                 continue
-            plan = plan_by_path.get(carrier_path, {})
-            labels = label_map[carrier_path]
+            plan = bids_plan_for_target(plan_by_path.get(carrier_path, {}), data_path)
+            labels = source_label_map[carrier_path]
             labels, placement_record = prepare_bids_timestamp_rows_for_placement(
                 labels,
                 plan,
@@ -753,7 +758,7 @@ class DataInterpretationApplyService:
             labels = self._timestamp_row_records(labels)
             labels = self._timestamp_rows_with_value_decisions(labels, plan)
             if self._plan_uses_sample_index(plan):
-                labels = self._timestamp_rows_from_sample_index(
+                labels = timestamp_rows_from_sample_index(
                     labels,
                     sfreq=self._target_sample_frequency(target),
                     first_samp=self._target_first_sample(target),
@@ -778,64 +783,6 @@ class DataInterpretationApplyService:
     @staticmethod
     def _plan_uses_sample_index(plan: dict[str, Any]) -> bool:
         return str(plan.get("time_model") or "").strip().lower() == "sample_index"
-
-    @staticmethod
-    def _timestamp_rows_from_sample_index(
-        labels: Any,
-        *,
-        sfreq: float,
-        first_samp: int,
-        sample_index_base: str,
-        sample_index_origin: str,
-    ) -> list[Any]:
-        if sfreq <= 0:
-            raise ValueError(
-                "EEG sample frequency is required for sample-index labels.",
-            )
-        if not isinstance(labels, list):
-            raise ValueError("Sample-index labels must be timestamp row records.")
-        base = str(sample_index_base).strip().lower()
-        origin = str(sample_index_origin).strip().lower()
-        if base not in {"zero_based", "one_based"} or origin not in {
-            "recording_relative",
-            "absolute",
-        }:
-            raise ValueError(
-                "Sample-index labels require an explicit zero/one-based and "
-                "recording-relative/absolute contract.",
-            )
-        base_offset = 1 if base == "one_based" else 0
-        converted: list[Any] = []
-        for row_index, item in enumerate(labels, start=1):
-            if not isinstance(item, dict):
-                raise ValueError(f"Sample-index label row {row_index} is not a record.")
-            row = dict(item)
-            try:
-                raw_sample = float(row["onset"])
-            except (KeyError, TypeError, ValueError) as exc:
-                raise ValueError(
-                    "Sample-index label row has no numeric sample.",
-                ) from exc
-            if not math.isfinite(raw_sample) or not raw_sample.is_integer():
-                raise ValueError(
-                    "Sample-index label row must contain a finite integer sample.",
-                )
-            normalized_sample = int(raw_sample) - base_offset
-            absolute_sample = (
-                first_samp + normalized_sample
-                if origin == "recording_relative"
-                else normalized_sample
-            )
-            row["onset"] = (absolute_sample - first_samp) / sfreq
-            if "duration" in row and row["duration"] not in (None, ""):
-                try:
-                    row["duration"] = float(row["duration"]) / sfreq
-                except (TypeError, ValueError) as exc:
-                    raise ValueError(
-                        "Sample-index label row has non-numeric duration.",
-                    ) from exc
-            converted.append(row)
-        return converted
 
     @staticmethod
     def _timestamp_row_records(labels: Any) -> list[dict[str, Any]]:
@@ -978,6 +925,7 @@ class DataInterpretationApplyService:
             plan = plan_by_path.get(carrier_path)
             if not plan:
                 continue
+            plan = bids_plan_for_target(plan, self._data_filepath(target))
             setter(
                 EPOCH_HINT_KEY,
                 self._epoch_hint_from_label_plan(
@@ -1099,7 +1047,9 @@ class DataInterpretationApplyService:
                 if row.get("row") is not None:
                     unknown_rows.append(int(row["row"]))
                 continue
-            raw_duration = row.get("raw_duration")
+            raw_duration = row.get(
+                "placement_duration_seconds", row.get("raw_duration")
+            )
             if raw_duration is None:
                 if row.get("row") is not None:
                     unknown_rows.append(int(row["row"]))

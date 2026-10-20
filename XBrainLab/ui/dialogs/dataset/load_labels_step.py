@@ -442,6 +442,13 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
 
     @staticmethod
     def _bids_paired_eeg_name(carrier: dict[str, Any]) -> str:
+        targets = carrier.get("selected_target_files")
+        if isinstance(targets, list):
+            names = [
+                Path(str(target)).name for target in targets if str(target).strip()
+            ]
+            if names:
+                return ", ".join(names)
         target = str(
             carrier.get("selected_target_file")
             or carrier.get("bids_expected_target_file")

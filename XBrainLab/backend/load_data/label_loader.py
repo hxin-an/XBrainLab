@@ -440,7 +440,7 @@ def _load_csv_tsv(
                 item = {
                     "onset": _tabular_numeric_value(row[found_time]),
                     "label": row[found_label],
-                    "duration": _duration_value(
+                    "duration": timestamp_duration_value(
                         row,
                         onset_field=found_time,
                         duration_field=found_duration,
@@ -481,7 +481,10 @@ def _sequence_label_values(df: pd.DataFrame, found_label: str | None) -> Any:
     raise ValueError("Label column is required for event-order labels.")
 
 
-def _duration_value(row: Any, *, onset_field: str, duration_field: str | None) -> Any:
+def timestamp_duration_value(
+    row: Any, *, onset_field: str, duration_field: str | None
+) -> Any:
+    """Parse the selected duration or derive it from a selected interval end."""
     if not duration_field:
         return 0.0
     value = row[duration_field]

@@ -14,6 +14,7 @@ from types import MappingProxyType
 from typing import Any
 
 from .data_interpretation_bids_resources import (
+    _bids_filename_entities,
     bids_events_json_candidates,
     is_bids_events_file,
     is_bids_events_json_sidecar,
@@ -41,7 +42,7 @@ class BidsDatasetCompleteness:
 
 @dataclass(frozen=True)
 class BidsRecording:
-    """One indexed raw EEG recording and its local BIDS entities/sidecars."""
+    """One indexed EEG recording and its applicable BIDS entities/sidecars."""
 
     file: str
     relative_path: str
@@ -56,6 +57,8 @@ class BidsRecording:
     electrodes_files: tuple[str, ...] = ()
     coordsystem_files: tuple[str, ...] = ()
     json_sidecar_files: tuple[str, ...] = ()
+    events_issues: tuple[str, ...] = ()
+    channels_issues: tuple[str, ...] = ()
 
     def to_layout_dict(self) -> dict[str, Any]:
         return {
@@ -69,6 +72,8 @@ class BidsRecording:
             "datatype": self.datatype,
             "events_file": self.events_file,
             "channels_file": self.channels_file,
+            "events_issues": list(self.events_issues),
+            "channels_issues": list(self.channels_issues),
         }
 
 
@@ -296,7 +301,6 @@ class BidsDatasetIndex:
                 *projected_subject_files,
             ]
         )
-        selected_set = {_path_key(Path(path)) for path in selected_files}
         recordings = tuple(
             recording for recording in self.recordings if recording.subject in selected
         )
@@ -340,17 +344,20 @@ class BidsDatasetIndex:
                 *json_sidecars,
             ]
         )
-        indexed_json = {
-            _path_key(Path(path)): path
+        indexed_json = tuple(
+            Path(path)
             for path in json_sidecars
             if is_bids_events_json_sidecar(Path(path))
-        }
+        )
         events_json_by_carrier: list[tuple[str, tuple[str, ...]]] = []
         for carrier in events_files:
             sidecars = _unique_preserving_order(
-                indexed_json[key]
-                for candidate in bids_events_json_candidates(Path(carrier))
-                if (key := _path_key(candidate)) in indexed_json and key in selected_set
+                str(candidate)
+                for candidate in bids_events_json_candidates(
+                    Path(carrier),
+                    indexed_sidecars=indexed_json,
+                    dataset_root=Path(self.root),
+                )
             )
             events_json_by_carrier.append((carrier, sidecars))
         return BidsDatasetProjection(
@@ -486,7 +493,6 @@ def build_bids_dataset_index(
         if _is_raw_bids_eeg_scope_path(Path(path), root)
         and _has_supported_suffix(Path(path), SUPPORTED_EEG_EXTENSIONS)
     ]
-    indexed_paths = {_path_key(Path(path)): path for path in files}
     files_by_directory: dict[str, list[str]] = {}
     for file_path in files:
         files_by_directory.setdefault(str(Path(file_path).parent), []).append(file_path)
@@ -501,8 +507,7 @@ def build_bids_dataset_index(
             _recording_from_path(
                 path,
                 root=root,
-                directory_files=tuple(files_by_directory.get(str(path.parent), ())),
-                indexed_paths=indexed_paths,
+                files_by_directory=files_by_directory,
             )
         )
     recordings = tuple(recording_rows)
@@ -712,11 +717,16 @@ def _recording_from_path(
     path: Path,
     *,
     root: Path,
-    directory_files: tuple[str, ...],
-    indexed_paths: dict[str, str],
+    files_by_directory: Mapping[str, list[str]],
 ) -> BidsRecording:
     relative = relative_text(path, root)
-    stem = _bids_raw_stem(path)
+    directory_files = files_by_directory.get(str(path.parent), [])
+    events, event_issues = _inherited_tabular_sidecar(
+        path, root=root, files_by_directory=files_by_directory, suffix="events"
+    )
+    channels, channel_issues = _inherited_tabular_sidecar(
+        path, root=root, files_by_directory=files_by_directory, suffix="channels"
+    )
     electrodes = _files_with_suffix(
         directory_files,
         names=("electrodes.tsv",),
@@ -742,18 +752,58 @@ def _recording_from_path(
         run=extract_bids_entity(relative, "run") or "",
         acquisition=extract_bids_entity(relative, "acq") or "",
         datatype="eeg" if "/eeg/" in f"/{relative}/" else "",
-        events_file=indexed_paths.get(
-            _path_key(path.with_name(f"{stem}_events.tsv")),
-            "",
-        ),
-        channels_file=indexed_paths.get(
-            _path_key(path.with_name(f"{stem}_channels.tsv")),
-            "",
-        ),
+        events_file=events,
+        channels_file=channels,
         electrodes_files=electrodes,
         coordsystem_files=coordsystem,
         json_sidecar_files=json_sidecars,
+        events_issues=event_issues,
+        channels_issues=channel_issues,
     )
+
+
+def _inherited_tabular_sidecar(
+    recording: Path,
+    *,
+    root: Path,
+    files_by_directory: Mapping[str, list[str]],
+    suffix: str,
+) -> tuple[str, tuple[str, ...]]:
+    """Select the nearest applicable TSV from the already bounded inventory.
+
+    BIDS inheritance replaces a TSV as a whole. Multiple applicable files at
+    the same level are ambiguous, not a reason to pick one by filename order.
+    Retain issues per recording so an unrelated subject remains selectable.
+    """
+    entities = _bids_filename_entities(recording.name)
+    selected = ""
+    issues: list[str] = []
+    directory = recording.parent
+    while directory.is_relative_to(root):
+        matches: list[str] = []
+        for text in files_by_directory.get(str(directory), []):
+            path = Path(text)
+            if path.name != f"{suffix}.tsv" and not path.name.endswith(
+                f"_{suffix}.tsv"
+            ):
+                continue
+            if all(
+                entities.get(key) == value
+                for key, value in _bids_filename_entities(path.name).items()
+            ):
+                matches.append(text)
+        if len(matches) > 1:
+            issues.append(
+                f"BIDS {suffix}.tsv inheritance is ambiguous for {recording.name}: "
+                + ", ".join(str(Path(path).relative_to(root)) for path in matches)
+                + ". Keep one applicable file per directory level."
+            )
+        elif matches and not selected:
+            selected = matches[0]
+        if directory == root:
+            break
+        directory = directory.parent
+    return ("" if issues else selected), tuple(issues)
 
 
 def _subject_entry(
@@ -794,7 +844,7 @@ def _normalize_subjects(
 
 
 def _files_with_suffix(
-    files: tuple[str, ...],
+    files: Iterable[str],
     *,
     names: tuple[str, ...],
     suffixes: tuple[str, ...],
@@ -807,15 +857,6 @@ def _files_with_suffix(
         if Path(path).name.casefold() in normalized_names
         or Path(path).name.casefold().endswith(normalized_suffixes)
     )
-
-
-def _bids_raw_stem(path: Path) -> str:
-    name = path.name
-    stem = name[: -len(".fif.gz")] if name.casefold().endswith(".fif.gz") else path.stem
-    for suffix in ("_eeg", "_raw"):
-        if stem.endswith(suffix):
-            return stem[: -len(suffix)]
-    return stem
 
 
 def _is_projected_bids_eeg_resource(path: Path, root: Path) -> bool:

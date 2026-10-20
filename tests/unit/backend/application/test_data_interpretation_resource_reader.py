@@ -230,6 +230,7 @@ def test_reader_exposes_admitted_recording_bounds_without_loading_signal_data(
     raw = mne.io.RawArray(
         np.zeros((2, 10)),
         mne.create_info(["C3", "C4"], sfreq=100.0, ch_types="eeg"),
+        first_samp=1000,
         verbose="ERROR",
     )
     raw.save(fif_path, overwrite=True, verbose="ERROR")
@@ -244,6 +245,7 @@ def test_reader_exposes_admitted_recording_bounds_without_loading_signal_data(
     assert bounds is not None
     assert bounds.sample_count == 10
     assert bounds.sampling_frequency_hz == 100.0
+    assert bounds.first_sample == 1000
     rebound = reader.with_dependent_files({})
     assert rebound.recording_bounds_for(fif_path) == bounds
 

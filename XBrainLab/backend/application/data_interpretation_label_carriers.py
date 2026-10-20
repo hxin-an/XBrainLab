@@ -30,10 +30,16 @@ from .data_interpretation_parsed_cache import (
     ParsedContentTooLargeError,
     parsed_delimited_table,
 )
+from .data_interpretation_path_identity import (
+    path_basename,
+    resolve_scan_path,
+    resolved_path_identity,
+)
 from .data_interpretation_public_projection import (
     PUBLIC_BIDS_RECOMMENDATION_RUN_SAMPLE_LIMIT,
 )
 from .data_interpretation_resource_reader import AdmittedResourceReader
+from .errors import PreconditionError
 
 NEEDS_CONFIRMATION = "needs_confirmation"
 BIDS_LABEL_RECOMMENDATION_ROW_LIMIT_PER_RUN = 2048
@@ -65,27 +71,26 @@ def build_label_carrier_plan(
     label_carriers: list[str],
     choices_payload: Any,
     *,
+    known_carriers: list[str] | None = None,
     carrier_sources: dict[str, str] | None = None,
     sidecar_reader: BidsEventsJsonReader | None = None,
     resource_reader: AdmittedResourceReader | None = None,
     recommend_bids_label_field: bool = False,
 ) -> list[dict[str, Any]]:
     """Build reviewable label-carrier rows for interpretation preview."""
-    choices = normalize_label_carrier_choices(choices_payload)
+    if not label_carriers:
+        return []
+    choices = _bind_label_carrier_choices(
+        normalize_label_carrier_choices(choices_payload),
+        known_carriers if known_carriers is not None else label_carriers,
+    )
     carrier_sources = dict(carrier_sources or {})
     label_field_recommendation: dict[str, Any] = {}
     recommendation_carriers = [
         carrier
         for carrier in label_carriers
         if _is_bids_events_file(Path(carrier))
-        and not str(
-            _choice_for_label_carrier(
-                Path(carrier),
-                choices,
-                str(carrier),
-            ).get("label_field")
-            or ""
-        ).strip()
+        and not str(choices.get(str(carrier), {}).get("label_field") or "").strip()
     ]
     if recommend_bids_label_field and recommendation_carriers:
         recommendation_guard = (
@@ -183,6 +188,54 @@ def normalize_label_carrier_choices(payload: Any) -> dict[str, dict[str, Any]]:
     return result
 
 
+def _bind_label_carrier_choices(
+    choices: dict[str, dict[str, Any]],
+    known_carriers: list[str],
+) -> dict[str, dict[str, Any]]:
+    """Bind explicit choices to scanned identities before selected-scope review."""
+    if not choices:
+        return {}
+    known = list(dict.fromkeys(known_carriers))
+    paths_by_identity: dict[str, list[str]] = {}
+    for carrier in known:
+        paths_by_identity.setdefault(resolved_path_identity(carrier), []).append(
+            carrier
+        )
+    result: dict[str, dict[str, Any]] = {}
+    for raw_key, choice in choices.items():
+        key = raw_key.strip()
+        if key == path_basename(key):
+            matches = list(resolve_scan_path(key, known).candidates)
+        else:
+            # Full paths must identify the admitted file. A same-name file
+            # elsewhere cannot inherit its choices through basename fallback.
+            matches = paths_by_identity.get(resolved_path_identity(key), [])
+        code = ""
+        message = ""
+        if not matches:
+            code = "unbound_choice"
+            message = "Label carrier choices do not identify a scanned carrier."
+        elif len(matches) > 1:
+            code = "ambiguous_choice"
+            message = "Label carrier choices require an unambiguous full path."
+        elif matches[0] in result and result[matches[0]] != choice:
+            code = "conflicting_choices"
+            message = "Multiple path aliases specify conflicting label carrier choices."
+        if code:
+            raise PreconditionError(
+                message,
+                diagnostics={
+                    "label_carrier_choices": {
+                        "code": code,
+                        "path": raw_key,
+                        "matching_paths": matches,
+                    }
+                },
+            )
+        result[matches[0]] = choice
+    return result
+
+
 def _label_carrier_plan_for_path(
     path: Path,
     choices: dict[str, dict[str, Any]],
@@ -193,7 +246,7 @@ def _label_carrier_plan_for_path(
     label_field_recommendation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     source_path = raw_path or str(path)
-    carrier_choice = _choice_for_label_carrier(path, choices, source_path)
+    carrier_choice = choices.get(source_path, {})
     label_candidates = _label_candidates_for_carrier(path)
     anchor_candidates = _anchor_candidates_for_carrier(path, label_candidates)
     time_field_candidates = _time_field_candidates_for_carrier(path, label_candidates)
@@ -348,19 +401,6 @@ def _label_carrier_plan_for_path(
     return plan
 
 
-def _choice_for_label_carrier(
-    path: Path,
-    choices: dict[str, dict[str, Any]],
-    raw_path: str,
-) -> dict[str, Any]:
-    return choices.get(
-        raw_path,
-        choices.get(
-            path.as_posix(), choices.get(str(path), choices.get(path.name, {}))
-        ),
-    )
-
-
 def _bids_label_field_recommendation(
     label_carriers: list[str],
     choices: dict[str, dict[str, Any]],
@@ -375,9 +415,7 @@ def _bids_label_field_recommendation(
     automatic_paths = [
         path
         for path in paths
-        if not str(
-            _choice_for_label_carrier(path, choices, str(path)).get("label_field") or ""
-        ).strip()
+        if not str(choices.get(str(path), {}).get("label_field") or "").strip()
     ]
     if not automatic_paths:
         return {}
@@ -1554,16 +1592,12 @@ def _bids_event_level_labels(
     reader = sidecar_reader or BidsEventsJsonReader.from_paths(
         bids_events_json_resource_paths([str(path)]),
     )
-    sidecars = (
-        sidecar_reader.candidate_paths_for(path)
-        if sidecar_reader is not None
-        else bids_events_json_candidates(path)
-    )
-    for sidecar in sidecars:
+    for sidecar in reader.candidate_paths_for(path):
         payload = reader.read_object(sidecar)
-        levels = _levels_for_field(payload, label_field)
-        if levels:
-            return levels
+        if any(str(key).casefold() == label_field.casefold() for key in payload):
+            # A more local field replaces the entire inherited field object,
+            # including the absence of Levels; its nested keys are not merged.
+            return _levels_for_field(payload, label_field)
     return {}
 
 

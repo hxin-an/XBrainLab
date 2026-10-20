@@ -168,6 +168,13 @@ class _PreviewResourceAdmission:
     admission_cache_reused: bool = False
     reusable_content_identities: dict[str, dict[str, Any]] | None = None
 
+    @property
+    def known_label_carriers(self) -> list[str] | None:
+        """Keep discovery identities available after narrowing materialization."""
+        if self.scan_preflight_scope is None:
+            return None
+        return list(self.scan_preflight_scope.label_carriers)
+
     def to_diagnostics(self) -> dict[str, Any]:
         diagnostics = self.preflight.to_diagnostics()
         diagnostics["parser_admission"] = self.resource_reader.diagnostics()
@@ -562,6 +569,7 @@ class DataInterpretationCommandService:
             candidate_id=candidate_id,
             scan=scan,
             choices=command.choices,
+            known_label_carriers=admission.known_label_carriers,
             bids_events_json_reader=admission.bids_events_json_reader,
             resource_reader=admission.resource_reader,
             resource_scope=admission.resource_scope,
@@ -675,6 +683,7 @@ class DataInterpretationCommandService:
             candidate_id=candidate_id,
             scan=scan,
             choices=command.choices,
+            known_label_carriers=admission.known_label_carriers,
             bids_events_json_reader=admission.bids_events_json_reader,
             resource_reader=admission.resource_reader,
             resource_scope=admission.resource_scope,
@@ -962,6 +971,7 @@ class DataInterpretationCommandService:
                     "state_preserved": True,
                 },
             )
+        self._assert_reviewed_bids_index_is_current(candidate)
         assert_source_content_boundaries_match(
             prepared.candidate.content_identity,
             prepared.source_files,
@@ -2176,6 +2186,7 @@ class DataInterpretationCommandService:
             candidate_id=candidate_id,
             scan=scan,
             choices=choices,
+            known_label_carriers=admission.known_label_carriers,
             bids_events_json_reader=admission.bids_events_json_reader,
             resource_reader=admission.resource_reader,
             resource_scope=admission.resource_scope,

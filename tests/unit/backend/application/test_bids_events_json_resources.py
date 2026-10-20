@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,15 +31,19 @@ from XBrainLab.backend.application.resource_guard import (
 )
 
 
-def _write_bids_run(root: Path, *, run: int = 1) -> tuple[Path, Path]:
+def _write_bids_run(
+    root: Path, *, run: int = 1, session: str | None = None
+) -> tuple[Path, Path]:
     root.mkdir(parents=True, exist_ok=True)
     (root / "dataset_description.json").write_text(
         json.dumps({"Name": "events-sidecar-test", "BIDSVersion": "1.11.1"}),
         encoding="utf-8",
     )
-    eeg_dir = root / "sub-01" / "eeg"
+    subject_dir = root / "sub-01"
+    eeg_dir = (subject_dir / f"ses-{session}" if session else subject_dir) / "eeg"
     eeg_dir.mkdir(parents=True, exist_ok=True)
-    stem = f"sub-01_task-mi_run-{run}"
+    session_entity = f"_ses-{session}" if session else ""
+    stem = f"sub-01{session_entity}_task-mi_run-{run}"
     eeg_path = eeg_dir / f"{stem}_eeg.fif"
     events_path = eeg_dir / f"{stem}_events.tsv"
     info = mne.create_info(["Cz"], sfreq=100.0, ch_types="eeg")
@@ -78,6 +83,14 @@ def test_events_json_candidates_stop_at_dataset_root_and_keep_inheritance(
     root_sidecar = root / "events.json"
     outside_task_sidecar = root.parent / "task-mi_events.json"
     outside_default_sidecar = root.parent / "events.json"
+    for sidecar in (
+        local_sidecar,
+        subject_sidecar,
+        root_sidecar,
+        outside_task_sidecar,
+        outside_default_sidecar,
+    ):
+        sidecar.write_text("{}", encoding="utf-8")
 
     candidates = set(bids_resources.bids_events_json_candidates(events_path))
 
@@ -284,7 +297,11 @@ def test_events_json_candidates_find_dataset_root_beyond_eight_ancestors(
     root.mkdir()
     (root / "dataset_description.json").write_text("{}", encoding="utf-8")
     deep_directory = root.joinpath(*(f"level-{index}" for index in range(10)))
+    deep_directory.mkdir(parents=True)
     events_path = deep_directory / "sub-01_task-mi_events.tsv"
+    events_path.write_text("onset\tduration\n0\t1\n", encoding="utf-8")
+    for name in ("task-mi_events.json", "events.json"):
+        (root / name).write_text("{}", encoding="utf-8")
 
     candidates = bids_resources.bids_events_json_candidates(events_path)
 
@@ -312,6 +329,51 @@ def test_non_bids_events_carrier_limits_sidecars_to_local_directory(
     assert local_sidecar in candidates
     assert all(candidate.parent == carrier_directory for candidate in candidates)
     assert resource_paths == {local_sidecar.resolve()}
+
+
+@pytest.mark.parametrize("failure", ["entry_limit", "unreadable", "replaced_ancestor"])
+def test_fallback_json_discovery_cannot_return_an_incomplete_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    from XBrainLab.backend.application import data_interpretation_scan as scan_module
+
+    root = tmp_path / "bids"
+    carrier = root / "sub-01" / "eeg" / "sub-01_task-mi_events.tsv"
+    carrier.parent.mkdir(parents=True)
+    carrier.write_text("onset\tduration\n0\t1\n", encoding="utf-8")
+    (root / "dataset_description.json").write_text("{}", encoding="utf-8")
+    (root / "task-mi_events.json").write_text("{}", encoding="utf-8")
+    budget = scan_module._ScanBudget(max_entries=1 if failure == "entry_limit" else 100)
+    monkeypatch.setattr(scan_module, "_ScanBudget", lambda: budget)
+    if failure == "unreadable":
+        original_iterdir = Path.iterdir
+
+        def denied_root(path):
+            if path == root:
+                raise PermissionError("Injected unreadable metadata ancestor")
+            return original_iterdir(path)
+
+        monkeypatch.setattr(Path, "iterdir", denied_root)
+    elif failure == "replaced_ancestor":
+        original_entries = budget.directory_entries
+
+        def replace_after_listing(path):
+            entries = original_entries(path)
+            if path == root:
+                moved = tmp_path / "original-bids"
+                root.rename(moved)
+                shutil.copytree(moved, root)
+            return entries
+
+        monkeypatch.setattr(budget, "directory_entries", replace_after_listing)
+
+    with pytest.raises(PreconditionError) as raised:
+        bids_resources.bids_events_json_candidates(carrier)
+
+    assert budget.warnings
+    diagnostics = raised.value.diagnostics["bids_events_json"]
+    assert diagnostics["code"] == "events_json_discovery_incomplete"
+    assert diagnostics["json_parsing_started"] is False
 
 
 def test_review_admits_parses_and_rechecks_each_materializable_events_json(
@@ -381,7 +443,9 @@ def test_review_admits_parses_and_rechecks_each_materializable_events_json(
     candidate = result.diagnostics["candidate"]
     assert candidate["class_map"] == {}
     [plan] = candidate["label_carrier_plan"]
-    assert plan["value_decisions"]["left"]["suggested_name"] == "Left hand"
+    # The local field definition replaces the inherited field, including Levels.
+    assert plan["selected_label_field_levels_available"] is False
+    assert plan["value_decisions"]["left"]["suggested_name"] == "left"
     assert plan["value_decisions"]["left"]["decision"] == "unresolved"
     [run] = result.diagnostics["candidate"]["bids"]["event_validation"]["runs"]
     assert run["event_code_class_map"] == {}
@@ -405,8 +469,10 @@ def test_strict_bids_review_matches_equivalent_lexical_path_spellings(
     monkeypatch.setattr(
         data_interpretation_bids,
         "_review_one_run",
-        lambda **_kwargs: (
+        lambda **kwargs: (
             {
+                "eeg_file": kwargs["eeg_path"],
+                "events_file": kwargs["events_path"],
                 "event_count": 0,
                 "row_evidence": [],
                 "placement": {
@@ -451,6 +517,12 @@ def test_strict_bids_review_matches_equivalent_lexical_path_spellings(
         str(eeg_path): str(events_path),
     }
     assert review.label_carrier_plan[0]["selected_target_file"] == str(eeg_path)
+    assert review.label_carrier_plan[0]["bids_event_review"]["eeg_file"] == str(
+        eeg_path
+    )
+    assert review.label_carrier_plan[0]["bids_event_review"]["events_file"] == str(
+        events_path
+    )
 
 
 def test_repeated_bids_preview_bounds_canonicalization_and_freshness_calls(
@@ -755,10 +827,10 @@ def test_events_json_inheritance_stops_at_dataset_root(
 ) -> None:
     container = tmp_path / "container"
     root = container / "bids"
-    _eeg_path, events_path = _write_bids_run(root)
+    _eeg_path, events_path = _write_bids_run(root, session="01")
     legal_sidecars = {
         events_path.with_suffix(".json"),
-        events_path.parent / "task-mi_events.json",
+        events_path.parent.parent / "task-mi_events.json",
         root / "sub-01" / "events.json",
         root / "events.json",
     }
@@ -841,6 +913,7 @@ def test_events_json_candidates_without_bids_root_stay_local(tmp_path: Path) -> 
     carrier = tmp_path / "not-bids" / "sub-01" / "eeg" / "task-mi_events.tsv"
     carrier.parent.mkdir(parents=True)
     carrier.write_text("onset\tduration\n0\t1\n", encoding="utf-8")
+    carrier.with_suffix(".json").write_text("{}", encoding="utf-8")
     (tmp_path / "task-mi_events.json").write_text("{}", encoding="utf-8")
     (tmp_path / "events.json").write_text("{}", encoding="utf-8")
 
@@ -860,6 +933,8 @@ def test_events_json_candidates_follow_dataset_marker_without_depth_limit(
     carrier_directory.mkdir(parents=True)
     carrier = carrier_directory / "task-mi_events.tsv"
     carrier.write_text("onset\tduration\n0\t1\n", encoding="utf-8")
+    (root / "task-mi_events.json").write_text("{}", encoding="utf-8")
+    (root.parent / "task-mi_events.json").write_text("{}", encoding="utf-8")
 
     candidates = {
         candidate.resolve()
@@ -989,6 +1064,34 @@ def test_admitted_events_json_disappearance_does_not_fall_back_silently(
     assert diagnostics["code"] == "events_json_sidecar_changed_after_admission"
     assert diagnostics["admitted_bytes"] == admitted_bytes
     assert diagnostics["observed_bytes"] is None
+    assert diagnostics["json_parsing_started"] is False
+
+
+def test_standalone_level_lookup_rejects_disappeared_admitted_json(
+    tmp_path: Path,
+) -> None:
+    from XBrainLab.backend.application.data_interpretation_label_carriers import (
+        _bids_event_level_labels,
+    )
+
+    carrier = tmp_path / "task-mi_events.tsv"
+    carrier.write_text("onset\tduration\ttrial_type\n0\t1\tleft\n", encoding="utf-8")
+    sidecar = carrier.with_suffix(".json")
+    sidecar.write_text(
+        json.dumps({"trial_type": {"Levels": {"left": "Left hand"}}}),
+        encoding="utf-8",
+    )
+    reader = bids_resources.BidsEventsJsonReader.from_paths([str(sidecar)])
+    assert _bids_event_level_labels(carrier, "trial_type", sidecar_reader=reader) == {
+        "left": "Left hand"
+    }
+    sidecar.unlink()
+
+    with pytest.raises(PreconditionError) as raised:
+        _bids_event_level_labels(carrier, "trial_type", sidecar_reader=reader)
+
+    diagnostics = raised.value.diagnostics["bids_events_json"]
+    assert diagnostics["code"] == "events_json_sidecar_changed_after_admission"
     assert diagnostics["json_parsing_started"] is False
 
 

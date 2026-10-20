@@ -50,6 +50,7 @@ class AdmittedRecordingBounds:
 
     sample_count: int
     sampling_frequency_hz: float
+    first_sample: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,6 +402,12 @@ def _preflight_recording_bounds(
         bounds[key] = AdmittedRecordingBounds(
             sample_count=sample_count,
             sampling_frequency_hz=float(sampling_frequency),
+            first_sample=(
+                row["first_sample"]
+                if isinstance(row.get("first_sample"), int)
+                and not isinstance(row["first_sample"], bool)
+                else None
+            ),
         )
     return bounds
 

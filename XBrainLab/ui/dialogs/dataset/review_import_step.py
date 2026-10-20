@@ -22,6 +22,7 @@ from XBrainLab.backend.application.data_interpretation_pairing import (
     LabelPairingResult,
     resolve_label_file_pairing,
 )
+from XBrainLab.ui.dialogs.dataset.load_labels_step import LoadLabelsStepMixin
 from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
     SubmissionFacts,
     SubmissionProjection,
@@ -1320,13 +1321,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             if str(carrier.get("format") or "") != "BIDS events":
                 continue
             events_name = Path(str(carrier.get("path") or "")).name
-            eeg_name = Path(
-                str(
-                    carrier.get("selected_target_file")
-                    or carrier.get("bids_expected_target_file")
-                    or ""
-                )
-            ).name
+            eeg_name = LoadLabelsStepMixin._bids_paired_eeg_name(carrier)
             field = str(carrier.get("selected_label_field") or "").strip()
             start = str(carrier.get("selected_anchor") or "").strip()
             duration = str(carrier.get("selected_duration_field") or "").strip()
