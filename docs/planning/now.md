@@ -88,7 +88,7 @@ red/green 與既有 async suite 81 passed。這些組有重疊，不能相加作
 Negative absolute sample coordinates 維持拒絕；不宣稱新增任意座標或 BIDS format 能力。
 腳本補綁 participants 與 generic inherited metadata，未列入 inputs 時在 admission 拒絕。
 
-Production 相對 52d3a615：16 files、net +320，已觸發並完成獨立 complexity
+Production 相對 52d3a615：16 files、net +335，已觸發並完成獨立 complexity
 review。Owners、production modules/classes 與 receipts 均不增加；換算函式由 Apply 移至既有
 loader 共用，不保留第二套；既有 duration parser 只改為可共用入口。額外檔案是同一資料流的
 admission／recipe／render 接線，不另建平台。主 agent 已核對實際 diff。
@@ -104,3 +104,10 @@ E 槽於 2026-10-20 再查未掛載，G 槽也不是既有資料根目錄；cano
 nullable narrowing）。逐筆 campaign 已停止，保留不完整證據；不改 baseline 或弱化 gate。
 修正 helper 的 iterable 契約並明確拒絕 unavailable timing；獨立覆核無阻擋，
 locked Basedpyright 1.39.2 回到零診斷、直接回歸 87 passed。以新 head 重啟必要檢查。
+完整 CI 同時抓到兩項舊測試契約需同步（JSON field replacement、mock 缺 run identity）；
+已保留 admission／讀取次數等原 assertions 並補明確預期，39 個 focused tests 通過。
+另有實際相鄰回歸：recipe 指向已搬走的 label carrier 時，新的 alias 拒絕會讓 reload 提前
+失敗，無法進入既有明確 remap 流程。已恢復「有缺檔 blocker 的可修復 review」，保留對任意
+未知 choice 的拒絕、不讀取不存在檔案、不允許未完成 remap 的 Apply。108 項相關測試通過，
+含明確 remap 後實際 Apply 的 sample 檢查；獨立覆核無阻擋，最終 Basedpyright 零診斷。
+下一步提交此修正並重啟同 head CI、Windows native／junction IO 與完整 D261 campaign。

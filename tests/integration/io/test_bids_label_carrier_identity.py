@@ -158,7 +158,8 @@ def test_alias_carrier_choices_preserve_reviewed_classes_and_recipe(
 
 
 @pytest.mark.parametrize(
-    "invalid_kind", ["outside_path", "conflict", "ambiguous_basename"]
+    "invalid_kind",
+    ["outside_path", "outside_required", "conflict", "ambiguous_basename"],
 )
 def test_invalid_carrier_choice_identity_is_rejected_before_publication_and_can_retry(
     tmp_path: Path, invalid_kind: str
@@ -167,11 +168,13 @@ def test_invalid_carrier_choice_identity_is_rejected_before_publication_and_can_
     choices = _choices(eeg, events)
     valid_choices = _choices(eeg, events)
     carrier_choice = choices["label_carrier_choices"].pop(str(events))
-    if invalid_kind == "outside_path":
+    if invalid_kind in {"outside_path", "outside_required"}:
         outside = tmp_path / "outside" / events.name
         outside.parent.mkdir()
         outside.write_bytes(events.read_bytes())
         choices["label_carrier_choices"][str(outside)] = carrier_choice
+        if invalid_kind == "outside_required":
+            choices["required_label_carriers"] = [str(outside)]
     elif invalid_kind == "conflict":
         choices["label_carrier_choices"][str(events)] = carrier_choice
         choices["label_carrier_choices"][events.name] = {

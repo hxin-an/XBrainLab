@@ -338,9 +338,24 @@ def build_interpretation_candidate(
             choices.get("label_carrier_remap"),
         )
     )
+    missing_required_carriers = {
+        path
+        for path in _remapped_required_label_carriers(
+            _string_list(choices.get("required_label_carriers")),
+            _string_mapping(choices.get("label_carrier_remap")),
+        )
+        if use_external_label_carriers
+        and resolve_scan_path(path, known_label_carriers).status == "missing"
+    }
+    # Keep missing recipe choices in candidate.choices for explicit repair.
+    # They remain blocked below, but cannot bind to or admit a phantom carrier.
     label_carrier_plan = _build_label_carrier_plan(
         active_label_carriers,
-        label_carrier_choices,
+        {
+            path: choice
+            for path, choice in label_carrier_choices.items()
+            if path not in missing_required_carriers
+        },
         known_carriers=known_label_carriers,
         carrier_sources=scan.label_carrier_sources,
         sidecar_reader=sidecar_reader,

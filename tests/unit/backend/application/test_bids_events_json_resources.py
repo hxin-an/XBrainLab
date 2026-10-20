@@ -381,7 +381,9 @@ def test_review_admits_parses_and_rechecks_each_materializable_events_json(
     candidate = result.diagnostics["candidate"]
     assert candidate["class_map"] == {}
     [plan] = candidate["label_carrier_plan"]
-    assert plan["value_decisions"]["left"]["suggested_name"] == "Left hand"
+    # The local field definition replaces the inherited field, including Levels.
+    assert plan["selected_label_field_levels_available"] is False
+    assert plan["value_decisions"]["left"]["suggested_name"] == "left"
     assert plan["value_decisions"]["left"]["decision"] == "unresolved"
     [run] = result.diagnostics["candidate"]["bids"]["event_validation"]["runs"]
     assert run["event_code_class_map"] == {}
@@ -405,8 +407,10 @@ def test_strict_bids_review_matches_equivalent_lexical_path_spellings(
     monkeypatch.setattr(
         data_interpretation_bids,
         "_review_one_run",
-        lambda **_kwargs: (
+        lambda **kwargs: (
             {
+                "eeg_file": kwargs["eeg_path"],
+                "events_file": kwargs["events_path"],
                 "event_count": 0,
                 "row_evidence": [],
                 "placement": {
@@ -451,6 +455,12 @@ def test_strict_bids_review_matches_equivalent_lexical_path_spellings(
         str(eeg_path): str(events_path),
     }
     assert review.label_carrier_plan[0]["selected_target_file"] == str(eeg_path)
+    assert review.label_carrier_plan[0]["bids_event_review"]["eeg_file"] == str(
+        eeg_path
+    )
+    assert review.label_carrier_plan[0]["bids_event_review"]["events_file"] == str(
+        events_path
+    )
 
 
 def test_repeated_bids_preview_bounds_canonicalization_and_freshness_calls(

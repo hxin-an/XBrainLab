@@ -1801,8 +1801,17 @@ def test_reload_recipe_accepts_explicit_label_carrier_remap(tmp_path, service_fa
     reload_result = service.execute(
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
     )
+    assert reload_result.ok, reload_result.message
+    assert reload_result.diagnostics["validation_decision"]["decision"] == "blocked"
+    assert not service.execute(ApplyInterpretationCommand(confirmed=True)).ok
+    assert service.study.loaded_data_list == []
     scan = reload_result.diagnostics["scan_result"]
     candidate = reload_result.diagnostics["candidate"]
+    assert str(old_events) not in scan["label_carriers"]
+    assert all(
+        row["path"] != str(old_events) for row in candidate["label_carrier_plan"]
+    )
+    assert str(old_events) in candidate["choices"]["label_carrier_choices"]
     choices = dict(candidate["choices"])
     choices["label_carrier_remap"] = {
         str(old_events): str(new_events),
@@ -1832,6 +1841,11 @@ def test_reload_recipe_accepts_explicit_label_carrier_remap(tmp_path, service_fa
         "choices:label_carrier_remap"
         in preview_result.diagnostics["candidate"]["recipe_trace"]
     )
+    applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+    assert applied.ok, applied.message
+    [loaded] = service.study.loaded_data_list
+    events, event_id = loaded.get_event_list()
+    assert events[events[:, 2] == event_id["left"], 0].tolist() == [128]
 
 
 def test_reload_recipe_accepts_explicit_eeg_file_remap(tmp_path, service_factory):
