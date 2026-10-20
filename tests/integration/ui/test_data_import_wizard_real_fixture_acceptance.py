@@ -1820,11 +1820,14 @@ def test_visible_bids_apply_cancel_reopens_identical_review_and_retries(
     )
 
 
+@pytest.mark.parametrize("cancelled_phase", ["preview", "validation"])
 def test_visible_bids_revalidation_cancel_preserves_counts_and_recheck(
     qtbot: Any,
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+    cancelled_phase: str,
 ) -> None:
-    """Cancel during edited BIDS revalidation reopens one actionable draft."""
+    """Cancel before or after Preview publication, then confirm a fresh review."""
     _require_manifest_group("mne-bids-tiny-eeg")
     monkeypatch.setattr(
         QFileDialog,
@@ -1836,12 +1839,13 @@ def test_visible_bids_revalidation_cancel_preserves_counts_and_recheck(
     real_builder = data_interpretation_service.build_interpretation_candidate
     revalidation_started = Event()
     release_revalidation = Event()
+    request.addfinalizer(release_revalidation.set)
     builder_calls = 0
 
     def _blocking_second_candidate(*args: Any, **kwargs: Any):
         nonlocal builder_calls
         builder_calls += 1
-        if builder_calls == 2:
+        if cancelled_phase == "preview" and builder_calls == 2:
             revalidation_started.set()
             if not release_revalidation.wait(timeout=20.0):
                 raise TimeoutError("Timed out waiting to release BIDS revalidation.")
@@ -1851,6 +1855,22 @@ def test_visible_bids_revalidation_cancel_preserves_counts_and_recheck(
         data_interpretation_service,
         "build_interpretation_candidate",
         _blocking_second_candidate,
+    )
+    command_service = data_interpretation_service.DataInterpretationCommandService
+    real_validation = command_service._prepare_validate_interpretation
+    validation_calls = 0
+
+    def _blocking_first_validation(owner: Any, command: Any):
+        nonlocal validation_calls
+        validation_calls += 1
+        if cancelled_phase == "validation" and validation_calls == 1:
+            revalidation_started.set()
+            if not release_revalidation.wait(timeout=20.0):
+                raise TimeoutError("Timed out waiting to release BIDS validation.")
+        return real_validation(owner, command)
+
+    monkeypatch.setattr(
+        command_service, "_prepare_validate_interpretation", _blocking_first_validation
     )
     host, panel, runtime = _build_dataset_panel(qtbot)
     service = get_application_service(host.study)
@@ -1863,8 +1883,8 @@ def test_visible_bids_revalidation_cancel_preserves_counts_and_recheck(
     qtbot.waitUntil(revalidation_started.is_set, timeout=45_000)
     driver.timer.stop()
     publication_before = runtime.get_view_publication()
-    review_before = runtime.get_interpretation_review()
-    preview = review_before["preview"]
+    assert driver.dialog is not None
+    preview = driver.dialog.preview
     carriers = preview.get("label_carrier_preview") or []
     expected_counts = {
         str(raw_value): int(decision.get("count") or 0)
@@ -1884,11 +1904,27 @@ def test_visible_bids_revalidation_cancel_preserves_counts_and_recheck(
     assert not panel.sidebar.import_cancel_btn.isVisibleTo(panel)
 
     reopened_snapshots: list[dict[str, Any]] = []
+    fresh_reviews: list[dict[str, Any]] = []
     reopen_timer = QTimer()
 
-    def _inspect_and_close_reopened_review() -> None:
+    def _inspect_and_confirm_reopened_review() -> None:
         modal = visible_modal_dialog()
         if not isinstance(modal, DataInterpretationPreviewDialog):
+            return
+        if reopened_snapshots:
+            assert modal.decision == "safe"
+            assert modal.apply_button.isEnabled()
+            assert host.study.loaded_data_list == []
+            identity = dict(modal.apply_button.property("reviewSessionIdentity") or {})
+            assert (
+                identity["publication_generation"]
+                == runtime.get_view_publication().generation
+            )
+            assert identity["publication_generation"] > publication_before.generation
+            fresh_reviews.append(identity)
+            capture_teacher_ui(modal, f"bids-{cancelled_phase}-cancel-fresh-review.png")
+            QTEST.mouseClick(modal.apply_button, Qt.MouseButton.LeftButton)
+            reopen_timer.stop()
             return
         editor = modal.event_value_editor
         if editor is None:
@@ -1911,10 +1947,12 @@ def test_visible_bids_revalidation_cancel_preserves_counts_and_recheck(
                 "apply_enabled": modal.apply_button.isEnabled(),
             }
         )
-        QTEST.mouseClick(modal.cancel_button, Qt.MouseButton.LeftButton)
-        reopen_timer.stop()
+        assert runtime.get_view_publication() == publication_before
+        assert host.study.loaded_data_list == []
+        capture_teacher_ui(modal, f"bids-{cancelled_phase}-cancel-preserved-review.png")
+        QTEST.mouseClick(modal.apply_button, Qt.MouseButton.LeftButton)
 
-    reopen_timer.timeout.connect(_inspect_and_close_reopened_review)
+    reopen_timer.timeout.connect(_inspect_and_confirm_reopened_review)
     reopen_timer.start(10)
     QTEST.mouseClick(loading.cancel_button, Qt.MouseButton.LeftButton)
     release_revalidation.set()
@@ -1938,9 +1976,14 @@ def test_visible_bids_revalidation_cancel_preserves_counts_and_recheck(
     assert reopened["recheck"] is True
     assert "Cannot import yet" not in reopened["action_text"]
     assert reopened["apply_enabled"] is True
-    assert runtime.get_view_publication() == publication_before
-    assert host.study.loaded_data_list == []
-
+    qtbot.waitUntil(
+        lambda: runtime.get_view_publication().state.interpretation.has_applied_interpretation,
+        timeout=45_000,
+    )
+    assert len(fresh_reviews) == 1
+    assert runtime.get_view_publication().state.interpretation.class_map == {
+        "show_stimulus": "show stimulus",
+    }
     qtbot.waitUntil(
         lambda: application_command_registry().active_count(panel) == 0,
         timeout=20_000,
