@@ -9,7 +9,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import mne
 import numpy as np
+import pytest
 
 from XBrainLab.backend.application import (
     ApplicationService,
@@ -196,5 +198,294 @@ def test_bids_event_code_placement_still_rejects_generic_value_code_collisions(
         applied = service.execute(ApplyInterpretationCommand(confirmed=True))
         assert not applied.ok
         assert "multiple classes" in applied.message
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
+    ("base", "origin", "samples"),
+    [
+        ("zero_based", "absolute", (100, 300)),
+        ("one_based", "recording_relative", (101, 301)),
+    ],
+)
+def test_bids_sample_index_choices_survive_fresh_recipe_replay(
+    tmp_path: Path, base: str, origin: str, samples: tuple[int, int]
+) -> None:
+    root, eeg, events = _write_brainvision_bids_with_generic_flash_codes(tmp_path)
+    events.write_text(
+        "onset\tduration\ttrial_id\tsample\n"
+        f"1\t0\t0\t{samples[0]}\n3\t0\t1\t{samples[1]}\n",
+        encoding="utf-8",
+    )
+    choices = _choices(eeg, events)
+    choices["label_carrier_choices"][str(events)].update(
+        anchor="sample",
+        time_model="sample_index",
+        sample_index_base=base,
+        sample_index_origin=origin,
+    )
+    recipe = tmp_path / "sample-index-recipe.json"
+    writer = ApplicationService()
+    try:
+        assert writer.execute(ScanSourceCommand(str(root), source_hint="bids")).ok
+        assert writer.execute(PreviewInterpretationCommand(choices=choices)).ok
+        assert writer.execute(ValidateInterpretationCommand()).ok
+        applied = writer.execute(ApplyInterpretationCommand(confirmed=True))
+        assert applied.ok, applied.message
+        assert _class_event_samples(writer) == {"Target 0": [100], "Target 1": [300]}
+        assert writer.execute(SaveInterpretationRecipeCommand(str(recipe))).ok
+    finally:
+        writer.close()
+
+    replay = ApplicationService()
+    try:
+        reloaded = replay.execute(ReloadInterpretationRecipeCommand(str(recipe)))
+        assert reloaded.ok, reloaded.message
+        assert replay.execute(ValidateInterpretationCommand()).ok
+        reapplied = replay.execute(ApplyInterpretationCommand(confirmed=True))
+        assert reapplied.ok, reapplied.message
+        assert _class_event_samples(replay) == {"Target 0": [100], "Target 1": [300]}
+    finally:
+        replay.close()
+
+
+def test_shared_bids_sample_indexes_are_converted_for_each_recording(
+    tmp_path: Path,
+) -> None:
+    from tests.integration.io.test_bids_inherited_sidecars import (
+        _inherited_dataset,
+    )
+
+    root, recordings, choices, waveform, _channels = _inherited_dataset(
+        tmp_path, multiple=True
+    )
+    second = recordings[1]
+    second.write_text(
+        second.read_text(encoding="utf-8").replace(
+            "SamplingInterval=10000", "SamplingInterval=5000"
+        ),
+        encoding="utf-8",
+    )
+    events = root / "task-cvep_events.tsv"
+    events.write_text(
+        "onset\tduration\ttrial_id\tsample\n1\t0\t0\t100\n3\t0\t1\t300\n",
+        encoding="utf-8",
+    )
+    choices["label_carrier_choices"][str(events)].update(
+        anchor="sample",
+        time_model="sample_index",
+        sample_index_base="zero_based",
+        sample_index_origin="recording_relative",
+    )
+    recipe = tmp_path / "shared-sample-recipe.json"
+    for replay in (False, True):
+        service = ApplicationService()
+        try:
+            if replay:
+                result = service.execute(ReloadInterpretationRecipeCommand(str(recipe)))
+            else:
+                assert service.execute(
+                    ScanSourceCommand(str(root), source_hint="bids")
+                ).ok
+                result = service.execute(PreviewInterpretationCommand(choices=choices))
+            assert result.ok, result.message
+            assert service.execute(ValidateInterpretationCommand()).ok
+            applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+            assert applied.ok, applied.message
+            assert len(service.study.loaded_data_list) == 2
+            for loaded, expected_sfreq in zip(
+                service.study.loaded_data_list, (100.0, 200.0), strict=True
+            ):
+                raw = loaded.get_mne()
+                assert raw.info["sfreq"] == expected_sfreq
+                np.testing.assert_allclose(raw.get_data(), waveform, rtol=1e-7, atol=0)
+                samples, classes = loaded.get_event_list()
+                assert {
+                    name: samples[samples[:, 2] == code, 0].tolist()
+                    for name, code in classes.items()
+                } == {"Target 0": [100], "Target 1": [300]}
+            if not replay:
+                assert service.execute(SaveInterpretationRecipeCommand(str(recipe))).ok
+        finally:
+            service.close()
+
+
+@pytest.mark.parametrize("sample", ["1000", "100.5"])
+def test_bids_selected_sample_anchor_is_checked_before_apply(
+    tmp_path: Path, sample: str
+) -> None:
+    root, eeg, events = _write_brainvision_bids_with_generic_flash_codes(tmp_path)
+    events.write_text(
+        f"onset\tduration\ttrial_id\tsample\n1\t0\t0\t100\n3\t0\t1\t{sample}\n",
+        encoding="utf-8",
+    )
+    choices = _choices(eeg, events)
+    choices["label_carrier_choices"][str(events)].update(
+        anchor="sample",
+        time_model="sample_index",
+        sample_index_base="zero_based",
+        sample_index_origin="recording_relative",
+    )
+    service = ApplicationService()
+    try:
+        assert service.execute(ScanSourceCommand(str(root), source_hint="bids")).ok
+        assert service.execute(PreviewInterpretationCommand(choices=choices)).ok
+        validation = service.execute(ValidateInterpretationCommand())
+        assert validation.ok, validation.message
+        assert validation.diagnostics["validation_decision"]["decision"] == "blocked"
+        assert service.study.loaded_data_list == []
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
+    ("first_sample", "bids_duration"),
+    [(1000, "2"), (1000, "n/a"), (-1000, "2")],
+)
+def test_bids_selected_absolute_sample_and_end_field_match_actual_placement(
+    tmp_path: Path, first_sample: int, bids_duration: str
+) -> None:
+    """A controlled FIF exercises nonzero first_samp, not BIDS format coverage."""
+    from XBrainLab.backend.application.epoch_context import EPOCH_HINT_KEY
+
+    root, brainvision, events = _write_brainvision_bids_with_generic_flash_codes(
+        tmp_path
+    )
+    eeg = brainvision.with_suffix(".fif")
+    mne.io.RawArray(
+        np.zeros((2, 1000)),
+        mne.create_info(["C3", "C4"], 100.0, ch_types="eeg"),
+        first_samp=first_sample,
+        verbose="ERROR",
+    ).save(eeg, overwrite=True, verbose="ERROR")
+    events.write_text(
+        "onset\tduration\ttrial_id\tsample\tend\n"
+        f"1\t{bids_duration}\t0\t{first_sample + 100}\t{first_sample + 150}\n"
+        f"3\t{bids_duration}\t1\t{first_sample + 300}\t{first_sample + 350}\n",
+        encoding="utf-8",
+    )
+    choices = _choices(eeg, events)
+    choices["label_carrier_choices"][str(events)].update(
+        anchor="sample",
+        duration_field="end",
+        time_model="sample_index",
+        sample_index_base="zero_based",
+        sample_index_origin="absolute",
+    )
+    service = ApplicationService()
+    try:
+        assert service.execute(ScanSourceCommand(str(root), source_hint="bids")).ok
+        assert service.execute(PreviewInterpretationCommand(choices=choices)).ok
+        validation = service.execute(ValidateInterpretationCommand())
+        assert validation.ok, validation.message
+        if first_sample < 0:
+            # Preserve the existing BIDS apply policy rejecting raw negative samples.
+            assert (
+                validation.diagnostics["validation_decision"]["decision"] == "blocked"
+            )
+            assert service.study.loaded_data_list == []
+            return
+        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+        assert applied.ok, applied.message
+        assert _class_event_samples(service) == {
+            "Target 0": [first_sample + 100],
+            "Target 1": [first_sample + 300],
+        }
+        loaded = service.study.loaded_data_list[0]
+        class_durations = [
+            duration
+            for description, duration in zip(
+                loaded.get_mne().annotations.description,
+                loaded.get_mne().annotations.duration,
+                strict=True,
+            )
+            if description in {"Target 0", "Target 1"}
+        ]
+        assert class_durations == [0.5, 0.5]
+        assert loaded.get_runtime_detail(EPOCH_HINT_KEY)["duration_stats"]["max"] == 0.5
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
+    ("case", "expected_issue"),
+    [
+        ("bad_class", "mne_excluded_class_description"),
+        ("missing_sample_base", "sample_index_contract_required"),
+        ("missing_sample_origin", "sample_index_contract_required"),
+        ("after_last_sample", "onset_after_last_stored_sample"),
+    ],
+)
+def test_bids_rejects_unapplicable_timestamp_choices_during_review(
+    tmp_path: Path, case: str, expected_issue: str
+) -> None:
+    root, eeg, events = _write_brainvision_bids_with_generic_flash_codes(tmp_path)
+    choices = _choices(eeg, events)
+    carrier = choices["label_carrier_choices"][str(events)]
+    if case == "bad_class":
+        carrier["value_decisions"]["0"]["class_name"] = "Badminton"
+    elif case.startswith("missing_sample"):
+        events.write_text(
+            "onset\tduration\ttrial_id\tsample\n1\t0\t0\t100\n3\t0\t1\t300\n",
+            encoding="utf-8",
+        )
+        carrier.update(
+            anchor="sample",
+            time_model="sample_index",
+            sample_index_base="zero_based",
+            sample_index_origin="recording_relative",
+        )
+        del carrier[
+            "sample_index_base"
+            if case == "missing_sample_base"
+            else "sample_index_origin"
+        ]
+    else:
+        events.write_text(
+            "onset\tduration\ttrial_id\n1\t0\t0\n9.994\t0\t1\n",
+            encoding="utf-8",
+        )
+    original_events = events.read_bytes()
+    service = ApplicationService()
+    try:
+        assert service.execute(ScanSourceCommand(str(root), source_hint="bids")).ok
+        preview = service.execute(PreviewInterpretationCommand(choices=choices))
+        assert preview.ok, preview.message
+        reviewed = preview.diagnostics["candidate"]["bids"]["event_validation"]["runs"][
+            0
+        ]
+        assert expected_issue in {issue["code"] for issue in reviewed["issues"]}
+        validation = service.execute(ValidateInterpretationCommand())
+        assert validation.ok, validation.message
+        assert validation.diagnostics["validation_decision"]["decision"] == "blocked"
+        assert validation.state.interpretation.blocked_reasons
+        assert service.study.loaded_data_list == []
+        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+        assert not applied.ok
+        assert service.study.loaded_data_list == []
+        assert events.read_bytes() == original_events
+    finally:
+        service.close()
+
+
+def test_bids_point_on_last_stored_sample_remains_applicable(tmp_path: Path) -> None:
+    root, eeg, events = _write_brainvision_bids_with_generic_flash_codes(tmp_path)
+    events.write_text(
+        "onset\tduration\ttrial_id\n1\t0\t0\n9.99\t0\t1\n",
+        encoding="utf-8",
+    )
+    service = ApplicationService()
+    try:
+        assert service.execute(ScanSourceCommand(str(root), source_hint="bids")).ok
+        assert service.execute(
+            PreviewInterpretationCommand(choices=_choices(eeg, events))
+        ).ok
+        validation = service.execute(ValidateInterpretationCommand())
+        assert validation.ok
+        assert not validation.state.interpretation.blocked_reasons
+        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+        assert applied.ok, applied.message
+        assert _class_event_samples(service) == {"Target 0": [100], "Target 1": [999]}
     finally:
         service.close()

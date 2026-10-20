@@ -109,6 +109,7 @@ def _persisted_label_carrier_plan(
         for key in (
             "placement_reviews",
             "bids_event_review",
+            "bids_event_review_by_target",
             "selected_anchor_stats",
             "selected_duration_stats",
         ):
@@ -366,6 +367,8 @@ def _label_carrier_choices_from_recipe(
         "selected_anchor": "anchor",
         "selected_duration_field": "duration_field",
         "time_model": "time_model",
+        "sample_index_base": "sample_index_base",
+        "sample_index_origin": "sample_index_origin",
         "placement_method": "placement_method",
         "granularity": "granularity",
         "role": "role",
