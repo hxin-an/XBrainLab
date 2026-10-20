@@ -971,6 +971,7 @@ class DataInterpretationCommandService:
                     "state_preserved": True,
                 },
             )
+        self._assert_reviewed_bids_index_is_current(candidate)
         assert_source_content_boundaries_match(
             prepared.candidate.content_identity,
             prepared.source_files,

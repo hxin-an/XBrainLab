@@ -301,7 +301,6 @@ class BidsDatasetIndex:
                 *projected_subject_files,
             ]
         )
-        selected_set = {_path_key(Path(path)) for path in selected_files}
         recordings = tuple(
             recording for recording in self.recordings if recording.subject in selected
         )
@@ -345,17 +344,20 @@ class BidsDatasetIndex:
                 *json_sidecars,
             ]
         )
-        indexed_json = {
-            _path_key(Path(path)): path
+        indexed_json = tuple(
+            Path(path)
             for path in json_sidecars
             if is_bids_events_json_sidecar(Path(path))
-        }
+        )
         events_json_by_carrier: list[tuple[str, tuple[str, ...]]] = []
         for carrier in events_files:
             sidecars = _unique_preserving_order(
-                indexed_json[key]
-                for candidate in bids_events_json_candidates(Path(carrier))
-                if (key := _path_key(candidate)) in indexed_json and key in selected_set
+                str(candidate)
+                for candidate in bids_events_json_candidates(
+                    Path(carrier),
+                    indexed_sidecars=indexed_json,
+                    dataset_root=Path(self.root),
+                )
             )
             events_json_by_carrier.append((carrier, sidecars))
         return BidsDatasetProjection(

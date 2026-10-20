@@ -40,25 +40,83 @@ def is_bids_events_json_sidecar(path: Path) -> bool:
     return name == "events.json" or name.endswith("_events.json")
 
 
-def bids_events_json_candidates(path: Path) -> list[Path]:
-    """Return local-to-dataset-root sidecars in existing lookup order."""
+def bids_events_json_candidates(
+    path: Path,
+    *,
+    indexed_sidecars: Iterable[Path] | None = None,
+    dataset_root: Path | None = None,
+) -> list[Path]:
+    """Match applicable existing sidecars in local-to-dataset-root order."""
     if not is_bids_events_file(path):
         return []
-    directories, _dataset_root = _bids_inheritance_scope(path)
-    return _bids_events_json_candidates_in_directories(path, directories)
+    directories = (
+        _bids_inheritance_directories(path.parent, _lexical_path_key(dataset_root))
+        if dataset_root is not None
+        else _bids_inheritance_scope(path)[0]
+    )
+    return _bids_events_json_candidates_in_directories(
+        path, directories or [], indexed_sidecars=indexed_sidecars
+    )
 
 
 def _bids_events_json_candidates_in_directories(
     path: Path,
     directories: Iterable[Path],
+    *,
+    indexed_sidecars: Iterable[Path] | None = None,
+    scan_budget: Any | None = None,
 ) -> list[Path]:
-    names = _bids_event_sidecar_names(path)
+    available: dict[str, list[Path]] = {}
+    if indexed_sidecars is not None:
+        for sidecar in indexed_sidecars:
+            available.setdefault(_lexical_path_key(sidecar.parent), []).append(sidecar)
+    else:
+        # Generic/external carriers have no retained BIDS index. Reuse bounded
+        # discovery only there; formal BIDS projection supplies its sealed inventory.
+        from .data_interpretation_scan import _ScanBudget  # noqa: PLC0415
+
+        scan_budget = scan_budget or _ScanBudget()
+    entities = _bids_filename_entities(path.name)
     candidates: list[Path] = []
     for directory in directories:
-        for name in names:
-            candidate = directory / name
+        if indexed_sidecars is None and scan_budget is not None:
+            entries = scan_budget.directory_entries(directory)
+        else:
+            entries = available.get(_lexical_path_key(directory), [])
+        for candidate in sorted(entries, key=lambda item: item.name.casefold()):
+            if not is_bids_events_json_sidecar(candidate) or not all(
+                entities.get(key) == value
+                for key, value in _bids_filename_entities(candidate.name).items()
+            ):
+                continue
+            if indexed_sidecars is None:
+                try:
+                    if not stat.S_ISREG(candidate.stat().st_mode):
+                        continue
+                except OSError as exc:
+                    raise _resource_error(
+                        code="events_json_sidecar_unavailable",
+                        message=(
+                            f"BIDS events sidecar could not be inspected: {candidate}."
+                        ),
+                        path=candidate,
+                        parse_started=False,
+                        details={"os_error": str(exc)},
+                    ) from exc
             if candidate not in candidates:
                 candidates.append(candidate)
+    if indexed_sidecars is None and scan_budget is not None:
+        scan_budget.revalidate_traversed_directories()
+        if scan_budget.warnings:
+            raise _resource_error(
+                code="events_json_discovery_incomplete",
+                message=(
+                    "BIDS events JSON discovery could not establish a complete scope."
+                ),
+                path=path,
+                parse_started=False,
+                details={"warnings": list(scan_budget.warnings)},
+            )
     return candidates
 
 
@@ -79,6 +137,9 @@ def bids_events_json_resources_by_carrier(
     label_carriers: Iterable[str],
 ) -> dict[str, tuple[str, ...]]:
     """Discover contained existing sidecars once for an admitted scan scope."""
+    from .data_interpretation_scan import _ScanBudget  # noqa: PLC0415
+
+    scan_budget = _ScanBudget()
     result: dict[str, tuple[str, ...]] = {}
     for carrier in label_carriers:
         carrier_path = Path(carrier)
@@ -101,6 +162,7 @@ def bids_events_json_resources_by_carrier(
             for candidate in _bids_events_json_candidates_in_directories(
                 carrier_path,
                 directories,
+                scan_budget=scan_budget,
             ):
                 try:
                     candidate_stat = candidate.stat()
@@ -442,8 +504,39 @@ class BidsEventsJsonReader:
         carrier_key = _lexical_path_key(carrier)
         cached = self.candidates_by_carrier.get(carrier_key)
         if cached is not None:
-            return tuple(Path(path) for path in cached)
-        return tuple(bids_events_json_candidates(carrier))
+            candidates = tuple(Path(path) for path in cached)
+        else:
+            # Standalone readers must retain vanished admitted candidates while
+            # still noticing newly discovered, unadmitted sidecars.
+            known = {
+                self._path_key(path): path
+                for path in bids_events_json_candidates(carrier)
+            }
+            for path in self.admitted_files:
+                known.setdefault(self._path_key(Path(path)), Path(path))
+            candidates = tuple(
+                bids_events_json_candidates(carrier, indexed_sidecars=known.values())
+            )
+        by_directory: dict[str, list[Path]] = {}
+        for candidate in candidates:
+            by_directory.setdefault(_lexical_path_key(candidate.parent), []).append(
+                candidate
+            )
+        for matching in by_directory.values():
+            if len(matching) > 1:
+                raise self._error(
+                    code="events_json_inheritance_ambiguous",
+                    message=(
+                        "BIDS events JSON inheritance is ambiguous for "
+                        f"{carrier.name}: "
+                        + ", ".join(str(path) for path in matching)
+                        + ". Keep one applicable file per directory level."
+                    ),
+                    path=carrier,
+                    parse_started=False,
+                    details={"matching_sidecars": [str(path) for path in matching]},
+                )
+        return candidates
 
     def has_candidate_for(self, carrier: Path) -> bool:
         """Return whether discovery admitted any existing sidecar for a carrier."""
@@ -661,22 +754,6 @@ class BidsEventsJsonReader:
             path=path,
             details={**self.diagnostics(), **dict(details or {})},
         )
-
-
-def _bids_event_sidecar_names(path: Path) -> list[str]:
-    names: list[str] = []
-    if path.name.lower().endswith(".tsv"):
-        stem = path.name[: -len(".tsv")]
-        names.append(f"{stem}.json")
-    prefix = path.name.removesuffix(".tsv").removesuffix("_events")
-    parts = [part for part in prefix.split("_") if part]
-    semantic_parts = [
-        part for part in parts if not part.startswith(("sub-", "ses-", "run-"))
-    ]
-    if semantic_parts:
-        names.append("_".join([*semantic_parts, "events"]) + ".json")
-    names.append("events.json")
-    return list(dict.fromkeys(names))
 
 
 def _is_bids_eeg_json_sidecar(path: Path) -> bool:

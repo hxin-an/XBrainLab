@@ -72,6 +72,12 @@ of the selected label field replaces that field's inherited definition, includin
 its `Levels`; old class suggestions are not carried forward when the new definition
 has no `Levels`.
 
+Events JSON files are matched by their filename entities and ancestor directory:
+for example, a task-level file can apply to that task's runs and acquisitions.
+Two applicable events JSON files in the same directory are ambiguous and must be
+corrected before importing the affected data. If metadata changes during import,
+review the source again before retrying.
+
 ### Current multi-recording limits
 
 One imported collection currently requires the same channel count, names, order and

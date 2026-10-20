@@ -7,6 +7,8 @@
 ### 授權、基線與 outcome
 
 使用者已於 2026-10-20 批准六類缺陷修復計畫，做到整合驗證、獨立覆核後集中手測。
+同日再次複查後，使用者追加批准修復 events JSON entity-subset 繼承漏讀／freshness 漏檢，
+以及同層多個適用 events JSON 的歧義拒絕，併入同一 PR，維持 UI 與既有 owners。
 2026-10-20 fetch origin/main 後建立
 `audit/bids-import`，基線 `52d3a615`（已合併 PR #163）。舊 Training／Preprocess 施工紀錄
 留在 Git；不重新啟動已合併工作。研究 checkout 與文件預覽 worktree 均保持原狀。
@@ -70,50 +72,56 @@ UI 狀態：已批准修正既有 validation／取消重試行為；layout／五
 
 ### Current / next
 
-六類修復與直接相依邊界已完成施工，進入固定 source 的整合驗證。
-[修復前審查](../validation/bids-import-audit-20261020.md) 與原 red artifacts 保留，
-不把歷史發現改寫為修復後證據。`build/bids-audit` 保存本輪測試輸出；PR 記錄 exact head、
-適用 CI／native／retained-campaign 結果，恢復工作時先核對實際結果，不依計畫推定通過。
+修復前審查與所有 red／中斷 artifacts 保留在原位置，不把歷史發現改寫為修復後證據。
+PR #164 的前一候選為 `a9357fea`：24 個適用 CI checks 成功，Windows native 13 passed，
+junction IO 43 passed；E 接回後，以 pinned bytes 組成隔離 fixture，原先缺檔八項也全部通過。
+D261、E canonical134 均全數通過，receipt／recipe／輸入雜湊及 source 已核對。
+這些是前一候選的證據，不能直接證明接下來的修正版。
 
-Focused 證據：最終資料／recipe／header suite 299 passed；JSON/alias 109 passed；
-conformance script 24 passed；shared BIDS widget 14 passed；取消四分支 real-Command
-red/green 與既有 async suite 81 passed。這些組有重疊，不能相加作唯一測試數。
-原 junction 的路徑字串假設已改為 exact resolved file identities；仍需重跑原 junction IO。
+E 槽已恢復；實際 134 根目錄／1,205 recordings 與歷史清單完全一致。完整逐筆重播尚未跑。
+封存 case expectations 位於
+`E:/XBrainLabData/evidence/retained-import-20260916/source-3a2c65aa/`；
+已審查的 ignored adapter `build/bids-audit/run_frozen_retained.py` 只重用 frozen cases，
+驗證 archive／inventory／case hashes，串行呼叫現有 `run_import_case`，不重新產生答案。
+歷史逐筆時間加總約 2h05m；需固定 final source 後再跑，不能邊施工邊跑。
 
-獨立覆核已涵蓋資料、取消／publication、測試 oracle、腳本、文件與複雜度。
-並修正審查再現的直接缺口：catalog 不被未選 subject 的 sidecar 歧義擋住；
-共用 events 逐 recording 保留證據／原始 rows；selected sample anchor 與 onset 不一致時
-重用既有 converter／duration parser，使 Validate 與 Apply 一致。既有 header admission
-傳遞 first_samp，非零 origin、異取樣率、end field、unknown duration 有直接測試。
-Negative absolute sample coordinates 維持拒絕；不宣稱新增任意座標或 BIDS format 能力。
-腳本補綁 participants 與 generic inherited metadata，未列入 inputs 時在 admission 拒絕。
+### 追加切片：events JSON 繼承與 freshness
 
-Production 相對 52d3a615：16 files、net +335，已觸發並完成獨立 complexity
-review。Owners、production modules/classes 與 receipts 均不增加；換算函式由 Apply 移至既有
-loader 共用，不保留第二套；既有 duration parser 只改為可共用入口。額外檔案是同一資料流的
-admission／recipe／render 接線，不另建平台。主 agent 已核對實際 diff。
+問題／證據：`json-inheritance-command-probe.json` 已用實際 Commands 重現：
+subject+task JSON 被 run-specific carrier 漏讀；task-only JSON 被 acq/run carrier 漏讀。
+建議名稱錯誤，漏讀檔案修改後 Apply 仍可 publication；已辨識檔案的 mutation control 正確拒絕。
+同層 `events.json` 與 `task-*_events.json` 同時適用時，Validate 未拒絕歧義。
+皆屬既有 discovery 缺口，不是前一修復造成；明確 class choices 未被覆寫，未觀察到波形損毀。
+追加覆核的 timing regression 也重現：真實 detached prepare 完成後新增適用 JSON，
+最終 publication 只檢查已知檔案，未重查 retained index，仍發布資料。
+`json-prepare-freshness-red.xml` 保留失敗；修復直接重用既有 index freshness owner，
+在最終 commit 邊界再次確認目錄身分，不新增掃描／receipt。
 
-剩餘交付步驟：固定 clean head → 最終 Windows native／junction IO、D261、CI/source-diverse；
-對實際失敗修復後驗受影響邊界。原生檢查中不執行會 stash 工作樹的 commit hooks。
-E 槽於 2026-10-20 再查未掛載，G 槽也不是既有資料根目錄；canonical134／expanded1205
-仍因必要資料不可得而 blocked。已詢問接回或提供新位置，不重新下載、不拿 D261 或舊134
-冒充通過。完成其他檢查後若此 blocker 仍存在，明確交代未達 handoff-ready 與所需資源；
-待同版本必要 gate 齊備才開 Windows app 交集中手測，未經另外批准不 merge。
+Outcome：依 BIDS 1.11.1 entity-subset／祖先目錄規則，所有適用 events JSON 都納入既有
+admission、欄位覆寫、recipe/content identity 與 apply freshness；同層歧義拒絕。
+不跨 root、不讀未選 subject／不相符 task/acquisition 的 JSON；取消／atomic publication 保持。
+不新增 layout、步驟、owner、receipt、cache 或資料集特例；不擴張為完整 BIDS validator。
 
-首輪 CI f0330d07 發現四項型別診斷（index helper 接收 list／tuple 宣告、selected timing
-nullable narrowing）。逐筆 campaign 已停止，保留不完整證據；不改 baseline 或弱化 gate。
-修正 helper 的 iterable 契約並明確拒絕 unavailable timing；獨立覆核無阻擋，
-locked Basedpyright 1.39.2 回到零診斷、直接回歸 87 passed。以新 head 重啟必要檢查。
-完整 CI 同時抓到兩項舊測試契約需同步（JSON field replacement、mock 缺 run identity）；
-已保留 admission／讀取次數等原 assertions 並補明確預期，39 個 focused tests 通過。
-另有實際相鄰回歸：recipe 指向已搬走的 label carrier 時，新的 alias 拒絕會讓 reload 提前
-失敗，無法進入既有明確 remap 流程。已恢復「有缺檔 blocker 的可修復 review」，保留對任意
-未知 choice 的拒絕、不讀取不存在檔案、不允許未完成 remap 的 Apply。108 項相關測試通過，
-含明確 remap 後實際 Apply 的 sample 檢查；獨立覆核無阻擋，最終 Basedpyright 零診斷。
-ee52bb6c 的 Windows native 13 passed、junction IO 43 passed／8 missing-fixture skips，
-CI Basedpyright 與 source-diverse 通過；架構 gate 發現新增 workflow test 直接讀 Study。
-改用既有公開 query／detached render DTO 保留未 publication、成功匯入與 sample 128 斷言，
-新增分類使用不同名稱，完整核對保留原始事件與新增分類，避免只驗到原始 annotations。
-14 個相關測試、完整 architecture compliance 與獨立覆核通過，不放寬 guard。
-D261 再次停止並保留 partial artifacts；完成此測試修正後固定新 head，
-先確認架構 gate，再重啟同 head CI、Windows native／junction IO 與完整 D261 campaign。
+步驟：
+1. 先將四個實際 probe 收成直接回歸：subject/task/acq/run 繼承、mutation 拒絕、
+   同層歧義，以及 unrelated／unselected scope 不受影響。原 red 保留。
+2. 重用既有 filename entities、bounded index 與 resource guard；移除少數檔名拼接清單，
+   統一適用檔案配對／局部優先順序，不新增第二套 admission 或 freshness。
+3. 檢查所有呼叫者與 resource 限額／symlink／root 替換保護；實作者以外 reviewer 覆核
+   實際 diff、資料邊界及測試 oracle，主 agent 驗收。
+4. focused tests、typing／architecture／lint 後固定 clean head。跑適用 CI、Windows native、
+   D261、canonical134 及 frozen expanded1205；保留歷次失敗，不改 baseline／門檻。
+5. 同版本 gates 齊備後開 Windows app 與 PowerShell log 交集中手測，不擅自 merge。
+
+假設／UI：使用者已批准同層歧義透過既有錯誤／validation surface 拒絕；UI layout 不改。
+Complexity：前一整合 production 16 files、+551/-216（net +335），已獨立覆核；
+追加切片仍依實際差異檢查門檻，優先刪除 `_bids_event_sidecar_names` 的不完整政策。
+停止條件：新增 regression 全通過、資料／資源安全獨立覆核通過，必要同版本 gates 完成；
+若發現需新契約決策的問題，列具體證據，不暗中放寬規則。
+
+追加切片施工驗證：84 項 JSON／index／Command tests 與 55 項相鄰 two-phase apply
+保護通過；獨立 reviewer 已檢查實際 diff、red/green artifacts、scope／root containment、
+兩個 publication timing seams 與單獨 reader 的已核准 JSON 消失情況，無剩餘阻擋項。
+這是施工 evidence，不是 final-head conformance。下一步固定 clean commit，依序補
+native／完整 fixture、D261、canonical134 與 frozen expanded1205，並核對同 head CI；
+執行狀態保存在該候選的 ignored output，不以先前候選結果替代。

@@ -115,6 +115,11 @@ catalog 仍可開啟，但選到受影響 recording 的候選必須在 Validate 
 Apply 不會把前一份 recording 已過濾／換算的 rows 當成下一份的來源。
 明確 label-carrier 選項先按原始 scan 的檔案身分綁定，再縮小實際讀取範圍；
 路徑別名不能讓選項遺失，同名但不同來源也不能誤套選項。
+Events JSON 也由同一 selected inventory 依 filename entity subset 與祖先目錄配對；
+同層多個適用檔案不任選，受影響 carrier 必須先修正歧義。逐層繼承以整個欄位定義
+覆寫（含 `Levels`），不是合併該欄位的子鍵。所有適用 JSON 都進入既有 content identity；
+detached load 後、atomic publication 前再次確認 retained index，避免途中新增 sidecar
+繞過 review。這項檢查重用目錄身分，不重新走訪資料樹。
 
 Small BIDS metadata、JSON、CSV / TSV sidecars 使用 content-identified parsed cache。Cache key 包含
 完整 bytes SHA-256、parser ID、schema version、payload size / kind，保留 immutable value 並限制

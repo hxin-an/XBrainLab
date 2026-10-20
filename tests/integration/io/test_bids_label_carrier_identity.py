@@ -17,6 +17,7 @@ from XBrainLab.backend.application import (
     ApplicationService,
     ApplyInterpretationCommand,
     PreviewInterpretationCommand,
+    QueryStateCommand,
     ReloadInterpretationRecipeCommand,
     SaveInterpretationRecipeCommand,
     ScanSourceCommand,
@@ -92,6 +93,289 @@ def test_bids_preview_uses_overriding_field_definition_for_level_suggestions(
             "1": "Target 1",
         }
         _assert_applied_labels(service)
+    finally:
+        service.close()
+
+
+def _write_level_names(path: Path, prefix: str) -> None:
+    path.write_text(
+        json.dumps({"trial_id": {"Levels": {"0": f"{prefix} A", "1": f"{prefix} B"}}}),
+        encoding="utf-8",
+    )
+
+
+def _entity_subset_fixture(tmp_path: Path, variant: str):
+    root, eeg, events = _fixture(tmp_path)
+    old = "sub-01_task-cvep"
+    new = old + ("_acq-hi_run-1" if variant == "acquisition" else "_run-1")
+    events.with_suffix(".json").unlink()
+    for path in list(eeg.parent.iterdir()):
+        if path.suffix in {".vhdr", ".vmrk"}:
+            path.write_text(
+                path.read_text(encoding="utf-8").replace(old, new), encoding="utf-8"
+            )
+        path.rename(path.with_name(path.name.replace(old, new)))
+    eeg = eeg.with_name(eeg.name.replace(old, new))
+    events = events.with_name(events.name.replace(old, new))
+    metadata = root / "task-cvep_events.json"
+    _write_level_names(metadata, "Root")
+    prefix = "Root"
+    if variant == "subject":
+        metadata = root / "sub-01" / "sub-01_task-cvep_events.json"
+        prefix = "Subject"
+        _write_level_names(metadata, prefix)
+    return root, eeg, events, metadata, prefix
+
+
+def _assert_no_publication(service: ApplicationService, applied) -> None:
+    assert not applied.ok, applied.message
+    assert not applied.changed_state.raw_changed
+    assert not applied.changed_state.preprocessed_changed
+    summary = service.execute(QueryStateCommand(query="data_summary"))
+    assert summary.ok, summary.message
+    assert summary.diagnostics["count"] == 0
+
+
+@pytest.mark.parametrize("variant", ["subject", "acquisition"])
+def test_entity_subset_json_suggestions_preserve_explicit_classes_and_signal(
+    tmp_path: Path, variant: str
+) -> None:
+    root, eeg, events, _metadata, prefix = _entity_subset_fixture(tmp_path, variant)
+    service = ApplicationService()
+    try:
+        assert service.execute(ScanSourceCommand(str(root), source_hint="bids")).ok
+        preview = service.execute(
+            PreviewInterpretationCommand(choices=_choices(eeg, events))
+        )
+        assert preview.ok, preview.message
+        plan = preview.diagnostics["candidate"]["label_carrier_plan"][0]
+        assert {
+            code: plan["value_decisions"][code]["suggested_name"] for code in ("0", "1")
+        } == {"0": f"{prefix} A", "1": f"{prefix} B"}
+        assert preview.state.interpretation.class_map == {
+            "0": "Target 0",
+            "1": "Target 1",
+        }
+        _assert_applied_labels(service)
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("variant", ["subject", "acquisition", "recognized_control"])
+def test_entity_subset_json_mutation_after_validation_refuses_publication(
+    tmp_path: Path, variant: str
+) -> None:
+    root, eeg, events, metadata, _prefix = _entity_subset_fixture(tmp_path, variant)
+    service = ApplicationService()
+    try:
+        assert service.execute(ScanSourceCommand(str(root), source_hint="bids")).ok
+        preview = service.execute(
+            PreviewInterpretationCommand(choices=_choices(eeg, events))
+        )
+        assert preview.ok, preview.message
+        validated = service.execute(ValidateInterpretationCommand())
+        assert validated.ok, validated.message
+        assert not validated.state.interpretation.blocked_reasons
+        directory_mtime = metadata.parent.stat().st_mtime_ns
+        _write_level_names(metadata, "Modified")
+        assert metadata.parent.stat().st_mtime_ns == directory_mtime
+        _assert_no_publication(
+            service, service.execute(ApplyInterpretationCommand(confirmed=True))
+        )
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("variant", ["subject", "acquisition"])
+def test_new_applicable_json_after_validation_refuses_publication(
+    tmp_path: Path, variant: str
+) -> None:
+    root, eeg, events, metadata, _prefix = _entity_subset_fixture(tmp_path, variant)
+    metadata.unlink()
+    service = ApplicationService()
+    try:
+        assert service.execute(ScanSourceCommand(str(root), source_hint="bids")).ok
+        preview = service.execute(
+            PreviewInterpretationCommand(choices=_choices(eeg, events))
+        )
+        assert preview.ok, preview.message
+        validated = service.execute(ValidateInterpretationCommand())
+        assert validated.ok, validated.message
+        assert not validated.state.interpretation.blocked_reasons
+        _write_level_names(metadata, "New")
+        _assert_no_publication(
+            service, service.execute(ApplyInterpretationCommand(confirmed=True))
+        )
+    finally:
+        service.close()
+
+
+def test_same_level_applicable_json_ambiguity_cannot_publish(tmp_path: Path) -> None:
+    root, eeg, events, _metadata, _prefix = _entity_subset_fixture(
+        tmp_path, "recognized_control"
+    )
+    _write_level_names(root / "events.json", "Generic")
+    service = ApplicationService()
+    try:
+        catalog = service.execute(
+            ScanSourceCommand(str(root), source_hint="bids", catalog_only=True)
+        )
+        assert catalog.ok, catalog.message
+        scan = service.execute(ScanSourceCommand(str(root), source_hint="bids"))
+        preview = service.execute(
+            PreviewInterpretationCommand(choices=_choices(eeg, events))
+        )
+        validated = service.execute(ValidateInterpretationCommand())
+        assert (
+            not scan.ok
+            or not preview.ok
+            or not validated.ok
+            or validated.state.interpretation.blocked_reasons
+        ), "Two applicable JSON sidecars at one directory level must not validate"
+        failures = " ".join(
+            f"{result.message} {result.diagnostics} "
+            f"{result.state.interpretation.blocked_reasons}"
+            for result in (scan, preview, validated)
+        )
+        assert "ambiguous" in failures.lower()
+        _assert_no_publication(
+            service, service.execute(ApplyInterpretationCommand(confirmed=True))
+        )
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
+    "seam", ["prepare_apply_interpretation", "verify_prepared_apply_content"]
+)
+def test_new_json_during_detached_prepare_cannot_publish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, seam: str
+) -> None:
+    from XBrainLab.backend.application.data_interpretation_service import (
+        DataInterpretationCommandService,
+    )
+
+    root, eeg, events, _metadata, _prefix = _entity_subset_fixture(
+        tmp_path, "recognized_control"
+    )
+    new_metadata = root / "sub-01" / "sub-01_task-cvep_events.json"
+    original = getattr(DataInterpretationCommandService, seam)
+    prepared_calls = []
+
+    def prepare_then_add_json(self, plan):
+        prepared = original(self, plan)
+        _write_level_names(new_metadata, "New during prepare")
+        prepared_calls.append(prepared)
+        return prepared
+
+    service = ApplicationService()
+    try:
+        assert service.execute(ScanSourceCommand(str(root), source_hint="bids")).ok
+        assert service.execute(
+            PreviewInterpretationCommand(choices=_choices(eeg, events))
+        ).ok
+        validated = service.execute(ValidateInterpretationCommand())
+        assert validated.ok and not validated.state.interpretation.blocked_reasons
+        monkeypatch.setattr(
+            DataInterpretationCommandService,
+            seam,
+            prepare_then_add_json,
+        )
+        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+        assert len(prepared_calls) == 1, "The real detached loader must complete"
+        _assert_no_publication(service, applied)
+    finally:
+        service.close()
+
+
+def test_unselected_subject_json_ambiguity_does_not_block_selected_run(
+    tmp_path: Path,
+) -> None:
+    root, eeg, events, _metadata, _prefix = _entity_subset_fixture(
+        tmp_path, "recognized_control"
+    )
+    other_directory = root / "sub-02" / "eeg"
+    shutil.copytree(eeg.parent, other_directory)
+    for path in list(other_directory.iterdir()):
+        if path.suffix in {".vhdr", ".vmrk"}:
+            path.write_text(
+                path.read_text(encoding="utf-8").replace("sub-01", "sub-02"),
+                encoding="utf-8",
+            )
+        path.rename(path.with_name(path.name.replace("sub-01", "sub-02")))
+    for name in ("events.json", "task-cvep_events.json"):
+        _write_level_names(other_directory / name, "Other subject")
+    service = ApplicationService()
+    try:
+        catalog = service.execute(
+            ScanSourceCommand(str(root), source_hint="bids", catalog_only=True)
+        )
+        assert catalog.ok, catalog.message
+        scanned = service.execute(
+            ScanSourceCommand(
+                str(root), source_hint="bids", selected_bids_subjects=["01"]
+            )
+        )
+        assert scanned.ok, scanned.message
+        assert scanned.diagnostics["scan_result"]["eeg_files"] == [str(eeg)]
+        preview = service.execute(
+            PreviewInterpretationCommand(choices=_choices(eeg, events))
+        )
+        assert preview.ok, preview.message
+        _assert_applied_labels(service)
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
+    "unrelated",
+    [
+        "task-other_events.json",
+        "sub-02_task-cvep_events.json",
+        "task-cvep_acq-lo_events.json",
+        "sub-02/sub-02_task-cvep_events.json",
+    ],
+)
+def test_unrelated_json_does_not_change_selected_review_or_block_apply(
+    tmp_path: Path, unrelated: str
+) -> None:
+    root, eeg, events, _metadata, _prefix = _entity_subset_fixture(
+        tmp_path, "recognized_control"
+    )
+    other = root / unrelated
+    other.parent.mkdir(parents=True, exist_ok=True)
+    other.write_text("invalid JSON must not be read", encoding="utf-8")
+    service = ApplicationService()
+    try:
+        assert service.execute(ScanSourceCommand(str(root), source_hint="bids")).ok
+        preview = service.execute(
+            PreviewInterpretationCommand(choices=_choices(eeg, events))
+        )
+        assert preview.ok, preview.message
+        plan = preview.diagnostics["candidate"]["label_carrier_plan"][0]
+        assert {
+            code: plan["value_decisions"][code]["suggested_name"] for code in ("0", "1")
+        } == {"0": "Root A", "1": "Root B"}
+        assert preview.state.interpretation.class_map == {
+            "0": "Target 0",
+            "1": "Target 1",
+        }
+        validated = service.execute(ValidateInterpretationCommand())
+        assert validated.ok, validated.message
+        assert not validated.state.interpretation.blocked_reasons
+        other.write_text("different invalid JSON, still unrelated", encoding="utf-8")
+        applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+        assert applied.ok, applied.message
+        summary = service.execute(QueryStateCommand(query="data_summary"))
+        assert summary.ok and summary.diagnostics["count"] == 1
+        loaded = service.study.loaded_data_list[0]
+        observed, classes = loaded.get_event_list()
+        assert observed[:, 0].tolist() == [100, 300]
+        assert classes == {"Target 0": 1, "Target 1": 2}
+        np.testing.assert_array_equal(
+            loaded.get_mne().get_data(),
+            np.arange(2_000, dtype="<f4").reshape(1_000, 2).T.astype(float) * 1e-6,
+        )
     finally:
         service.close()
 

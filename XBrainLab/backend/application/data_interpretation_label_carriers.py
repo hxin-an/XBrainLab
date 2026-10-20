@@ -1592,12 +1592,7 @@ def _bids_event_level_labels(
     reader = sidecar_reader or BidsEventsJsonReader.from_paths(
         bids_events_json_resource_paths([str(path)]),
     )
-    sidecars = (
-        sidecar_reader.candidate_paths_for(path)
-        if sidecar_reader is not None
-        else bids_events_json_candidates(path)
-    )
-    for sidecar in sidecars:
+    for sidecar in reader.candidate_paths_for(path):
         payload = reader.read_object(sidecar)
         if any(str(key).casefold() == label_field.casefold() for key in payload):
             # A more local field replaces the entire inherited field object,
