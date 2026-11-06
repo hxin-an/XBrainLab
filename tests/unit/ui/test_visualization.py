@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -601,9 +602,13 @@ class TestSaliencySpectrogramWidget:
         w.update_plot(None, False)
         assert "publication is invalid" in w.error_label.text()
 
+    @pytest.mark.parametrize(
+        "changed_identity", ["subject", "publication", "training", "run", "method"]
+    )
     def test_normalize_toggle_reuses_preparation_cache_and_publication_lineage(
         self,
         qtbot,
+        changed_identity,
     ):
         from XBrainLab.ui.panels.visualization.saliency_views.spectrogram_view import (
             SaliencySpectrogramWidget,
@@ -613,6 +618,48 @@ class TestSaliencySpectrogramWidget:
         qtbot.addWidget(widget)
         widget.set_saliency_coverage(_published_method_coverage())
         publication = _render_publication()
+        publication = replace(
+            publication,
+            request=replace(publication.request, subject_id=10),
+            data=replace(
+                publication.data,
+                subject_choices=((10, "A"), (20, "B")),
+                selected_subject_id=10,
+            ),
+        )
+        if changed_identity == "subject":
+            changed_publication = replace(
+                publication,
+                request=replace(publication.request, subject_id=20),
+                data=replace(publication.data, selected_subject_id=20),
+            )
+        elif changed_identity == "publication":
+            changed_publication = replace(
+                publication,
+                generation=publication.generation + 1,
+                request=replace(
+                    publication.request,
+                    publication_generation=publication.generation + 1,
+                ),
+            )
+        elif changed_identity == "training":
+            changed_publication = replace(
+                publication, training_generation=publication.training_generation + 1
+            )
+        elif changed_identity == "run":
+            changed_publication = replace(
+                publication,
+                request=replace(
+                    publication.request,
+                    run=SaliencyRunIdentity(publication.request.run.plan, 1),
+                ),
+            )
+        else:
+            changed_publication = replace(
+                publication,
+                request=replace(publication.request, method="Gradient * Input"),
+                data=replace(publication.data, method="Gradient * Input"),
+            )
 
         with patch.object(widget, "_render_figure_async") as render_async:
             widget.update_plot(
@@ -629,32 +676,39 @@ class TestSaliencySpectrogramWidget:
                 selected_label_key=0,
                 display_mode="single",
             )
+            widget.set_saliency_coverage(
+                _published_method_coverage(changed_publication.data.method)
+            )
+            widget.update_plot(
+                changed_publication,
+                False,
+                display_normalized=False,
+                selected_label_key=0,
+                display_mode="single",
+            )
 
-        assert render_async.call_count == 2
+        assert render_async.call_count == 3
         render_callables = [call.args[0] for call in render_async.call_args_list]
-        expected_lineage = (
-            publication.generation,
-            publication.training_generation,
-            publication.request.run,
-            publication.data.method,
-        )
         assert all(
             render_callable.args[1] is widget._preparation_cache
             for render_callable in render_callables
         )
-        assert [render_callable.args[2] for render_callable in render_callables] == [
-            expected_lineage,
-            expected_lineage,
-        ]
+        preparation_keys = [call.args[2] for call in render_callables]
+        assert preparation_keys[0] == preparation_keys[1]
+        assert preparation_keys[2] != preparation_keys[0]
+        assert len(set(preparation_keys)) == 2
         assert [render_callable.args[3] for render_callable in render_callables] == [
             False,
             True,
+            False,
         ]
         assert [render_callable.args[4] for render_callable in render_callables] == [
             0,
             0,
+            0,
         ]
         assert [render_callable.args[5] for render_callable in render_callables] == [
+            "single",
             "single",
             "single",
         ]
