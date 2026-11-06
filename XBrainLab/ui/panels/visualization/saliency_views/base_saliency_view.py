@@ -768,7 +768,8 @@ def fit_figure_subplots_to_canvas(
     for _ in range(max_iterations):
         canvas.draw()
         renderer = canvas.get_renderer()
-        width, height = canvas.get_width_height()
+        # Tight bounding boxes use renderer pixels, including the Qt DPI scale.
+        width, height = canvas.get_width_height(physical=True)
         bounds = [
             bbox
             for axis in list(figure.axes)

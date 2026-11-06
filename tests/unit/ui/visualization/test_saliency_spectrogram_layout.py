@@ -220,3 +220,66 @@ def test_spectrogram_cache_tracks_subject_selection(qtbot, monkeypatch):
     np.testing.assert_array_equal(outputs[0], outputs[3])
     for figure in figures:
         figure.clear()
+
+
+def test_qtagg_subplot_uses_available_area_at_native_dpi_after_resize(qtbot):
+    from XBrainLab.ui.panels.visualization.saliency_views.base_saliency_view import (
+        BaseSaliencyView,
+    )
+
+    view = BaseSaliencyView()
+    qtbot.addWidget(view)
+    view.resize(800, 550)
+    view.show()
+    qtbot.waitExposed(view)
+    figure = Figure(figsize=(8, 5), dpi=100)
+    axis = figure.add_subplot(111)
+    axis.imshow(np.arange(640).reshape(4, 160), aspect="auto")
+    axis.set_xlabel("Time (s)")
+    axis.set_ylabel("Channel")
+    axis.set_title("Subject attribution")
+    assert view._replace_figure(figure)
+    for width in (800, 560, 800):
+        view.resize(width, 550)
+        qtbot.wait(30)
+        canvas = view.canvas
+        canvas.draw()
+        renderer = canvas.get_renderer()
+        assert canvas.device_pixel_ratio == pytest.approx(canvas.devicePixelRatioF())
+        physical_width = canvas.width() * canvas.devicePixelRatioF()
+        physical_height = canvas.height() * canvas.devicePixelRatioF()
+        plot = axis.get_window_extent(renderer)
+        labels = axis.get_tightbbox(renderer)
+        assert plot.width >= physical_width * 0.70
+        assert plot.height >= physical_height * 0.65
+        assert labels.x0 >= -1
+        assert labels.y0 >= -1
+        assert labels.x1 <= physical_width + 1
+        assert labels.y1 <= physical_height + 1
+
+
+@pytest.mark.parametrize("pixel_ratio", (1.0, 1.25, 1.5, 2.0))
+def test_agg_subplot_preserves_plot_area_at_scaled_pixel_ratio(pixel_ratio):
+    figure = Figure(figsize=(8, 5), dpi=100)
+    canvas = FigureCanvasAgg(figure)
+    canvas._set_device_pixel_ratio(pixel_ratio)
+    axis = figure.add_subplot(111)
+    axis.imshow(np.arange(640).reshape(4, 160), aspect="auto")
+    axis.set_xlabel("Time (s)")
+    axis.set_ylabel("Channel")
+    axis.set_title("Subject attribution")
+    for width_inches in (8.0, 5.6, 8.0):
+        figure.set_size_inches(width_inches, 5.5, forward=False)
+        fit_figure_subplots_to_canvas(figure, canvas)
+        canvas.draw()
+        renderer = canvas.get_renderer()
+        physical_width, physical_height = figure.get_size_inches() * figure.dpi
+        plot = axis.get_window_extent(renderer)
+        labels = axis.get_tightbbox(renderer)
+        assert plot.width >= physical_width * 0.70
+        assert plot.height >= physical_height * 0.65
+        assert labels.x0 >= -1
+        assert labels.y0 >= -1
+        assert labels.x1 <= physical_width + 1
+        assert labels.y1 <= physical_height + 1
+    figure.clear()
