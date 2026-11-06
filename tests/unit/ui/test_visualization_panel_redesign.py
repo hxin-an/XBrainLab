@@ -197,7 +197,7 @@ def test_visualization_controls_keep_saliency_before_method_and_transforms(
     qtbot,
     layout_mode,
 ) -> None:
-    """Visible controls read Fold, Run, Saliency, Method, Normalize, Absolute."""
+    """Visible controls read Fold, Run, Subject, Saliency, Method, transforms."""
     panel = _make_panel(qtbot)
     panel._apply_visualization_control_layout(layout_mode)
 
@@ -207,6 +207,8 @@ def test_visualization_controls_keep_saliency_before_method_and_transforms(
         panel.plan_combo,
         panel.run_label,
         panel.run_combo,
+        panel.subject_label,
+        panel.subject_combo,
         panel.saliency_view_label,
         panel.saliency_combo,
         panel.method_label,
@@ -1242,7 +1244,7 @@ def test_visualization_controls_stay_in_a_compact_narrow_grid(qtbot):
     assert isinstance(layout, QGridLayout)
     plan_item = layout.itemAtPosition(0, 1)
     run_item = layout.itemAtPosition(0, 3)
-    saliency_item = layout.itemAtPosition(1, 1)
+    saliency_item = layout.itemAtPosition(1, 3)
     method_item = layout.itemAtPosition(2, 1)
     absolute_item = layout.itemAtPosition(2, 3)
     normalize_item = layout.itemAtPosition(2, 2)

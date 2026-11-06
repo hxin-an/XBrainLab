@@ -60,6 +60,14 @@ Focused：saliency publisher、真實 evaluator→artifact→reload→render、�
 Stop：授權功能及直接驗證完成、獨立 review 無 blocking finding，Windows 候選可供使用者
 檢查。不得自動合併新 feature。受限平台／缺少資料須明列，不能假裝全平台通過。
 
+### UI 預覽修訂 — Subject 順序
+
+使用者在原生預覽後明確要求 Subject 排在 Saliency 前面。只調整現有 responsive grid 的
+排列為 Fold → Run → Subject → Saliency → Method；窄版第二列也先 Subject 再 Saliency。
+不改資料篩選或計算。驗證控制項幾何／次序、focused UI tests 與 Windows 新截圖後更新
+原生預覽。完成條件是各寬度皆維持要求的順序且無重疊；不因此重跑後端或重型 CI。
+已完成：22 個排列／幾何 focused tests 通過；Windows 寬／中／窄原生截圖確認順序與無重疊。
+
 ### Current / next
 
 - PR #164 已合併；舊 worktree 已清理，驗證證據與使用者手測訓練結果保留於本機 ignored artifacts。
