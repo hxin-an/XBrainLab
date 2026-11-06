@@ -2,6 +2,31 @@
 
 最後更新：`2026-11-07`
 
+## Active repair — 首次 Import 關閉後未接續
+
+2026-11-07 使用者在同版 Windows PhysionetMI 手測反覆發現：第四步 Next 或第五步
+Confirm 關閉精靈後未載入，重新開始第二次才成功。現有 log 只有成功載入紀錄，無法
+判定首次停在哪一步；直接從 review 啟動的 native probe 通過，但未覆蓋來源／subject
+對話框的完整生命週期，不能據此宣稱問題已解決。
+
+Outcome：第一次有效確認後，既有 review／apply 接續恰好一次；取消仍不匯入。
+Scope 僅匯入視窗生命週期、直接相關測試；不更動 UI layout／文案、資料解釋或切分契約。
+假設為 modal 關閉與 async callback 接續交界，須先重現而非直接按假設修改。
+
+1. 走真實 Import → source → subjects → wizard，分別追查 Next／Confirm。
+2. 補可失敗的真 Qt modal 回歸，修正既有 owner 的接續，不新增控制層／靜默重試。
+3. focused tests、Windows 同資料完整首次匯入、取消與獨立 lifecycle 覆核。
+4. 若改 source，重新取得適用同 head gates，再開 Windows 交使用者複測；不得合併。
+
+目前：使用者診斷 log 已確認第五步 accepted／confirmed、choices 未變，卻沒有
+`destroyed` callback／Apply。獨立 reviewer 在真 QDialog.exec 後、deferred delete 前
+強制 GC 重現：Python wrapper 被回收、Python signal connection 消失，C++ dialog
+仍正常刪除。修復由現有 coordinator 保留待銷毀 dialog 強引用，destroyed 後釋放；
+不新增 owner／state machine。GC 時序測試已先紅後綠，覆蓋 step4 repreview、step5 apply、取消、exactly-once
+與 wrapper 釋放；完整相關 async-flow 85 passed，獨立 lifecycle 覆核無阻擋項。
+下一步為修復版本的 Windows 完整流程與同 head CI，通過後再交付複測；不合併。
+Stop 與原驗收要求不變。
+
 ## Pending validation / acceptance — 逐人分配的資料切分與移除 Manual
 
 使用者於 2026-11-06 確認完整方案並授權實作；UI 選項收斂已批准。基線為
