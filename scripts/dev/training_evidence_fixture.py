@@ -18,7 +18,6 @@ from XBrainLab.backend.application import (
     get_application_service,
 )
 from XBrainLab.backend.application.dataset_split_preview import (
-    DatasetSplitChoice,
     DatasetSplitContext,
     DatasetSplitPreviewPublication,
     DatasetSplitPreviewRequest,
@@ -84,11 +83,6 @@ def data_split_capture_context() -> DatasetSplitContext:
         session_count=1,
         label_count=2,
         trial_count=120,
-        subject_choices=(
-            DatasetSplitChoice(value="S01", label="S01"),
-            DatasetSplitChoice(value="S02", label="S02"),
-        ),
-        session_choices=(DatasetSplitChoice(value="session", label="session"),),
     )
 
 

@@ -1,4 +1,4 @@
-"""Manual selection, channel validation, and epoch dialog behavior."""
+"""Channel validation and epoch dialog behavior."""
 
 from __future__ import annotations
 
@@ -13,29 +13,6 @@ from PyQt6.QtWidgets import (
 )
 
 from XBrainLab.backend.application.epoch_context import build_epoching_context
-
-# ============ ManualSplitDialog ============
-
-
-class TestManualSplitDialog:
-    @pytest.fixture
-    def dlg(self, qtbot):
-        from XBrainLab.ui.dialogs.dataset.manual_split_dialog import ManualSplitDialog
-
-        choices = ["S01", "S02", "S03", "S04"]
-        d = ManualSplitDialog(None, choices)
-        qtbot.addWidget(d)
-        return d
-
-    def test_accept(self, dlg):
-        # Select first 2 items
-        for i in range(2):
-            item = dlg.list_widget.item(i)
-            item.setSelected(True)
-        dlg.accept()
-        result = dlg.get_result()
-        assert result is not None
-
 
 # ============ ChannelSelectionDialog ============
 

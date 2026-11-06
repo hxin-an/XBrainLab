@@ -224,7 +224,47 @@ class TestDataSplittingDialog:
         assert {
             dialog.val_combo.itemText(index)
             for index in range(dialog.val_combo.count())
+        } == {"Disable", "By Trial"}
+
+    @pytest.mark.parametrize("training_mode", ["Full Data", "Individual"])
+    def test_validation_options_follow_test_coarseness_and_preserve_valid_selection(
+        self, qtbot, training_mode
+    ):
+        from XBrainLab.ui.dialogs.dataset.data_splitting_dialog import (
+            DataSplittingDialog,
+        )
+
+        dialog = DataSplittingDialog(None, **dialog_context_kwargs())
+        qtbot.addWidget(dialog)
+        dialog.train_type_combo.setCurrentText(training_mode)
+        dialog.test_combo.setCurrentText("By Session")
+        dialog.val_combo.setCurrentText("By Session")
+        assert {
+            dialog.val_combo.itemText(index)
+            for index in range(dialog.val_combo.count())
         } == {"Disable", "By Trial", "By Session"}
+
+        dialog.test_combo.setCurrentText("By Trial")
+        assert {
+            dialog.val_combo.itemText(index)
+            for index in range(dialog.val_combo.count())
+        } == {"Disable", "By Trial"}
+        assert dialog.val_combo.currentText() == "Disable"
+
+        dialog.val_combo.setCurrentText("By Trial")
+        dialog.test_combo.setCurrentText("By Session")
+        assert dialog.val_combo.currentText() == "By Trial"
+        if training_mode == "Full Data":
+            dialog.test_combo.setCurrentText("By Subject")
+            assert {
+                dialog.val_combo.itemText(index)
+                for index in range(dialog.val_combo.count())
+            } == {"Disable", "By Trial", "By Session", "By Subject"}
+            assert dialog.val_combo.currentText() == "By Trial"
+            dialog.val_combo.setCurrentText("By Subject")
+            dialog.train_type_combo.setCurrentText("Individual")
+            assert dialog.test_combo.currentText() == "By Trial"
+            assert dialog.val_combo.currentText() == "Disable"
 
     def test_step_one_projects_backend_strategies_after_training_mode_toggle(
         self,
@@ -249,7 +289,9 @@ class TestDataSplittingDialog:
         assert [
             dialog.val_combo.itemText(index)
             for index in range(dialog.val_combo.count())
-        ] == list(context.full_validation_strategies)
+        ] == list(
+            context.validation_strategies_for("Full Data", test_strategy="By Trial")
+        )
 
         dialog.train_type_combo.setCurrentText(TrainingType.IND.value)
 
@@ -260,7 +302,9 @@ class TestDataSplittingDialog:
         assert [
             dialog.val_combo.itemText(index)
             for index in range(dialog.val_combo.count())
-        ] == list(context.individual_validation_strategies)
+        ] == list(
+            context.validation_strategies_for("Individual", test_strategy="By Trial")
+        )
         assert dialog.test_combo.currentText() in context.individual_test_strategies
         assert (
             dialog.val_combo.currentText() in context.individual_validation_strategies
@@ -282,9 +326,10 @@ class TestDataSplittingDialog:
             {
                 "train_type": "Full Data",
                 "is_cross_validation": False,
+                "seed": 91,
                 "val_splitters": [
                     {
-                        "split_type": "By Subject",
+                        "split_type": "By Session",
                         "split_unit": "Ratio",
                         "value": "0.2",
                         "is_option": True,
@@ -292,7 +337,7 @@ class TestDataSplittingDialog:
                 ],
                 "test_splitters": [
                     {
-                        "split_type": "By Session",
+                        "split_type": "By Subject",
                         "split_unit": "Ratio",
                         "value": "0.3",
                         "is_option": True,
@@ -307,8 +352,8 @@ class TestDataSplittingDialog:
         )
         qtbot.addWidget(dialog)
 
-        assert dialog.test_combo.currentText() == "By Session"
-        assert dialog.val_combo.currentText() == "By Subject"
+        assert dialog.test_combo.currentText() == "By Subject"
+        assert dialog.val_combo.currentText() == "By Session"
         with patch(
             "XBrainLab.ui.dialogs.dataset.data_splitting_dialog."
             "DataSplittingPreviewDialog"
@@ -317,8 +362,9 @@ class TestDataSplittingDialog:
             dialog.confirm()
 
         config = preview_dialog.call_args.kwargs["config"]
-        assert config.test_splitter_list[0].split_type == SplitByType.SESSION
-        assert config.val_splitter_list[0].split_type == ValSplitByType.SUBJECT
+        assert config.seed == 91
+        assert config.test_splitter_list[0].split_type == SplitByType.SUBJECT
+        assert config.val_splitter_list[0].split_type == ValSplitByType.SESSION
 
     def test_reopen_keeps_saved_split_over_conflicting_assistant_hints(
         self,
@@ -336,9 +382,10 @@ class TestDataSplittingDialog:
             {
                 "train_type": "Full Data",
                 "is_cross_validation": False,
+                "seed": 91,
                 "val_splitters": [
                     {
-                        "split_type": "By Subject",
+                        "split_type": "By Session",
                         "split_unit": "Ratio",
                         "value": "0.2",
                         "is_option": True,
@@ -346,7 +393,7 @@ class TestDataSplittingDialog:
                 ],
                 "test_splitters": [
                     {
-                        "split_type": "By Session",
+                        "split_type": "By Subject",
                         "split_unit": "Ratio",
                         "value": "0.3",
                         "is_option": True,
@@ -367,8 +414,8 @@ class TestDataSplittingDialog:
         qtbot.addWidget(dialog)
 
         assert dialog.train_type_combo.currentText() == "Full Data"
-        assert dialog.test_combo.currentText() == "By Session"
-        assert dialog.val_combo.currentText() == "By Subject"
+        assert dialog.test_combo.currentText() == "By Subject"
+        assert dialog.val_combo.currentText() == "By Session"
 
         with patch(
             "XBrainLab.ui.dialogs.dataset.data_splitting_dialog."

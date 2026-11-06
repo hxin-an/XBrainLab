@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 import torch
 
-from ...dataset import Dataset
+from ...dataset import Dataset, DataSplittingConfig
 from ...training import TrainingOption
 from ...utils import get_random_state, set_random_state
 from ...utils.filesystem_identity import (
@@ -1070,6 +1070,9 @@ class TrainRecord:
                 "class_weighting": deepcopy(self.class_weighting),
                 "early_stopping": deepcopy(self.early_stopping),
             }
+            split_config = getattr(self.dataset, "config", None)
+            if isinstance(split_config, DataSplittingConfig):
+                payload["split_seed"] = split_config.seed
             if self.model_identity is not None:
                 payload["model_identity"] = dict(self.model_identity)
             write_json_npz_artifact(

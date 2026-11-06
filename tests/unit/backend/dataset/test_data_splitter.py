@@ -16,7 +16,6 @@ from XBrainLab.backend.dataset import (
         (SplitUnit.RATIO, "0.3", 0.3),
         (SplitUnit.NUMBER, "2", 2.0),
         (SplitUnit.KFOLD, "2", 2.0),
-        (SplitUnit.MANUAL, "0 2", [0, 2]),
     ],
 )
 @pytest.mark.parametrize(
@@ -66,10 +65,6 @@ def test_splitter_accepts_interior_values_for_every_enum_and_unit(
         (SplitUnit.KFOLD, "1"),
         (SplitUnit.KFOLD, "-1"),
         (SplitUnit.KFOLD, "2.0"),
-        (SplitUnit.MANUAL, ""),
-        (SplitUnit.MANUAL, "   "),
-        (SplitUnit.MANUAL, "-1"),
-        (SplitUnit.MANUAL, "0 1.5"),
     ],
 )
 def test_splitter_rejects_empty_and_out_of_range_values(
@@ -101,19 +96,11 @@ def test_splitter_rejects_missing_value_for_every_unit(split_type, split_unit):
         splitter.get_value()
 
 
-@pytest.mark.parametrize("split_type", [SplitByType.TRIAL, ValSplitByType.TRIAL])
-def test_manual_splitter_preserves_trailing_whitespace_parse_contract(split_type):
-    splitter = DataSplitter(split_type, "2 ", SplitUnit.MANUAL)
-
-    assert splitter.is_valid()
-    assert splitter.get_value() == [2]
-
-
 def test_splitter_not_implemented():
     split_type = SplitByType.SESSION
     value_var = "2"
     is_option = True
-    splitter = DataSplitter(split_type, value_var, SplitUnit.MANUAL, is_option)
+    splitter = DataSplitter(split_type, value_var, SplitUnit.NUMBER, is_option)
     splitter.split_unit = "test"
     with pytest.raises(NotImplementedError):
         splitter.is_valid()

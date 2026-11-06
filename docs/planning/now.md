@@ -1,8 +1,59 @@
 # XBrainLab Now
 
-最後更新：`2026-11-06`
+最後更新：`2026-11-07`
 
-## Active — Saliency 的 Subject 檢視
+## Active — 逐人分配的資料切分與移除 Manual
+
+使用者於 2026-11-06 確認完整方案並授權實作；UI 選項收斂已批准。基線為
+PR #165 的 d8a9e264；沿用目前 worktree，保留 Saliency 工作、使用者設定及已訓練結果。
+審查已用真 MNE 合成 epochs 重現 Full Trial 只涵蓋少數人的偏斜、Individual Manual
+不可用，以及簡單可行 Number 分割被貪婪搜尋拒絕。54 組正常矩陣通過不代表這些問題不存在。
+
+### Outcome 與核准契約
+
+- Trial / Session 先在每位受試者內切分；Full 合併同一 fold 的各人 masks，Individual
+  各自保留。Subject 只在 Full 以整個人分配。Session identity 是 subject 內的 session，
+  不再把不同人的同名 session 當作強制全域一組；BIDS run 不冒充 session。
+- Test 先隔離，Validation 只取非 Test 資料。相同單位共同規劃，Test / Validation 的
+  Ratio 都以原始 scope 計算；不同單位時 Validation 在 Test 留出後的剩餘 scope 計算。
+  Trial Test 的 Val 只能 Disable / Trial；Session Test 可 Disable / Session / Trial；
+  Subject Test 可 Disable / Subject / Session / Trial。逆向組合拒絕並要求重新設定。
+- Number 是各 scope 的確切 group 數；Trial / Session 按每人計算，Subject 按全體人計算。
+  Ratio 只做整數及不可拆 group 的取捨；不得搜尋相距很遠的新比例來湊成功。不足時指出
+  subject / partition 原因，不跳過任何人。維持 train 所需 class、必要集合非空與 leakage gate。
+- 保留原子時間重疊群組；類別分配以盡量維持來源比例為目標，不重採樣、不保證所有
+  holdout classes 均存在。使用固定且有紀錄的 split seed，Preview / Train masks 必須一致。
+- KFold 在上述 scope 產生 exact K、互斥且聯集完整的 Test；Full Trial / Session 合併各人
+  同一折，Individual 為每人 K 折。Validation Disable / Ratio / Number。
+- 徹底刪除 Manual 選項、enum / parser / allocator 分支、對話框及專屬測試。舊 Manual
+  設定拒絕重新執行並提示重新設定，不能靜默改 Ratio；已保存結果仍可讀，不重新切分。
+
+### Scope / complexity / 步驟
+
+只處理 splitting、直接 Preview / admission / audit / saved configuration consumers、相關
+UI / 測試 / fixtures / scripts / canonical docs；不改模型、Assistant tools、saliency 計算或
+加入 solver / 通用框架。既有 DatasetGenerator、SplitAudit、ApplicationService 仍擁有原責任，
+不新增 authoritative owner。優先刪 Manual 與舊比例回退，重用分配核心；必要純函式拆分
+須有明確責任，不為行數切檔。施工超過原複雜度門檻時先重審實際 diff，不擴大 scope。
+
+1. 先加五人 Trial / Session、混用規則、Number / KFold、失敗 atomicity 回歸並觀察舊版失敗。
+2. 收斂 generator / contract / audit，UI 只消費同一 capability，刪 Manual 全鏈。
+3. 遷移仍保護真行為的 fixtures / scripts；刪除僅屬退役功能的測試；舊結果讀取驗證。
+4. focused backend / UI / integration、lint / typing；資料映射及 receipt 邊界獨立覆核。
+5. Windows 原生展示新選項與五人 Preview；正式手測交付前完成同 head CI、source-diverse
+   與適用 native / UI gates。使用者仍需手測並另同意 merge，不自動合併。
+
+### Current / next / stop
+
+逐人分配、允許組合、固定 seed 與 Manual 全鏈移除已實作；直接失敗基線已確認。
+獨立覆核找到的高比例可行分割與 masks 記憶體問題已修正並補回歸；同／異單位的
+類別比例與不等量受試者 KFold 也已補驗。最終覆核無 blocking finding，真實 CPU 訓練／
+結果保存與 UI focused tests、lint／typing 通過。下一步為同版本 CI、Windows 原生
+選項／實際五人資料驗證與正式手測啟動。Stop 為授權 outcome、直接驗證與獨立
+覆核完成，適用正式 gates 通過後開 Windows 完整版本供一次集中手測；不以中途 commit、
+CI pending 或 compaction 結束。未知平台／資料限制明列，原有 app / 結果不擅自關閉或清除。
+
+## Pending acceptance — Saliency 的 Subject 檢視
 
 ### 問題、授權與基線
 

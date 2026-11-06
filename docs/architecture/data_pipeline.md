@@ -289,22 +289,34 @@ resampling 只更新先前已驗證的 provenance，保留原 recording identity
 
 `DatasetGenerator` 以 `DataSplittingConfig` 產生 `Dataset`。
 
-Split 是一個由既有 `DatasetGenerator` materialize、`SplitAudit` 檢查的單一路徑：Full training
-的 Test 可依 `Trial`、跨 subject 的同名 `Session` 或 `Subject` 分組；Individual training 僅可依
-`Trial` 或 `Session`。Validation 是 Disable，或使用該 training mode 允許的任一分組單位，並可與
-Test 使用不同 unit。Trial 永遠以
-temporal-overlap atomic group 分配，不能把同一個原子群切到不同 partition。
+Split 由既有 `DatasetGenerator` materialize、`SplitAudit` 檢查。Trial／Session 先在每位
+subject 內分配，Full 合併各 subject 的同一 fold masks，Individual 保留每人的獨立模型。
+Subject 僅供 Full，以整位受試者分配；Session identity 為 `(subject, session)`，BIDS run
+不自動充當 session。Trial 以 temporal-overlap atomic group 分配，來源時間重疊不能跨集合。
 
-非 cross-validation 的 Test／Validation 使用 Ratio、Number 或 Manual selection；cross-validation
-的 Test 使用 exact KFold，Validation 僅可 Disable、Ratio 或 Number。每個有效 partition 都必須能
-materialize；不足以滿足 isolation、required non-empty partition 或 train class coverage 的設定會在
-preview／Train 前 fail closed。KFold 的每個 scope 都有 exact K 個 test folds，test groups 不重複且
-聯集為該 scope，而不是以前一 fold 的 remaining mask 逐步推進。
+Validation 為 Disable，或 Test 的相同／更細單位：Trial→Trial；Session→Session／Trial；
+Subject→Subject／Session／Trial。Test 先隔離，Validation 只取非 Test 資料。相同單位共同
+規劃，以原 scope 計算 Test／Validation 比例；較細 Validation 的比例以 Test 後剩餘 scope
+計算，Trial／Session 仍逐人分配。非 CV 使用 Ratio／Number；Manual 與專屬 UI／解析分支
+刪除，舊 Manual 或逆向混用設定必須重新設定，不靜默轉換。
 
-Preview 與 Train 使用同一個 canonical allocation/audit path。Save 的 receipt 帶 allocation digest；
-Train 會重新 materialize 並比對 rows、coverage 與 digest，任何不一致都拒絕啟動。若 Test 不具完整
-class coverage 而 Validation 完整，saliency 可改用 Validation；兩者皆不完整時該 fold 不產生 saliency，
-但不影響其他可用 fold 的 training/evaluation。
+Number 為各 scope 的確切群組數；Ratio 目標為 `max(1, floor(ratio × group_count))`，不靠
+大幅縮減比例湊成功。Train 所需類別、必要集合非空、所有 subject 與原子群隔離均保留；
+不足時指出 scope／partition 原因。固定 split seed（預設 42）隨 typed specification 與
+fingerprint 保存，訓練結果另記錄 `split_seed`（與模型訓練 seed 區分）；seeded 順序避免
+同分挑選固定偏向前面的 recording。類別評分以來源比例為目標：相同單位使用原 scope，
+較細 Validation 使用剩餘 scope；
+不重採樣、不保證任意 dataset 可行或 holdout 類別完整。
+
+CV Test 使用 exact KFold，Validation 僅 Disable／Ratio／Number。每個 subject scope 都需
+具備 K 個可行 folds；Full Trial／Session 將各人的同一折合併成 K 個共用模型，Individual
+為每人 K 個。Subject CV 以全體受試者分組。各 scope 的 Test folds 互斥且聯集完整。
+分配保留 bounded alternatives 與取消邊界，不是完整 constraint solver。
+
+Preview 與 Train 使用同一 canonical allocation/audit path；receipt 帶 allocation digest，
+Train 重建並比對 rows、coverage 與 digest，不一致拒絕啟動。若 Test 缺 class 而 Validation
+完整，Saliency 可使用 Validation；兩者皆不完整時該 fold 不產生 Saliency，不影響其他
+可用 fold。結果檔讀取不重新套用切分規則，因此既有訓練結果保留原始語意。
 
 `Dataset` 本身主要保存 masks：
 

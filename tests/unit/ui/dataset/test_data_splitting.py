@@ -97,6 +97,7 @@ def test_step_two_shows_trials_and_classes_but_keeps_atomic_counts_internal(
         epoch_available=True,
         trial_count=12,
         trial_group_count=3,
+        minimum_subject_trial_group_count=3,
         label_count=2,
         label_choices=(
             DatasetSplitChoice(value="7.50", label="7.50 Hz"),
@@ -160,7 +161,6 @@ def test_validation_card_is_visible_only_when_a_validation_rule_exists(
     [
         (SplitUnit.RATIO, "0.3"),
         (SplitUnit.NUMBER, "3"),
-        (SplitUnit.MANUAL, "0 2"),
     ],
 )
 def test_step_two_rehydrates_saved_test_unit_and_value(
@@ -262,7 +262,7 @@ def test_step_two_rehydrates_saved_validation_unit_value_and_payload(
 @pytest.mark.parametrize(
     ("cross_validation", "expected_test_units", "expected_validation_units"),
     [
-        (False, ("Ratio", "Number", "Manual"), ("Ratio", "Number", "Manual")),
+        (False, ("Ratio", "Number"), ("Ratio", "Number")),
         (True, ("K Fold",), ("Ratio", "Number")),
     ],
 )
@@ -296,6 +296,35 @@ def test_step_two_projects_split_units_from_backend_context(
     assert [test_combo.itemText(index) for index in range(test_combo.count())] == list(
         expected_test_units
     )
+
+
+@pytest.mark.parametrize("training_type", [TrainingType.FULL, TrainingType.IND])
+@pytest.mark.parametrize("strategy", [SplitByType.TRIAL, SplitByType.SESSION])
+def test_kfold_default_uses_smallest_subject_scope(qtbot, training_type, strategy):
+    context = DatasetSplitContext(
+        epoch_available=True,
+        subject_count=5,
+        session_count=10,
+        trial_count=200,
+        trial_group_count=100,
+        minimum_subject_trial_group_count=3,
+        minimum_subject_session_count=2,
+    )
+    config = DataSplittingConfig(
+        training_type, True, [], [DataSplitter(strategy)], seed=91
+    )
+    with patch("threading.Thread") as worker:
+        worker.return_value.is_alive.return_value = False
+        window = DataSplittingPreviewDialog(
+            None, "Preview", config=config, **dialog_context_kwargs(context=context)
+        )
+    qtbot.addWidget(window)
+    combo, entry = window.test_widgets[0]
+    assert combo.currentText() == "K Fold"
+    assert entry.text() == ("3" if strategy == SplitByType.TRIAL else "2")
+    specification = window.get_current_specification()
+    assert specification is not None
+    assert specification.seed == 91
 
 
 def test_data_splitting_window_update_table_replaces_calculating_row(qtbot) -> None:

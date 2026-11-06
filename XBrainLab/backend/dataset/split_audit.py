@@ -121,9 +121,14 @@ def split_preview_rows(
         test = _partition_evidence(
             epoch_data, all_mask, dataset.test_mask, all_labels, names, test_rule
         )
+        validation_scope = all_mask
+        if validation_rule is not None and _rule_value(
+            validation_rule, "split_type"
+        ) != _rule_value(test_rule, "split_type"):
+            validation_scope = all_mask & ~dataset.test_mask
         validation = _partition_evidence(
             epoch_data,
-            all_mask,
+            validation_scope,
             dataset.val_mask,
             all_labels,
             names,
@@ -724,7 +729,7 @@ def _group_count(epoch_data: Any, mask: np.ndarray, split_type: object) -> int:
     if "subject" in normalized:
         values = epoch_data.get_subject_list_by_mask(mask)
     elif "session" in normalized:
-        values = epoch_data.get_session_list_by_mask(mask)
+        return len(_subject_session_keys(epoch_data, mask))
     else:
         values = np.asarray(epoch_data.get_trial_group_list())[mask]
     return len(set(np.asarray(values).tolist()))
@@ -809,12 +814,7 @@ def _split_groups(dataset: Dataset, *, key: str) -> dict[str, set[Any]]:
                 ).tolist()
             }
         elif key == "session":
-            result[split_name] = {
-                int(value)
-                for value in np.asarray(
-                    epoch_data.get_session_list_by_mask(mask),
-                ).tolist()
-            }
+            result[split_name] = _subject_session_keys(epoch_data, mask)
         else:
             result[split_name] = set(
                 np.asarray(epoch_data.get_trial_group_list())[mask].tolist()
@@ -847,9 +847,22 @@ def _indices_for_groups(
         ]
 
     sessions = np.asarray(epoch_data.get_session_list_by_mask(all_mask))
-    session_group_set = {int(group) for group in groups}
+    subjects = np.asarray(epoch_data.get_subject_list_by_mask(all_mask))
+    session_group_set = set(groups)
     return [
-        int(idx)
-        for idx, session in enumerate(sessions.tolist())
-        if int(session) in session_group_set
+        idx
+        for idx, (subject, session) in enumerate(zip(subjects, sessions, strict=True))
+        if (int(subject), int(session)) in session_group_set
     ]
+
+
+def _subject_session_keys(epoch_data: Any, mask: np.ndarray) -> set[tuple[int, int]]:
+    """Session names identify sessions within a subject, not across people."""
+    return {
+        (int(subject), int(session))
+        for subject, session in zip(
+            epoch_data.get_subject_list_by_mask(mask),
+            epoch_data.get_session_list_by_mask(mask),
+            strict=True,
+        )
+    }

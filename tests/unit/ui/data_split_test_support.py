@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from XBrainLab.backend.application.dataset_split_preview import (
-    DatasetSplitChoice,
     DatasetSplitContext,
     DatasetSplitPreviewPublication,
     DatasetSplitPreviewRequest,
@@ -32,17 +31,6 @@ def split_context(
         session_count=session_count,
         label_count=label_count,
         trial_count=trial_count,
-        subject_choices=tuple(
-            DatasetSplitChoice(value=f"S{index + 1:02d}", label=f"S{index + 1:02d}")
-            for index in range(subject_count)
-        ),
-        session_choices=tuple(
-            DatasetSplitChoice(
-                value=f"session-{index + 1}",
-                label=f"session-{index + 1}",
-            )
-            for index in range(session_count)
-        ),
     )
 
 

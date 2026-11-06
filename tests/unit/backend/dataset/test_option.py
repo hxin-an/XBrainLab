@@ -9,7 +9,6 @@ from XBrainLab.backend.dataset.option import (
 def test_split_unit():
     assert SplitUnit.RATIO.value == "Ratio"
     assert SplitUnit.NUMBER.value == "Number"
-    assert SplitUnit.MANUAL.value == "Manual"
     assert SplitUnit.KFOLD.value == "K Fold"
 
 

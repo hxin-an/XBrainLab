@@ -1,6 +1,7 @@
 """Dataset generator module for creating train/val/test splits from epoch data."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from typing import NoReturn
 from uuid import uuid4
 
 import numpy as np
@@ -9,7 +10,13 @@ from ..utils import validate_type
 from ..utils.filesystem_identity import validate_filesystem_metadata
 from .data_splitter import DataSplittingConfig
 from .dataset import Dataset, Epochs
-from .option import SplitByType, SplitUnit, TrainingType, ValSplitByType
+from .option import (
+    VALIDATION_SPLIT_TYPES,
+    SplitByType,
+    SplitUnit,
+    TrainingType,
+    ValSplitByType,
+)
 
 MAX_CV_LOCAL_REPAIR_ATTEMPTS = 256
 
@@ -114,19 +121,41 @@ class DatasetGenerator:
         if not scope.any():
             raise ValueError("Split scope is empty")
         test_splitter = self._required_test_splitter()
-        fold_count = self._fold_count(test_splitter, scope)
+        validation = self._active_validation_splitter()
+        if (
+            self.config.train_type == TrainingType.IND
+            and test_splitter.split_type == SplitByType.SUBJECT
+        ):
+            raise ValueError("Individual training cannot split by Subject")
+        if (
+            validation is not None
+            and validation.split_type.value
+            not in (VALIDATION_SPLIT_TYPES[test_splitter.split_type.value])
+        ):
+            raise ValueError("Validation must use the same or a finer unit than Test")
+        scopes = (
+            [scope]
+            if test_splitter.split_type == SplitByType.SUBJECT
+            else self._subject_scopes(scope)
+        )
+        combined_folds: list[tuple[np.ndarray, np.ndarray]] = []
+        for allocation_scope in scopes:
+            try:
+                subject_folds = self._scope_folds(test_splitter, allocation_scope)
+            except ValueError as error:
+                self._raise_scope_error(allocation_scope, error)
+            if not combined_folds:
+                combined_folds = subject_folds
+            else:
+                for (test, validation), (subject_test, subject_validation) in zip(
+                    combined_folds, subject_folds, strict=True
+                ):
+                    np.logical_or(test, subject_test, out=test)
+                    np.logical_or(validation, subject_validation, out=validation)
         cross_validation_cohort_id = (
             uuid4().hex if self.config.is_cross_validation else None
         )
-        validation = self._active_validation_splitter()
-        paired_validation_masks: list[np.ndarray] | None = None
-        if fold_count == 1 and validation is not None:
-            test_mask, validation_mask = self._paired_masks(scope)
-            test_folds = [test_mask]
-            paired_validation_masks = [validation_mask]
-        else:
-            test_folds = self._test_folds(test_splitter, scope, fold_count)
-        for group_idx, test_mask in enumerate(test_folds):
+        for group_idx, (test_mask, validation_mask) in enumerate(combined_folds):
             self._raise_if_interrupted()
             dataset = Dataset(self.epoch_data, self.config)
             dataset.set_name(f"{name_prefix}_{group_idx}")
@@ -135,16 +164,55 @@ class DatasetGenerator:
             if dataset_hook:
                 dataset_hook(dataset)
             dataset.set_test(test_mask)
-            validation_mask = (
-                paired_validation_masks[group_idx]
-                if paired_validation_masks is not None
-                else self._validation_mask(scope, test_mask)
-            )
             if validation_mask.any():
                 dataset.set_val(validation_mask)
             dataset.set_remaining_to_train()
             self._validate_partition(dataset, scope)
             self.datasets.append(dataset)
+
+    def _subject_scopes(self, scope: np.ndarray) -> Iterator[np.ndarray]:
+        subjects = self.epoch_data.get_subject_list()
+        for subject in np.unique(subjects[scope]):
+            self._raise_if_interrupted()
+            yield scope & (subjects == subject)
+
+    def _raise_scope_error(self, scope: np.ndarray, error: ValueError) -> NoReturn:
+        subjects = np.unique(self.epoch_data.get_subject_list()[scope])
+        context = (
+            f"Subject {self.epoch_data.get_subject_name(int(subjects[0]))}"
+            if len(subjects) == 1
+            else "Full subject scope"
+        )
+        raise ValueError(f"{context}: {error}") from error
+
+    def _scope_folds(
+        self, splitter, scope: np.ndarray
+    ) -> list[tuple[np.ndarray, np.ndarray]]:
+        fold_count = self._fold_count(splitter, scope)
+        if fold_count == 1 and self._active_validation_splitter() is not None:
+            folds = [self._paired_masks(scope)]
+        else:
+            folds = [
+                (test, self._validation_mask(scope, test))
+                for test in self._test_folds(splitter, scope, fold_count)
+            ]
+        labels = self.epoch_data.get_label_list()
+        for test, validation in folds:
+            train = scope & ~test & ~validation
+            if not test.any() or not train.any():
+                raise ValueError("Test and train partitions must be non-empty")
+            if set(labels[train].tolist()) != set(labels[scope].tolist()):
+                raise ValueError("Training split is missing one or more classes")
+        return folds
+
+    def _ordered_keys(self, splitter, scope: np.ndarray) -> list[int]:
+        subjects = self.epoch_data.get_subject_list()[scope]
+        seed = np.random.SeedSequence([self.config.seed, int(subjects.min())])
+        return (
+            np.random.default_rng(seed)
+            .permutation(self._keys(splitter, scope))
+            .tolist()
+        )
 
     def _required_test_splitter(self):
         """Return the one admitted test rule.
@@ -177,8 +245,8 @@ class DatasetGenerator:
         if split_type in (SplitByType.TRIAL, ValSplitByType.TRIAL):
             return self.epoch_data.get_trial_group_list()
         if split_type in (SplitByType.SESSION, ValSplitByType.SESSION):
-            # Session ids are dataset-global labels, never subject-session
-            # pairs.  The BIDS run identifier is deliberately not consulted.
+            # Allocation scopes isolate subjects; equal labels on different
+            # subjects never force them into the same partition. Runs are not sessions.
             return self.epoch_data.get_session_list()
         if split_type in (SplitByType.SUBJECT, ValSplitByType.SUBJECT):
             return self.epoch_data.get_subject_list()
@@ -217,37 +285,20 @@ class DatasetGenerator:
     def _test_folds(
         self, splitter, scope: np.ndarray, fold_count: int
     ) -> list[np.ndarray]:
-        keys = self._keys(splitter, scope)
+        keys = self._ordered_keys(splitter, scope)
         if fold_count == 1:
-            last_error: ValueError | None = None
-            for (
-                _score,
-                test_count,
-                _validation_count,
-            ) in self._paired_non_cv_count_candidates(scope):
-                try:
-                    selected = self._select_non_cv_keys(
-                        splitter,
-                        scope,
-                        None,
-                        "test",
-                        requested_count=test_count,
-                    )
-                    return [self._mask_for_keys(splitter, scope, selected)]
-                except ValueError as error:
-                    last_error = error
-            raise ValueError(
-                "Test split is infeasible while preserving all training classes"
-            ) from last_error
-        # Bounded deterministic balancing: assign each atomic group to the
-        # fold where its labels are currently least represented, while holding
-        # the exact group capacities fixed.  This is deliberately not a
-        # solver; stable keys settle all remaining ties.
+            selected = self._select_with_retries(splitter, scope, None, "test")
+            return [self._mask_for_keys(splitter, scope, selected)]
+        # Keep exact group capacities while minimizing deviation from the
+        # source class proportions. Seeded group order settles remaining ties.
+        # Feasibility repair below remains bounded; this is not a solver.
         base, remainder = divmod(len(keys), fold_count)
         capacities = [base + int(index < remainder) for index in range(fold_count)]
         partitions: list[list[int]] = [[] for _ in range(fold_count)]
         label_counts: list[dict[int, int]] = [{} for _ in range(fold_count)]
         labels = self.epoch_data.get_label_list()
+        source_labels, source_counts = np.unique(labels[scope], return_counts=True)
+        proportions = source_counts / source_counts.sum()
         for key in keys:
             self._raise_if_interrupted()
             group_labels = labels[self._mask_for_keys(splitter, scope, [key])]
@@ -256,16 +307,19 @@ class DatasetGenerator:
                 for index in range(fold_count)
                 if len(partitions[index]) < capacities[index]
             ]
-            fold_index = min(
-                choices,
-                key=lambda index: (
-                    sum(
-                        label_counts[index].get(int(label), 0) for label in group_labels
-                    ),
-                    len(partitions[index]),
-                    index,
-                ),
+            group_counts = np.asarray(
+                [np.count_nonzero(group_labels == label) for label in source_labels]
             )
+
+            scores = []
+            for index in choices:
+                proposed = group_counts + np.asarray(
+                    [label_counts[index].get(int(label), 0) for label in source_labels]
+                )
+                deviation = float(np.abs(proposed - proposed.sum() * proportions).sum())
+                scores.append((deviation, len(partitions[index]), index))
+
+            fold_index = min(scores)[2]
             partitions[fold_index].append(key)
             for label in group_labels:
                 label_counts[fold_index][int(label)] = (
@@ -339,123 +393,79 @@ class DatasetGenerator:
                 break
         return [self._mask_for_keys(splitter, scope, group) for group in partitions]
 
-    def _requested_count(self, splitter, scope: np.ndarray) -> tuple[int, bool]:
-        keys = self._keys(splitter, scope)
+    def _requested_count(self, splitter, scope: np.ndarray) -> int:
+        total = len(self._keys(splitter, scope))
         unit = splitter.get_split_unit()
-        value = splitter.get_value()
-        if unit == SplitUnit.MANUAL:
-            if len(value) != len(set(value)):
-                raise ValueError("Manual split contains duplicate selections")
-            if splitter.split_type in (SplitByType.TRIAL, ValSplitByType.TRIAL):
-                invalid = [
-                    index
-                    for index in value
-                    if index < 0 or index >= len(scope) or not scope[index]
-                ]
-                if invalid:
-                    raise ValueError(
-                        f"Manual trial indices are outside scope: {invalid}"
-                    )
-                groups = self.epoch_data.get_trial_group_list()
-                selected_groups = [int(groups[index]) for index in value]
-                if len(selected_groups) != len(set(selected_groups)):
-                    raise ValueError(
-                        "Manual trial indices select the same atomic group"
-                    )
-                return len(selected_groups), True
-            missing = sorted(set(value) - set(keys))
-            if missing:
-                raise ValueError(
-                    f"Manual split selections are outside scope: {missing}"
-                )
-            return len(value), True
         if unit == SplitUnit.NUMBER:
-            count = int(value)
-            if count > len(keys):
-                raise ValueError(
-                    f"Requested {count} groups but scope contains {len(keys)} groups",
-                )
-            return count, True
-        if unit == SplitUnit.RATIO:
-            return max(1, int(float(value) * len(keys))), False
-        raise ValueError("Only Ratio, Number, and Manual are valid outside K Fold")
-
-    def _paired_non_cv_count_candidates(
-        self,
-        scope: np.ndarray,
-    ) -> list[tuple[tuple[int, int, int, int], int, int | None]]:
-        """Return bounded count pairs in the published objective order."""
-        test = self._required_test_splitter()
-        validation = self._active_validation_splitter()
-        test_requested, test_exact = self._requested_count(test, scope)
-        radius = 16
-
-        def bounded_counts(total: int, target: int, exact: bool) -> list[int]:
-            if exact:
-                return [target]
-            if total <= 64:
-                return list(range(1, total))
-            return sorted(
-                {
-                    1,
-                    total - 2,
-                    *range(max(1, target - radius), min(total, target + radius + 1)),
-                },
-            )
-
-        test_total = len(self._keys(test, scope))
-        if validation is None:
-            return sorted(
-                (
-                    (
-                        (
-                            abs(test_count - test_requested),
-                            -(test_total - test_count),
-                            abs(test_count - test_requested),
-                            test_count,
-                        ),
-                        test_count,
-                        None,
-                    )
-                    for test_count in bounded_counts(
-                        test_total,
-                        test_requested,
-                        test_exact,
-                    )
-                ),
-            )
-        validation_requested, validation_exact = self._requested_count(
-            validation, scope
-        )
-        candidates: list[tuple[tuple[int, int, int, int], int, int | None]] = []
-        validation_total = len(self._keys(validation, scope))
-        same_unit = validation.split_type.value == test.split_type.value
-        for test_count in bounded_counts(test_total, test_requested, test_exact):
-            for validation_count in bounded_counts(
-                validation_total,
-                validation_requested,
-                validation_exact,
-            ):
-                if same_unit and test_count + validation_count >= test_total:
-                    continue
-                if test_exact and test_count != test_requested:
-                    continue
-                if validation_exact and validation_count != validation_requested:
-                    continue
-                score = (
-                    abs(test_count - test_requested)
-                    + abs(validation_count - validation_requested),
-                    -((test_total - test_count - validation_count) if same_unit else 0),
-                    abs(test_count - test_requested),
-                    test_count,
-                )
-                candidates.append((score, test_count, validation_count))
-        if not candidates:
+            count = int(splitter.get_value())
+        elif unit == SplitUnit.RATIO:
+            count = max(1, int(float(splitter.get_value()) * total))
+        else:
+            raise ValueError("Only Ratio and Number are valid outside K Fold")
+        if count >= total:
             raise ValueError(
-                "Split capacities cannot leave non-empty train, validation, "
-                "and test groups"
+                f"Requested {count} groups but scope contains {total}; "
+                "train must retain at least one group"
             )
-        return sorted(candidates)
+        return count
+
+    def _selection_offsets(
+        self,
+        splitter,
+        scope: np.ndarray,
+        excluded: np.ndarray | None = None,
+    ) -> list[int]:
+        """Try distinct class supports before spending retries on equivalent starts."""
+        values = self._target_values(splitter)
+        candidates = self._ordered_keys(splitter, scope)
+        if excluded is not None:
+            blocked_keys = set(values[scope & excluded].tolist())
+            candidates = [key for key in candidates if key not in blocked_keys]
+        supports: dict[int, set[int]] = {key: set() for key in candidates}
+        labels = self.epoch_data.get_label_list()
+        for key, label in zip(values[scope], labels[scope], strict=True):
+            if int(key) in supports:
+                supports[int(key)].add(int(label))
+        seen = set()
+        diverse, repeated = [], []
+        for index, key in enumerate(candidates):
+            support = frozenset(supports[key])
+            # Zero means the ordinary proportional greedy pass; len(candidates)
+            # forces the first seeded key after rotating back to its position.
+            offset = index or len(candidates)
+            if support in seen:
+                repeated.append(offset)
+            else:
+                diverse.append(offset)
+                seen.add(support)
+        return [0, *diverse, *repeated][:32]
+
+    def _select_with_retries(
+        self,
+        splitter,
+        scope: np.ndarray,
+        excluded: np.ndarray | None,
+        partition: str,
+        requested_count: int | None = None,
+    ) -> list[int]:
+        last_error = None
+        for offset in self._selection_offsets(splitter, scope, excluded):
+            self._raise_if_interrupted()
+            try:
+                return self._select_non_cv_keys(
+                    splitter,
+                    scope,
+                    excluded,
+                    partition,
+                    requested_count=requested_count,
+                    candidate_offset=offset,
+                )
+            except ValueError as error:
+                last_error = error
+        raise ValueError(
+            f"{partition.title()} split is infeasible at the requested group count "
+            f"while preserving all training classes: {last_error}"
+        ) from last_error
 
     def _select_non_cv_keys(
         self,
@@ -466,101 +476,36 @@ class DatasetGenerator:
         requested_count: int | None = None,
         candidate_offset: int = 0,
     ) -> list[int]:
-        desired, exact = self._requested_count(splitter, scope)
-        if requested_count is not None:
-            desired = requested_count
+        desired = (
+            self._requested_count(splitter, scope)
+            if requested_count is None
+            else requested_count
+        )
         values = self._target_values(splitter)
-        candidates = self._keys(splitter, scope)
+        candidates = self._ordered_keys(splitter, scope)
+        if excluded is not None:
+            blocked_keys = set(values[scope & excluded].tolist())
+            candidates = [key for key in candidates if key not in blocked_keys]
         if candidates and candidate_offset:
             offset = candidate_offset % len(candidates)
             candidates = candidates[offset:] + candidates[:offset]
         candidate_rank = {key: index for index, key in enumerate(candidates)}
-        if splitter.get_split_unit() == SplitUnit.MANUAL:
-            requested = [int(value) for value in splitter.get_value()]
-            if splitter.split_type in (SplitByType.TRIAL, ValSplitByType.TRIAL):
-                groups = self.epoch_data.get_trial_group_list()
-                selected = sorted({int(groups[index]) for index in requested})
-            else:
-                selected = sorted(requested)
-            selected_mask = self._mask_for_keys(splitter, scope, selected)
-            if excluded is not None:
-                test = self._required_test_splitter()
-                if (
-                    np.any(selected_mask & excluded)
-                    and splitter.split_type.value == test.split_type.value
-                ):
-                    raise ValueError(
-                        f"{partition.title()} manual split overlaps test isolation",
-                    )
-                residual_mask = selected_mask & ~excluded
-                if not residual_mask.any():
-                    raise ValueError(
-                        f"{partition.title()} manual split is empty after "
-                        "test isolation"
-                    )
-                if any(
-                    not np.any(self._mask_for_keys(splitter, scope, [key]) & ~excluded)
-                    for key in selected
-                ):
-                    raise ValueError(
-                        f"{partition.title()} manual selection has no residual "
-                        "after test isolation"
-                    )
-                labels = self.epoch_data.get_label_list()
-                blocked = selected_mask | excluded
-                if set(labels[scope & ~blocked].tolist()) != set(
-                    labels[scope].tolist()
-                ):
-                    raise ValueError(
-                        f"{partition.title()} split is infeasible while preserving "
-                        "all training classes",
-                    )
-                return selected
-            if not selected_mask.any():
-                raise ValueError(
-                    f"{partition.title()} manual split is empty after test isolation"
-                )
-            return selected
-        if excluded is not None:
-            test = self._required_test_splitter()
-            if (
-                splitter.split_type.value == test.split_type.value
-                or splitter.split_type == ValSplitByType.TRIAL
-            ):
-                candidates = [
-                    key
-                    for key in candidates
-                    if not np.any((scope & (values == key)) & excluded)
-                ]
-            else:
-                candidates = [
-                    key
-                    for key in candidates
-                    if np.any((scope & (values == key)) & ~excluded)
-                ]
-        if desired <= 0:
+        if desired <= 0 or desired >= len(candidates):
             raise ValueError(
-                f"{partition.title()} split must select at least one group"
+                f"{partition.title()} cannot allocate {desired} of "
+                f"{len(candidates)} available groups and keep train non-empty"
             )
-        if desired > len(candidates):
-            if exact:
-                raise ValueError(
-                    f"{partition.title()} split cannot select requested groups"
-                )
-            desired = len(candidates)
         labels = self.epoch_data.get_label_list()
         all_labels = sorted(set(labels[scope].tolist()))
         label_positions = {label: index for index, label in enumerate(all_labels)}
         candidate_positions = {key: index for index, key in enumerate(candidates)}
         group_label_counts = np.zeros((len(candidates), len(all_labels)), dtype=int)
-        effective_group_label_counts = np.zeros_like(group_label_counts)
         group_sizes = np.zeros(len(candidates), dtype=int)
         remaining_label_counts = np.zeros(len(all_labels), dtype=int)
         excluded_scope = np.zeros_like(scope) if excluded is None else excluded
-        # The former implementation re-materialized a full row mask for every
-        # proposed group at every greedy step.  Summarize the fixed scope once
-        # instead: target values are disjoint, so subtracting one group's
-        # non-excluded label counts is exactly the same class-coverage check.
+        # Summarize once: candidates are disjoint and never overlap Test.
+        # Subtracting their counts checks train class coverage without rebuilding
+        # one full epoch mask per candidate at every allocation step.
         for value, label, is_excluded in zip(
             values[scope], labels[scope], excluded_scope[scope], strict=True
         ):
@@ -572,20 +517,21 @@ class DatasetGenerator:
                 continue
             group_sizes[candidate_position] += 1
             group_label_counts[candidate_position, label_position] += 1
-            if not is_excluded:
-                effective_group_label_counts[candidate_position, label_position] += 1
         selected: list[int] = []
         selected_positions: set[int] = set()
         selected_label_counts = np.zeros(len(all_labels), dtype=int)
         candidate_ranks = np.asarray(
             [candidate_rank[key] for key in candidates], dtype=int
         )
+        # Same-unit validation retains the original source distribution; finer
+        # validation receives a remainder scope from _validation_mask.
+        _, source_counts = np.unique(labels[scope], return_counts=True)
+        source_proportions = source_counts / source_counts.sum()
 
         def select_if_class_complete(candidate_position: int) -> bool:
             nonlocal remaining_label_counts
             proposed_remaining = (
-                remaining_label_counts
-                - effective_group_label_counts[candidate_position]
+                remaining_label_counts - group_label_counts[candidate_position]
             )
             if np.any(proposed_remaining <= 0):
                 return False
@@ -595,9 +541,8 @@ class DatasetGenerator:
             selected.append(candidates[candidate_position])
             return True
 
-        # A paired retry must explore a different first admissible atomic
-        # group, rather than merely use the rotated order as a final tie-break.
-        # Normal materialization keeps the existing class-balanced selection.
+        # Retry a different first group when proportional greedy selection gets
+        # stuck. Counts stay fixed; this is a bounded repair, not a solver.
         if candidate_offset and not select_if_class_complete(0):
             raise ValueError(
                 f"{partition.title()} split is infeasible while preserving "
@@ -606,10 +551,10 @@ class DatasetGenerator:
         while len(selected) < desired:
             self._raise_if_interrupted()
             # Train class coverage is a hard admission constraint.  Vectorized
-            # scoring keeps the exact greedy score tuple while making one
-            # allocation boundary inexpensive enough for prompt cancellation.
+            # scoring preserves source class proportions while allowing prompt
+            # cancellation at each allocation boundary.
             class_complete = np.all(
-                remaining_label_counts - effective_group_label_counts > 0,
+                remaining_label_counts - group_label_counts > 0,
                 axis=1,
             )
             if selected_positions:
@@ -620,7 +565,12 @@ class DatasetGenerator:
                     "all training classes",
                 )
             proposed_label_counts = selected_label_counts + group_label_counts
-            class_imbalance = np.ptp(proposed_label_counts, axis=1)
+            expected_counts = (
+                proposed_label_counts.sum(axis=1, keepdims=True) * source_proportions
+            )
+            class_imbalance = np.abs(proposed_label_counts - expected_counts).sum(
+                axis=1
+            )
             admissible_positions = np.flatnonzero(class_complete)
             position = admissible_positions[
                 np.lexsort(
@@ -635,117 +585,71 @@ class DatasetGenerator:
         return selected
 
     def _paired_masks(self, scope: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        """Allocate non-CV test and validation together with bounded retries."""
+        """Retry group choices with fixed targets; never change requested ratios."""
         test = self._required_test_splitter()
         validation = self._active_validation_splitter()
         if validation is None:
             raise ValueError("Paired allocation requires validation")
-        test_attempts = (
-            1
-            if test.get_split_unit() == SplitUnit.MANUAL
-            else len(self._keys(test, scope))
-        )
-        validation_attempts = (
-            1
-            if validation.get_split_unit() == SplitUnit.MANUAL
-            else len(self._keys(validation, scope))
-        )
-        attempt_count = min(32, test_attempts * validation_attempts)
-        last_error: ValueError | None = None
-        for (
-            _score,
-            test_count,
-            validation_count,
-        ) in self._paired_non_cv_count_candidates(scope):
-            for attempt in range(max(1, attempt_count)):
-                self._raise_if_interrupted()
-                test_offset = attempt % test_attempts
-                validation_offset = (attempt // test_attempts) % validation_attempts
-                try:
-                    test_keys = self._select_non_cv_keys(
-                        test,
-                        scope,
-                        None,
-                        "test",
-                        requested_count=test_count,
-                        candidate_offset=test_offset,
-                    )
-                    test_mask = self._mask_for_keys(test, scope, test_keys)
-                    validation_keys = self._select_non_cv_keys(
-                        validation,
-                        scope,
-                        test_mask,
-                        "validation",
-                        requested_count=validation_count,
-                        candidate_offset=validation_offset,
-                    )
-                    validation_mask = (
-                        self._mask_for_keys(
-                            validation,
-                            scope,
-                            validation_keys,
-                        )
-                        & ~test_mask
-                    )
-                    remaining = scope & ~test_mask & ~validation_mask
-                    labels = self.epoch_data.get_label_list()
-                    if set(labels[remaining].tolist()) == set(labels[scope].tolist()):
-                        return test_mask, validation_mask
-                    last_error = ValueError(
-                        "Training split is missing one or more classes"
-                    )
-                except ValueError as error:
-                    if (
-                        test.get_split_unit() == SplitUnit.MANUAL
-                        and validation.get_split_unit() == SplitUnit.MANUAL
-                        and "manual" in str(error).lower()
-                    ):
-                        raise
-                    last_error = error
+        test_count = self._requested_count(test, scope)
+        same_unit = test.split_type.value == validation.split_type.value
+        if same_unit:
+            validation_count = self._requested_count(validation, scope)
+            if test_count + validation_count >= len(self._keys(test, scope)):
+                raise ValueError(
+                    "Requested test and validation groups cannot leave non-empty train"
+                )
+        last_error = None
+        for offset in self._selection_offsets(test, scope):
+            self._raise_if_interrupted()
+            try:
+                test_keys = self._select_non_cv_keys(
+                    test,
+                    scope,
+                    None,
+                    "test",
+                    requested_count=test_count,
+                    candidate_offset=offset,
+                )
+                test_mask = self._mask_for_keys(test, scope, test_keys)
+                return test_mask, self._validation_mask(scope, test_mask)
+            except ValueError as error:
+                last_error = error
         raise ValueError(
-            "Paired split is infeasible while preserving all training classes"
+            "Test / validation split is infeasible at the requested group counts "
+            f"while preserving all training classes: {last_error}"
         ) from last_error
 
     def _validation_mask(self, scope: np.ndarray, test_mask: np.ndarray) -> np.ndarray:
         splitter = self._active_validation_splitter()
         if splitter is None:
             return np.zeros_like(scope)
-        if self.config.is_cross_validation and splitter.get_split_unit() in (
-            SplitUnit.MANUAL,
-            SplitUnit.KFOLD,
-        ):
-            raise ValueError(
-                "Cross-validation validation supports only Ratio or Number"
-            )
-        if (
-            self.config.is_cross_validation
-            and splitter.get_split_unit() == SplitUnit.RATIO
-        ):
-            requested_count, _exact = self._requested_count(splitter, scope)
-            last_error: ValueError | None = None
-            for candidate_count in range(requested_count, 0, -1):
-                self._raise_if_interrupted()
-                try:
-                    selected = self._select_non_cv_keys(
-                        splitter,
-                        scope,
-                        test_mask,
-                        "validation",
-                        requested_count=candidate_count,
-                    )
-                    return self._mask_for_keys(splitter, scope, selected) & ~test_mask
-                except ValueError as error:
-                    last_error = error
-            raise ValueError(
-                "Validation ratio is infeasible while preserving training classes"
-            ) from last_error
-        selected = self._select_non_cv_keys(
-            splitter,
-            scope,
-            test_mask,
-            "validation",
+        if splitter.get_split_unit() not in (SplitUnit.RATIO, SplitUnit.NUMBER):
+            raise ValueError("Validation supports only Ratio or Number")
+        test = self._required_test_splitter()
+        same_unit = splitter.split_type.value == test.split_type.value
+        remainder = scope & ~test_mask
+        # A finer validation unit counts the remaining data. Under Subject Test,
+        # Trial / Session validation still owns one independent scope per person.
+        scopes = (
+            self._subject_scopes(remainder)
+            if test.split_type == SplitByType.SUBJECT and not same_unit
+            else [scope if same_unit else remainder]
         )
-        return self._mask_for_keys(splitter, scope, selected) & ~test_mask
+        result = np.zeros_like(scope)
+        for validation_scope in scopes:
+            try:
+                selected = self._select_with_retries(
+                    splitter,
+                    validation_scope,
+                    test_mask,
+                    "validation",
+                )
+            except ValueError as error:
+                self._raise_scope_error(validation_scope, error)
+            result |= self._mask_for_keys(splitter, validation_scope, selected)
+        if not result.any():
+            raise ValueError("Validation partition must be non-empty")
+        return result
 
     def _validate_partition(self, dataset: Dataset, scope: np.ndarray) -> None:
         if not dataset.test_mask.any() or not dataset.train_mask.any():
