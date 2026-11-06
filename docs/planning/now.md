@@ -79,8 +79,9 @@ Stop：授權功能及直接驗證完成、獨立 review 無 blocking finding，
   還原 All、900／1100／1450 寬度已檢查。Qt widget 截圖不包含內嵌 GL，另核對 VTK 渲染影像。
   示例不是使用者真實資料驗收，也不代表歸因科學有效性。
 - 使用者已確認 Windows 示例並授權準備至合併前正式手測；Subject 順序定稿。
-- 下一步：建立本輪 PR，核對同 head regression／static／source-diverse／跨平台／UI DPI gates；
-  必要時補齊審查後的視覺 reference，保留失敗證據並修正直接阻擋。CI 已提供的證據不重跑。
+- 正式候選為 PR #165；核對同 head regression／static／source-diverse／跨平台／UI DPI gates；
+  已依 CI exact-source 截圖與使用者確認版面更新唯一變動的 Visualization reference，
+  保留原 drift 失敗證據且不放寬門檻。CI 已提供的同版本證據不重跑。
 - 補驗真實多受試者資料的 Subject 路徑；準備手測清單與綁定 candidate 的 Windows 完整程式
   啟動指令，隔離本機設定與輸出。全部適用 gates 完成才開正式手測，不以示例代替。
 - 本輪 endpoint 為 handoff-ready 並已開啟完整程式；等待使用者實測及新的 merge 同意，
