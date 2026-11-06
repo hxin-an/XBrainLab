@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -37,7 +38,11 @@ from XBrainLab.backend.application.capabilities import (
     CommandCapability,
     build_capability_policy,
 )
-from XBrainLab.backend.application.owned_work import OwnedWorkKind, OwnedWorkRegistry
+from XBrainLab.backend.application.owned_work import (
+    OwnedOperationCancelledError,
+    OwnedWorkKind,
+    OwnedWorkRegistry,
+)
 from XBrainLab.backend.application.state import (
     ApplicationStateSnapshot,
     InterpretationStateSnapshot,
@@ -1419,6 +1424,7 @@ def test_label_field_repreview_reopens_match_labels_instead_of_applying(
         label_sources=[],
         review_state=review_state,
         initial_step="Match Labels",
+        pending_review_state=None,
     )
 
 
@@ -1483,6 +1489,7 @@ def test_complete_match_draft_repreviews_before_first_final_review(monkeypatch) 
         label_sources=[],
         review_state=review_state,
         initial_step="Review and Import",
+        pending_review_state=None,
     )
     apply_review.assert_not_called()
 
@@ -1802,6 +1809,9 @@ def test_confirm_import_revalidation_cancel_reopens_edited_review_without_failur
         review_state=review_state,
         initial_step="Review and Import",
         validated_choices={},
+        pending_review_state=(
+            preview_state if cancelled_command == "validation" else review_state
+        ),
     )
 
 
@@ -1861,8 +1871,131 @@ def test_reopened_revalidation_cancel_cannot_apply_unvalidated_edited_choices(
         label_sources=["/data/sub-01/sub-01_events.tsv"],
         review_state=review_state,
         dialog_result={"confirmed": True, "choices": revised_choices},
+        pending_review_state=None,
     )
     apply_review.assert_not_called()
+
+
+@pytest.mark.parametrize("entrypoint", ["repreview", "final_review"])
+@pytest.mark.parametrize("cancelled_phase", ["preview", "validation"])
+def test_cancelled_edited_bids_review_retries_real_publication_and_choices(
+    tmp_path, monkeypatch, entrypoint, cancelled_phase
+) -> None:
+    """A resumed draft must validate its edits against the current publication."""
+    from tests.integration.io.test_bids_timestamp_label_field import (
+        _choices,
+        _write_brainvision_bids_with_generic_flash_codes,
+    )
+    from XBrainLab.backend.application.data_interpretation_service import (
+        DataInterpretationCommandService,
+    )
+
+    root, eeg, events = _write_brainvision_bids_with_generic_flash_codes(
+        tmp_path.resolve()
+    )
+    choices = _choices(eeg, events)
+    revised = deepcopy(choices)
+    revised["label_carrier_choices"][str(events)]["value_decisions"]["0"][
+        "class_name"
+    ] = "Revised target"
+    service = ApplicationService()
+    try:
+        initial = service.execute(
+            ReviewInterpretationCommand(str(root), source_hint="bids", choices=choices)
+        )
+        assert initial.ok, initial.message
+        handler = DatasetActionHandler(MagicMock())
+        coordinator = handler._data_interpretation
+        coordinator._bindings = replace(
+            coordinator._bindings,
+            get_application_view_publication=lambda _panel: service.get_view_publication(),
+            qt_object_deleted=lambda _owner: False,
+            single_shot=lambda _delay, callback: callback(),
+            reserve_interaction_continuation=lambda: None,
+            show_warning=lambda *_args: None,
+            show_error=lambda *_args: None,
+        )
+        monkeypatch.setattr(coordinator, "_show_status", lambda *_args: None)
+        monkeypatch.setattr(coordinator, "_preview_context_is_available", lambda: True)
+        loading = MagicMock()
+        loading.cancelled_by_user = False
+        coordinator._loading_dialog_class = lambda: lambda *_args, **_kwargs: loading
+        review = coordinator._review_state_from_review_result(initial)
+        dialogs = []
+
+        class _ConfirmDraft:
+            def __init__(self, _parent, **kwargs):
+                dialogs.append(kwargs)
+
+            @staticmethod
+            def exec():
+                assert service.study.loaded_data_list == []
+                return True
+
+            @staticmethod
+            def get_result():
+                return {"confirmed": True, "choices": revised}
+
+        monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _ConfirmDraft)
+        phase_method = f"_prepare_{cancelled_phase if cancelled_phase == 'preview' else 'validate'}_interpretation"
+        prepare = getattr(DataInterpretationCommandService, phase_method)
+        cancelled = False
+
+        def cancel_once(owner, command):
+            nonlocal cancelled
+            if not cancelled:
+                cancelled = True
+                raise OwnedOperationCancelledError("test-cancel", cancelled_phase)
+            return prepare(owner, command)
+
+        monkeypatch.setattr(DataInterpretationCommandService, phase_method, cancel_once)
+        results = []
+
+        def execute(
+            command, *, on_result, expected_publication_generation=None, **_kwargs
+        ):
+            result = service.execute(
+                command,
+                expected_publication_generation=expected_publication_generation,
+            )
+            results.append(result)
+            return on_result(result)
+
+        monkeypatch.setattr(
+            coordinator, "_execute_interpretation_command_async", execute
+        )
+        common = {
+            "source_path": str(root),
+            "source_hint": "bids",
+            "choices": revised,
+            "label_sources": [],
+            "review_state": review,
+        }
+        if entrypoint == "repreview":
+            coordinator._repreview_interpretation_async(
+                **common, initial_step="Review and Import"
+            )
+        else:
+            coordinator._review_interpretation_for_apply_async(
+                **common,
+                validated_choices=choices,
+                dialog_result={"confirmed": True, "choices": revised},
+            )
+        assert cancelled
+        assert [result.error_type for result in results if result.failed] == [
+            ErrorType.CANCELLED
+        ]
+        assert len(dialogs) == 2, "The resumed draft must receive a fresh review"
+        assert dialogs[-1]["publication_generation"] > review.publication_generation
+        assert dialogs[-1]["validation_decision"]["decision"] == "safe"
+        assert results[-1].ok and results[-1].command_name == "apply_interpretation"
+        events_array, event_ids = service.study.loaded_data_list[0].get_event_list()
+        assert "Target 0" not in event_ids
+        assert events_array[
+            events_array[:, 2] == event_ids["Revised target"], 0
+        ].tolist() == [100]
+    finally:
+        service.close()
 
 
 def test_final_changed_choices_with_fresh_confirmation_reopen_review(

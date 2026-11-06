@@ -28,6 +28,7 @@ from XBrainLab.backend.application import (
     ImportRecipe,
     PreprocessCommand,
     PreprocessOperation,
+    PreprocessRenderRequest,
     PreviewInterpretationCommand,
     QueryStateCommand,
     ReloadInterpretationRecipeCommand,
@@ -1801,14 +1802,28 @@ def test_reload_recipe_accepts_explicit_label_carrier_remap(tmp_path, service_fa
     reload_result = service.execute(
         ReloadInterpretationRecipeCommand(recipe_path=str(recipe_path)),
     )
+    assert reload_result.ok, reload_result.message
+    assert reload_result.diagnostics["validation_decision"]["decision"] == "blocked"
+    blocked_apply = service.execute(ApplyInterpretationCommand(confirmed=True))
+    assert not blocked_apply.ok
+    assert blocked_apply.changed_state.raw_changed is False
+    assert blocked_apply.changed_state.preprocessed_changed is False
+    blocked_summary = service.execute(QueryStateCommand(query="data_summary"))
+    assert blocked_summary.ok, blocked_summary.message
+    assert blocked_summary.diagnostics["count"] == 0
     scan = reload_result.diagnostics["scan_result"]
     candidate = reload_result.diagnostics["candidate"]
+    assert str(old_events) not in scan["label_carriers"]
+    assert all(
+        row["path"] != str(old_events) for row in candidate["label_carrier_plan"]
+    )
+    assert str(old_events) in candidate["choices"]["label_carrier_choices"]
     choices = dict(candidate["choices"])
     choices["label_carrier_remap"] = {
         str(old_events): str(new_events),
     }
     choices["label_carrier_choices"][str(old_events)]["value_decisions"] = (
-        _class_value_decisions({"left": "left"})
+        _class_value_decisions({"left": "Remapped left"})
     )
 
     preview_result = service.execute(
@@ -1832,6 +1847,32 @@ def test_reload_recipe_accepts_explicit_label_carrier_remap(tmp_path, service_fa
         "choices:label_carrier_remap"
         in preview_result.diagnostics["candidate"]["recipe_trace"]
     )
+    applied = service.execute(ApplyInterpretationCommand(confirmed=True))
+    assert applied.ok, applied.message
+    summary = service.execute(QueryStateCommand(query="data_summary"))
+    assert summary.ok, summary.message
+    assert summary.diagnostics["count"] == 1
+    rendered = service.get_preprocess_render(
+        PreprocessRenderRequest(
+            publication_generation=service.get_view_publication().generation,
+            duration_seconds=26,
+        )
+    ).data
+    assert rendered.sampling_frequency == 128
+    # The public DTO includes both the new class and preserved source context.
+    expected_events = [
+        (second * 128, "left" if index % 2 == 0 else "right", 0.0)
+        for index, second in enumerate(range(1, 25, 2))
+    ]
+    expected_events.append((128, "Remapped left", 0.0))
+    assert sorted(
+        (
+            event.onset_seconds * rendered.sampling_frequency,
+            event.label,
+            event.duration_seconds,
+        )
+        for event in rendered.events
+    ) == sorted(expected_events)
 
 
 def test_reload_recipe_accepts_explicit_eeg_file_remap(tmp_path, service_factory):

@@ -1944,6 +1944,7 @@ def _estimate_eeg_file_from_header(
             "channels": n_channels,
             "time_samples": n_times,
             "sampling_rate_hz": sfreq,
+            "first_sample": getattr(raw, "first_samp", None),
             "dtype_size_bytes": RAW_IMPORT_DTYPE_BYTES,
             "estimated_raw_bytes": raw_bytes,
             "raw_bytes": raw_bytes,
@@ -1996,6 +1997,8 @@ def _estimate_eeglab_set_without_materializing_data(
         "time_samples": inspection.time_samples,
         "trials": inspection.trials,
         "sampling_rate_hz": inspection.sampling_rate_hz,
+        # RawEEGLAB constructs BaseRaw without a first_samps override.
+        "first_sample": 0,
         "source_shape": list(shape) if shape is not None else None,
         "source_dtype": inspection.source_dtype,
         "dtype_size_bytes": RAW_IMPORT_DTYPE_BYTES,

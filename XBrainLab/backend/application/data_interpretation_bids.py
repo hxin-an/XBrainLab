@@ -13,7 +13,10 @@ from typing import Any, TypedDict
 
 from XBrainLab.backend.load_data.event_loader import (
     timestamp_interval_exceeds_recording,
+    timestamp_onset_exceeds_recording,
+    timestamp_rows_from_sample_index,
 )
+from XBrainLab.backend.load_data.label_loader import timestamp_duration_value
 from XBrainLab.backend.load_data.raw_data_loader import load_raw_data
 
 from .data_interpretation_event_values import (
@@ -25,6 +28,7 @@ from .data_interpretation_parsed_cache import (
     parsed_delimited_table,
     parsed_json_value,
 )
+from .data_interpretation_placement import timestamp_placement_contract_review
 from .data_interpretation_public_projection import PUBLIC_EVIDENCE_PREVIEW_LIMIT
 from .data_interpretation_resource_reader import AdmittedResourceReader
 
@@ -87,6 +91,18 @@ def review_strict_bids_event_runs(
     runs: list[dict[str, Any]] = []
     blocked_reasons: list[str] = []
     warnings: list[str] = []
+    configured_targets = {
+        index: [
+            *list(plan.get("selected_target_files") or []),
+            *(
+                [str(plan["selected_target_file"])]
+                if plan.get("selected_target_file")
+                else []
+            ),
+        ]
+        for index, plan in enumerate(plans)
+    }
+    runs_by_plan: dict[int, list[dict[str, Any]]] = {}
 
     for selected_key, selected_path in selected.items():
         layout_row = layout_by_file.get(selected_key)
@@ -133,23 +149,22 @@ def review_strict_bids_event_runs(
             continue
 
         plan = plans[plan_index]
-        selected_target = str(plan.get("selected_target_file") or "").strip()
-        resolved_target = _resolve_selected_target(selected_target, selected_eeg_files)
-        if selected_target and _path_key(resolved_target) != _path_key(eeg_path):
+        selected_targets = configured_targets[plan_index]
+        resolved_targets = {
+            _path_key(_resolve_selected_target(str(target), selected_eeg_files))
+            for target in selected_targets
+        }
+        if selected_targets and _path_key(eeg_path) not in resolved_targets:
             pairing_issues.append(
                 {
                     "code": "events_file_targets_wrong_run",
                     "affected_eeg_file": eeg_path,
                     "events_file": events_path,
-                    "selected_target_file": selected_target,
+                    "selected_target_file": ", ".join(selected_targets),
                     "expected_target_file": eeg_path,
                     "message": "BIDS events carrier targets the wrong BIDS run.",
                 }
             )
-        else:
-            plan["selected_target_file"] = eeg_path
-        plan["bids_expected_target_file"] = eeg_path
-
         guard = (
             resource_reader.guard(
                 [eeg_path, events_path],
@@ -168,14 +183,7 @@ def review_strict_bids_event_runs(
             )
         if effective_class_map:
             plan["run_class_map"] = effective_class_map
-        plan["bids_event_review"] = {
-            "eeg_file": eeg_path,
-            "events_file": events_path,
-            "source_event_count": run_evidence["event_count"],
-            "row_evidence": [dict(row) for row in run_evidence["row_evidence"]],
-            "placement": dict(run_evidence["placement"]),
-        }
-        plan["placement_review"] = _plan_placement_review(run_evidence)
+        runs_by_plan.setdefault(plan_index, []).append(run_evidence)
         runs.append(run_evidence)
         if run_evidence["issues"]:
             issue_rows = _bounded_issue_rows_summary(run_evidence["issues"])
@@ -191,6 +199,37 @@ def review_strict_bids_event_runs(
                 )
         else:
             warnings.extend(_run_placement_warnings(run_evidence))
+
+    for plan_index, carrier_runs in runs_by_plan.items():
+        plan = plans[plan_index]
+        reviews = {
+            run["eeg_file"]: {
+                "eeg_file": run["eeg_file"],
+                "events_file": run["events_file"],
+                "source_event_count": run["event_count"],
+                "row_evidence": [dict(row) for row in run["row_evidence"]],
+                "placement": dict(run["placement"]),
+            }
+            for run in carrier_runs
+        }
+        if len(reviews) == 1:
+            target, review = next(iter(reviews.items()))
+            plan["selected_target_file"] = target
+            plan["bids_expected_target_file"] = target
+            plan["bids_event_review"] = review
+        else:
+            plan.pop("selected_target_file", None)
+            plan.pop("bids_expected_target_file", None)
+            plan.pop("bids_event_review", None)
+            plan["selected_target_files"] = list(reviews)
+            plan["bids_event_review_by_target"] = reviews
+        blocked_run = next(
+            (run for run in carrier_runs if run["placement"]["status"] == "blocked"),
+            None,
+        )
+        plan["placement_review"] = _plan_placement_review(
+            blocked_run or carrier_runs[0]
+        )
 
     for issue in pairing_issues:
         eeg_name = Path(str(issue.get("affected_eeg_file") or "")).name
@@ -229,6 +268,17 @@ def review_strict_bids_event_runs(
         confirmation_items=confirmation_items,
         warnings=list(dict.fromkeys(warnings)),
     )
+
+
+def bids_plan_for_target(plan: dict[str, Any], eeg_file: str) -> dict[str, Any]:
+    """Select one run's reviewed evidence from a shared inherited carrier."""
+    reviews = plan.get("bids_event_review_by_target")
+    if not isinstance(reviews, dict):
+        return plan
+    review = reviews.get(eeg_file)
+    if not isinstance(review, dict):
+        raise ValueError("Shared BIDS events have no review for the selected EEG run.")
+    return {**plan, "bids_event_review": review}
 
 
 def _bounded_issue_rows_summary(issues: list[dict[str, Any]]) -> str:
@@ -424,6 +474,16 @@ def _review_one_run(
         "time_field",
         "interval",
     }
+    if timestamp_placement:
+        contract_review = timestamp_placement_contract_review(plan)
+        if contract_review.get("status") == "blocked":
+            compatibility_issues.append(
+                _issue(
+                    contract_review["decision_code"],
+                    None,
+                    contract_review["summary"],
+                )
+            )
     timeline = _bids_recording_timeline_metadata(
         layout_row,
         resource_reader=resource_reader,
@@ -466,6 +526,33 @@ def _review_one_run(
         placement_code = ""
         placement_message = ""
         value_decision = value_decisions.get(str(row["selected_label"]))
+        selected_timing: dict[str, Any] = {}
+        timing_error = ""
+        if (
+            timestamp_placement
+            and recording_duration is not None
+            and not row["schema_issue_codes"]
+            and row["selected_label"]
+            and isinstance(value_decision, dict)
+            and value_decision.get("decision") == RESOLVED
+            and value_decision.get("keep_event") is True
+        ):
+            try:
+                selected_timing = _selected_timestamp_timing(
+                    {
+                        name: rows[row["row"] - 2].get(column, "")
+                        for name, column in columns.items()
+                    },
+                    plan=plan,
+                    recording=recording,
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                timing_error = str(exc)
+        selected_onset = selected_timing.get("onset")
+        selected_duration = selected_timing.get("duration")
+        duration_unknown = selected_timing.get(
+            "duration_unknown", row["duration_kind"] == "unknown"
+        )
         if row["schema_issue_codes"]:
             placement_status = "blocked"
         elif not row["selected_label"]:
@@ -487,27 +574,39 @@ def _review_one_run(
             placement_status = "blocked"
         elif not timestamp_placement:
             placement_status = "usable"
-        elif row["onset_kind"] == "unknown":
+        elif timing_error:
+            placement_status = "blocked"
+            placement_code = "selected_timing_invalid"
+            placement_message = timing_error
+        elif selected_onset is None or selected_duration is None:
             placement_status = "blocked"
             placement_code = "onset_unknown"
             placement_message = "onset is unknown and cannot be placed on stored EEG"
-        elif row["onset"] is not None and row["onset"] < 0:
+        elif selected_onset < 0:
             placement_status = "blocked"
             placement_code = "onset_before_stored_recording"
             placement_message = "onset precedes the stored EEG time range"
-        elif row["onset"] is not None and row["onset"] >= recording_duration:
+        elif selected_duration < 0:
+            placement_status = "blocked"
+            placement_code = "selected_duration_negative"
+            placement_message = "selected placement duration is negative"
+        elif selected_onset >= recording_duration:
             placement_status = "blocked"
             placement_code = "onset_at_or_after_recording_end"
             placement_message = "onset is at or after the stored EEG end"
-        elif (
-            row["onset"] is not None
-            and row["duration"] is not None
-            and timestamp_interval_exceeds_recording(
-                float(row["onset"]),
-                float(row["duration"]),
-                sfreq=recording["sampling_frequency_hz"],
-                n_times=recording["sample_count"],
-            )
+        elif timestamp_onset_exceeds_recording(
+            selected_onset,
+            sfreq=recording["sampling_frequency_hz"],
+            n_times=recording["sample_count"],
+        ):
+            placement_status = "blocked"
+            placement_code = "onset_after_last_stored_sample"
+            placement_message = "onset is after the last stored EEG sample"
+        elif timestamp_interval_exceeds_recording(
+            selected_onset,
+            selected_duration,
+            sfreq=recording["sampling_frequency_hz"],
+            n_times=recording["sample_count"],
         ):
             placement_status = "blocked"
             placement_code = "interval_exceeds_recording_end"
@@ -525,8 +624,14 @@ def _review_one_run(
             "schema_issue_codes": list(row["schema_issue_codes"]),
             "placement_status": placement_status,
             "placement_code": placement_code,
-            "duration_provenance": (
-                "unknown_n/a" if row["duration_kind"] == "unknown" else "known"
+            "duration_provenance": ("unknown_n/a" if duration_unknown else "known"),
+            **(
+                {
+                    "placement_onset_seconds": selected_onset,
+                    "placement_duration_seconds": selected_duration,
+                }
+                if timestamp_placement
+                else {}
             ),
             "value_decision": dict(value_decision)
             if isinstance(value_decision, dict)
@@ -535,7 +640,7 @@ def _review_one_run(
         row_evidence.append(row_review)
         if placement_status == "usable":
             usable_rows.append(row)
-            if row["duration_kind"] == "unknown":
+            if duration_unknown:
                 unknown_duration_rows.append(
                     {
                         "row": row["row"],
@@ -642,6 +747,56 @@ def _review_one_run(
         }
     )
     return evidence, effective_class_map
+
+
+def _selected_timestamp_timing(
+    source_row: dict[str, Any],
+    *,
+    plan: dict[str, Any],
+    recording: dict[str, Any],
+) -> dict[str, Any]:
+    """Use the loader's selected fields and sample coordinate conversion."""
+    anchor = str(plan.get("selected_anchor") or "onset").strip().lower()
+    duration_field = (
+        str(plan.get("selected_duration_field") or "duration").strip().lower()
+    )
+    onset, onset_kind = _bids_numeric_value(str(source_row[anchor]).strip())
+    duration = timestamp_duration_value(
+        source_row, onset_field=anchor, duration_field=duration_field
+    )
+    parsed_duration, duration_kind = _bids_numeric_value(str(duration).strip())
+    if onset_kind == "malformed" or duration_kind == "malformed":
+        raise ValueError(
+            "Selected onset or duration is not finite numeric or BIDS n/a."
+        )
+    if onset is None:
+        return {
+            "onset": None,
+            "duration": None,
+            "duration_unknown": duration_kind == "unknown",
+        }
+    timing = {
+        "onset": float(onset),
+        "duration": float(parsed_duration) if parsed_duration is not None else 0.0,
+    }
+    if str(plan.get("time_model") or "").strip().lower() == "sample_index":
+        if onset < 0:
+            raise ValueError("Selected BIDS sample coordinates must be non-negative.")
+        origin = str(plan.get("sample_index_origin") or "")
+        first_sample = recording.get("first_sample")
+        if first_sample is None and origin == "absolute":
+            raise ValueError(
+                "Absolute sample placement requires the stored first sample."
+            )
+        timing = timestamp_rows_from_sample_index(
+            [timing],
+            sfreq=recording["sampling_frequency_hz"],
+            # The first sample algebraically cancels for recording-relative indexes.
+            first_samp=first_sample if first_sample is not None else 0,
+            sample_index_base=str(plan.get("sample_index_base") or ""),
+            sample_index_origin=origin,
+        )[0]
+    return {**timing, "duration_unknown": duration_kind == "unknown"}
 
 
 def prepare_bids_timestamp_rows_for_placement(
@@ -809,6 +964,7 @@ def _recording_metadata(
         return {
             "sample_count": bounds.sample_count,
             "sampling_frequency_hz": bounds.sampling_frequency_hz,
+            "first_sample": bounds.first_sample,
             "recording_duration": duration,
             "issue": None,
         }
@@ -832,6 +988,7 @@ def _recording_metadata(
         return {
             "sample_count": sample_count,
             "sampling_frequency_hz": sfreq,
+            "first_sample": getattr(wrapper.get_mne(), "first_samp", None),
             "recording_duration": duration,
             "issue": None,
         }

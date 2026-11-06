@@ -74,13 +74,15 @@ def test_openneuro_p300_catalog_scan_and_preview_stay_bounded() -> None:
     assert "001" in {subject["subject"] for subject in catalog_payload["subjects"]}
     assert catalog_publication.generation == 1
     assert catalog_publication.revision == 1
-    assert scan.diagnostics["scan_result"]["eeg_files"] == [
-        str(
+    assert [
+        Path(path).resolve() for path in scan.diagnostics["scan_result"]["eeg_files"]
+    ] == [
+        (
             OPENNEURO_P300_ROOT
             / "sub-001"
             / "eeg"
             / f"sub-001_task-P300_run-{run}_eeg.set"
-        )
+        ).resolve()
         for run in (1, 2, 3)
     ]
     assert (

@@ -106,6 +106,8 @@ _PLAN_BINDING_FIELDS = (
     "selected_anchor",
     "selected_duration_field",
     "time_model",
+    "sample_index_base",
+    "sample_index_origin",
     "placement_method",
     "granularity",
     "role",

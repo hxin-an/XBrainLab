@@ -32,6 +32,34 @@ def _plan(path: Path, *, label_field: str = "trial_type") -> dict[str, str]:
     }
 
 
+@pytest.mark.parametrize(
+    ("field", "changed_value"),
+    [
+        ("sample_index_base", "one_based"),
+        ("sample_index_origin", "absolute"),
+    ],
+)
+def test_review_identity_rejects_changed_sample_coordinates(
+    tmp_path: Path, field: str, changed_value: str
+) -> None:
+    labels = tmp_path / "events.tsv"
+    labels.write_text("sample\ttrial_type\n100\tleft\n", encoding="utf-8")
+    plan = {
+        **_plan(labels),
+        "selected_anchor": "sample",
+        "time_model": "sample_index",
+        "sample_index_base": "zero_based",
+        "sample_index_origin": "recording_relative",
+    }
+    identity = build_review_content_identity(label_carrier_plan=[plan])
+
+    with pytest.raises(PreconditionError):
+        assert_review_content_unchanged(
+            expected=identity,
+            label_carrier_plan=[{**plan, field: changed_value}],
+        )
+
+
 def test_review_identity_preserves_path_spelling_with_windows_identity_keys(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

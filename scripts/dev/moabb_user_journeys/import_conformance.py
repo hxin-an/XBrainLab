@@ -492,6 +492,9 @@ def _required_bids_resources(root: Path, selected: Path) -> set[Path]:
         root / "dataset_description.json",
         selected,
     }
+    participants = root / "participants.tsv"
+    if participants.exists():
+        required.add(_contained_file(participants, root))
     if _channels_tsv_path(selected).exists():
         required.add(_channels_tsv_path(selected))
     stem = selected.name.removesuffix("_eeg" + selected.suffix)
@@ -516,8 +519,12 @@ def _required_bids_resources(root: Path, selected: Path) -> set[Path]:
             required.add(_contained_file(fdt, root))
     for directory in _ancestors(selected.parent, root):
         for candidate in (*directory.glob("*.json"), *directory.glob("*.tsv")):
-            if candidate.name.endswith(
-                ("_events.json", "_eeg.json", "_events.tsv", "_channels.tsv")
+            if (
+                candidate.name
+                in {"events.json", "eeg.json", "events.tsv", "channels.tsv"}
+                or candidate.name.endswith(
+                    ("_events.json", "_eeg.json", "_events.tsv", "_channels.tsv")
+                )
             ) and _sidecar_matches(candidate, selected):
                 required.add(_contained_file(candidate, root))
         for candidate in (

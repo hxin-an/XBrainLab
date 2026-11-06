@@ -324,22 +324,8 @@ def _time_field_review(carrier: dict[str, Any]) -> dict[str, Any]:
             "time_model": str(carrier.get("time_model") or ""),
         }
     )
-    excluded_class_names = _mne_excluded_class_names(carrier)
-    if excluded_class_names:
-        review.update(
-            {
-                "status": "blocked",
-                "decision_code": "mne_excluded_class_description",
-                "summary": (
-                    "MNE excludes supervised class descriptions beginning with "
-                    "Bad or Edge: " + ", ".join(excluded_class_names) + "."
-                ),
-                "next_action": (
-                    "Rename the class, or mark the value as an artifact or boundary "
-                    "instead of a supervised class."
-                ),
-            }
-        )
+    review.update(timestamp_placement_contract_review(carrier))
+    if review.get("status") == "blocked":
         return review
     if not field:
         review.update(
@@ -350,32 +336,6 @@ def _time_field_review(carrier: dict[str, Any]) -> dict[str, Any]:
             }
         )
         return review
-    time_model = str(carrier.get("time_model") or "").strip().lower()
-    if time_model == "sample_index":
-        sample_index_base = str(carrier.get("sample_index_base") or "").strip()
-        sample_index_origin = str(carrier.get("sample_index_origin") or "").strip()
-        review["sample_index_contract"] = {
-            "base": sample_index_base,
-            "origin": sample_index_origin,
-        }
-        if sample_index_base not in {"zero_based", "one_based"} or (
-            sample_index_origin not in {"recording_relative", "absolute"}
-        ):
-            review.update(
-                {
-                    "status": "blocked",
-                    "decision_code": "sample_index_contract_required",
-                    "summary": (
-                        "Sample indexes need an explicit zero- or one-based "
-                        "contract and a recording-relative or absolute origin."
-                    ),
-                    "next_action": (
-                        "Choose the sample index base and origin before applying "
-                        "labels."
-                    ),
-                }
-            )
-            return review
     numeric_rows = int(review["numeric_rows"])
     if not numeric_rows:
         review.update(
@@ -394,6 +354,48 @@ def _time_field_review(carrier: dict[str, Any]) -> dict[str, Any]:
             "next_action": "Confirm the time base before EEG epoch setup.",
         }
     )
+    return review
+
+
+def timestamp_placement_contract_review(carrier: dict[str, Any]) -> dict[str, Any]:
+    """Review semantic choices independently of carrier-specific row policies."""
+    excluded_class_names = _mne_excluded_class_names(carrier)
+    if excluded_class_names:
+        return {
+            "status": "blocked",
+            "decision_code": "mne_excluded_class_description",
+            "summary": (
+                "MNE excludes supervised class descriptions beginning with "
+                "Bad or Edge: " + ", ".join(excluded_class_names) + "."
+            ),
+            "next_action": (
+                "Rename the class, or mark the value as an artifact or boundary "
+                "instead of a supervised class."
+            ),
+        }
+    review: dict[str, Any] = {}
+    if str(carrier.get("time_model") or "").strip().lower() == "sample_index":
+        base = str(carrier.get("sample_index_base") or "").strip()
+        origin = str(carrier.get("sample_index_origin") or "").strip()
+        review["sample_index_contract"] = {"base": base, "origin": origin}
+        if base not in {"zero_based", "one_based"} or origin not in {
+            "recording_relative",
+            "absolute",
+        }:
+            review.update(
+                {
+                    "status": "blocked",
+                    "decision_code": "sample_index_contract_required",
+                    "summary": (
+                        "Sample indexes need an explicit zero- or one-based "
+                        "contract and a recording-relative or absolute origin."
+                    ),
+                    "next_action": (
+                        "Choose the sample index base and origin before applying "
+                        "labels."
+                    ),
+                }
+            )
     return review
 
 

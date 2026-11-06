@@ -826,7 +826,11 @@ class DataInterpretationActionCoordinator:
         initial_step: str = "",
         loading_token: object | None = None,
         validated_choices: dict[str, Any] | None = None,
+        pending_review_state: _InterpretationReviewState | None = None,
     ) -> InteractionOutcome:
+        # A cancelled Validate can leave a newer preview without a decision.
+        # Keep the last validated presentation and the user's edits visible,
+        # but revalidate against that newer publication before any Apply.
         comparison_choices = (
             dict(validated_choices) if validated_choices is not None else dict(choices)
         )
@@ -930,7 +934,8 @@ class DataInterpretationActionCoordinator:
                 )
 
             if (
-                str(review_state.decision.get("decision")) == "blocked"
+                pending_review_state is None
+                and str(review_state.decision.get("decision")) == "blocked"
                 and continuation_choices == comparison_choices
             ):
                 if import_confirmed:
@@ -941,7 +946,10 @@ class DataInterpretationActionCoordinator:
                     decision_reason(review_state.decision)
                 )
 
-            if continuation_choices != comparison_choices:
+            if (
+                pending_review_state is not None
+                or continuation_choices != comparison_choices
+            ):
                 resume_step = str(dialog_result.get("resume_step") or "").strip()
                 if resume_step in {"Match Labels", "Review and Import"}:
                     return self._repreview_interpretation_async(
@@ -951,6 +959,7 @@ class DataInterpretationActionCoordinator:
                         label_sources=label_sources,
                         review_state=review_state,
                         initial_step=resume_step,
+                        pending_review_state=pending_review_state,
                     ) or InteractionOutcome.blocked(
                         "Data interpretation preview could not be refreshed."
                     )
@@ -962,6 +971,7 @@ class DataInterpretationActionCoordinator:
                     label_sources=label_sources,
                     review_state=review_state,
                     dialog_result=dialog_result,
+                    pending_review_state=pending_review_state,
                 ) or InteractionOutcome.blocked(
                     "Data interpretation review could not be refreshed."
                 )
@@ -1518,12 +1528,15 @@ class DataInterpretationActionCoordinator:
         label_sources: list[str],
         review_state: _InterpretationReviewState,
         initial_step: str,
+        pending_review_state: _InterpretationReviewState | None = None,
     ) -> InteractionOutcome | None:
         """Reopen edited choices without rediscovering the admitted source."""
 
         loading_token: object | None = None
 
-        def _retry_cancelled_repreview() -> InteractionOutcome:
+        def _retry_cancelled_repreview(
+            current_state: _InterpretationReviewState,
+        ) -> InteractionOutcome:
             return self._continue_data_interpretation_import(
                 source_path=source_path,
                 source_hint=source_hint,
@@ -1531,13 +1544,16 @@ class DataInterpretationActionCoordinator:
                 label_sources=list(label_sources),
                 review_state=review_state,
                 initial_step=initial_step,
+                pending_review_state=current_state,
             )
 
         def _reopen_cancelled_review(
-            _preview_state: _InterpretationReviewState | None,
+            preview_state: _InterpretationReviewState | None,
         ) -> InteractionOutcome:
             return self._schedule_cancelled_review_reopen(
-                _retry_cancelled_repreview,
+                lambda: _retry_cancelled_repreview(
+                    preview_state or pending_review_state or review_state
+                ),
                 cancelled_message="The operation was cancelled.",
             )
 
@@ -1575,7 +1591,7 @@ class DataInterpretationActionCoordinator:
                     )
             return self._preview_and_validate_interpretation_async(
                 choices=choices,
-                review_state=review_state,
+                review_state=pending_review_state or review_state,
                 on_validated=_open_validated_review,
                 error_title="Interpretation preview failed",
                 loading_token=loading_token,
@@ -1612,6 +1628,7 @@ class DataInterpretationActionCoordinator:
         label_sources: list[str],
         review_state: _InterpretationReviewState,
         dialog_result: dict[str, Any],
+        pending_review_state: _InterpretationReviewState | None = None,
     ) -> InteractionOutcome | None:
         """Validate edited choices from the existing scan, then apply."""
 
@@ -1641,7 +1658,9 @@ class DataInterpretationActionCoordinator:
                 validated_choices=dict(choices),
             )
 
-        def _retry_cancelled_revalidation() -> InteractionOutcome:
+        def _retry_cancelled_revalidation(
+            current_state: _InterpretationReviewState,
+        ) -> InteractionOutcome:
             return self._continue_data_interpretation_import(
                 source_path=source_path,
                 source_hint=source_hint,
@@ -1650,19 +1669,22 @@ class DataInterpretationActionCoordinator:
                 review_state=review_state,
                 initial_step="Review and Import",
                 validated_choices=dict(validated_choices),
+                pending_review_state=current_state,
             )
 
         def _reopen_cancelled_review(
-            _preview_state: _InterpretationReviewState | None,
+            preview_state: _InterpretationReviewState | None,
         ) -> InteractionOutcome:
             return self._schedule_cancelled_review_reopen(
-                _retry_cancelled_revalidation,
+                lambda: _retry_cancelled_revalidation(
+                    preview_state or pending_review_state or review_state
+                ),
                 cancelled_message="The operation was cancelled.",
             )
 
         started = self._preview_and_validate_interpretation_async(
             choices=choices,
-            review_state=review_state,
+            review_state=pending_review_state or review_state,
             on_validated=_apply_validated_review,
             error_title="Interpretation preview failed",
             on_terminal=_replace_preparing_status,

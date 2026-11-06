@@ -4667,6 +4667,70 @@ def test_bids_preset_uses_compact_actionable_first_layer(qtbot):
     )
 
 
+def test_shared_bids_events_display_both_reviewed_recordings(qtbot):
+    from tests.integration.ui.data_import_wizard_harness import capture_teacher_ui
+
+    eeg_files = [
+        f"/tmp/source/sub-01_task-mi_run-{run}_eeg.vhdr" for run in ("01", "02")
+    ]
+    events = "/tmp/source/task-mi_events.tsv"
+    dialog = DataInterpretationPreviewDialog(
+        scan_result={
+            "source_path": "/tmp/source",
+            "source_kind": "bids",
+            "eeg_files": eeg_files,
+            "label_carriers": [events],
+            "bids": {"is_bids": True, "events_files": [events]},
+        },
+        preview={
+            "selected_eeg_files": eeg_files,
+            "metadata_preview": [
+                {
+                    "file": Path(eeg).name,
+                    "subject": {"value": "01", "decision": "safe"},
+                    "task": {"value": "mi", "decision": "safe"},
+                    "run": {"value": str(index), "decision": "safe"},
+                }
+                for index, eeg in enumerate(eeg_files, start=1)
+            ],
+            "label_carrier_preview": [
+                {
+                    "path": events,
+                    "name": Path(events).name,
+                    "format": "BIDS events",
+                    "selected_target_files": eeg_files,
+                    "selected_label_field": "trial_type",
+                    "selected_anchor": "onset",
+                    "time_model": "seconds",
+                    "placement_method": "time_field",
+                    "granularity": "trial",
+                }
+            ],
+        },
+        validation_decision=_validation_decision("safe"),
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    load_text = _visible_step_text(dialog, "Load Labels")
+    assert "Pairing needs review" not in load_text
+    for eeg in eeg_files:
+        assert Path(eeg).name in load_text
+    capture_teacher_ui(dialog, "bids-shared-events-load-labels.png")
+    _show_step(dialog, "Review and Import")
+    assert "2/2 EEG files paired" in _visible_step_text(dialog, "Review and Import")
+    dialog.import_report_toggle.click()
+    provenance = "\n".join(
+        dialog.review_tree.topLevelItem(index).text(column)
+        for index in range(dialog.review_tree.topLevelItemCount())
+        for column in range(dialog.review_tree.columnCount())
+    )
+    assert "pairing needs review" not in provenance
+    for eeg in eeg_files:
+        assert Path(eeg).name in provenance
+    capture_teacher_ui(dialog, "bids-shared-events-review.png")
+
+
 def test_bids_review_blocks_when_one_selected_run_has_no_events_tsv(qtbot):
     eeg_1 = "/tmp/source/sub-01_task-mi_run-01_raw.fif"
     eeg_2 = "/tmp/source/sub-01_task-mi_run-02_raw.fif"

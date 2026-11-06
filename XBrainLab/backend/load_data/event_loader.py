@@ -20,6 +20,70 @@ _MNE_EXCLUDED_CLASS_PREFIXES = ("bad", "edge")
 _MNE_ANNOTATION_TIME_TOLERANCE_SECONDS = 1e-6
 
 
+def timestamp_rows_from_sample_index(
+    labels: Any,
+    *,
+    sfreq: float,
+    first_samp: int,
+    sample_index_base: str,
+    sample_index_origin: str,
+) -> list[Any]:
+    """Convert reviewed sample coordinates to recording-relative seconds."""
+    if sfreq <= 0:
+        raise ValueError("EEG sample frequency is required for sample-index labels.")
+    if not isinstance(labels, list):
+        raise ValueError("Sample-index labels must be timestamp row records.")
+    base = str(sample_index_base).strip().lower()
+    origin = str(sample_index_origin).strip().lower()
+    if base not in {"zero_based", "one_based"} or origin not in {
+        "recording_relative",
+        "absolute",
+    }:
+        raise ValueError(
+            "Sample-index labels require an explicit zero/one-based and "
+            "recording-relative/absolute contract.",
+        )
+    base_offset = 1 if base == "one_based" else 0
+    converted: list[Any] = []
+    for row_index, item in enumerate(labels, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"Sample-index label row {row_index} is not a record.")
+        row = dict(item)
+        try:
+            raw_sample = float(row["onset"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("Sample-index label row has no numeric sample.") from exc
+        if not math.isfinite(raw_sample) or not raw_sample.is_integer():
+            raise ValueError(
+                "Sample-index label row must contain a finite integer sample.",
+            )
+        normalized_sample = int(raw_sample) - base_offset
+        absolute_sample = (
+            first_samp + normalized_sample
+            if origin == "recording_relative"
+            else normalized_sample
+        )
+        row["onset"] = (absolute_sample - first_samp) / sfreq
+        if "duration" in row and row["duration"] not in (None, ""):
+            try:
+                row["duration"] = float(row["duration"]) / sfreq
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "Sample-index label row has non-numeric duration.",
+                ) from exc
+        converted.append(row)
+    return converted
+
+
+def timestamp_onset_exceeds_recording(
+    onset: float, *, sfreq: float, n_times: int
+) -> bool:
+    """Apply the stored last-sample boundary shared by review and placement."""
+    last_sample_time = (n_times - 1) / sfreq
+    tolerance = max(1e-12, 1.0 / sfreq * 1e-9)
+    return onset > last_sample_time + tolerance
+
+
 def timestamp_interval_exceeds_recording(
     onset: float, duration: float, *, sfreq: float, n_times: int
 ) -> bool:
@@ -308,8 +372,6 @@ def _normalize_timestamp_rows(
         raise ValueError(
             "Stored EEG sample bounds are unavailable for timestamp labels."
         )
-    last_sample_time = (n_times - 1) / sfreq
-    tolerance = max(1e-12, 1.0 / sfreq * 1e-9)
     rows: list[_TimestampRow] = []
     for source_index, raw_item in enumerate(label_list, start=1):
         if not isinstance(raw_item, dict):
@@ -328,7 +390,7 @@ def _normalize_timestamp_rows(
         if (
             onset < 0
             or duration < 0
-            or onset > last_sample_time + tolerance
+            or timestamp_onset_exceeds_recording(onset, sfreq=sfreq, n_times=n_times)
             or timestamp_interval_exceeds_recording(
                 onset, duration, sfreq=sfreq, n_times=n_times
             )

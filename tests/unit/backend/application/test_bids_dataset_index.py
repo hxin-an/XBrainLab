@@ -135,6 +135,82 @@ def test_index_is_immutable_and_projects_catalog_and_subjects_without_rewalking(
     )
 
 
+@pytest.mark.parametrize("kind", ["events", "channels"])
+@pytest.mark.parametrize("level", ["root", "subject", "session"])
+def test_inherited_tsv_binding_is_scoped_and_nearest_wins(
+    tmp_path: Path, kind: str, level: str
+) -> None:
+    paths = _write_bids_dataset(tmp_path)
+    local = paths[f"01_{kind}"]
+    original = local.read_bytes()
+    local.unlink()
+    directory = {
+        "root": tmp_path,
+        "subject": tmp_path / "sub-01",
+        "session": tmp_path / "sub-01" / "ses-01",
+    }[level]
+    inherited = directory / f"task-p300_{kind}.tsv"
+    inherited.write_bytes(original)
+    unrelated = tmp_path / f"task-other_{kind}.tsv"
+    unrelated.write_bytes(original)
+    index = build_bids_dataset_index(tmp_path)
+    projection = index.project(["01"])
+    assert getattr(projection.recordings[0], f"{kind}_file") == str(inherited.resolve())
+    assert getattr(index.project(["02"]).recordings[0], f"{kind}_file") == str(
+        paths[f"02_{kind}"].resolve()
+    )
+    local.write_bytes(original)
+    rebuilt = build_bids_dataset_index(tmp_path)
+    assert getattr(rebuilt.project(["01"]).recordings[0], f"{kind}_file") == str(
+        local.resolve()
+    )
+
+
+@pytest.mark.parametrize("kind", ["events", "channels"])
+def test_ambiguous_inherited_tsv_blocks_only_affected_subject(
+    tmp_path: Path, kind: str
+) -> None:
+    paths = _write_bids_dataset(tmp_path)
+    paths[f"01_{kind}"].unlink()
+    for name in (f"task-p300_{kind}.tsv", f"task-p300_run-1_{kind}.tsv"):
+        (tmp_path / name).write_text("deliberately ambiguous", encoding="utf-8")
+    index = build_bids_dataset_index(tmp_path)
+    clean = index.project(["02"]).recordings[0]
+    affected = index.project(["01"]).recordings[0]
+    assert not getattr(clean, f"{kind}_issues")
+    assert any("ambiguous" in issue for issue in getattr(affected, f"{kind}_issues"))
+    assert not getattr(affected, f"{kind}_file")
+
+
+def test_auto_catalog_can_offer_clean_subject_before_sidecar_validation(
+    tmp_path: Path,
+) -> None:
+    from XBrainLab.backend.application import ApplicationService
+
+    paths = _write_bids_dataset(tmp_path)
+    paths["01_channels"].unlink()
+    for name in ("task-p300_channels.tsv", "task-p300_run-1_channels.tsv"):
+        (tmp_path / name).write_text("ambiguous", encoding="utf-8")
+    service = ApplicationService()
+    try:
+        catalog = service.execute(
+            ScanSourceCommand(str(tmp_path), source_hint="auto", catalog_only=True)
+        )
+        assert catalog.ok, catalog.message
+        assert catalog.diagnostics["bids_subject_catalog"]["subject_count"] == 2
+        scan = service.execute(
+            ScanSourceCommand(
+                str(tmp_path), source_hint="bids", selected_bids_subjects=["02"]
+            )
+        )
+        assert scan.ok, scan.message
+        assert scan.diagnostics["scan_result"]["eeg_files"] == [
+            str(paths["02_eeg"].resolve())
+        ]
+    finally:
+        service.close()
+
+
 def test_repeated_dependency_lookup_does_not_rescan_indexed_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

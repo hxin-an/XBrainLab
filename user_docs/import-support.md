@@ -64,6 +64,20 @@ are required, while `trial_type` is optional. An inherited events file may also 
 several recordings. This does not permit a conversion to discard known source events
 or class meaning, and successful XBrainLab import is not BIDS-validator certification.
 
+For events and channels TSVs, XBrainLab uses the nearest applicable file in the
+recording's ancestor directories; it does not merge rows from different levels.
+Multiple applicable TSVs at the same level require correction before importing the
+affected recording. Other subjects remain selectable. A more local JSON definition
+of the selected label field replaces that field's inherited definition, including
+its `Levels`; old class suggestions are not carried forward when the new definition
+has no `Levels`.
+
+Events JSON files are matched by their filename entities and ancestor directory:
+for example, a task-level file can apply to that task's runs and acquisitions.
+Two applicable events JSON files in the same directory are ambiguous and must be
+corrected before importing the affected data. If metadata changes during import,
+review the source again before retrying.
+
 ### Current multi-recording limits
 
 One imported collection currently requires the same channel count, names, order and

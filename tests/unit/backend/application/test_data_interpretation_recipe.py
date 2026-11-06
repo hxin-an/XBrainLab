@@ -548,6 +548,35 @@ def test_choices_from_import_recipe_recreates_review_choices():
     }
 
 
+@pytest.mark.parametrize("base", ["zero_based", "one_based"])
+@pytest.mark.parametrize("origin", ["recording_relative", "absolute"])
+def test_recipe_roundtrip_retains_sample_coordinate_contract(tmp_path, base, origin):
+    recipe = ImportRecipe(
+        recipe_id="sample-recipe",
+        interpretation_id="sample-import",
+        source_path="/data",
+        source_kind="bids",
+        label_carrier_plan=[
+            {
+                "path": "/data/events.tsv",
+                "selected_label_field": "trial_type",
+                "selected_anchor": "sample",
+                "time_model": "sample_index",
+                "sample_index_base": base,
+                "sample_index_origin": origin,
+            }
+        ],
+    )
+    target = tmp_path / "recipe.json"
+    recipe.write_json(str(target))
+
+    choices = choices_from_import_recipe(load_import_recipe(str(target)))
+
+    carrier = choices["label_carrier_choices"]["/data/events.tsv"]
+    assert carrier["sample_index_base"] == base
+    assert carrier["sample_index_origin"] == origin
+
+
 def test_choices_from_import_recipe_skip_labels_suppresses_label_choices():
     recipe = ImportRecipe(
         recipe_id="recipe-1",

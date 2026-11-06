@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -274,6 +275,8 @@ def test_strict_bids_keeps_full_issue_evidence_but_bounds_blocker_text(
         "_review_one_run",
         lambda **_kwargs: (
             {
+                "eeg_file": eeg_path,
+                "events_file": events_path,
                 "event_count": 31,
                 "row_evidence": [],
                 "placement": {
@@ -1184,6 +1187,63 @@ def test_strict_bids_namespaces_same_event_code_by_selected_run(
     }
 
 
+@pytest.mark.parametrize("short_run", [None, "1", "2"])
+def test_shared_bids_events_preserve_each_run_review_and_any_blocker(
+    tmp_path: Path, short_run: str | None
+) -> None:
+    recordings = []
+    for run in ("1", "2"):
+        eeg, events = _write_bids_run(
+            tmp_path / "bids",
+            run=run,
+            n_times=50 if run == short_run else 1000,
+            event_rows=[("1", "0", "left", "1")],
+        )
+        recordings.append(eeg)
+    plan = {
+        "path": str(events),
+        "selected_label_field": "trial_type",
+        "placement_method": "time_field",
+        "time_model": "seconds",
+        "value_decisions": {
+            "left": {
+                "decision": "resolved",
+                "role": "stimulus",
+                "keep_event": True,
+                "use_as_class": True,
+                "class_name": "Left",
+            }
+        },
+    }
+    reviewed = data_interpretation_bids.review_strict_bids_event_runs(
+        bids={
+            "is_bids": True,
+            "layout": [
+                {"file": str(eeg), "events_file": str(events)} for eeg in recordings
+            ],
+        },
+        selected_eeg_files=[str(eeg) for eeg in recordings],
+        label_carrier_plan=[plan],
+    )
+
+    assert reviewed.evidence["pairing_issues"] == []
+    [carrier] = reviewed.label_carrier_plan
+    assert carrier["selected_target_files"] == [str(eeg) for eeg in recordings]
+    assert "selected_target_file" not in carrier
+    assert set(carrier["bids_event_review_by_target"]) == {
+        str(eeg) for eeg in recordings
+    }
+    assert bool(reviewed.blocked_reasons) is (short_run is not None)
+    assert (carrier["placement_review"]["status"] == "blocked") is (
+        short_run is not None
+    )
+    runs = reviewed.evidence["runs"]
+    assert [run["status"] == "blocked" for run in runs] == [
+        short_run == "1",
+        short_run == "2",
+    ]
+
+
 def test_strict_bids_keeps_run_specific_events_json_levels_as_suggestions(
     tmp_path: Path,
 ) -> None:
@@ -1405,3 +1465,64 @@ def test_internal_event_hints_use_each_run_mapping(tmp_path: Path) -> None:
         "T1": "both fists",
         "T2": "both feet",
     }
+
+
+@pytest.mark.parametrize(
+    ("time_model", "origin", "blocked"),
+    [
+        ("seconds", "", False),
+        ("sample_index", "recording_relative", False),
+        ("sample_index", "absolute", True),
+    ],
+)
+def test_missing_first_sample_only_blocks_absolute_sample_review(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    time_model: str,
+    origin: str,
+    blocked: bool,
+) -> None:
+    eeg, events = _write_bids_run(
+        tmp_path / "bids", run="1", event_rows=[("1", "0", "left", "1")]
+    )
+    monkeypatch.setattr(
+        data_interpretation_bids,
+        "_recording_metadata",
+        lambda *_args, **_kwargs: {
+            "sample_count": 1000,
+            "sampling_frequency_hz": 100.0,
+            "recording_duration": Decimal(10),
+            "first_sample": None,
+            "issue": None,
+        },
+    )
+    review = data_interpretation_bids.review_strict_bids_event_runs(
+        bids={
+            "is_bids": True,
+            "layout": [{"file": str(eeg), "events_file": str(events)}],
+        },
+        selected_eeg_files=[str(eeg)],
+        label_carrier_plan=[
+            {
+                "path": str(events),
+                "selected_label_field": "trial_type",
+                "selected_anchor": "onset",
+                "time_model": time_model,
+                "sample_index_base": "zero_based",
+                "sample_index_origin": origin,
+                "placement_method": "time_field",
+                "value_decisions": {
+                    "left": {
+                        "decision": "resolved",
+                        "keep_event": True,
+                        "use_as_class": True,
+                        "class_name": "Left",
+                        "role": "stimulus",
+                    }
+                },
+            }
+        ],
+    )
+    assert bool(review.blocked_reasons) is blocked
+    if blocked:
+        assert "first sample" in " ".join(review.blocked_reasons)
