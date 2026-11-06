@@ -2,7 +2,7 @@
 
 最後更新：`2026-11-07`
 
-## Active — 逐人分配的資料切分與移除 Manual
+## Pending validation / acceptance — 逐人分配的資料切分與移除 Manual
 
 使用者於 2026-11-06 確認完整方案並授權實作；UI 選項收斂已批准。基線為
 PR #165 的 d8a9e264；沿用目前 worktree，保留 Saliency 工作、使用者設定及已訓練結果。
@@ -48,8 +48,11 @@ UI / 測試 / fixtures / scripts / canonical docs；不改模型、Assistant too
 逐人分配、允許組合、固定 seed 與 Manual 全鏈移除已實作；直接失敗基線已確認。
 獨立覆核找到的高比例可行分割與 masks 記憶體問題已修正並補回歸；同／異單位的
 類別比例與不等量受試者 KFold 也已補驗。最終覆核無 blocking finding，真實 CPU 訓練／
-結果保存與 UI focused tests、lint／typing 通過。下一步為同版本 CI、Windows 原生
-選項／實際五人資料驗證與正式手測啟動。Stop 為授權 outcome、直接驗證與獨立
+結果保存與 UI focused tests、lint／typing 通過。Windows 原生寬／窄選項已檢查；
+真實 PhysionetMI 五人30個EDF經Command匯入、epochs與分配得到450筆，每人54/18/18，
+seed重現、Full/Individual一致、五折互斥完整覆蓋及audit通過。UI capture專用fixture
+另修正120筆的20%應為24筆，未改產品分配。施工已完成，下一步為最終同版本CI與
+Windows完整程式手測交付；CI尚未完成前不宣稱handoff-ready。Stop 為授權 outcome、直接驗證與獨立
 覆核完成，適用正式 gates 通過後開 Windows 完整版本供一次集中手測；不以中途 commit、
 CI pending 或 compaction 結束。未知平台／資料限制明列，原有 app / 結果不擅自關閉或清除。
 

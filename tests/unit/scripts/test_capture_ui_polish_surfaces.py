@@ -106,7 +106,7 @@ def test_split_capture_examples_match_visible_configuration(
     preview = data_split_capture_provider(request)
     assert len(preview.rows) == (5 if cross_validation else 1)
     for row in preview.rows:
-        assert row.validation_count == (20 if validation else 0)
+        assert row.validation_count == (24 if validation else 0)
         assert row.train_count + row.validation_count + row.test_count == 120
 
 

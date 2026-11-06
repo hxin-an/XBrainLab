@@ -91,7 +91,8 @@ def data_split_capture_provider(
 ) -> DatasetSplitPreviewPublication:
     """Render representative rows consistent with the selected layout mode."""
     fold_count = 5 if request.specification.is_cross_validation else 1
-    validation_count = 20 if request.specification.val_splitters else 0
+    # The displayed 20% validation ratio uses the original 120-trial scope.
+    validation_count = 24 if request.specification.val_splitters else 0
     return DatasetSplitPreviewPublication(
         request=request,
         generation=request.publication_generation,
