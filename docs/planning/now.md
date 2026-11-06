@@ -2,219 +2,70 @@
 
 最後更新：`2026-11-07`
 
-## Active repair — 首次 Import 關閉後未接續
+## Active repair — 訓練中 Assistant Stop 與可行切分誤拒絕
 
-2026-11-07 使用者在同版 Windows PhysionetMI 手測反覆發現：第四步 Next 或第五步
-Confirm 關閉精靈後未載入，重新開始第二次才成功。現有 log 只有成功載入紀錄，無法
-判定首次停在哪一步；直接從 review 啟動的 native probe 通過，但未覆蓋來源／subject
-對話框的完整生命週期，不能據此宣稱問題已解決。
+### 基線、證據與授權
 
-Outcome：第一次有效確認後，既有 review／apply 接續恰好一次；取消仍不匯入。
-Scope 僅匯入視窗生命週期、直接相關測試；不更動 UI layout／文案、資料解釋或切分契約。
-假設為 modal 關閉與 async callback 接續交界，須先重現而非直接按假設修改。
+PR #165 已由使用者手測通過並同意合併，產品 main 為
+`25f15e69dd5ff13bab89fbd18f26abcd63fec1bb`。其 push CI 42264854093、docs
+42264854007 已完成成功；先前 Import／Subject／逐人切分的 pending acceptance 已結束。
 
-1. 走真實 Import → source → subjects → wizard，分別追查 Next／Confirm。
-2. 補可失敗的真 Qt modal 回歸，修正既有 owner 的接續，不新增控制層／靜默重試。
-3. focused tests、Windows 同資料完整首次匯入、取消與獨立 lifecycle 覆核。
-4. 若改 source，重新取得適用同 head gates，再開 Windows 交使用者複測；不得合併。
+使用者要求完整功能／平台審查後，於本次明確授權「那你進行修正」。只修審查已確認的
+兩項行為；沿用 XBrainLab-main 工作區建立 `fix/training-stop-split-feasibility`，不另建
+環境，不碰研究 checkout、使用者 settings.json、文件網站工作區、既有 EEG／實驗資料。
+完整審查 evidence 在本機 ignored `build/dev-artifacts/main-verification-20261107/`。
 
-目前：使用者診斷 log 已確認第五步 accepted／confirmed、choices 未變，卻沒有
-`destroyed` callback／Apply。獨立 reviewer 在真 QDialog.exec 後、deferred delete 前
-強制 GC 重現：Python wrapper 被回收、Python signal connection 消失，C++ dialog
-仍正常刪除。修復由現有 coordinator 保留待銷毀 dialog 強引用，destroyed 後釋放；
-不新增 owner／state machine。GC 時序測試已先紅後綠，覆蓋 step4 repreview、step5 apply、取消、exactly-once
-與 wrapper 釋放；完整相關 async-flow 85 passed，獨立 lifecycle 覆核無阻擋項。
-下一步為修復版本的 Windows 完整流程與同 head CI，通過後再交付複測；不合併。
-Stop 與原驗收要求不變。
+- 真 CPU 訓練、真 Assistant controller/UI：同一 run 正常進度更新 generation，模型
+  回傳合法 stop_training 仍被 stale_publication 阻擋，確認卡沒有出現。
+- 獨立窮舉 264 組小型資料找到兩個合法分配被拒反例；正式 parser 與 split audit 都接受
+  oracle 分配。六／七個不可拆 groups 只留一個 train group；貪婪 Test 選走唯一含全部
+  類別的 group，剩餘資料合在一起仍含全部類別，但再分 Validation 就不可行。
 
-## Pending validation / acceptance — 逐人分配的資料切分與移除 Manual
+### Outcome、scope 與 non-goals
 
-使用者於 2026-11-06 確認完整方案並授權實作；UI 選項收斂已批准。基線為
-PR #165 的 d8a9e264；沿用目前 worktree，保留 Saliency 工作、使用者設定及已訓練結果。
-審查已用真 MNE 合成 epochs 重現 Full Trial 只涵蓋少數人的偏斜、Individual Manual
-不可用，以及簡單可行 Number 分割被貪婪搜尋拒絕。54 組正常矩陣通過不代表這些問題不存在。
+1. Stop 在 prompt 時指向的原 training run 仍活躍、當前 capability 有效時，僅正常進度
+   更新不能擋住確認與停止。完成／替換 run、沒有可信 prompt run identity、其他動作的
+   stale publication 仍 fail closed。模型不提供／修改 run identity，不新增 UI 或 confirmation。
+2. 已確認可行的 high-holdout 分配能完成，維持 exact Number／既定 Ratio rounding、
+   每人 scope、全部 train classes、原子重疊 groups、seed、取消與失敗 rollback。不靠
+   偷改比例、不重採樣、不把相異 subject 類別集合政策混入本修復。
+3. UI layout／copy／選項不變。使用者授權修正上述實際行為；錯誤文案與公共工具契約
+   不擴張，macOS／安裝環境缺口另列，不把本輪變成平台重寫或實驗重新跑分。
 
-### Outcome 與核准契約
+### Ownership 與複雜度預審
 
-- Trial / Session 先在每位受試者內切分；Full 合併同一 fold 的各人 masks，Individual
-  各自保留。Subject 只在 Full 以整個人分配。Session identity 是 subject 內的 session，
-  不再把不同人的同名 session 當作強制全域一組；BIDS run 不冒充 session。
-- Test 先隔離，Validation 只取非 Test 資料。相同單位共同規劃，Test / Validation 的
-  Ratio 都以原始 scope 計算；不同單位時 Validation 在 Test 留出後的剩餘 scope 計算。
-  Trial Test 的 Val 只能 Disable / Trial；Session Test 可 Disable / Session / Trial；
-  Subject Test 可 Disable / Subject / Session / Trial。逆向組合拒絕並要求重新設定。
-- Number 是各 scope 的確切 group 數；Trial / Session 按每人計算，Subject 按全體人計算。
-  Ratio 只做整數及不可拆 group 的取捨；不得搜尋相距很遠的新比例來湊成功。不足時指出
-  subject / partition 原因，不跳過任何人。維持 train 所需 class、必要集合非空與 leakage gate。
-- 保留原子時間重疊群組；類別分配以盡量維持來源比例為目標，不重採樣、不保證所有
-  holdout classes 均存在。使用固定且有紀錄的 split seed，Preview / Train masks 必須一致。
-- KFold 在上述 scope 產生 exact K、互斥且聯集完整的 Test；Full Trial / Session 合併各人
-  同一折，Individual 為每人 K 折。Validation Disable / Ratio / Number。
-- 徹底刪除 Manual 選項、enum / parser / allocator 分支、對話框及專屬測試。舊 Manual
-  設定拒絕重新執行並提示重新設定，不能靜默改 Ratio；已保存結果仍可讀，不重新切分。
+Stop 沿用 ContextAssembler 的 prompt publication、ToolAttemptCoordinator 的 admission、
+既有 confirmation 與 backend expected_run；新增資料若必要，只在既有 DTO 保存已有的
+TrainingRunIdentity，不新增 owner／receipt 類型／state machine／意圖推測。
+切分沿用 DatasetGenerator 與 SplitAudit。優先改既有 class-feasibility 選擇，刪除失效
+重試若有可靠替代；不加入 solver 依賴、通用搜尋框架或新的 authoritative policy。
+若方案需新 module/class、production 淨增 >300 或超過8個 product files，先更新實際
+complexity review，不能以大量補丁掩蓋責任問題。
 
-### Scope / complexity / 步驟
+### 步驟與驗證
 
-只處理 splitting、直接 Preview / admission / audit / saved configuration consumers、相關
-UI / 測試 / fixtures / scripts / canonical docs；不改模型、Assistant tools、saliency 計算或
-加入 solver / 通用框架。既有 DatasetGenerator、SplitAudit、ApplicationService 仍擁有原責任，
-不新增 authoritative owner。優先刪 Manual 與舊比例回退，重用分配核心；必要純函式拆分
-須有明確責任，不為行數切檔。施工超過原複雜度門檻時先重審實際 diff，不擴大 scope。
-
-1. 先加五人 Trial / Session、混用規則、Number / KFold、失敗 atomicity 回歸並觀察舊版失敗。
-2. 收斂 generator / contract / audit，UI 只消費同一 capability，刪 Manual 全鏈。
-3. 遷移仍保護真行為的 fixtures / scripts；刪除僅屬退役功能的測試；舊結果讀取驗證。
-4. focused backend / UI / integration、lint / typing；資料映射及 receipt 邊界獨立覆核。
-5. Windows 原生展示新選項與五人 Preview；正式手測交付前完成同 head CI、source-diverse
-   與適用 native / UI gates。使用者仍需手測並另同意 merge，不自動合併。
+1. 將真實 Stop probe 與兩個 oracle witnesses 納入正式測試；在未改產品時觀察目標失敗。
+2. 分別修復已有 owner；Stop 覆蓋同 run 進度、生成期間完成／替換、缺 identity、其他
+   action stale；切分覆蓋 Number／Ratio、類別不平均、seed、取消、不可行 rollback。
+3. focused regression、lint／format／typing；獨立 reviewer 查 stale安全、資料語意與
+   複雜度，主 agent 檢視實際 diff／red-green 證據。
+4. Windows 原生重跑受影響的 Assistant／切分→真訓練流程，補必要相鄰測試。
+   同新 head 的 CI／source-diverse／平台 gates 才能支撐正式交付，不沿用25f15e69綠燈。
+   正式 PR 如尚缺授權，先完成可審查的修復與本機驗證，再依 repo 規則取得確認。
 
 ### Current / next / stop
 
-逐人分配、允許組合、固定 seed 與 Manual 全鏈移除已實作；直接失敗基線已確認。
-獨立覆核找到的高比例可行分割與 masks 記憶體問題已修正並補回歸；同／異單位的
-類別比例與不等量受試者 KFold 也已補驗。最終覆核無 blocking finding，真實 CPU 訓練／
-結果保存與 UI focused tests、lint／typing 通過。Windows 原生寬／窄選項已檢查；
-真實 PhysionetMI 五人30個EDF經Command匯入、epochs與分配得到450筆，每人54/18/18，
-seed重現、Full/Individual一致、五折互斥完整覆蓋及audit通過。UI capture專用fixture
-另修正120筆的20%應為24筆，未改產品分配。施工已完成，下一步為最終同版本CI與
-Windows完整程式手測交付；CI尚未完成前不宣稱handoff-ready。Stop 為授權 outcome、直接驗證與獨立
-覆核完成，適用正式 gates 通過後開 Windows 完整版本供一次集中手測；不以中途 commit、
-CI pending 或 compaction 結束。未知平台／資料限制明列，原有 app / 結果不擅自關閉或清除。
-
-## Pending acceptance — Saliency 的 Subject 檢視
-
-### 問題、授權與基線
-
-使用者已手測通過並同意合併 BIDS PR #164，已 squash merge 至 main
-`555733128c00b637dc5735f66679632bc6b81729`。該 PR 的 24 個適用 checks 成功，
-原 90164c40 資料／native evidence 保留；不把舊 head 的證據冒稱 merge commit 新測試。
-本輪從此 main 建立 `feat/saliency-subject-view`。研究 checkout／使用者 settings.json 不改。
-
-使用者確認現有 UI 沒有 Subject 選項，並明確授權新增。現況：Evaluator 保留按真實 class
-分組的逐 trial attribution，Visualization 僅有 Fold／Run／Method／Class；render request
-沒有 subject，圖表依 class 平均目前 split 的全部 trials，無法檢查同一模型下某個受試者。
-
-Outcome：可選 All subjects 或該結果實際包含的一個 subject；同一 subject 的選擇一致作用於
-Map、Spectrogram、Topomap、3D，後端保留 Test／Validation 來源與 trial 數，UI 不另顯示資訊列。保留現有每 trial 等權
-的 All subjects 語意，不冒稱 subject 等權群體統計。切換只處理已計算結果，不重訓／重算歸因。
-
-### Scope 與 non-goals
-
-- 沿用現有 publisher 驗證／detached render data／owned render work／UI 控制；支援 exact run
-  及已 admission 的 cross-fold Test cohort，維持 producer、publication、stale／cancel 邊界。
-- 從已驗證 epoch／split／class 對應建立 subject 選項與篩選；不得靠 display name 或猜測順序。
-  非完整／未知對應拒絕單人顯示，不靜默回退成全體；舊結果保留既有可讀能力。
-- 未納入該結果的人不列選項。單人缺某 class 時可呈現無資料或僅可用類別，不能借用他人
-  trials、崩潰或要求無意義重算。All subjects 原結果保持一致。
-- 不改 split 策略、training、attribution 方法／目標、Test/Validation 選擇、模型／RAG、
-  EEG／研究原始資料、Assistant 公開工具契約；不新增 trial selector 或群體統計政策。
-- UI 已批准增加 Subject 選項；使用者要求移除額外資訊列，保持既有風格與響應式控制列。
-
-### 步驟與責任
-
-1. 先落此 plan，追查逐 trial 排序、split mask、subject map、class 分組及保存／重開路徑。
-2. 新增真兩人、交錯 class／subject、不同 trial 數的失敗測試；同時保護 Test、Validation、
-   cross-fold、單人缺 class、stale、原資料不變與 existing All 結果。
-3. 以既有 SaliencyRenderPublisher 負責選項／篩選，renderer 消費 detached 已篩資料，UI 只傳
-   選擇與顯示。不得在 UI 讀 live Epochs 或另建 policy／cache owner。
-4. UI selector、窄版排版、subject 切換 request identity／取消過期 render、各圖的空資料狀態。
-5. Windows 原生預覽與 focused behavior／geometry 檢查，展示可回應的候選；設計確認前不跑
-   因每次 UI 迭代而重複的重型 gates。資料映射及 async 邊界獨立覆核，主 agent 核對實際 diff。
-6. 本輪最終驗證沿既有 canonical gates／同 head CI；合併後全面測試需求仍保留，按最新
-   使用者順序在已合併 main 上核對 Windows／Linux／macOS 自動證據並補缺口，無 Mac 實機
-   不宣稱 native 手測。Subject 變更新版另需手測與 merge 批准。
-
-### Complexity 與驗證
-
-Owners before/after：既有 TrainingPlanHolder／EvalRecord 保留產出與完整性，既有
-SaliencyRenderPublisher 保留資料解釋與 publication，既有 render work 保留 async lifecycle；
-不新增 authoritative owner／state machine／receipt／compatibility path。
-優先重用現有 class/mask/producer helpers；刪除候選為重複 filtering／selector refresh policy，
-不移除安全檢查。若需拆大 renderer 的純計算 helper，先列必要性；超過 feature 800 net LOC、
-12 product files 或新增 owner 時先 complexity review，不以縮碼犧牲來源對應。
-
-Focused：saliency publisher、真實 evaluator→artifact→reload→render、四圖、控制列 geometry
-與 rapid switching；Qt／MNE／Torch 使用 core=0 與 timeout，重型 native 串行。
-可沿用同版本已成功 CI，不能把 mock/unit PASS 當 Windows 手測或科學歸因效度。
-Stop：授權功能及直接驗證完成、獨立 review 無 blocking finding，Windows 候選可供使用者
-檢查。不得自動合併新 feature。受限平台／缺少資料須明列，不能假裝全平台通過。
-
-### UI 預覽修訂 — Subject 順序
-
-使用者在原生預覽後明確要求 Subject 排在 Saliency 前面。只調整現有 responsive grid 的
-排列為 Fold → Run → Subject → Saliency → Method；窄版第二列也先 Subject 再 Saliency。
-不改資料篩選或計算。驗證控制項幾何／次序、focused UI tests 與 Windows 新截圖後更新
-原生預覽。完成條件是各寬度皆維持要求的順序且無重疊；不因此重跑後端或重型 CI。
-已完成：22 個排列／幾何 focused tests 通過；Windows 寬／中／窄原生截圖確認順序與無重疊。
-
-### 正式驗證中的直接阻擋 — 高 DPI 圖表縮小
-
-Subject 控制列的 Windows 150% capture 顯示控制項排列正常，但圖表被縮到左下方、標籤重疊。
-追查既有 `fit_figure_subplots_to_canvas`：tightbbox 使用實體像素，canvas.get_width_height()
-預設回傳邏輯像素，兩者在 DPR > 1 不一致。此 helper 未由 Subject 功能修改；本輪驗證才發現。
-先用真實 Qt canvas 重現並對照主線 helper，確認不是截圖時序；若成立，只修正同一 helper
-的像素單位，補高 DPI 幾何回歸及重新擷取受影響畫面。不重構 renderer／新增 owner，不放寬
-檢查門檻；無高 DPI 副作用且 focused/native evidence 通過後，更新 PR 並以新 head 跑必要 CI。
-
-### CI fixture 對齊
-
-Linux integration-rest 的兩個 semantic label workflow 案例使用每類一筆的假 EvalRecord，
-與已建立的實際 Test mask／順序不符，新的 Subject 對應檢查正確拒絕。只修正該 fixture，
-使其 labels／outputs／逐類 saliency 行數符合真實 split，保留原標籤語意 assertions；
-不放寬 production 檢查。先重現，再執行該檔的 focused tests，與 DPI 修正一起送新 head CI。
-
-### CI UI 相容性補驗
-
-同 head CI 發現 Spectrogram normalize 測試仍寫死舊 cache key、兩個 mock invalidation
-案例可能混入 setup 的呼叫；逐項重現並以真實 reuse／失效邊界核對，不盲目放寬次數。
-Linux 窄視窗要求 720px 卻被最小寬度撐至 723px；保持既有窄版可用範圍，調整直接相關
-控制項的最小尺寸並驗證文字與幾何，不修改測試容許寬度。與既有 DPI／fixture 修復一起
-獨立覆核後送新 head CI，直到所有適用 checks 成功再開正式手測。
-
-### 手測 UI 修訂 — 移除圖表上方資訊行
-
-使用者明確要求整行 `All subjects · Test · N trials · True class · Mean over EEG epochs`
-小字移除。刪除該 QLabel、layout 項目與只為該行存在的組字／stale 清除機制，不能只隱藏留下
-空白列。不改 Subject 篩選、結果資料、render identity、空 class 提示與原有分頁 tooltip。
-先更新直接 UI assertions，以選中 subject／view property 驗證既有篩選與 trial 真值仍在；
-執行 focused UI／排版測試與 lint，開 Windows 原生更新預覽。這是已授權的 UI 修訂，
-先確認畫面，不把舊 head 綠燈當新版正式交付，不在每次文案迭代重跑重型 CI。
-完成條件：資訊行與佔位完整移除，四圖選人／無資料狀態正常，更新畫面可供確認。
-已完成此 UI 修訂：20 個 focused tests、lint／format 通過；Windows 寬／中／窄版預覽
-已開啟且有回應。使用者現已要求「帶我手測準備 merge」，視為此 UI 定稿並重新進入正式交付。
-下一步：提交此修訂，核對／必要時更新唯一受影響的 Visualization reference，不放寬門檻；
-同 head CI 全部適用 gates 完成，補 Windows Subject 排版證據並更新正式啟動器與手測清單。
-開啟完整程式與同一 console log，確認有回應後交付手測；不以此次準備要求自動合併。
-
-### Current / next
-
-- PR #164 已合併；舊 worktree 已清理，驗證證據與使用者手測訓練結果保留於本機 ignored artifacts。
-- Subject publisher／render identity／UI selector 已實作。Focused：backend／artifact／lifecycle
-  112、實際四圖 renderer 7、UI／provenance／cache 152，共 271 passed；Ruff／format 通過。
-- 獨立覆核抓到並修正 Spectrogram 跨 Subject 快取、缺 class render 結束未釋放 compute busy、
-  首次 compute 後 Subject 仍 disabled 三個問題；都有先失敗後通過的直接行為測試。
-- Windows 原生示例使用兩人合成 EEG、真實一 epoch EEGNet 與 Gradient；切人、四圖、空 class、
-  還原 All、900／1100／1450 寬度已檢查。Qt widget 截圖不包含內嵌 GL，另核對 VTK 渲染影像。
-  示例不是使用者真實資料驗收，也不代表歸因科學有效性。
-- 使用者已確認 Windows 示例並授權準備至合併前正式手測；Subject 順序定稿。
-- 正式候選為 PR #165；核對同 head regression／static／source-diverse／跨平台／UI DPI gates；
-  已依 CI exact-source 截圖與使用者確認版面更新唯一變動的 Visualization reference，
-  保留原 drift 失敗證據且不放寬門檻。CI 已提供的同版本證據不重跑。
-- 真實 A01/A02 GDF 已經過 Command 匯入／前處理／epochs、實際 EEGNet／Gradient、逐人
-  篩選與安全結果重讀驗證；獨立 MNE event oracle 核對 274 epochs 與實際 Test rows。
-  此補驗使用 domain 建立的受控 masks，不冒稱使用者點擊完整流程；同 head source-diverse CI
-  另涵蓋多來源，Windows 手測仍待完成。
-- 高 DPI 修正已獨立覆核；預設 CI 可跑的真 Agg 125%／150% 回歸先失敗再通過，
-  QTAgg／Agg focused 共 11 passed。兩個 semantic fixture 已依實際 Test mask 修正，3 passed。
-  UI setup mock 與 cache identity 修正：兩檔 104 passed，擴充後直接案例 8 passed；沒有放寬
-  真實操作失效次數或 Subject／publication／training／run／method 快取隔離。
-- 窄版最低尺寸已以實際 DejaVu 字型重現 722 > 720；Saliency 最小寬 120→115，
-  保持原 720px gate、排列與字體。23 個直接幾何／Subject 測試通過，Linux 原平台由新 CI 核對。
-- e0c0aef1 的 24 個適用 CI checks、Windows Subject 補驗及真實 A01/A02 路徑已通過。
-  目前唯一後續產品改動為使用者要求移除資訊行；此修訂需新 head CI，不沿用舊 head 宣稱。
-- 準備手測清單與綁定 candidate 的 Windows 完整程式
-  啟動指令，隔離本機設定與輸出。全部適用 gates 完成才開正式手測，不以示例代替。
-- 本輪 endpoint 為 handoff-ready 並已開啟完整程式；等待使用者實測及新的 merge 同意，
-  此次不合併。研究 checkout／使用者 settings.json／既有結果保持不變。
-- 合併 main CI `42172708389` 已 completed/success，包含 Linux、Windows／macOS lifecycle、
-  原生啟動、公開多來源資料及 UI checks。這些是 main 證據，不代替 Subject feature 的驗證。
+正式回歸已先 RED：Stop 同 run 進度案例失敗，切分十二個已驗證可行 witnesses 均被舊版拒絕。
+修復於既有 owners 完成，無新 owner／module／class；Stop prompt 綁定原 run，paired
+allocation 最多256次單群組交換，並以必要 class-capacity 界線避免已證明不可行的重複搜尋。
+獨立覆核（含追加容量 guard）無 blocking finding。Windows：Assistant406、split相關368、
+原生完整操作鏈及相鄰安全邊界40項全通過；獨立264例窮舉對照由兩個誤拒絕降至零，
+216成功／48正確拒絕。Ruff／format及整體typing通過，不放寬baseline。
+100個single-class groups的不可行設定，未加容量判斷時15.57秒，修後1.75秒；同次對照
+原路徑1.76秒。此為單次Windows工程量測，不外推所有不可能配置；其餘bounded-search限制仍在。
+保留測試fixture／Windows啟動器修正前的失敗紀錄；產品未以workaround繞過檢查。
+下一步：提交可審查修復，取得本次PR授權並跑同head適用CI／data／平台gates；尚不稱正式
+handoff-ready。不自動合併，也不把舊main的綠燈冒稱本修復驗證。
+Stop 為兩項授權修復完成、直接驗證與獨立覆核通過；正式 handoff 仍需同 head 適用 gates。
+CI pending／單一小切片完成／context compaction 不是停工條件。使用者尚未批准本修復 merge，
+不得自動合併。必要外部資源／新的公共行為決策缺少時明示，不把缺測說成通過。
