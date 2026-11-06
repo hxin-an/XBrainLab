@@ -133,6 +133,12 @@ scientific validity is outside this architecture contract.
 Saliency renderers consume only detached `SaliencyRenderData`, not live `EvalRecord` or `Epochs`
 objects. `SaliencyRenderPublisher` owns artifact/context validation and source identity checks;
 the render work controller prepares the requested variants and retains cancellation/commit fences.
+The publisher resolves Subject choices from the admitted evaluation split and verifies saved label
+order and per-class trial counts before slicing class-grouped attribution rows. Subject filtering
+precedes normalization and cross-fold pooling; it neither recomputes attribution nor changes the
+All-subject per-trial weighting. The selected subject travels with detached data and render identity,
+so an earlier subject request cannot publish into a newer selection. Missing classes retain their
+identity with empty arrays, which the selected-subject view omits or presents as no data.
 Renderer class resolution and numerical plotting remain presentation responsibilities, not a second
 artifact admission path. Model/data provenance, semantic artifact integrity and filesystem transport
 integrity protect different boundaries and are intentionally retained.

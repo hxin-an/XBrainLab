@@ -247,7 +247,8 @@ class Visualizer:
         for identity in identities:
             saliency = saliency_store[identity.saliency_key]
             if not self._has_saliency_data(saliency):
-                missing_labels.append(identity.display_name)
+                if self.render_data.selected_subject_id is None:
+                    missing_labels.append(identity.display_name)
                 continue
             mapped.append((identity.saliency_key, identity.display_name, saliency))
         if missing_labels:

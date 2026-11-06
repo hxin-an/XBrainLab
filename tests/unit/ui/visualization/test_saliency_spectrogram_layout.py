@@ -144,3 +144,79 @@ def test_figure_fit_recovers_authored_layout_after_compact_resize() -> None:
     assert _subplot_margins(compact_figure) == pytest.approx(
         _subplot_margins(fresh_figure),
     )
+
+
+def test_spectrogram_cache_tracks_subject_selection(qtbot, monkeypatch):
+    from dataclasses import replace
+
+    from XBrainLab.backend.application import (
+        SaliencyPlanIdentity,
+        SaliencyRenderPublication,
+        SaliencyRenderRequest,
+        SaliencyRunIdentity,
+    )
+    from XBrainLab.backend.application.state import (
+        SaliencyClassCoverageSnapshot,
+        SaliencyMethodCoverageSnapshot,
+    )
+
+    view = SaliencySpectrogramWidget()
+    qtbot.addWidget(view)
+    view.set_saliency_coverage(
+        SaliencyMethodCoverageSnapshot(
+            method="Gradient",
+            available=True,
+            complete=True,
+            classes=[
+                SaliencyClassCoverageSnapshot(
+                    class_index=0,
+                    store_key=0,
+                    display_name="left",
+                    available=True,
+                )
+            ],
+        )
+    )
+    figures = []
+    monkeypatch.setattr(
+        view, "_render_figure_async", lambda render, **_kwargs: figures.append(render())
+    )
+    base = _four_class_render_data()
+    source = base.saliency_by_class[0]
+    first, second = source[:2], source[2:] * 4
+    request = SaliencyRenderRequest(
+        publication_generation=1,
+        run=SaliencyRunIdentity(SaliencyPlanIdentity(0), 0),
+        method="Gradient",
+    )
+    outputs = []
+    for subject, values in (
+        (None, np.concatenate((first, second))),
+        (10, first),
+        (20, second),
+        (None, np.concatenate((first, second))),
+    ):
+        data = replace(
+            base,
+            saliency_by_class={0: values},
+            class_map=((0, "left"),),
+            event_ids={"left": 0},
+            subject_choices=((10, "Alice"), (20, "Bob")),
+            selected_subject_id=subject,
+        )
+        view.invalidate_render_publication()
+        view.update_plot(
+            SaliencyRenderPublication(
+                request=replace(request, subject_id=subject),
+                generation=1,
+                training_generation=1,
+                data=data,
+            ),
+            False,
+        )
+        outputs.append(np.asarray(figures[-1].axes[0].images[0].get_array()).copy())
+    assert not np.allclose(outputs[0], outputs[1])
+    assert not np.allclose(outputs[1], outputs[2])
+    np.testing.assert_array_equal(outputs[0], outputs[3])
+    for figure in figures:
+        figure.clear()

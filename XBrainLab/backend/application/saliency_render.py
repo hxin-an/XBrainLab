@@ -176,6 +176,7 @@ class SaliencyRenderRequest:
     method: str
     normalize: bool = False
     view: SaliencyRenderView = "channel_time"
+    subject_id: int | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -189,6 +190,10 @@ class SaliencyRenderRequest:
             (SaliencyRunIdentity, SaliencyCrossFoldIdentity),
         ):
             raise TypeError("run must be a saliency run or cross-fold identity")
+        if self.subject_id is not None and (
+            type(self.subject_id) is not int or self.subject_id < 0
+        ):
+            raise ValueError("subject_id must be a non-negative integer or None")
         method = str(self.method).strip()
         if not method:
             raise ValueError("method must be a non-empty string")
@@ -229,12 +234,32 @@ class SaliencyRenderData:
     fold_count: int = 1
     normalized: bool = False
     producer_identities: tuple[SaliencyProducerIdentity, ...] = ()
+    subject_choices: tuple[tuple[int, str], ...] = ()
+    selected_subject_id: int | None = None
     _detached_arrays: InitVar[object | None] = None
 
     def __post_init__(self, _detached_arrays: object | None) -> None:
         method = str(self.method).strip()
         if not method:
             raise ValueError("render method must be a non-empty string")
+        if not isinstance(self.subject_choices, tuple) or any(
+            not isinstance(choice, tuple)
+            or len(choice) != 2
+            or type(choice[0]) is not int
+            or choice[0] < 0
+            or not isinstance(choice[1], str)
+            or not choice[1].strip()
+            for choice in self.subject_choices
+        ):
+            raise ValueError("subject_choices must contain subject IDs and names")
+        subject_ids = tuple(subject_id for subject_id, _name in self.subject_choices)
+        if len(set(subject_ids)) != len(subject_ids):
+            raise ValueError("subject_choices must have unique IDs")
+        if self.selected_subject_id is not None and (
+            type(self.selected_subject_id) is not int
+            or self.selected_subject_id not in subject_ids
+        ):
+            raise ValueError("selected_subject_id must identify an available subject")
         # DTO construction is part of the owned RENDER read boundary. Keep a
         # cancellation point on both sides of every potentially large class
         # copy; ordinary non-owned callers observe these as no-ops.
@@ -884,6 +909,8 @@ def normalized_saliency_render_publication(
         fold_count=source.fold_count,
         normalized=True,
         producer_identities=source.producer_identities,
+        subject_choices=source.subject_choices,
+        selected_subject_id=source.selected_subject_id,
         _detached_arrays=_DETACHED_SALIENCY_ARRAYS,
     )
     return SaliencyRenderPublication(
@@ -1047,6 +1074,15 @@ class SaliencyRenderPublisher:
             epoch_data,
             producer_identity=_saliency_producer_identity(holder, run, eval_record),
         )
+        saliency_store, subject_choices = self._subject_saliency_store(
+            request,
+            dataset,
+            epoch_data,
+            eval_record,
+            saliency_store,
+            class_map,
+        )
+        self._validate_subject_selection(request, subject_choices)
         if request.normalize:
             saliency_store = _normalize_saliency_store(saliency_store)
         return self._render_data_from_epoch(
@@ -1058,7 +1094,8 @@ class SaliencyRenderPublisher:
             aggregation="per-epoch",
             fold_count=1,
             producer_identities=producer_identities,
-            adopt_saliency_store=request.normalize,
+            subject_choices=subject_choices,
+            adopt_saliency_store=request.normalize or request.subject_id is not None,
         )
 
     def _copy_cross_fold_render_data(
@@ -1100,11 +1137,30 @@ class SaliencyRenderPublisher:
 
         if not validated.epoch_data or not validated.contexts:
             raise self._target_error("Cross-fold epoch metadata is unavailable")
-        fold_stores = tuple(
-            self._saliency_store(record, request.method) for record in validated.records
-        )
+        fold_stores: list[Mapping[object, Any]] = []
+        subject_names: dict[int, str] = {}
+        for member, record, epoch_data, context in zip(
+            choice.identity.members,
+            validated.records,
+            validated.epoch_data,
+            validated.contexts,
+            strict=True,
+        ):
+            holder, _run = _holder_and_run(holders, member)
+            store, subjects = self._subject_saliency_store(
+                request,
+                holder.get_dataset(),
+                epoch_data,
+                record,
+                self._saliency_store(record, request.method),
+                tuple(context.class_map),
+            )
+            fold_stores.append(store)
+            subject_names.update(subjects)
+        subject_choices = tuple(sorted(subject_names.items()))
+        self._validate_subject_selection(request, subject_choices)
         aggregated = _pool_cross_fold_saliency(
-            fold_stores,
+            tuple(fold_stores),
             choice.classes,
             normalize=request.normalize,
         )
@@ -1131,8 +1187,98 @@ class SaliencyRenderPublisher:
                     identity_class,
                 )
             ),
+            subject_choices=subject_choices,
             adopt_saliency_store=True,
         )
+
+    @staticmethod
+    def _validate_subject_selection(
+        request: SaliencyRenderRequest,
+        subject_choices: tuple[tuple[int, str], ...],
+    ) -> None:
+        if request.subject_id is not None and request.subject_id not in dict(
+            subject_choices
+        ):
+            raise SaliencyRenderPublisher._target_error(
+                "The selected subject has no saliency trials in this selection"
+            )
+
+    @staticmethod
+    def _subject_saliency_store(
+        request: SaliencyRenderRequest,
+        dataset: Any,
+        epoch_data: Any,
+        record: Any,
+        store: Mapping[object, Any],
+        class_map: tuple[tuple[object, str], ...],
+    ) -> tuple[Mapping[object, Any], tuple[tuple[int, str], ...]]:
+        """Match stored class rows to the unshuffled evaluation split order.
+
+        Producer validation has already verified the exact split. Evaluation
+        traverses np.flatnonzero(mask), then retains that order within each
+        true-label class. No model work or persisted representation is needed.
+        """
+        subject_getter = getattr(epoch_data, "get_subject_list", None)
+        names_getter = getattr(epoch_data, "get_subject_map", None)
+        if not callable(subject_getter) or not callable(names_getter):
+            if request.subject_id is None:
+                return store, ()
+            raise SaliencyRenderPublisher._target_error(
+                "Subject mapping is unavailable for this saliency result"
+            )
+
+        def invalid_mapping() -> PreconditionError:
+            return SaliencyRenderPublisher._target_error(
+                "Subject mapping does not match the saved saliency evaluation"
+            )
+
+        split = _record_source_split(record)
+        mask_name = {"test": "test_mask", "validation": "val_mask"}.get(split)
+        label_getter = getattr(epoch_data, "get_label_list", None)
+        if mask_name is None or not callable(label_getter):
+            raise invalid_mapping()
+        subjects = np.asarray(subject_getter())
+        labels = np.asarray(label_getter())
+        mask = np.asarray(getattr(dataset, mask_name, None))
+        names = names_getter()
+        saved_labels = np.asarray(getattr(record, "label", None))
+        if (
+            subjects.ndim != 1
+            or not np.issubdtype(subjects.dtype, np.integer)
+            or bool(np.any(subjects < 0))
+            or labels.ndim != 1
+            or subjects.shape != labels.shape
+            or mask.dtype != np.dtype(bool)
+            or mask.shape != labels.shape
+            or saved_labels.ndim != 1
+            or not np.issubdtype(saved_labels.dtype, np.integer)
+            or bool(np.any((saved_labels < 0) | (saved_labels >= len(class_map))))
+            or not np.array_equal(labels[mask], saved_labels)
+            or not isinstance(names, Mapping)
+        ):
+            raise invalid_mapping()
+        split_subjects = subjects[mask]
+        present_ids = tuple(int(value) for value in np.unique(split_subjects))
+        if any(
+            subject_id not in names
+            or not isinstance(names[subject_id], str)
+            or not names[subject_id].strip()
+            for subject_id in present_ids
+        ):
+            raise invalid_mapping()
+        choices = tuple((subject_id, names[subject_id]) for subject_id in present_ids)
+        keys = _ordered_store_keys(store, class_map)
+        if keys is None or len(keys) != len(store):
+            raise invalid_mapping()
+        filtered: dict[object, np.ndarray] = {}
+        for class_index, key in enumerate(keys):
+            class_subjects = split_subjects[saved_labels == class_index]
+            values = np.asarray(store[key])
+            if values.ndim != 3 or values.shape[0] != len(class_subjects):
+                raise invalid_mapping()
+            if request.subject_id is not None:
+                filtered[key] = values[class_subjects == request.subject_id]
+        return (filtered if request.subject_id is not None else store), choices
 
     def _render_data_from_epoch(
         self,
@@ -1146,6 +1292,7 @@ class SaliencyRenderPublisher:
         fold_count: int,
         producer_identities: tuple[SaliencyProducerIdentity, ...] = (),
         adopt_saliency_store: bool = False,
+        subject_choices: tuple[tuple[int, str], ...] = (),
     ) -> SaliencyRenderData:
         event_ids = getattr(epoch_data, "event_id", {}) or {}
         if not isinstance(event_ids, Mapping):
@@ -1213,6 +1360,8 @@ class SaliencyRenderPublisher:
             fold_count=fold_count,
             normalized=request.normalize,
             producer_identities=producer_identities,
+            subject_choices=subject_choices,
+            selected_subject_id=request.subject_id,
             _detached_arrays=(
                 _DETACHED_SALIENCY_ARRAYS if adopt_saliency_store else None
             ),

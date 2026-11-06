@@ -1,3 +1,4 @@
+from dataclasses import replace
 from functools import partial
 
 from XBrainLab.backend.application.saliency_render import (
@@ -69,10 +70,8 @@ class SaliencySpectrogramWidget(BaseSaliencyView):
                     data,
                     preparation_cache,
                     (
-                        publication.generation,
                         publication.training_generation,
-                        publication.request.run,
-                        method,
+                        replace(publication.request, normalize=False),
                     ),
                     (
                         publication.data.normalized

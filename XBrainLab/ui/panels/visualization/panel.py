@@ -474,7 +474,17 @@ class VisualizationPanel(BasePanel):
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
         )
         self.run_combo.setStyleSheet(_VISUALIZATION_COMBO_STYLE)
-        self.run_combo.currentTextChanged.connect(self.on_update)
+        self.run_combo.currentTextChanged.connect(self._on_run_changed)
+
+        self.subject_label = QLabel("Subject:")
+        self.subject_combo = QComboBox()
+        self.subject_combo.addItem("All subjects", None)
+        self.subject_combo.setEnabled(False)
+        self.subject_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
+        )
+        self.subject_combo.setStyleSheet(_VISUALIZATION_COMBO_STYLE)
+        self.subject_combo.currentIndexChanged.connect(self._on_subject_changed)
 
         # Method Selector
         self.method_label = QLabel("Method:")
@@ -512,6 +522,7 @@ class VisualizationPanel(BasePanel):
         for combo in (
             self.plan_combo,
             self.run_combo,
+            self.subject_combo,
             self.method_combo,
             self.saliency_combo,
         ):
@@ -533,6 +544,13 @@ class VisualizationPanel(BasePanel):
 
         # 3. Explanation canvas
         self._explanation_context_text = ""
+        self.explanation_context = QLabel()
+        self.explanation_context.setWordWrap(True)
+        self.explanation_context.setStyleSheet(f"color: {Theme.TEXT_SECONDARY};")
+        self.explanation_context.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        left_layout.addWidget(self.explanation_context)
 
         # Tabs
         self.tabs = QTabWidget()
@@ -708,6 +726,7 @@ class VisualizationPanel(BasePanel):
         controls: list[QWidget] = [
             self.plan_combo,
             self.run_combo,
+            self.subject_combo,
             self.method_combo,
             self.abs_check,
             self.normalize_check,
@@ -730,6 +749,7 @@ class VisualizationPanel(BasePanel):
         for control, was_enabled in control_states:
             control.setEnabled(was_enabled)
         self.plan_combo.setEnabled(self.plan_combo.count() > 0)
+        self.subject_combo.setEnabled(self.subject_combo.count() > 1)
 
     def eventFilter(self, watched, event):  # noqa: N802
         """Reflow after the control bar receives its actual allocated width."""
@@ -759,7 +779,7 @@ class VisualizationPanel(BasePanel):
             return
 
         self._controls_layout_mode = layout_mode
-        for column in range(12):
+        for column in range(14):
             self.ctrl_layout.setColumnStretch(column, 0)
 
         controls = (
@@ -769,6 +789,8 @@ class VisualizationPanel(BasePanel):
             self.run_combo,
             self.saliency_view_label,
             self.saliency_combo,
+            self.subject_label,
+            self.subject_combo,
             self.method_label,
             self.method_combo,
             self.normalize_check,
@@ -776,6 +798,9 @@ class VisualizationPanel(BasePanel):
         )
         for control in controls:
             self.ctrl_layout.removeWidget(control)
+
+        self.subject_combo.setMinimumWidth(105)
+        self.subject_combo.setMaximumWidth(180)
 
         if layout_mode == "wide":
             self.saliency_combo.setMinimumWidth(180)
@@ -791,9 +816,11 @@ class VisualizationPanel(BasePanel):
             self.ctrl_layout.addWidget(self.run_combo, 0, 3)
             self.ctrl_layout.addWidget(self.saliency_view_label, 0, 4)
             self.ctrl_layout.addWidget(self.saliency_combo, 0, 5)
-            self.ctrl_layout.addWidget(self.method_label, 0, 6)
-            self.ctrl_layout.addWidget(self.method_combo, 0, 7)
-            self.ctrl_layout.setColumnStretch(11, 1)
+            self.ctrl_layout.addWidget(self.subject_label, 0, 6)
+            self.ctrl_layout.addWidget(self.subject_combo, 0, 7)
+            self.ctrl_layout.addWidget(self.method_label, 0, 8)
+            self.ctrl_layout.addWidget(self.method_combo, 0, 9)
+            self.ctrl_layout.setColumnStretch(13, 1)
             self._position_transform_controls(layout_mode)
             return
 
@@ -811,8 +838,10 @@ class VisualizationPanel(BasePanel):
             self.ctrl_layout.addWidget(self.run_combo, 0, 3)
             self.ctrl_layout.addWidget(self.saliency_view_label, 0, 4)
             self.ctrl_layout.addWidget(self.saliency_combo, 0, 5)
-            self.ctrl_layout.addWidget(self.method_label, 1, 0)
-            self.ctrl_layout.addWidget(self.method_combo, 1, 1)
+            self.ctrl_layout.addWidget(self.subject_label, 1, 0)
+            self.ctrl_layout.addWidget(self.subject_combo, 1, 1)
+            self.ctrl_layout.addWidget(self.method_label, 1, 2)
+            self.ctrl_layout.addWidget(self.method_combo, 1, 3)
             self.ctrl_layout.setColumnStretch(7, 1)
             self._position_transform_controls(layout_mode)
             return
@@ -830,6 +859,8 @@ class VisualizationPanel(BasePanel):
         self.ctrl_layout.addWidget(self.run_combo, 0, 3)
         self.ctrl_layout.addWidget(self.saliency_view_label, 1, 0)
         self.ctrl_layout.addWidget(self.saliency_combo, 1, 1)
+        self.ctrl_layout.addWidget(self.subject_label, 1, 2)
+        self.ctrl_layout.addWidget(self.subject_combo, 1, 3)
         self.ctrl_layout.addWidget(self.method_label, 2, 0)
         self.ctrl_layout.addWidget(self.method_combo, 2, 1)
         self.ctrl_layout.setColumnStretch(5, 1)
@@ -849,12 +880,12 @@ class VisualizationPanel(BasePanel):
 
         if layout_mode == "wide":
             row = 0
-            normalize_column = 9
-            absolute_column = 10
+            normalize_column = 11
+            absolute_column = 12
         elif layout_mode == "medium":
             row = 1
-            normalize_column = 2
-            absolute_column = 3
+            normalize_column = 4
+            absolute_column = 5
         else:
             row = 2
             normalize_column = 2
@@ -1151,8 +1182,50 @@ class VisualizationPanel(BasePanel):
                     break
             self.run_combo.setCurrentIndex(selected_index)
         self.run_combo.blockSignals(False)
+        if preferred_run != self.run_combo.currentData():
+            self._reset_subject_choices()
         self._refresh_selection_actions()
         self.on_update()
+
+    def _reset_subject_choices(self) -> None:
+        with QSignalBlocker(self.subject_combo):
+            self.subject_combo.clear()
+            self.subject_combo.addItem("All subjects", None)
+            self.subject_combo.setEnabled(False)
+        for view in self._saliency_views():
+            self._cancel_native_render_binding(view)
+        self._invalidate_view_render_publications()
+        self.explanation_context.clear()
+
+    def _on_run_changed(self, _text: str) -> None:
+        self._reset_subject_choices()
+        self._refresh_selection_actions()
+        self.on_update()
+
+    def _on_subject_changed(self, _index: int = 0) -> None:
+        for view in self._saliency_views():
+            self._cancel_native_render_binding(view)
+        self._invalidate_view_render_publications()
+        self.explanation_context.clear()
+        self.on_update()
+
+    def _sync_subject_choices(self, publication: SaliencyRenderPublication) -> None:
+        """Present only subjects admitted by the exact detached render result."""
+        with QSignalBlocker(self.subject_combo):
+            self.subject_combo.clear()
+            self.subject_combo.addItem("All subjects", None)
+            for subject_id, name in publication.data.subject_choices:
+                self.subject_combo.addItem(name, subject_id)
+            self.subject_combo.setCurrentIndex(
+                max(
+                    0, self.subject_combo.findData(publication.data.selected_subject_id)
+                )
+            )
+            self.subject_combo.setEnabled(
+                self.subject_combo.count() > 1
+                and not self._saliency_command_busy
+                and not self._saliency_compute_in_progress
+            )
 
     def _refresh_selection_actions(self) -> None:
         """Keep Saliency settings bound to the exact selected result identity."""
@@ -1324,6 +1397,14 @@ class VisualizationPanel(BasePanel):
             run_label=self._selected_run_label(),
         )
         self.tabs.setToolTip(self._explanation_context_text)
+        task = self._current_saliency_render_task()
+        context_identity = (
+            task.request if task is not None else None,
+            self.tabs.currentIndex(),
+            self.saliency_combo.currentData(),
+        )
+        if self.explanation_context.property("renderIdentity") != context_identity:
+            self.explanation_context.clear()
 
     def _selected_dataset_label(self) -> str:
         """Return the dataset identity bound to the selected finished result."""
@@ -1528,6 +1609,7 @@ class VisualizationPanel(BasePanel):
             publication_generation=publication.generation,
             run=run_identity,
             method=method_name,
+            subject_id=self.subject_combo.currentData(),
             normalize=normalize,
             view=self._saliency_render_view(current_widget),
         )
@@ -1593,6 +1675,29 @@ class VisualizationPanel(BasePanel):
             )
             return
         self._clear_saliency_render_cache()
+        self._sync_subject_choices(render_publication)
+        self._publish_saliency_render_identity(current_widget, render_publication)
+        selected_values = render_publication.data.saliency_by_class.get(
+            selected_label_key
+        )
+        if (
+            render_publication.data.selected_subject_id is not None
+            and selected_label_key is not None
+            and (selected_values is None or not selected_values.shape[0])
+        ):
+            self._show_widget_message(
+                current_widget,
+                "No trials for this subject and class in this result. "
+                "Select another class.",
+            )
+            self._finish_render_operation(render_publication.operation_id, "completed")
+            self._set_saliency_render_status(current_widget, "completed")
+            if self._saliency_compute_awaits_current_render(
+                render_publication.generation
+            ):
+                self._release_saliency_compute_after_render()
+                self._hide_saliency_action_bar()
+            return
         if current_widget is self.tab_spectro:
             self.tab_spectro.update_plot(
                 render_publication,
@@ -1616,7 +1721,6 @@ class VisualizationPanel(BasePanel):
             self.tab_3d.update_plot(render_publication, absolute)
         else:
             return
-        self._publish_saliency_render_identity(current_widget, render_publication)
         self._bind_native_render_terminal(
             current_widget, render_publication, display_key=display_key
         )
@@ -1847,6 +1951,7 @@ class VisualizationPanel(BasePanel):
             publication_generation=publication.generation,
             run=run,
             method=self.method_combo.currentText(),
+            subject_id=self.subject_combo.currentData(),
             normalize=(
                 False if self.tabs.currentWidget() is self.tab_spectro else normalize
             ),
@@ -2037,6 +2142,7 @@ class VisualizationPanel(BasePanel):
             and typed_publication.generation == request.publication_generation
             and typed_publication.data.method == request.method
             and typed_publication.data.normalized == request.normalize
+            and typed_publication.data.selected_subject_id == request.subject_id
         )
 
     def _clear_saliency_render_cache(self) -> None:
@@ -2645,6 +2751,26 @@ class VisualizationPanel(BasePanel):
     ) -> None:
         """Publish only the immutable identity rendered by the visible view."""
         widget.setProperty("evaluationSplit", publication.data.source_split)
+        widget.setProperty("subjectId", publication.data.selected_subject_id)
+        class_key = self.saliency_combo.currentData()
+        trial_count = sum(
+            array.shape[0]
+            for key, array in publication.data.saliency_by_class.items()
+            if class_key is None or key == class_key
+        )
+        widget.setProperty("trialCount", trial_count)
+        subject_label = dict(publication.data.subject_choices).get(
+            publication.data.selected_subject_id, "All subjects"
+        )
+        split = publication.data.source_split.capitalize()
+        self.explanation_context.setProperty(
+            "renderIdentity", (publication.request, self.tabs.currentIndex(), class_key)
+        )
+        trial_label = "trial" if trial_count == 1 else "trials"
+        self.explanation_context.setText(
+            f"{subject_label} · {split} · {trial_count} {trial_label} · "
+            + explanation_provenance_text(self.tabs.currentIndex())
+        )
         widget.setProperty(
             "classLabels",
             [str(name) for _key, name in publication.data.class_map],
@@ -2684,7 +2810,9 @@ class VisualizationPanel(BasePanel):
             [str(payload["fingerprint"]) for payload in producer_payloads],
         )
         values = tuple(
-            np.asarray(array) for array in publication.data.saliency_by_class.values()
+            np.asarray(array)
+            for array in publication.data.saliency_by_class.values()
+            if array.size
         )
         sample_count = sum(int(array.size) for array in values)
         finite_count = sum(int(np.isfinite(array).sum()) for array in values)
@@ -2694,8 +2822,12 @@ class VisualizationPanel(BasePanel):
                 "count": sample_count,
                 "finite_count": finite_count,
                 "nonfinite_count": sample_count - finite_count,
-                "minimum": min(float(np.min(array)) for array in values),
-                "maximum": max(float(np.max(array)) for array in values),
+                "minimum": min(
+                    (float(np.min(array)) for array in values), default=None
+                ),
+                "maximum": max(
+                    (float(np.max(array)) for array in values), default=None
+                ),
             },
         )
 
@@ -3945,6 +4077,7 @@ class VisualizationPanel(BasePanel):
         self.run_combo.clear()
         self._runs_by_plan = {}
         self._cross_fold_choice_by_identity = {}
+        self._reset_subject_choices()
         self._sync_method_options({})
         self.plan_combo.blockSignals(False)
         self.run_combo.blockSignals(False)

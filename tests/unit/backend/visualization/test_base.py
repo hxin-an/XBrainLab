@@ -101,3 +101,15 @@ def test_iter_saliency_by_label_rejects_incomplete_class_coverage():
 def test_visualizer_rejects_method_not_in_publication():
     with pytest.raises(ValueError, match="contains Gradient, not VarGrad"):
         Visualizer(_render_data()).iter_saliency_by_label("VarGrad")
+
+
+def test_selected_subject_skips_empty_classes_without_renumbering():
+    data = replace(
+        _render_data(),
+        saliency_by_class={0: np.empty((0, 2, 4)), 1: np.ones((1, 2, 4))},
+        subject_choices=((10, "Alice"),),
+        selected_subject_id=10,
+    )
+    rows = Visualizer(data).iter_saliency_by_label("Gradient")
+    assert [(key, name) for key, name, _values in rows] == [(1, "right")]
+    np.testing.assert_array_equal(rows[0][2], np.ones((1, 2, 4)))
