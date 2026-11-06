@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import threading
 import time
 from collections.abc import Callable
@@ -11,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock, call
+from weakref import ref
 
 import mne
 import numpy as np
@@ -1596,6 +1598,77 @@ def test_confirm_import_waits_for_review_dialog_destruction_before_apply(
     assert outcome.status is InteractionStatus.ACCEPTED
     assert apply_started == []
     qtbot.waitUntil(lambda: apply_started == [True], timeout=1_500)
+
+
+@pytest.mark.parametrize("resume_step", ["", "Review and Import"])
+@pytest.mark.parametrize("accepted", [True, False])
+def test_review_continuation_survives_gc_before_deferred_delete(
+    qtbot, monkeypatch, allow_real_modals, resume_step, accepted
+) -> None:
+    """GC must not disconnect an accepted wizard's pending continuation."""
+    panel = QWidget()
+    qtbot.addWidget(panel)
+    handler = DatasetActionHandler(panel)
+    events: list[str] = []
+    dialogs: list[ref[QDialog]] = []
+
+    class _Dialog(QDialog):
+        def __init__(self, parent, **_kwargs) -> None:
+            super().__init__(parent)
+            # Real wizard widgets/slots form Python cycles too. Do not retain
+            # this wrapper in the test: that hid the production failure.
+            self._cycle = [self]
+            dialogs.append(ref(self))
+            self.destroyed.connect(lambda: events.append("destroyed"))
+            QTimer.singleShot(0, self.accept if accepted else self.reject)
+
+        @staticmethod
+        def get_result() -> dict[str, Any]:
+            return {
+                "confirmed": True,
+                "choices": {"class_map": {"1": "Target"}} if resume_step else {},
+                "resume_step": resume_step,
+            }
+
+    monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Dialog)
+
+    def _continued(kind: str) -> InteractionOutcome:
+        events.append(kind)
+        return InteractionOutcome.accepted("Scheduled.")
+
+    coordinator = handler._data_interpretation
+    monkeypatch.setattr(
+        coordinator,
+        "_apply_interpretation_async",
+        lambda *_args, **_kwargs: _continued("apply"),
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_repreview_interpretation_async",
+        lambda **_kwargs: _continued("repreview"),
+    )
+    outcome = coordinator._continue_data_interpretation_import(
+        source_path="/data",
+        source_hint="bids",
+        choices={},
+        label_sources=[],
+        review_state=_review_state(publication_generation=17),
+    )
+    gc.collect()
+    assert not {"apply", "repreview"}.intersection(events)
+    if accepted:
+        assert outcome.status is InteractionStatus.ACCEPTED
+        expected = ["destroyed", "repreview" if resume_step else "apply"]
+        qtbot.waitUntil(lambda: events == expected, timeout=1_000)
+        qtbot.wait(30)
+        assert events == expected
+    else:
+        assert outcome.status is InteractionStatus.CANCELLED
+        qtbot.wait(30)
+        assert not {"apply", "repreview"}.intersection(events)
+
+    gc.collect()
+    assert dialogs[0]() is None
 
 
 def test_confirm_import_revalidation_worker_failure_replaces_preparing_status(

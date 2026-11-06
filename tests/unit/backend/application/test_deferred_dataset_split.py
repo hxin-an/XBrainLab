@@ -338,6 +338,7 @@ def test_default_split_command_and_explicit_empty_payload_keep_distinct_contract
         assert saved.ok, saved.message
         assert saved.state.dataset.split_specification == {
             "train_type": "Full Data",
+            "seed": 42,
             "is_cross_validation": False,
             "val_splitters": [
                 {
@@ -464,7 +465,9 @@ def test_real_preview_receipt_round_trips_to_deferred_materialization(
     monkeypatch,
 ) -> None:
     service, _epoch = service_factory(_two_subject_epoch_data())
-    specification = _specification()
+    specification = DatasetSplitSpecification.from_payload(
+        {**_specification().to_payload(), "seed": 173}
+    )
     generation = service.get_view_publication().generation
     preview = service.get_dataset_split_preview(
         DatasetSplitPreviewRequest(
@@ -494,6 +497,8 @@ def test_real_preview_receipt_round_trips_to_deferred_materialization(
 
     trained = service.execute(TrainCommand(confirmed=True))
 
+    assert saved.state.dataset.split_specification["seed"] == 173
+    assert preview.receipt.summary_payload()["split_seed"] == 173
     assert saved.ok is True
     assert trained.ok is True, trained.diagnostics
     preview_counts = {
@@ -647,9 +652,15 @@ def test_real_cross_split_preview_save_and_preparation_preserve_reviewed_members
         assert not np.any(dataset.val_mask & dataset.test_mask)
         assert set(epoch_data.label[dataset.train_mask].tolist()) == {0, 1}
         values = getattr(epoch_data, protected_values)
-        test_values = set(values[dataset.test_mask].tolist())
-        assert not test_values & set(values[dataset.train_mask].tolist())
-        assert not test_values & set(values[dataset.val_mask].tolist())
+
+        def group_values(mask, values=values, epoch_data=epoch_data):
+            if protected_values == "session":
+                return set(zip(epoch_data.subject[mask], values[mask], strict=True))
+            return set(values[mask].tolist())
+
+        test_values = group_values(dataset.test_mask)
+        assert not test_values & group_values(dataset.train_mask)
+        assert not test_values & group_values(dataset.val_mask)
 
 
 def test_individual_subject_split_is_rejected_by_preview_without_publication(

@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Iterator, Mapping
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
+import pytest
 
 from XBrainLab.backend.application.owned_work import (
     OwnedOperationCancelledError,
+    OwnedOperationClaimError,
     OwnedWorkKind,
     OwnedWorkPhase,
     OwnedWorkRegistry,
@@ -324,3 +327,16 @@ def test_single_fold_class_copy_observes_cancel_after_array_copy() -> None:
     assert len(failures) == 1
     assert isinstance(failures[0], OwnedOperationCancelledError)
     assert registry.snapshot(scheduled.operation_id).phase is OwnedWorkPhase.CANCELLED
+
+
+def test_saliency_work_cannot_prepare_a_different_subject_than_admitted():
+    registry = OwnedWorkRegistry()
+    controller = SaliencyRenderWorkController(registry=registry, publish=_publication)
+    admitted = replace(_request(), subject_id=10)
+    scheduled = controller.begin(admitted)
+    with pytest.raises(OwnedOperationClaimError):
+        controller.prepare_variants(
+            scheduled.operation_id,
+            replace(admitted, subject_id=20),
+            include_normalized=False,
+        )

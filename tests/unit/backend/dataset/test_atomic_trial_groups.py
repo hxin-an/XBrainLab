@@ -282,15 +282,15 @@ def test_session_kfold_generates_exact_folds_for_full_and_individual_scopes(
 
     scope_count = 1 if training_type is TrainingType.FULL else 2
     assert len(datasets) == scope_count * fold_count
-    for scope in range(scope_count):
-        scope_datasets = (
+    for subject in range(2):
+        subject_datasets = (
             datasets
             if training_type is TrainingType.FULL
-            else datasets[scope * fold_count : (scope + 1) * fold_count]
+            else datasets[subject * fold_count : (subject + 1) * fold_count]
         )
         selected_sessions = [
-            set(epoch_data.session[dataset.test_mask].tolist())
-            for dataset in scope_datasets
+            set(epoch_data.session[dataset.test_mask & (epoch_data.subject == subject)])
+            for dataset in subject_datasets
         ]
         assert all(selected_sessions)
         assert not any(
@@ -348,7 +348,7 @@ def test_subject_kfold_generates_exact_folds_for_full_scope(fold_count: int) -> 
     assert np.array_equal(np.any(tests, axis=0), np.ones(7, dtype=bool))
 
 
-def test_generator_joint_high_trial_ratios_leave_a_nonempty_train_partition():
+def test_generator_joint_high_trial_ratios_reject_oversized_targets():
     epoch_data = _multi_subject_kfold_epochs()
     config = DataSplittingConfig(
         TrainingType.FULL,
@@ -357,12 +357,11 @@ def test_generator_joint_high_trial_ratios_leave_a_nonempty_train_partition():
         [DataSplitter(SplitByType.TRIAL, "0.8", SplitUnit.RATIO)],
     )
 
-    dataset = DatasetGenerator(epoch_data, config).generate()[0]
+    with pytest.raises(ValueError):
+        DatasetGenerator(epoch_data, config).generate()
 
-    assert dataset.get_train_len() > 0
 
-
-def test_joint_ratio_allocation_keeps_one_multilabel_group_for_train():
+def test_joint_ratio_allocation_rejects_oversized_targets_even_with_multilabel_train():
     epoch_data = _four_atomic_group_epochs([0, 1, 0, 1, 0, 1])
     epoch_data.trial_group = np.repeat(np.arange(3), 2)
     config = DataSplittingConfig(
@@ -372,15 +371,11 @@ def test_joint_ratio_allocation_keeps_one_multilabel_group_for_train():
         [DataSplitter(SplitByType.TRIAL, "0.8", SplitUnit.RATIO)],
     )
 
-    dataset = DatasetGenerator(epoch_data, config).generate()[0]
-
-    assert set(epoch_data.label[dataset.train_mask].tolist()) == {0, 1}
-    assert all(
-        mask.any() for mask in (dataset.train_mask, dataset.val_mask, dataset.test_mask)
-    )
+    with pytest.raises(ValueError):
+        DatasetGenerator(epoch_data, config).generate()
 
 
-def test_generator_joint_high_ratios_minimize_group_target_deviation():
+def test_generator_joint_high_ratios_reject_infeasible_fixed_targets():
     epoch_data = Epochs(
         [
             _recording_epochs(
@@ -396,11 +391,8 @@ def test_generator_joint_high_ratios_minimize_group_target_deviation():
         [DataSplitter(ValSplitByType.TRIAL, "0.8", SplitUnit.RATIO)],
         [DataSplitter(SplitByType.TRIAL, "0.8", SplitUnit.RATIO)],
     )
-    dataset = DatasetGenerator(epoch_data, config).generate()[0]
-    groups = epoch_data.trial_group
-    assert len(np.unique(groups[dataset.test_mask])) == 3
-    assert len(np.unique(groups[dataset.val_mask])) == 1
-    assert len(np.unique(groups[dataset.train_mask])) == 1
+    with pytest.raises(ValueError):
+        DatasetGenerator(epoch_data, config).generate()
 
 
 def test_generator_split_masks_and_materialization_digest_are_deterministic():
@@ -510,153 +502,22 @@ def test_generator_mixed_units_keep_required_partitions_nonempty(test_type, val_
         [DataSplitter(val_type, "0.2", SplitUnit.RATIO)],
         [DataSplitter(test_type, "0.2", SplitUnit.RATIO)],
     )
+    if test_type is SplitByType.TRIAL:
+        with pytest.raises(ValueError, match=r"Validation.*Test"):
+            DatasetGenerator(epoch_data, config).generate()
+        return
     dataset = DatasetGenerator(epoch_data, config).generate()[0]
-    assert dataset.get_train_len() > 0
-    assert dataset.get_val_len() > 0
-    assert dataset.get_test_len() > 0
-    if test_type is SplitByType.SESSION:
-        test_sessions = set(epoch_data.session[dataset.test_mask].tolist())
-        assert not test_sessions & set(epoch_data.session[dataset.train_mask].tolist())
-        assert not test_sessions & set(epoch_data.session[dataset.val_mask].tolist())
-        val_groups = set(epoch_data.trial_group[dataset.val_mask].tolist())
-        assert not val_groups & set(epoch_data.trial_group[dataset.train_mask].tolist())
-    else:
-        test_groups = set(epoch_data.trial_group[dataset.test_mask].tolist())
-        assert not test_groups & set(
-            epoch_data.trial_group[dataset.train_mask].tolist()
-        )
-        assert not test_groups & set(epoch_data.trial_group[dataset.val_mask].tolist())
-        val_sessions = set(epoch_data.session[dataset.val_mask].tolist())
-        assert not val_sessions & set(epoch_data.session[dataset.train_mask].tolist())
-
-
-def test_mixed_trial_test_and_session_validation_keeps_non_test_session_rows_in_validation():
-    """A test trial must not make its whole session unavailable to validation."""
-    epoch_data = _multi_subject_kfold_epochs()
-    epoch_data.subject[:] = 0
-    epoch_data.subject_map = {0: "S01"}
-    epoch_data.session = np.repeat(np.arange(8), 2)
-    epoch_data.session[2:4] = 2
-    epoch_data.session_map = {index: f"ses-{index}" for index in range(8)}
-    config = DataSplittingConfig(
-        TrainingType.FULL,
-        False,
-        [DataSplitter(ValSplitByType.SESSION, "2", SplitUnit.MANUAL)],
-        [DataSplitter(SplitByType.TRIAL, "2", SplitUnit.NUMBER)],
+    for subject in np.unique(epoch_data.subject):
+        scope = epoch_data.subject == subject
+        test_sessions = set(epoch_data.session[dataset.test_mask & scope])
+        assert test_sessions
+        assert not test_sessions & set(epoch_data.session[dataset.train_mask & scope])
+        assert not test_sessions & set(epoch_data.session[dataset.val_mask & scope])
+        assert (dataset.val_mask & scope).any()
+        assert (dataset.train_mask & scope).any()
+    _assert_groups_are_atomic(
+        epoch_data, [dataset.train_mask, dataset.val_mask, dataset.test_mask]
     )
-
-    dataset = DatasetGenerator(epoch_data, config).generate()[0]
-
-    test_sessions = set(epoch_data.session[dataset.test_mask].tolist())
-    validation_sessions = set(epoch_data.session[dataset.val_mask].tolist())
-    train_sessions = set(epoch_data.session[dataset.train_mask].tolist())
-    assert test_sessions & validation_sessions
-    assert not validation_sessions & train_sessions
-
-
-def _mixed_manual_residual_epochs() -> Epochs:
-    """Return real epoch metadata with valid residual mixed-unit partitions."""
-    epoch_data = Epochs([])
-    epoch_data.data = np.zeros((6, 1, 8), dtype=np.float32)
-    epoch_data.subject = np.asarray([0, 0, 0, 1, 1, 1])
-    epoch_data.session = np.asarray([0, 1, 1, 0, 1, 1])
-    epoch_data.label = np.asarray([0, 1, 0, 0, 1, 0])
-    epoch_data.idx = np.arange(6)
-    epoch_data.trial_group = np.arange(6)
-    epoch_data.subject_map = {0: "S01", 1: "S02"}
-    epoch_data.session_map = {0: "ses-0", 1: "ses-1"}
-    epoch_data.label_map = {0: "class-a", 1: "class-b"}
-    return epoch_data
-
-
-@pytest.mark.parametrize(
-    ("test_type", "validation_type"),
-    [
-        (SplitByType.SESSION, ValSplitByType.SUBJECT),
-        (SplitByType.SUBJECT, ValSplitByType.SESSION),
-        (SplitByType.TRIAL, ValSplitByType.SUBJECT),
-    ],
-)
-def test_mixed_manual_units_keep_the_test_selection_and_allocate_residual_validation(
-    test_type, validation_type
-):
-    """Test isolation wins while the non-test part of a manual val unit remains valid."""
-    epoch_data = _mixed_manual_residual_epochs()
-    dataset = DatasetGenerator(
-        epoch_data,
-        DataSplittingConfig(
-            TrainingType.FULL,
-            False,
-            [DataSplitter(validation_type, "0", SplitUnit.MANUAL)],
-            [DataSplitter(test_type, "0", SplitUnit.MANUAL)],
-        ),
-    ).generate()[0]
-
-    test_values = {
-        SplitByType.SESSION: epoch_data.session,
-        SplitByType.SUBJECT: epoch_data.subject,
-        SplitByType.TRIAL: epoch_data.trial_group,
-    }[test_type]
-    validation_values = {
-        ValSplitByType.SESSION: epoch_data.session,
-        ValSplitByType.SUBJECT: epoch_data.subject,
-    }[validation_type]
-    assert set(test_values[dataset.test_mask].tolist()) == {0}
-    assert not set(test_values[dataset.test_mask].tolist()) & set(
-        test_values[dataset.val_mask].tolist()
-    )
-    assert not set(test_values[dataset.test_mask].tolist()) & set(
-        test_values[dataset.train_mask].tolist()
-    )
-    assert dataset.val_mask.any()
-    assert set(validation_values[dataset.val_mask].tolist()) == {0}
-    assert not set(validation_values[dataset.val_mask].tolist()) & set(
-        validation_values[dataset.train_mask].tolist()
-    )
-    assert set(epoch_data.label[dataset.train_mask].tolist()) == {0, 1}
-
-
-def test_manual_trial_validation_fails_closed_when_any_requested_group_overlaps_test():
-    epoch_data = _multi_subject_kfold_epochs()
-    epoch_data.subject[:] = 0
-    epoch_data.subject_map = {0: "S01"}
-    config = DataSplittingConfig(
-        TrainingType.FULL,
-        False,
-        [DataSplitter(ValSplitByType.TRIAL, "1 3", SplitUnit.MANUAL)],
-        [DataSplitter(SplitByType.TRIAL, "0", SplitUnit.MANUAL)],
-    )
-
-    with pytest.raises(ValueError, match="manual split overlaps test isolation"):
-        DatasetGenerator(epoch_data, config).generate()
-
-
-def test_mixed_manual_validation_rejects_an_empty_residual_after_test_priority():
-    epoch_data = _mixed_manual_residual_epochs()
-    epoch_data.subject = np.asarray([0, 1, 1, 1, 1, 1])
-    epoch_data.subject_map = {0: "S01", 1: "S02"}
-    config = DataSplittingConfig(
-        TrainingType.FULL,
-        False,
-        [DataSplitter(ValSplitByType.SUBJECT, "0", SplitUnit.MANUAL)],
-        [DataSplitter(SplitByType.TRIAL, "0", SplitUnit.MANUAL)],
-    )
-
-    with pytest.raises(ValueError, match="empty after test isolation"):
-        DatasetGenerator(epoch_data, config).generate()
-
-
-def test_mixed_manual_validation_rejects_each_requested_group_lost_to_test():
-    epoch_data = _mixed_manual_residual_epochs()
-    config = DataSplittingConfig(
-        TrainingType.FULL,
-        False,
-        [DataSplitter(ValSplitByType.TRIAL, "0 1", SplitUnit.MANUAL)],
-        [DataSplitter(SplitByType.SESSION, "0", SplitUnit.MANUAL)],
-    )
-
-    with pytest.raises(ValueError, match="selection has no residual"):
-        DatasetGenerator(epoch_data, config).generate()
 
 
 def _four_atomic_group_epochs(labels: list[int]) -> Epochs:
@@ -698,7 +559,7 @@ def _grouped_epochs(
     "test_value,test_unit",
     [("1", SplitUnit.NUMBER), ("0.34", SplitUnit.RATIO)],
 )
-def test_mixed_non_cv_trial_test_and_session_validation_retry_jointly(
+def test_mixed_non_cv_trial_test_and_session_validation_is_rejected(
     test_value, test_unit
 ):
     # Greedy test group 0 leaves only session 1 for validation and no train.
@@ -715,33 +576,8 @@ def test_mixed_non_cv_trial_test_and_session_validation_retry_jointly(
         [DataSplitter(SplitByType.TRIAL, test_value, test_unit)],
     )
 
-    dataset = DatasetGenerator(epoch_data, config).generate()[0]
-
-    assert set(epoch_data.trial_group[dataset.test_mask]) == {1}
-    assert set(epoch_data.session[dataset.val_mask]) == {0}
-    assert set(epoch_data.label[dataset.train_mask]) == {0, 1}
-
-
-def test_nonmanual_test_retries_when_manual_validation_conflicts_with_first_choice():
-    # The manual validation epoch is in session 0.  Test session 0 conflicts,
-    # while test session 1 leaves the requested validation group and full train.
-    epoch_data = _grouped_epochs(
-        labels=[0, 1, 0, 1, 0, 0, 1],
-        trial_groups=[0, 1, 2, 2, 3, 3, 3],
-        sessions=[0, 0, 0, 0, 1, 1, 1],
-    )
-    config = DataSplittingConfig(
-        TrainingType.FULL,
-        False,
-        [DataSplitter(ValSplitByType.TRIAL, "0", SplitUnit.MANUAL)],
-        [DataSplitter(SplitByType.SESSION, "1", SplitUnit.NUMBER)],
-    )
-
-    dataset = DatasetGenerator(epoch_data, config).generate()[0]
-
-    assert set(epoch_data.session[dataset.test_mask]) == {1}
-    assert set(epoch_data.trial_group[dataset.val_mask]) == {0}
-    assert set(epoch_data.label[dataset.train_mask]) == {0, 1}
+    with pytest.raises(ValueError):
+        DatasetGenerator(epoch_data, config).generate()
 
 
 def test_class_aware_kfold_rebalances_a_layout_that_round_robin_would_break():
@@ -792,7 +628,7 @@ def test_class_aware_kfold_blocks_when_no_atomic_assignment_can_keep_train_class
         DatasetGenerator(epoch_data, config).generate()
 
 
-def test_cv_ratio_validation_uses_nearest_feasible_original_scope_target():
+def test_cv_ratio_validation_rejects_infeasible_original_scope_target():
     epoch_data = _four_atomic_group_epochs([0, 1] * 4)
     epoch_data.trial_group = np.repeat(np.arange(4), 2)
     config = DataSplittingConfig(
@@ -802,13 +638,8 @@ def test_cv_ratio_validation_uses_nearest_feasible_original_scope_target():
         [DataSplitter(SplitByType.TRIAL, "2", SplitUnit.KFOLD)],
     )
 
-    datasets = DatasetGenerator(epoch_data, config).generate()
-
-    assert len(datasets) == 2
-    assert all(item.val_mask.any() and item.train_mask.any() for item in datasets)
-    assert all(
-        set(epoch_data.label[item.train_mask].tolist()) == {0, 1} for item in datasets
-    )
+    with pytest.raises(ValueError):
+        DatasetGenerator(epoch_data, config).generate()
 
 
 def test_cv_kfold_swaps_fixed_capacity_test_groups_for_validation_feasibility():
@@ -920,7 +751,7 @@ def test_trial_test_and_validation_ratios_use_the_same_original_group_scope():
     )
 
 
-def test_non_cv_ratio_without_validation_uses_nearest_train_covering_count():
+def test_non_cv_ratio_without_validation_rejects_target_that_removes_train_classes():
     epoch_data = Epochs(
         [
             _recording_epochs(
@@ -937,102 +768,7 @@ def test_non_cv_ratio_without_validation_uses_nearest_train_covering_count():
         [DataSplitter(SplitByType.TRIAL, "0.75", SplitUnit.RATIO)],
     )
 
-    dataset = DatasetGenerator(epoch_data, config).generate()[0]
-
-    assert len(set(epoch_data.trial_group[dataset.test_mask])) == 2
-    assert set(epoch_data.label[dataset.train_mask].tolist()) == set(
-        epoch_data.label.tolist()
-    )
-    _assert_groups_are_atomic(
-        epoch_data,
-        [dataset.train_mask, dataset.val_mask, dataset.test_mask],
-    )
-
-
-def test_generator_manual_trial_index_materializes_the_whole_atomic_group():
-    epoch_data = _atomic_epochs()
-    config = DataSplittingConfig(
-        TrainingType.FULL,
-        False,
-        [],
-        [DataSplitter(SplitByType.TRIAL, "1", SplitUnit.MANUAL)],
-    )
-
-    dataset = DatasetGenerator(epoch_data, config).generate()[0]
-
-    assert np.flatnonzero(dataset.test_mask).tolist() == [0, 1, 2]
-    assert (
-        set(epoch_data.label[dataset.train_mask].tolist())
-        == set(epoch_data.label.tolist())
-        == {0, 1}
-    )
-    _assert_groups_are_atomic(
-        epoch_data,
-        [dataset.train_mask, dataset.val_mask, dataset.test_mask],
-    )
-    assert audit_dataset_splits([dataset], protocol="trial-wise").ok is True
-
-
-@pytest.mark.parametrize(
-    ("manual_value", "error"),
-    [
-        ("0 0", "duplicate selections"),
-        ("0 1", "same atomic group"),
-    ],
-)
-def test_generator_rejects_duplicate_manual_trial_selections(
-    manual_value: str, error: str
-) -> None:
-    epoch_data = _atomic_epochs()
-    config = DataSplittingConfig(
-        TrainingType.FULL,
-        False,
-        [],
-        [DataSplitter(SplitByType.TRIAL, manual_value, SplitUnit.MANUAL)],
-    )
-
-    with pytest.raises(ValueError, match=error):
-        DatasetGenerator(epoch_data, config).generate()
-
-
-def test_generator_rejects_manual_trial_selection_outside_individual_scope():
-    epoch_data = _multi_subject_kfold_epochs()
-    config = DataSplittingConfig(
-        TrainingType.IND,
-        False,
-        [],
-        [DataSplitter(SplitByType.TRIAL, "8", SplitUnit.MANUAL)],
-    )
-
-    with pytest.raises(ValueError, match="outside scope"):
-        DatasetGenerator(epoch_data, config).generate()
-
-
-@pytest.mark.parametrize(
-    ("split_type", "manual_value"),
-    [
-        (SplitByType.SESSION, "1"),
-        (SplitByType.SUBJECT, "99"),
-    ],
-)
-def test_generator_rejects_manual_nontrial_selection_outside_scope(
-    split_type: SplitByType, manual_value: str
-) -> None:
-    epoch_data = _multi_subject_kfold_epochs()
-    if split_type is SplitByType.SESSION:
-        epoch_data.session = np.repeat([0, 1], epoch_data.get_data_length() // 2)
-        epoch_data.session_map = {0: "ses-0", 1: "ses-1"}
-        training_type = TrainingType.IND
-    else:
-        training_type = TrainingType.FULL
-    config = DataSplittingConfig(
-        training_type,
-        False,
-        [],
-        [DataSplitter(split_type, manual_value, SplitUnit.MANUAL)],
-    )
-
-    with pytest.raises(ValueError, match="outside scope"):
+    with pytest.raises(ValueError):
         DatasetGenerator(epoch_data, config).generate()
 
 
@@ -1052,7 +788,11 @@ def test_cv_validation_number_selects_exactly_one_unit_group_per_fold(
         TrainingType.FULL,
         True,
         [DataSplitter(validation_type, "1", SplitUnit.NUMBER)],
-        [DataSplitter(SplitByType.TRIAL, str(fold_count), SplitUnit.KFOLD)],
+        [
+            DataSplitter(
+                SplitByType(validation_type.value), str(fold_count), SplitUnit.KFOLD
+            )
+        ],
     )
 
     datasets = DatasetGenerator(epoch_data, config).generate()
@@ -1102,28 +842,8 @@ def _cv_subject_validation_epochs(session_count: int) -> Epochs:
     return epoch_data
 
 
-def _assert_cv_subject_validation_contract(
-    epoch_data: Epochs, datasets: list[Dataset], test_values: np.ndarray
-) -> None:
-    test_masks = np.asarray([dataset.test_mask for dataset in datasets], dtype=int)
-    assert not np.any(test_masks.sum(axis=0) > 1)
-    assert np.array_equal(
-        test_masks.any(axis=0),
-        np.ones(epoch_data.get_data_length(), dtype=bool),
-    )
-    assert set().union(
-        *(set(test_values[dataset.test_mask].tolist()) for dataset in datasets)
-    ) == set(test_values.tolist())
-    for dataset in datasets:
-        validation_subjects = set(epoch_data.subject[dataset.val_mask].tolist())
-        train_subjects = set(epoch_data.subject[dataset.train_mask].tolist())
-        assert len(validation_subjects) == 1
-        assert not validation_subjects & train_subjects
-        assert set(epoch_data.label[dataset.train_mask].tolist()) == {0, 1}
-
-
 @pytest.mark.parametrize("fold_count", [2, 3])
-def test_cv_trial_kfold_with_number_subject_validation_is_exact_and_isolated(
+def test_cv_trial_kfold_with_number_subject_validation_is_rejected(
     fold_count: int,
 ) -> None:
     epoch_data = _cv_subject_validation_epochs(session_count=3)
@@ -1134,18 +854,12 @@ def test_cv_trial_kfold_with_number_subject_validation_is_exact_and_isolated(
         [DataSplitter(SplitByType.TRIAL, str(fold_count), SplitUnit.KFOLD)],
     )
 
-    datasets = DatasetGenerator(epoch_data, config).generate()
-
-    assert len(datasets) == fold_count
-    _assert_cv_subject_validation_contract(
-        epoch_data,
-        datasets,
-        epoch_data.trial_group,
-    )
+    with pytest.raises(ValueError):
+        DatasetGenerator(epoch_data, config).generate()
 
 
 @pytest.mark.parametrize("fold_count", [2, 3])
-def test_cv_session_kfold_with_number_subject_validation_uses_mixed_isolation(
+def test_cv_session_kfold_with_number_subject_validation_is_rejected(
     fold_count: int,
 ) -> None:
     epoch_data = _cv_subject_validation_epochs(session_count=3)
@@ -1156,18 +870,14 @@ def test_cv_session_kfold_with_number_subject_validation_uses_mixed_isolation(
         [DataSplitter(SplitByType.SESSION, str(fold_count), SplitUnit.KFOLD)],
     )
 
-    datasets = DatasetGenerator(epoch_data, config).generate()
-
-    assert len(datasets) == fold_count
-    _assert_cv_subject_validation_contract(
-        epoch_data,
-        datasets,
-        epoch_data.session,
-    )
+    with pytest.raises(ValueError):
+        DatasetGenerator(epoch_data, config).generate()
 
 
 def test_dataset_generator_keeps_atomic_groups_across_kfold_test_val_and_train():
     epoch_data = _atomic_epochs()
+    epoch_data.subject[:] = 0
+    epoch_data.subject_map = {0: "S01"}
     config = DataSplittingConfig(
         TrainingType.FULL,
         True,

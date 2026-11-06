@@ -488,7 +488,7 @@ def test_audit_dataset_splits_detects_session_wise_leakage():
     assert any("session groups overlap" in issue.message for issue in result.issues)
 
 
-def test_audit_dataset_splits_treats_same_named_session_as_global_across_subjects():
+def test_session_audit_distinguishes_same_named_sessions_of_different_subjects():
     dataset = _dataset(
         [True, False, False, False, False, False],
         [False, False, False, False, False, False],
@@ -497,7 +497,7 @@ def test_audit_dataset_splits_treats_same_named_session_as_global_across_subject
 
     result = audit_dataset_splits([dataset], protocol="session-wise")
 
-    assert any("session groups overlap" in issue.message for issue in result.issues)
+    assert not any("session groups overlap" in issue.message for issue in result.issues)
 
 
 def test_audit_applies_mixed_protocols_to_their_respective_partition_pairs():

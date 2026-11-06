@@ -212,6 +212,7 @@ class DataInterpretationActionCoordinator:
             loading_dialog_class or _default_loading_dialog_class
         )
         self._loading_session: _LoadingSession | None = None
+        self._closing_review_dialogs: set[QObject] = set()
         self._operation_presenter: OwnedOperationPresenter | None = None
         self._busy_control_states: list[tuple[Any, bool]] = []
         self._is_busy = False
@@ -1007,6 +1008,7 @@ class DataInterpretationActionCoordinator:
 
         def _review_dialog_destroyed(*_args: object) -> None:
             nonlocal continuation_scheduled
+            self._closing_review_dialogs.discard(dialog)
             if continuation_scheduled:
                 return
             continuation_scheduled = True
@@ -1019,10 +1021,15 @@ class DataInterpretationActionCoordinator:
                 if continuation is not None:
                     continuation.fail(message)
 
+        # Qt parenting retains the C++ widget, but cyclic GC can collect its
+        # Python wrapper and disconnect Python slots before DeferredDelete.
+        # Keep the wrapper rooted until its destruction delivers the handoff.
+        self._closing_review_dialogs.add(dialog)
         try:
             dialog.destroyed.connect(_review_dialog_destroyed)
             dialog.deleteLater()
         except Exception:
+            self._closing_review_dialogs.discard(dialog)
             logger.exception("Could not close the accepted dataset review")
             message = "The accepted dataset review could not be closed safely."
             if continuation is not None:

@@ -72,6 +72,7 @@ class TestDataSplittingPreviewDialogDeep:
             )
 
             config = MagicMock()
+            config.seed = 42
             config.train_type = TrainingType.FULL
             config.is_cross_validation = False
             config.get_splitter_option.return_value = ([], [])
@@ -102,6 +103,7 @@ class TestDataSplittingPreviewDialogDeep:
         )
 
         assert dlg.get_result() == {
+            "seed": 42,
             "train_type": "Full Data",
             "is_cross_validation": False,
             "val_splitters": [],
@@ -134,6 +136,7 @@ class TestDataSplittingPreviewDialogSplitters:
             ]
 
             config = MagicMock()
+            config.seed = 42
             config.train_type = TrainingType.FULL
             config.is_cross_validation = False
             config.get_splitter_option.return_value = (
@@ -225,6 +228,7 @@ class TestDataSplittingPreviewDialogSplitters:
             ]
 
             config = MagicMock()
+            config.seed = 42
             config.train_type = TrainingType.FULL
             config.is_cross_validation = True
             config.get_splitter_option.return_value = (

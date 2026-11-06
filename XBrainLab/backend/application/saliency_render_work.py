@@ -31,6 +31,7 @@ def _request_identity(request: SaliencyRenderRequest) -> str:
         "method": request.method,
         "normalize": request.normalize,
         "view": request.view,
+        "subject_id": request.subject_id,
     }
     digest = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()

@@ -2173,8 +2173,31 @@ def test_split_data_passes_typed_detached_binding_to_dialog(
                 }
             ],
         },
+        {
+            "train_type": "Full Data",
+            "is_cross_validation": False,
+            "val_splitters": [],
+            "test_splitters": [
+                {"split_type": "By Trial", "split_unit": "Manual", "value": "0"}
+            ],
+        },
+        {
+            "train_type": "Full Data",
+            "is_cross_validation": False,
+            "val_splitters": [
+                {"split_type": "By Subject", "split_unit": "Ratio", "value": "0.2"}
+            ],
+            "test_splitters": [
+                {"split_type": "By Trial", "split_unit": "Ratio", "value": "0.2"}
+            ],
+        },
     ],
-    ids=("retired-strategy", "multiple-validation-rules"),
+    ids=(
+        "retired-strategy",
+        "multiple-validation-rules",
+        "removed-manual",
+        "coarser-validation",
+    ),
 )
 def test_split_data_warns_and_allows_reconfigure_for_invalid_saved_specification(
     sidebar,

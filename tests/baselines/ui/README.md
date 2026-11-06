@@ -17,3 +17,7 @@ capture command never updates this directory; reference changes are an explicit 
 The approved set covers the main shell, five workflow panels, the Assistant open-shell state,
 and the Filter dialog's complementary Band-pass/Notch On/Off states.
 Updates are intentional review decisions, never copies from a mutable `latest` artifact.
+
+The Visualization reference includes the approved Subject selector before Saliency, with the
+empty-result controls disabled until results are available. Its Linux frame was reviewed alongside
+the accepted Windows layout; other panel references are unchanged.

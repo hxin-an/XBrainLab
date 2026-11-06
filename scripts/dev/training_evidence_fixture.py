@@ -18,7 +18,6 @@ from XBrainLab.backend.application import (
     get_application_service,
 )
 from XBrainLab.backend.application.dataset_split_preview import (
-    DatasetSplitChoice,
     DatasetSplitContext,
     DatasetSplitPreviewPublication,
     DatasetSplitPreviewRequest,
@@ -84,11 +83,6 @@ def data_split_capture_context() -> DatasetSplitContext:
         session_count=1,
         label_count=2,
         trial_count=120,
-        subject_choices=(
-            DatasetSplitChoice(value="S01", label="S01"),
-            DatasetSplitChoice(value="S02", label="S02"),
-        ),
-        session_choices=(DatasetSplitChoice(value="session", label="session"),),
     )
 
 
@@ -97,7 +91,8 @@ def data_split_capture_provider(
 ) -> DatasetSplitPreviewPublication:
     """Render representative rows consistent with the selected layout mode."""
     fold_count = 5 if request.specification.is_cross_validation else 1
-    validation_count = 20 if request.specification.val_splitters else 0
+    # The displayed 20% validation ratio uses the original 120-trial scope.
+    validation_count = 24 if request.specification.val_splitters else 0
     return DatasetSplitPreviewPublication(
         request=request,
         generation=request.publication_generation,

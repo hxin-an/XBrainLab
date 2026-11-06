@@ -790,6 +790,8 @@ def test_real_panel_close_ignores_global_pool_saturation_before_submission(
 def test_tab_switch_invalidates_previous_saliency_view(visualization_panel):
     panel = visualization_panel
     previous = cast(Any, panel.tab_map)
+    # Initialization already invalidates the empty Subject selection.
+    previous.invalidate_render_publication.reset_mock()
 
     with patch.object(panel, "on_update"):
         panel.tabs.setCurrentIndex(1)
@@ -1943,6 +1945,9 @@ class TestRefreshCombos:
         accepted = _publish_panel_state(panel, result)
         rejected = replace(accepted, verified=verified, stale=stale)
         assert rejected.usable is False
+        # Count invalidation for rejection, separately from initial/run setup.
+        for view in (panel.tab_map, panel.tab_spectro, panel.tab_topo, panel.tab_3d):
+            cast(Any, view).invalidate_render_publication.reset_mock()
 
         assert panel._accept_application_publication(rejected) is False
         with patch.object(panel, "on_update"):

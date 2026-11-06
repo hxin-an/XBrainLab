@@ -196,7 +196,7 @@ def test_split_context_exposes_backend_owned_strategy_availability() -> None:
         "By Trial",
         "By Session",
     )
-    assert context.non_cv_split_units == ("Ratio", "Number", "Manual")
+    assert context.non_cv_split_units == ("Ratio", "Number")
     assert context.cv_test_split_units == ("K Fold",)
     assert context.cv_validation_split_units == ("Ratio", "Number")
     assert context.individual_subject_unavailable_reason

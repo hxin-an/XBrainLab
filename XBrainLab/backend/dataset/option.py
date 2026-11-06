@@ -8,7 +8,6 @@ class SplitUnit(Enum):
 
     RATIO = "Ratio"
     NUMBER = "Number"
-    MANUAL = "Manual"
     KFOLD = "K Fold"
 
 
@@ -34,3 +33,11 @@ class ValSplitByType(Enum):
     SESSION = "By Session"
     TRIAL = "By Trial"
     SUBJECT = "By Subject"
+
+
+# Validation may only refine the isolation already established by Test.
+VALIDATION_SPLIT_TYPES = {
+    "By Trial": ("By Trial",),
+    "By Session": ("By Trial", "By Session"),
+    "By Subject": ("By Trial", "By Session", "By Subject"),
+}

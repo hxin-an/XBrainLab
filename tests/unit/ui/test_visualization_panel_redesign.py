@@ -197,7 +197,7 @@ def test_visualization_controls_keep_saliency_before_method_and_transforms(
     qtbot,
     layout_mode,
 ) -> None:
-    """Visible controls read Fold, Run, Saliency, Method, Normalize, Absolute."""
+    """Visible controls read Fold, Run, Subject, Saliency, Method, transforms."""
     panel = _make_panel(qtbot)
     panel._apply_visualization_control_layout(layout_mode)
 
@@ -207,6 +207,8 @@ def test_visualization_controls_keep_saliency_before_method_and_transforms(
         panel.plan_combo,
         panel.run_label,
         panel.run_combo,
+        panel.subject_label,
+        panel.subject_combo,
         panel.saliency_view_label,
         panel.saliency_combo,
         panel.method_label,
@@ -943,10 +945,11 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     assert panel.sidebar.btn_saliency.text() == "Saliency Settings"
 
 
-def test_visualization_panel_keeps_aggregation_in_tooltip_without_extra_chrome(qtbot):
+def test_visualization_panel_keeps_aggregation_tooltip_without_extra_row(qtbot):
     panel = _make_panel(qtbot)
 
-    assert not hasattr(panel, "explanation_context")
+    layout = panel.ctrl_bar.parentWidget().layout()
+    assert layout.indexOf(panel.tabs) == layout.indexOf(panel.saliency_action_bar) + 1
     assert not hasattr(panel, "explanation_info_button")
     assert not hasattr(panel, "explanation_provenance_label")
     assert panel.tabs.toolTip() == "True class · Mean over EEG epochs"
@@ -1241,7 +1244,7 @@ def test_visualization_controls_stay_in_a_compact_narrow_grid(qtbot):
     assert isinstance(layout, QGridLayout)
     plan_item = layout.itemAtPosition(0, 1)
     run_item = layout.itemAtPosition(0, 3)
-    saliency_item = layout.itemAtPosition(1, 1)
+    saliency_item = layout.itemAtPosition(1, 3)
     method_item = layout.itemAtPosition(2, 1)
     absolute_item = layout.itemAtPosition(2, 3)
     normalize_item = layout.itemAtPosition(2, 2)
@@ -1359,7 +1362,7 @@ def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
     assert panel.abs_check.isChecked()
     assert not panel.normalize_check.isHidden()
     assert layout.indexOf(panel.abs_check) == -1
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 9)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 11)
     assert panel.normalize_check.y() == transform_row_y
     assert control_group.height() == control_height
     assert panel.plan_combo.y() == selector_rows["plan"]
@@ -1372,8 +1375,8 @@ def test_visualization_controls_use_one_row_when_panel_is_wide(qtbot):
 
     assert not panel.abs_check.isHidden()
     assert panel.abs_check.isChecked()
-    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (0, 10)
-    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 9)
+    assert layout.getItemPosition(layout.indexOf(panel.abs_check))[:2] == (0, 12)
+    assert layout.getItemPosition(layout.indexOf(panel.normalize_check))[:2] == (0, 11)
     assert control_group.height() == control_height
     assert panel.plan_combo.y() == selector_rows["plan"]
     assert panel.run_combo.y() == selector_rows["run"]
@@ -4836,3 +4839,344 @@ def test_saliency_render_errors_follow_current_lineage_and_release_busy(
         assert widget.property("renderStatus") == "failed"
         widget.show_error.assert_called_once()
         assert terminals[-1][1] == "failed"
+
+
+@pytest.mark.parametrize("width", (800, 1200, 1800))
+def test_subject_selector_is_reachable_and_dark_at_all_widths(qtbot, width):
+    panel = _make_panel(qtbot)
+    panel.resize(width, 800)
+    panel.show()
+    qtbot.waitExposed(panel)
+    assert panel.subject_combo.currentText() == "All subjects"
+    assert panel.subject_combo.currentData() is None
+    assert not panel.subject_combo.isEnabled()
+    controls = (
+        panel.plan_label,
+        panel.plan_combo,
+        panel.run_label,
+        panel.run_combo,
+        panel.saliency_view_label,
+        panel.saliency_combo,
+        panel.subject_label,
+        panel.subject_combo,
+        panel.method_label,
+        panel.method_combo,
+        panel.normalize_check,
+        panel.abs_check,
+    )
+    for index, control in enumerate(controls):
+        assert panel.ctrl_bar.rect().contains(control.geometry())
+        for other in controls[index + 1 :]:
+            assert not control.geometry().intersects(other.geometry())
+    assert "chevron-down.svg" in panel.subject_combo.styleSheet()
+    from XBrainLab.ui.styles.theme import Theme
+
+    assert Theme.BACKGROUND_DARK in panel.subject_combo.view().window().styleSheet()
+
+
+@pytest.fixture
+def subject_panel(qtbot, monkeypatch):
+    panel = _make_panel(qtbot)
+    coverage = _complete_coverage("Gradient", "left", "right")
+    coverage = replace(
+        coverage,
+        classes=[
+            replace(item, store_key=item.class_index) for item in coverage.classes
+        ],
+    )
+    _publish_panel_state(
+        panel,
+        _application_query_with_saliency_state(
+            PostTrainingSaliencyStatus.idle(),
+            coverage,
+            additional_coverages=(replace(coverage, method="Gradient * Input"),),
+        ),
+    )
+    requests = []
+
+    def prepare(_panel, operation_id, request, **_kwargs):
+        requests.append(request)
+        selected = request.subject_id is not None
+        data = SaliencyRenderData(
+            method=request.method,
+            saliency_by_class={
+                0: np.ones((2 if selected else 4, 2, 3)),
+                1: np.ones((0 if selected else 2, 2, 3)),
+            },
+            class_map=((0, "left"), (1, "right")),
+            event_ids={"left": 0, "right": 1},
+            channel_names=("C3", "C4"),
+            channel_positions=((-0.04, 0.0, 0.08), (0.04, 0.0, 0.08)),
+            sfreq=128.0,
+            tmin=0.0,
+            source_split="validation",
+            subject_choices=((4, "participant-four"), (9, "participant-nine")),
+            selected_subject_id=request.subject_id,
+        )
+        return SaliencyRenderPublication(
+            request=replace(request, normalize=False),
+            generation=request.publication_generation,
+            training_generation=4,
+            data=data,
+            operation_id=operation_id,
+        ), None
+
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.prepare_saliency_render_variants_operation",
+        prepare,
+    )
+    panel.on_update()
+    qtbot.waitUntil(
+        lambda: panel.native_render_work_idle() and panel.subject_combo.count() == 3
+    )
+    return panel, requests
+
+
+def test_subject_choices_follow_render_and_preserve_all_four_views(
+    qtbot, subject_panel
+):
+    panel, requests = subject_panel
+    assert [panel.subject_combo.itemData(i) for i in range(3)] == [None, 4, 9]
+    assert panel.tab_map.property("evaluationSplit") == "validation"
+    assert panel.tab_map.property("trialCount") == 6
+    panel.subject_combo.setCurrentIndex(1)
+    qtbot.waitUntil(
+        lambda: panel.native_render_work_idle() and requests[-1].subject_id == 4
+    )
+    assert panel.subject_combo.currentText() == "participant-four"
+    assert panel.tab_map.property("subjectId") == 4
+    assert panel.tab_map.property("trialCount") == 2
+    for tab_index in range(4):
+        panel.tabs.setCurrentIndex(tab_index)
+        qtbot.waitUntil(lambda: panel.native_render_work_idle())
+        publication = panel.tabs.currentWidget().update_plot.call_args.args[0]
+        assert publication.request.subject_id == 4
+        assert publication.data.selected_subject_id == 4
+        assert panel.subject_combo.count() == 3
+    panel.method_combo.setCurrentText("Gradient * Input")
+    qtbot.waitUntil(lambda: panel.native_render_work_idle())
+    assert requests[-1].subject_id == 4
+    assert requests[-1].method == "Gradient * Input"
+    panel.subject_combo.setCurrentIndex(0)
+    qtbot.waitUntil(lambda: panel.native_render_work_idle())
+    assert requests[-1].subject_id is None
+
+
+@pytest.mark.parametrize("tab_index", range(4))
+def test_subject_missing_class_shows_no_data_without_recompute(
+    qtbot, subject_panel, tab_index
+):
+    panel, requests = subject_panel
+    panel.subject_combo.setCurrentIndex(1)
+    qtbot.waitUntil(lambda: panel.native_render_work_idle())
+    panel.tabs.setCurrentIndex(tab_index)
+    qtbot.waitUntil(lambda: panel.native_render_work_idle())
+    view = panel.tabs.currentWidget()
+    view.update_plot.reset_mock()
+    view.show_message.reset_mock()
+    panel.saliency_combo.setCurrentIndex(panel.saliency_combo.findData(1))
+    qtbot.waitUntil(lambda: panel.native_render_work_idle())
+    view.update_plot.assert_not_called()
+    assert "No trials for this subject and class" in view.show_message.call_args.args[0]
+    assert panel.saliency_action_bar.isHidden()
+    assert view.property("trialCount") == 0
+    assert requests[-1].subject_id == 4
+    assert view.property("saliencyNumericSummary")["finite_count"] == 12
+
+
+def test_subject_resets_for_changed_run_but_survives_catalog_refresh(
+    qtbot, subject_panel
+):
+    panel, _requests = subject_panel
+    panel.subject_combo.setCurrentIndex(1)
+    qtbot.waitUntil(lambda: panel.native_render_work_idle())
+    panel.refresh_combos()
+    qtbot.waitUntil(lambda: panel.native_render_work_idle())
+    assert panel.subject_combo.currentData() == 4
+    new_run = SaliencyRunIdentity(SaliencyPlanIdentity(0), 1)
+    panel.run_combo.addItem("Run 2", new_run)
+    panel.run_combo.setCurrentIndex(panel.run_combo.findData(new_run))
+    assert panel.subject_combo.currentData() is None
+    assert panel.subject_combo.count() == 1
+
+
+def test_subject_stale_result_cannot_replace_new_selection(
+    qtbot, monkeypatch, subject_panel
+):
+    from XBrainLab.ui.panels.visualization.panel import _SaliencyRenderTask
+
+    panel, _requests = subject_panel
+    old_publication = panel.tab_map.update_plot.call_args.args[0]
+    with QSignalBlocker(panel.subject_combo):
+        panel.subject_combo.setCurrentIndex(2)
+    old_task = _SaliencyRenderTask(old_publication.request, False, "old-render")
+    worker = object()
+    panel._saliency_render_worker = worker
+    panel._saliency_render_active_task = old_task
+    terminals = []
+    monkeypatch.setattr(
+        panel, "_finish_render_operation", lambda *args: terminals.append(args)
+    )
+    panel.tab_map.update_plot.reset_mock()
+    panel._on_saliency_render_ready(worker, (old_task, old_publication, None))
+    assert terminals == [("old-render", "cancelled")]
+    panel.tab_map.update_plot.assert_not_called()
+    assert panel.subject_combo.currentData() == 9
+    assert panel._saliency_render_cache == {}
+    panel._saliency_render_worker = None
+    panel._saliency_render_active_task = None
+
+
+def test_subject_change_cancels_bound_native_render_before_update(
+    qtbot, monkeypatch, subject_panel
+):
+    panel, _requests = subject_panel
+    publication = panel.tab_map.update_plot.call_args.args[0]
+    panel._native_render_bindings[panel.tab_map] = (
+        3,
+        publication.generation,
+        "old-native",
+        publication,
+        (False, False, "all", None),
+    )
+    cancelled = []
+    monkeypatch.setattr(
+        "XBrainLab.ui.panels.visualization.panel.cancel_application_operation",
+        lambda _panel, operation_id, **_kwargs: cancelled.append(operation_id) or True,
+    )
+    monkeypatch.setattr(panel, "on_update", lambda: None)
+    panel.subject_combo.setCurrentIndex(1)
+    assert "old-native" in cancelled
+    assert not panel._native_render_bindings
+
+
+@pytest.mark.parametrize("compute_succeeded", (True, False))
+def test_subject_no_data_releases_post_compute_busy_controls(
+    qtbot, subject_panel, compute_succeeded
+):
+    panel, _requests = subject_panel
+    panel.subject_combo.setCurrentIndex(1)
+    qtbot.waitUntil(lambda: panel.native_render_work_idle())
+    publication = panel._application_view_publication
+    status = _post_training_saliency_status(
+        PostTrainingSaliencyPhase.SUCCEEDED
+        if compute_succeeded
+        else PostTrainingSaliencyPhase.RUNNING
+    )
+    panel._application_view_publication = replace(
+        publication,
+        state=replace(
+            publication.state,
+            visualization=replace(
+                publication.state.visualization, post_training_saliency=status
+            ),
+        ),
+    )
+    panel._saliency_compute_in_progress = True
+    panel._set_saliency_action_busy(True)
+    assert not panel._saliency_compute_awaits_current_render(publication.generation + 1)
+    panel.saliency_combo.setCurrentIndex(panel.saliency_combo.findData(1))
+    qtbot.waitUntil(lambda: panel.native_render_work_idle())
+    assert panel._saliency_compute_in_progress is not compute_succeeded
+    assert panel.subject_combo.isEnabled() is compute_succeeded
+    assert panel.compute_saliency_btn.isEnabled() is compute_succeeded
+
+
+def test_first_computed_subject_choices_enable_at_native_terminal(qtbot, subject_panel):
+    panel, _requests = subject_panel
+    rendered = panel.tab_map.update_plot.call_args.args[0]
+    panel._reset_subject_choices()
+    assert not panel.subject_combo.isEnabled()
+    publication = panel._application_view_publication
+    panel._application_view_publication = replace(
+        publication,
+        state=replace(
+            publication.state,
+            visualization=replace(
+                publication.state.visualization,
+                post_training_saliency=_post_training_saliency_status(
+                    PostTrainingSaliencyPhase.SUCCEEDED
+                ),
+            ),
+        ),
+    )
+    panel._saliency_compute_in_progress = True
+    panel._set_saliency_action_busy(True)
+    panel._sync_subject_choices(rendered)
+    assert panel.subject_combo.count() == 3
+    assert not panel.subject_combo.isEnabled()
+    panel._native_render_bindings[panel.tab_map] = (
+        3,
+        rendered.generation,
+        "first-compute-render",
+        rendered,
+        (False, False, "all", None),
+    )
+    panel._on_native_render_terminal(panel.tab_map, 3, rendered.generation, "completed")
+    assert not panel._saliency_compute_in_progress
+    assert panel.subject_combo.isEnabled()
+
+
+def test_subject_controls_fit_720_pixels_with_linux_fallback_font(qtbot):
+    from pathlib import Path
+
+    from matplotlib import get_data_path
+    from PyQt6.QtGui import QFontDatabase
+
+    from XBrainLab.ui.styles.stylesheets import Stylesheets
+
+    panel = _make_panel(qtbot)
+    font_path = Path(get_data_path()) / "fonts" / "ttf" / "DejaVuSans.ttf"
+    font_id = QFontDatabase.addApplicationFont(str(font_path))
+    assert font_id >= 0
+    try:
+        panel.on_update = lambda: None
+        panel.setStyleSheet(
+            Stylesheets.MAIN_WINDOW.replace("'Segoe UI', 'Arial'", "'DejaVu Sans'")
+        )
+        for combo, text in (
+            (panel.plan_combo, "Fold 2"),
+            (panel.run_combo, "Run 2"),
+            (panel.method_combo, "SmoothGrad_Squared"),
+            (panel.saliency_combo, "right hand imagery"),
+        ):
+            with QSignalBlocker(combo):
+                combo.clear()
+                combo.addItem(text, text)
+        panel.show()
+        assert panel.plan_label.fontInfo().family() == "DejaVu Sans"
+        for width in (800, 720, 800, 720):
+            panel.resize(width, 520)
+            qtbot.wait(30)
+            assert panel.width() == width
+            controls = (
+                panel.plan_label,
+                panel.plan_combo,
+                panel.run_label,
+                panel.run_combo,
+                panel.subject_label,
+                panel.subject_combo,
+                panel.saliency_view_label,
+                panel.saliency_combo,
+                panel.method_label,
+                panel.method_combo,
+                panel.normalize_check,
+                panel.abs_check,
+            )
+            for index, control in enumerate(controls):
+                assert panel.ctrl_bar.rect().contains(control.geometry())
+                for other in controls[index + 1 :]:
+                    assert not control.geometry().intersects(other.geometry())
+            for label in (
+                panel.plan_label,
+                panel.run_label,
+                panel.subject_label,
+                panel.saliency_view_label,
+                panel.method_label,
+                panel.normalize_check,
+                panel.abs_check,
+            ):
+                assert label.width() >= label.minimumSizeHint().width()
+    finally:
+        panel.close()
+        QFontDatabase.removeApplicationFont(font_id)

@@ -1,7 +1,7 @@
 """Data splitting preview dialog for fine-tuning and confirming split parameters.
 
 Provides a detailed tree view of generated datasets with configurable
-validation and testing split units, amounts, and manual selection support.
+validation and testing split units and amounts.
 """
 
 import threading
@@ -56,8 +56,6 @@ from XBrainLab.ui.core.base_dialog import BaseDialog
 from XBrainLab.ui.dialogs.common import checkbox_stylesheet
 from XBrainLab.ui.product_language import fold_display_label
 from XBrainLab.ui.styles.theme import Theme
-
-from .manual_split_dialog import ManualSplitDialog
 
 DEFAULT_SPLIT_ENTRY_VALUE = "0.2"
 PREVIEW_DEBOUNCE_MS = 250
@@ -756,10 +754,15 @@ class DataSplittingPreviewDialog(BaseDialog):
         if split_type == SplitByType.SUBJECT.value:
             return self.split_context.subject_count
         if split_type == SplitByType.SESSION.value:
-            return self.split_context.session_count
+            return (
+                self.split_context.minimum_subject_session_count
+                or self.split_context.session_count
+            )
         if split_type == SplitByType.TRIAL.value:
             return (
-                self.split_context.trial_group_count or self.split_context.trial_count
+                self.split_context.minimum_subject_trial_group_count
+                or self.split_context.trial_group_count
+                or self.split_context.trial_count
             )
         return 0
 
@@ -774,8 +777,6 @@ class DataSplittingPreviewDialog(BaseDialog):
         splitter.split_unit = next(
             (unit for unit in SplitUnit if unit.value == text), None
         )
-        if text == SplitUnit.MANUAL.value:
-            self.handle_manual_split(splitter)
         self.schedule_preview()
 
     def on_entry_change(self, splitter, text):
@@ -788,45 +789,6 @@ class DataSplittingPreviewDialog(BaseDialog):
         """
         splitter.value_var = text
         self.schedule_preview()
-
-    def handle_manual_split(self, splitter):
-        """Open a manual split dialog for the given splitter.
-
-        Args:
-            splitter: The DataSplitter requiring manual selection.
-
-        """
-        choices = []
-        split_type = getattr(getattr(splitter, "split_type", None), "value", "")
-        if split_type == SplitByType.SESSION.value:
-            choices = [
-                (choice.value, choice.label)
-                for choice in self.split_context.session_choices
-            ]
-        elif split_type == SplitByType.TRIAL.value:
-            choices = [
-                (trial_index, str(trial_index))
-                for trial_index in range(self.split_context.trial_count)
-            ]
-        elif split_type == SplitByType.SUBJECT.value:
-            choices = [
-                (choice.value, choice.label)
-                for choice in self.split_context.subject_choices
-            ]
-
-        dlg = ManualSplitDialog(self, choices)
-        if dlg.exec():
-            result = dlg.get_result()
-            value = " ".join(map(str, result)) + " "
-
-            if splitter in self.val_splitter_list:
-                idx = [s for s in self.val_splitter_list if s.is_option].index(splitter)
-                self.val_widgets[idx][1].setText(value)
-            elif splitter in self.test_splitter_list:
-                idx = [s for s in self.test_splitter_list if s.is_option].index(
-                    splitter,
-                )
-                self.test_widgets[idx][1].setText(value)
 
     def preview(self):
         """Request a detached preview from the application-owned generator."""
@@ -1398,6 +1360,7 @@ class DataSplittingPreviewDialog(BaseDialog):
     def _split_config_payload(self) -> dict[str, Any]:
         return {
             "train_type": self.config.train_type.value,
+            "seed": self.config.seed,
             "is_cross_validation": bool(self.config.is_cross_validation),
             "val_splitters": [
                 self._splitter_payload(splitter) for splitter in self.val_splitter_list

@@ -1,12 +1,15 @@
 """Deterministic semantic oracle for the tiny train/evaluate pipeline.
 
 This test proves event-to-class preservation, split integrity, held-out output
-alignment, finite numerics, and real artifact persistence. Synthetic outcomes
-are deliberately not evidence of scientific model accuracy.
+alignment, finite numerics, and real artifact persistence. The semantic oracle
+uses controlled domain masks with known class-balanced members; it does not
+exercise split allocation. Synthetic outcomes are deliberately not evidence of
+scientific model accuracy.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from itertools import combinations
 from pathlib import Path
@@ -18,6 +21,7 @@ import torch
 from sklearn.metrics import cohen_kappa_score, roc_auc_score
 
 from XBrainLab.backend.dataset import (
+    Dataset,
     DatasetGenerator,
     DataSplitter,
     DataSplittingConfig,
@@ -25,7 +29,6 @@ from XBrainLab.backend.dataset import (
     SplitByType,
     SplitUnit,
     TrainingType,
-    ValSplitByType,
 )
 from XBrainLab.backend.load_data import Raw
 from XBrainLab.backend.model_base import EEGNet
@@ -118,29 +121,16 @@ def _build_oracle_epochs(tmp_path: Path) -> Epochs:
     return epochs
 
 
-def _generate_exact_split(epochs: Epochs):
-    """Use the real generator to reserve two trials per held-out partition."""
-    config = DataSplittingConfig(
-        TrainingType.FULL,
-        False,
-        [
-            DataSplitter(
-                ValSplitByType.TRIAL,
-                "8 9",
-                SplitUnit.MANUAL,
-            ),
-        ],
-        [
-            DataSplitter(
-                SplitByType.TRIAL,
-                "10 11",
-                SplitUnit.MANUAL,
-            ),
-        ],
-    )
-    datasets = DatasetGenerator(epochs, config).prepare_result()
-    assert len(datasets) == 1
-    return datasets[0]
+def _build_controlled_oracle_split(epochs: Epochs) -> Dataset:
+    """Keep known class-balanced members for the downstream semantic oracle."""
+    config = DataSplittingConfig(TrainingType.FULL, False, [], [])
+    dataset = Dataset(epochs, config)
+    dataset.set_name("Controlled oracle")
+    indices = np.arange(len(EXPECTED_CLASSES))
+    dataset.set_test(indices >= 10)
+    dataset.set_val((indices >= 8) & (indices < 10))
+    dataset.set_remaining_to_train()
+    return dataset
 
 
 @pytest.mark.platform_contract
@@ -162,6 +152,7 @@ def test_individual_subject_folds_finish_and_reload_from_nested_output(
         True,
         [],
         [DataSplitter(SplitByType.TRIAL, "5", SplitUnit.KFOLD, True)],
+        seed=173,
     )
     datasets = DatasetGenerator(epochs, config).prepare_result()
     assert len(datasets) == 15
@@ -204,6 +195,11 @@ def test_individual_subject_folds_finish_and_reload_from_nested_output(
         for name, value in record.model.state_dict().items():
             assert torch.equal(loaded[name], value.cpu())
         assert (directory / "record").is_file()
+        payload = json.loads((directory / "record").read_text(encoding="utf-8"))[
+            "payload"
+        ]
+        assert payload["split_seed"] == 173
+        assert payload["seed"] == 1729
         assert not list(directory.glob("*.tmp"))
 
 
@@ -223,7 +219,7 @@ def test_deterministic_oracle_preserves_semantics_and_held_out_outputs(
 ) -> None:
     """A real tiny CPU run preserves semantic truth and finite held-out outputs."""
     epochs = _build_oracle_epochs(tmp_path)
-    dataset = _generate_exact_split(epochs)
+    dataset = _build_controlled_oracle_split(epochs)
 
     split_indices = {
         "train": set(dataset.get_training_indices().tolist()),

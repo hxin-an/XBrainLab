@@ -123,11 +123,16 @@ def _publish_final_label_maps(
     dataset = service.study.datasets[0]
     epoch_data = dataset.get_epoch_data()
     class_count = len(epoch_data.label_map)
-    labels = np.arange(class_count, dtype=int)
-    outputs = np.eye(class_count, dtype=np.float32)
+    labels = epoch_data.get_label_list()[dataset.test_mask].copy()
+    assert set(labels.tolist()) == set(range(class_count))
+    outputs = np.eye(class_count, dtype=np.float32)[labels]
     saliency = {
         class_index: np.ones(
-            (1, len(epoch_data.get_channel_names()), epoch_data.get_data().shape[-1]),
+            (
+                int(np.count_nonzero(labels == class_index)),
+                len(epoch_data.get_channel_names()),
+                epoch_data.get_data().shape[-1],
+            ),
             dtype=np.float32,
         )
         for class_index in range(class_count)
@@ -184,6 +189,9 @@ def _publish_final_label_maps(
             ),
             split_epoch_revision=publication.state.dataset.split_epoch_revision,
         )
+    )
+    np.testing.assert_array_equal(
+        evaluation.data.labels, epoch_data.get_label_list_by_mask(dataset.test_mask)
     )
     visualization = SaliencyRenderPublisher(
         training_runtime=runtime,
@@ -305,7 +313,8 @@ def test_ofner_reviewed_aliases_reach_evaluation_and_saliency_labels(
     _write_internal_event_run(
         eeg_path,
         list(OFNER_CLASS_MAP),
-        repeats=4,
+        # The real 20% test partition must contain all seven reviewed classes.
+        repeats=10,
         seed=17,
     )
     choices = {

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
 import numpy as np
 import pytest
+import torch
 
 from XBrainLab.backend.application import saliency_render
 from XBrainLab.backend.application.errors import PreconditionError
@@ -23,6 +25,14 @@ from XBrainLab.backend.application.saliency_render import (
 )
 from XBrainLab.backend.application.training_runtime import TrainingRuntimePort
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
+from XBrainLab.backend.training.evaluator import Evaluator
+from XBrainLab.backend.training.record.eval import EvalRecord
+from XBrainLab.backend.training.saliency_provenance import (
+    SaliencyProducerIdentity,
+    fingerprint_saliency_epoch_data,
+    fingerprint_saliency_split_mask,
+)
+from XBrainLab.backend.training.training_plan import to_holder
 from XBrainLab.backend.training_state_contract import TrainingReadBoundary
 
 
@@ -784,3 +794,270 @@ def test_normalized_render_publication_preserves_source_and_global_scale() -> No
         source.data.saliency_by_class[0],
         [[[-2.0, 1.0]]],
     )
+
+
+class _SubjectEpochData(_EpochData):
+    def __init__(self):
+        super().__init__()
+        self.label = np.array([0, 1, 1, 0, 0, 1, 1])
+        self.subject = np.array([10, 20, 10, 20, 10, 20, 30])
+        self.subject_map = {10: "Alice", 20: "Bob", 30: "Not evaluated"}
+
+    def get_label_list(self):
+        return self.label
+
+    def get_subject_list(self):
+        return self.subject
+
+    def get_subject_map(self):
+        return self.subject_map
+
+
+def _subject_publisher(*, split="test"):
+    epoch = _SubjectEpochData()
+    record = _Record(
+        (
+            np.array([1.0, 30.0, 4.0])[:, None, None],
+            np.array([2.0, 50.0])[:, None, None],
+        ),
+        split=split,
+        labels=(0, 1, 0, 0, 1),
+    )
+    holder = _Holder(
+        epoch,
+        SimpleNamespace(is_cross_validation=False),
+        _Run(record),
+        plan_index=0,
+        test_mask=(True, False, True, True, True, True, False),
+    )
+    if split == "validation":
+        holder.dataset.val_mask = holder.dataset.test_mask.copy()
+        holder.dataset.test_mask = np.zeros(7, dtype=bool)
+    return _publisher_for_subject_holders((holder,)), holder, record
+
+
+def _publisher_for_subject_holders(holders):
+    boundary = TrainingReadBoundary.no_trainer()
+    publication = SimpleNamespace(generation=4, usable=True, training_boundary=boundary)
+    return SaliencyRenderPublisher(
+        training_runtime=cast(
+            TrainingRuntimePort,
+            SimpleNamespace(
+                has_trainer=lambda: True,
+                training_plan_holders=lambda: holders,
+            ),
+        ),
+        get_publication=lambda: cast(ApplicationViewPublication, publication),
+        capture_training_boundary=lambda: boundary,
+    )
+
+
+def _subject_request(subject_id=None, **kwargs):
+    return SaliencyRenderRequest(
+        publication_generation=4,
+        run=SaliencyRunIdentity(SaliencyPlanIdentity(0), 0),
+        method="Gradient",
+        subject_id=subject_id,
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize("split", ["test", "validation"])
+def test_subject_render_preserves_split_and_class_order_without_mutating_source(split):
+    publisher, _holder, record = _subject_publisher(split=split)
+    before = {key: value.copy() for key, value in record.gradient.items()}
+    all_data = publisher.publish(_subject_request()).data
+    subject = publisher.publish(_subject_request(10)).data
+    assert subject.subject_choices == ((10, "Alice"), (20, "Bob"))
+    assert all_data.subject_choices == subject.subject_choices
+    assert subject.selected_subject_id == 10
+    assert all_data.selected_subject_id is None
+    assert subject.source_split == split
+    np.testing.assert_array_equal(subject.saliency_by_class[0][:, 0, 0], [1.0, 4.0])
+    np.testing.assert_array_equal(subject.saliency_by_class[1][:, 0, 0], [2.0])
+    for key, values in before.items():
+        np.testing.assert_array_equal(record.gradient[key], values)
+        np.testing.assert_array_equal(all_data.saliency_by_class[key], values)
+        assert not subject.saliency_by_class[key].flags.writeable
+        assert not np.shares_memory(
+            subject.saliency_by_class[key], record.gradient[key]
+        )
+
+
+def test_subject_normalization_uses_filtered_values_and_preserves_metadata():
+    publisher, _holder, _record = _subject_publisher()
+    raw = publisher.publish(_subject_request(10))
+    derived = normalized_saliency_render_publication(raw)
+    direct = publisher.publish(_subject_request(10, normalize=True))
+    for result in (derived, direct):
+        assert result.data.subject_choices == raw.data.subject_choices
+        assert result.data.selected_subject_id == 10
+        assert result.request.subject_id == 10
+        np.testing.assert_array_equal(
+            result.data.saliency_by_class[0][:, 0, 0], [0.25, 1.0]
+        )
+        np.testing.assert_array_equal(result.data.saliency_by_class[1][:, 0, 0], [0.5])
+
+
+@pytest.mark.parametrize("subject_id", [30, 999])
+def test_subject_outside_evaluated_split_is_rejected(subject_id):
+    publisher, _holder, _record = _subject_publisher()
+    with pytest.raises(PreconditionError, match=r"[Ss]ubject"):
+        publisher.publish(_subject_request(subject_id))
+
+
+@pytest.mark.parametrize(
+    "corruption", ["labels", "length", "class_rows", "mask", "subject_map"]
+)
+@pytest.mark.parametrize("subject_id", [None, 10])
+def test_subject_render_rejects_inconsistent_mapping(corruption, subject_id):
+    publisher, holder, record = _subject_publisher()
+    epoch = holder.dataset.epoch_data
+    if corruption == "labels":
+        epoch.label[[0, 2]] = epoch.label[[2, 0]]
+    elif corruption == "length":
+        epoch.subject = epoch.subject[:-1]
+    elif corruption == "class_rows":
+        record.gradient[0] = record.gradient[0][:-1]
+    elif corruption == "mask":
+        holder.dataset.test_mask = holder.dataset.test_mask.astype(int)
+    else:
+        del epoch.subject_map[20]
+    with pytest.raises(PreconditionError, match=r"[Ss]ubject|[Mm]apping"):
+        publisher.publish(_subject_request(subject_id))
+
+
+def test_subject_cross_fold_pools_only_selected_trials_in_fold_order():
+    holders = _fold_holders()
+    epoch = holders[0].dataset.epoch_data
+    epoch.get_subject_list = lambda: np.array([10, 20, 10, 10, 20])
+    epoch.get_label_list = lambda: np.array([0, 0, 1, 0, 1])
+    epoch.get_subject_map = lambda: {10: "Alice", 20: "Bob"}
+    publisher = _publisher_for_subject_holders(holders)
+    choice = build_saliency_cross_fold_choices(holders)[0]
+    request = replace(_subject_request(10), run=choice.identity)
+    result = publisher.publish(request).data
+    assert result.subject_choices == ((10, "Alice"), (20, "Bob"))
+    assert result.selected_subject_id == 10
+    assert result.fold_count == 2
+    np.testing.assert_array_equal(result.saliency_by_class[0][:, 0, 0], [1.0, 10.0])
+    np.testing.assert_array_equal(result.saliency_by_class[1][:, 0, 0], [4.0])
+    normalized = publisher.publish(replace(request, normalize=True)).data
+    np.testing.assert_array_equal(normalized.saliency_by_class[0][:, 0, 0], [0.1, 1.0])
+    np.testing.assert_array_equal(normalized.saliency_by_class[1][:, 0, 0], [0.4])
+
+
+def test_subject_missing_class_keeps_empty_array_and_all_class_identity():
+    publisher, holder, _record = _subject_publisher()
+    holder.dataset.epoch_data.subject[[2, 5]] = 20
+    result = publisher.publish(_subject_request(10)).data
+    assert tuple(result.saliency_by_class) == (0, 1)
+    assert result.saliency_by_class[1].shape == (0, 1, 1)
+    assert result.class_map == ((769, "Left"), (770, "Right"))
+
+
+@pytest.mark.parametrize("subject_id", [True, -1, "10", 10.5])
+def test_subject_request_rejects_invalid_identifier(subject_id):
+    with pytest.raises((TypeError, ValueError), match="subject_id"):
+        _subject_request(subject_id)
+
+
+def test_subject_render_rejects_stale_publication_generation():
+    publisher, _holder, _record = _subject_publisher()
+    with pytest.raises(PreconditionError):
+        publisher.publish(replace(_subject_request(10), publication_generation=3))
+
+
+def test_subject_request_requires_subject_metadata_but_all_remains_available():
+    publisher, identity = _manual_geometry_publisher(())
+    assert (
+        publisher.publish(
+            replace(_subject_request(), run=identity)
+        ).data.subject_choices
+        == ()
+    )
+    with pytest.raises(PreconditionError, match="Subject mapping"):
+        publisher.publish(replace(_subject_request(10), run=identity))
+
+
+@pytest.mark.parametrize("split", ["test", "validation"])
+def test_real_evaluator_saved_subject_trials_reload_in_exact_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    split: str,
+):
+    publisher, holder, _record = _subject_publisher(split=split)
+    epoch = holder.dataset.epoch_data
+    epoch.data = np.broadcast_to(
+        np.arange(1.0, 8.0, dtype=np.float32)[:, None, None], (7, 2, 3)
+    ).copy()
+    epoch.sfreq = 128.0
+    epoch.get_model_args = lambda: {
+        "sfreq": 128.0,
+        "samples": 3,
+        "channels": 2,
+        "n_classes": 2,
+    }
+    mask = getattr(holder.dataset, "test_mask" if split == "test" else "val_mask")
+    loader = to_holder(epoch.data, epoch.label, np.flatnonzero(mask), "cpu", 2, seed=17)
+    assert loader is not None
+
+    class SquaredSignal(torch.nn.Module):
+        def forward(self, values):
+            score = values.square().sum(dim=(1, 2))
+            return torch.stack((score, -score), dim=1)
+
+    record = Evaluator.evaluate_with_saliency(
+        SquaredSignal(),
+        loader,
+        {"methods": ["Gradient"]},
+        evaluation_split=split,
+    )
+    identity = SaliencyProducerIdentity.from_components(
+        dataset={"epoch_data_fingerprint": fingerprint_saliency_epoch_data(epoch)},
+        split={
+            "mask": fingerprint_saliency_split_mask(mask),
+            "evaluation_split": split,
+        },
+        run={"repeat": 0},
+        model={"name": "squared-signal"},
+    )
+    record.bind_saliency_context(epoch, producer_identity=identity)
+    record.export(str(tmp_path))
+    loaded = EvalRecord.load(str(tmp_path), expected_producer_identity=identity)
+    assert loaded is not None
+    holder._run.record = loaded
+    holder.build_saliency_producer_identity = lambda *_args, **_kwargs: identity
+
+    def forbid_compute(*_args, **_kwargs):
+        raise AssertionError("Subject display must reuse saved saliency")
+
+    monkeypatch.setattr(Evaluator, "evaluate_with_saliency", forbid_compute)
+    alice = publisher.publish(_subject_request(10)).data
+    bob = publisher.publish(_subject_request(20)).data
+    all_data = publisher.publish(_subject_request()).data
+    # Analytic gradients of +/- sum(x**2), independent of publisher mapping.
+    np.testing.assert_array_equal(alice.saliency_by_class[0][:, 0, 0], [2.0, 10.0])
+    np.testing.assert_array_equal(alice.saliency_by_class[1][:, 0, 0], [-6.0])
+    np.testing.assert_array_equal(bob.saliency_by_class[0][:, 0, 0], [8.0])
+    np.testing.assert_array_equal(bob.saliency_by_class[1][:, 0, 0], [-12.0])
+    np.testing.assert_array_equal(
+        all_data.saliency_by_class[0][:, 0, 0], [2.0, 8.0, 10.0]
+    )
+    np.testing.assert_array_equal(all_data.saliency_by_class[1][:, 0, 0], [-6.0, -12.0])
+    assert alice.subject_choices == ((10, "Alice"), (20, "Bob"))
+    assert alice.source_split == split
+
+
+def test_subject_cross_fold_accepts_subject_missing_from_one_admitted_fold():
+    holders = _fold_holders()
+    epoch = holders[0].dataset.epoch_data
+    epoch.get_subject_list = lambda: np.array([10, 10, 10, 20, 20])
+    epoch.get_label_list = lambda: np.array([0, 0, 1, 0, 1])
+    epoch.get_subject_map = lambda: {10: "Alice", 20: "Bob"}
+    publisher = _publisher_for_subject_holders(holders)
+    choice = build_saliency_cross_fold_choices(holders)[0]
+    result = publisher.publish(replace(_subject_request(10), run=choice.identity)).data
+    assert result.subject_choices == ((10, "Alice"), (20, "Bob"))
+    np.testing.assert_array_equal(result.saliency_by_class[0][:, 0, 0], [1.0, 3.0])
+    np.testing.assert_array_equal(result.saliency_by_class[1][:, 0, 0], [4.0])

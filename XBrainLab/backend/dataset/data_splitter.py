@@ -5,6 +5,8 @@ from __future__ import annotations
 from ..utils import validate_list_type, validate_type
 from .option import SplitByType, SplitUnit, TrainingType, ValSplitByType
 
+DEFAULT_SPLIT_SEED = 42
+
 
 class DataSplitter:
     """Configuration for a single data splitting action.
@@ -15,7 +17,7 @@ class DataSplitter:
     Attributes:
         split_type: Type of splitting action (e.g. by session, trial, subject).
         value_var: String representation of the splitting value.
-        split_unit: Unit of the splitting value (ratio, number, kfold, manual).
+        split_unit: Unit of the splitting value (ratio, number, kfold).
         is_option: Whether this splitter is a real option or just a label.
         text: Human-readable string representation of the split type.
 
@@ -75,24 +77,16 @@ class DataSplitter:
             val_str = str(self.value_var)
             if val_str.isdigit():
                 return int(val_str) >= 2
-        # manual: should be list of int separated by space
-        elif self.split_unit == SplitUnit.MANUAL:
-            val_str = str(self.value_var).strip()
-            vals = val_str.split(" ")
-            return bool(val_str) and all(
-                not (len(val.strip()) > 0 and not val.isdigit()) for val in vals
-            )
         else:
             raise NotImplementedError
 
         return False
 
-    def get_value(self) -> float | list[int]:
+    def get_value(self) -> float:
         """Get the parsed option value based on split unit.
 
         Returns:
-            Parsed value: a list of ints for manual selection, or a float
-            for ratio/number/kfold.
+            Parsed numeric value for ratio/number/kfold.
 
         Raises:
             ValueError: If the splitter is invalid or value_var is None.
@@ -102,10 +96,6 @@ class DataSplitter:
             raise ValueError("Splitter is not valid")
         if self.value_var is None:
             raise ValueError("value_var cannot be None")
-        if self.split_unit == SplitUnit.MANUAL:
-            return [
-                int(i) for i in self.value_var.strip().split(" ") if len(i.strip()) > 0
-            ]
         return float(self.value_var)
 
     def get_split_unit(self) -> SplitUnit | None:
@@ -138,6 +128,7 @@ class DataSplittingConfig:
         is_cross_validation: bool,
         val_splitter_list: list[DataSplitter],
         test_splitter_list: list[DataSplitter],
+        seed: int = DEFAULT_SPLIT_SEED,
     ):
         """Initialize a DataSplittingConfig.
 
@@ -146,6 +137,7 @@ class DataSplittingConfig:
             is_cross_validation: Whether to use cross-validation.
             val_splitter_list: List of splitters for the validation set.
             test_splitter_list: List of splitters for the test set.
+            seed: Reproducible tie order for allocation.
 
         """
         validate_type(train_type, TrainingType, "train_type")
@@ -153,6 +145,9 @@ class DataSplittingConfig:
         validate_list_type(val_splitter_list, DataSplitter, "val_splitter_list")
         validate_list_type(test_splitter_list, DataSplitter, "test_splitter_list")
 
+        if type(seed) is not int or not 0 <= seed < 2**32:
+            raise ValueError("Split seed must be an unsigned 32-bit integer")
+        self.seed = seed
         self.train_type = train_type  # TrainingType
         self.is_cross_validation = is_cross_validation
         self.val_splitter_list = val_splitter_list

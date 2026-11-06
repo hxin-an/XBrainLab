@@ -182,15 +182,6 @@ def test_context_publication_contains_only_detached_split_choices() -> None:
     assert publication.context.session_count == 1
     assert publication.context.label_count == 2
     assert publication.context.trial_count == 12
-    assert [
-        (item.value, item.label) for item in publication.context.subject_choices
-    ] == [
-        ("S01", "S01"),
-        ("S02", "S02"),
-    ]
-    assert [
-        (item.value, item.label) for item in publication.context.session_choices
-    ] == [("session-1", "session-1")]
     assert not hasattr(publication.context, "epoch_data")
 
 
@@ -222,7 +213,9 @@ def test_context_trial_group_count_accepts_array_like_groups_and_fails_safe(
     assert context.trial_group_count == expected_count
 
 
-def test_context_choices_keep_internal_keys_but_publish_real_display_names() -> None:
+def test_context_class_choices_keep_internal_keys_but_publish_real_display_names() -> (
+    None
+):
     epoch_data = _EpochData()
     epoch_data.get_subject_map = lambda: {7: "sub-A"}  # type: ignore[method-assign]
     epoch_data.get_session_map = lambda: {3: "session-blue"}  # type: ignore[method-assign]
@@ -237,12 +230,6 @@ def test_context_choices_keep_internal_keys_but_publish_real_display_names() -> 
         DatasetSplitContextRequest(publication_generation=4)
     ).context
 
-    assert [(choice.value, choice.label) for choice in context.subject_choices] == [
-        (7, "sub-A")
-    ]
-    assert [(choice.value, choice.label) for choice in context.session_choices] == [
-        (3, "session-blue")
-    ]
     assert [(choice.value, choice.label) for choice in context.label_choices] == [
         (2, "12 Hz")
     ]
@@ -261,8 +248,6 @@ def test_context_publication_represents_missing_epochs_without_live_payload() ->
 
     assert publication.context.epoch_available is False
     assert publication.context.trial_count == 0
-    assert publication.context.subject_choices == ()
-    assert publication.context.session_choices == ()
 
 
 def test_real_preview_success_preserves_epoch_data_and_dataset_sequence(

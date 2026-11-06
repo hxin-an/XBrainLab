@@ -556,7 +556,7 @@ class DataSplittingDialog(BaseDialog):
         self.test_combo = test_combo
         test_combo.setObjectName("DataSplitTestingStrategyInput")
         self._configure_split_combo(test_combo)
-        test_combo.currentTextChanged.connect(self.update_preview)
+        test_combo.currentTextChanged.connect(self._sync_strategy_options)
 
         # Validation Set
         val_combo = QComboBox()
@@ -719,12 +719,11 @@ class DataSplittingDialog(BaseDialog):
             if is_individual
             else context.full_test_strategies
         )
-        validation_values = (
-            context.individual_validation_strategies
-            if is_individual
-            else context.full_validation_strategies
-        )
         self._replace_combo_items(self.test_combo, test_values)
+        validation_values = context.validation_strategies_for(
+            self.train_type_combo.currentText(),
+            test_strategy=self.test_combo.currentText(),
+        )
         self._replace_combo_items(self.val_combo, validation_values)
         reason = context.individual_subject_unavailable_reason if is_individual else ""
         self.test_combo.setToolTip(reason)
@@ -872,6 +871,8 @@ class DataSplittingDialog(BaseDialog):
             val_splitter_list=val_splitters,
             test_splitter_list=test_splitters,
         )
+        if self.initial_specification is not None:
+            config.seed = self.initial_specification.seed
 
         self.step2_window = DataSplittingPreviewDialog(
             self.parent(),

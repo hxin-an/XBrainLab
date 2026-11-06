@@ -20,6 +20,8 @@ from XBrainLab.backend.dataset import (
     TrainingType,
     ValSplitByType,
 )
+from XBrainLab.backend.dataset.data_splitter import DEFAULT_SPLIT_SEED
+from XBrainLab.backend.dataset.option import VALIDATION_SPLIT_TYPES
 from XBrainLab.backend.dataset.split_audit import (
     audit_dataset_splits,
     blocking_split_audit_issues,
@@ -68,8 +70,8 @@ class DatasetSplitContext:
     label_count: int = 0
     trial_count: int = 0
     trial_group_count: int = 0
-    subject_choices: tuple[DatasetSplitChoice, ...] = ()
-    session_choices: tuple[DatasetSplitChoice, ...] = ()
+    minimum_subject_trial_group_count: int = 0
+    minimum_subject_session_count: int = 0
     label_choices: tuple[DatasetSplitChoice, ...] = ()
     full_test_strategies: tuple[str, ...] = (
         "By Trial",
@@ -88,12 +90,26 @@ class DatasetSplitContext:
         "By Trial",
         "By Session",
     )
-    non_cv_split_units: tuple[str, ...] = ("Ratio", "Number", "Manual")
+    non_cv_split_units: tuple[str, ...] = ("Ratio", "Number")
     cv_test_split_units: tuple[str, ...] = ("K Fold",)
     cv_validation_split_units: tuple[str, ...] = ("Ratio", "Number")
     individual_subject_unavailable_reason: str = (
         "Individual training cannot hold out whole subjects."
     )
+
+    def validation_strategies_for(
+        self, train_type: str, test_strategy: str
+    ) -> tuple[str, ...]:
+        """Expose only strategies admitted by the shared split contract."""
+        choices = (
+            self.individual_validation_strategies
+            if train_type == TrainingType.IND.value
+            else self.full_validation_strategies
+        )
+        allowed = VALIDATION_SPLIT_TYPES.get(test_strategy, ())
+        return tuple(
+            value for value in choices if value == "Disable" or value in allowed
+        )
 
     def __post_init__(self) -> None:
         if type(self.epoch_available) is not bool:
@@ -104,17 +120,14 @@ class DatasetSplitContext:
             "label_count",
             "trial_count",
             "trial_group_count",
+            "minimum_subject_trial_group_count",
+            "minimum_subject_session_count",
         ):
             value = getattr(self, field_name)
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(f"{field_name} must be a non-negative integer")
         if any(
-            not isinstance(choice, DatasetSplitChoice)
-            for choice in (
-                *self.subject_choices,
-                *self.session_choices,
-                *self.label_choices,
-            )
+            not isinstance(choice, DatasetSplitChoice) for choice in self.label_choices
         ):
             raise TypeError("Dataset split choices must be DatasetSplitChoice values")
         if not self.epoch_available and any(
@@ -124,8 +137,8 @@ class DatasetSplitContext:
                 self.label_count,
                 self.trial_count,
                 self.trial_group_count,
-                self.subject_choices,
-                self.session_choices,
+                self.minimum_subject_trial_group_count,
+                self.minimum_subject_session_count,
                 self.label_choices,
             )
         ):
@@ -211,10 +224,17 @@ class DatasetSplitRule:
             raise ValueError(
                 "Unsupported split strategy; reconfigure data splitting."
             ) from error
+        try:
+            split_unit = _enum_from_value(SplitUnit, self.split_unit)
+        except ValueError as error:
+            raise ValueError(
+                f"Unsupported split unit {self.split_unit!r}; "
+                "reconfigure data splitting."
+            ) from error
         return DataSplitter(
             split_type=split_type,
             value_var=self.value,
-            split_unit=_enum_from_value(SplitUnit, self.split_unit),
+            split_unit=split_unit,
             is_option=self.is_option,
         )
 
@@ -227,8 +247,11 @@ class DatasetSplitSpecification:
     is_cross_validation: bool
     val_splitters: tuple[DatasetSplitRule, ...] = ()
     test_splitters: tuple[DatasetSplitRule, ...] = ()
+    seed: int = DEFAULT_SPLIT_SEED
 
     def __post_init__(self) -> None:
+        if type(self.seed) is not int or not 0 <= self.seed < 2**32:
+            raise ValueError("split seed must be an unsigned 32-bit integer")
         train_type = str(self.train_type).strip()
         if not train_type:
             raise ValueError("train_type cannot be empty")
@@ -252,6 +275,7 @@ class DatasetSplitSpecification:
             raise ValueError("is_cross_validation is required")
         return cls(
             train_type=str(payload["train_type"]),
+            seed=payload.get("seed", DEFAULT_SPLIT_SEED),
             is_cross_validation=_strict_bool(
                 payload["is_cross_validation"],
                 "is_cross_validation",
@@ -264,6 +288,7 @@ class DatasetSplitSpecification:
         """Return a fresh payload for the authoritative generation command."""
         return {
             "train_type": self.train_type,
+            "seed": self.seed,
             "is_cross_validation": self.is_cross_validation,
             "val_splitters": [rule.to_payload() for rule in self.val_splitters],
             "test_splitters": [rule.to_payload() for rule in self.test_splitters],
@@ -285,6 +310,7 @@ class DatasetSplitSpecification:
 
         return cls(
             train_type=config.train_type.value,
+            seed=config.seed,
             is_cross_validation=bool(config.is_cross_validation),
             val_splitters=tuple(
                 rule(splitter) for splitter in config.val_splitter_list
@@ -298,6 +324,7 @@ class DatasetSplitSpecification:
         """Validate supported workflow rules and build a fresh domain config."""
         config = DataSplittingConfig(
             train_type=_enum_from_value(TrainingType, self.train_type),
+            seed=self.seed,
             is_cross_validation=self.is_cross_validation,
             val_splitter_list=[
                 rule.to_config(ValSplitByType) for rule in self.val_splitters
@@ -380,6 +407,16 @@ class DatasetSplitSpecification:
         ):
             raise ValueError("Individual training does not support By Subject splits.")
 
+        if (
+            val_rules
+            and val_rules[0].split_type.value
+            not in VALIDATION_SPLIT_TYPES[test_rule.split_type.value]
+        ):
+            raise ValueError(
+                "Validation must use the same or a finer grouping than Test; "
+                "reconfigure data splitting."
+            )
+
         if config.is_cross_validation:
             if test_rule.split_unit is not SplitUnit.KFOLD:
                 raise ValueError("Cross-validation test split must use K Fold.")
@@ -388,7 +425,7 @@ class DatasetSplitSpecification:
                 SplitUnit.NUMBER,
             }:
                 raise ValueError(
-                    "Cross-validation validation split cannot use Manual or K Fold."
+                    "Cross-validation validation supports only Ratio or Number."
                 )
         elif test_rule.split_unit is SplitUnit.KFOLD:
             raise ValueError("K Fold test splits require cross-validation.")
@@ -576,6 +613,7 @@ class DatasetSplitPreviewReceipt:
             "validation_count": self.validation_count,
             "test_count": self.test_count,
             "materialization_digest": self.materialization_digest,
+            "split_seed": self.specification.seed,
             "rows": rows,
         }
 
@@ -873,8 +911,12 @@ class DatasetSplitPreviewPublisher:
             label_count=max(0, int(label_count)),
             trial_count=trial_count,
             trial_group_count=trial_group_count,
-            subject_choices=_choices_from_keys(subject_map),
-            session_choices=_choices_from_keys(session_map),
+            minimum_subject_trial_group_count=_minimum_subject_group_count(
+                epoch_data, "get_trial_group_list"
+            ),
+            minimum_subject_session_count=_minimum_subject_group_count(
+                epoch_data, "get_session_list"
+            ),
             label_choices=_choices_from_keys(label_map),
         )
 
@@ -990,6 +1032,20 @@ def _safe_trial_group_count(epoch_data: Any, trial_count: int) -> int:
         return _non_negative_count(len(set(groups.tolist())), "trial group")
     except (AttributeError, TypeError, ValueError):
         return trial_count
+
+
+def _minimum_subject_group_count(epoch_data: Any, getter_name: str) -> int:
+    subject_getter = getattr(epoch_data, "get_subject_list", None)
+    group_getter = getattr(epoch_data, getter_name, None)
+    if not callable(subject_getter) or not callable(group_getter):
+        return 0
+    subjects = np.asarray(subject_getter())
+    groups = np.asarray(group_getter())
+    if subjects.ndim != 1 or groups.shape != subjects.shape or not len(subjects):
+        return 0
+    return min(
+        len(np.unique(groups[subjects == subject])) for subject in np.unique(subjects)
+    )
 
 
 def _non_negative_count(value: Any, field_name: str) -> int:

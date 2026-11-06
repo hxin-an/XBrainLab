@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+import numpy as np
 import pytest
 
 import XBrainLab.backend.dataset.epochs as epochs_module
@@ -83,14 +84,17 @@ def test_dataset_generator_handle_individual(
     generator = DatasetGenerator(epochs, config)
     result = generator.generate()
     assert len(result) == len(subject_list)
-    for i in range(len(result)):
-        assert result[i].get_name() == "Subject-" + str(i + 1) + "_0"
-        X, _ = result[i].get_training_data()
-        assert (((i + 1) * 100000 + 2 * 1000) == (X // 1000 * 1000)).all()
-        X, _ = result[i].get_val_data()
-        assert (((i + 1) * 100000 + 2 * 1000) == (X // 1000 * 1000)).all()
-        X, _ = result[i].get_test_data()
-        assert (((i + 1) * 100000 + 1 * 1000) == (X // 1000 * 1000)).all()
+    for subject, dataset in enumerate(result):
+        assert dataset.get_name() == f"Subject-{subject + 1}_0"
+        assert set(epochs.subject[dataset.test_mask]) == {subject}
+        test_sessions = set(epochs.session[dataset.test_mask])
+        assert len(test_sessions) == 1
+        assert not test_sessions & set(
+            epochs.session[dataset.train_mask | dataset.val_mask]
+        )
+        assert dataset.get_test_len() == block_size
+        assert dataset.get_val_len() == block_size // 4
+        assert dataset.get_train_len() == block_size - block_size // 4
 
 
 def test_dataset_generator_handle_individual_cross_validation(
@@ -118,24 +122,20 @@ def test_dataset_generator_handle_individual_cross_validation(
             cohort_ids[i * len(session_list) + j] for j in range(len(session_list))
         }
         assert len(subject_cohort_ids) == 1
-        for j in range(len(session_list)):
-            idx = i * len(session_list) + j
-            assert result[idx].get_name() == "Subject-" + str(i + 1) + "_" + str(j)
-            X, _ = result[idx].get_training_data()
-            assert (
-                ((i + 1) * 100000 + ((j + 1) % len(session_list) + 1) * 1000)
-                == (X // 1000 * 1000)
-            ).all()
-            X, _ = result[idx].get_val_data()
-            assert (
-                ((i + 1) * 100000 + ((j + 1) % len(session_list) + 1) * 1000)
-                == (X // 1000 * 1000)
-            ).all()
-            X, _ = result[idx].get_test_data()
-            assert (
-                ((i + 1) * 100000 + ((j) % len(session_list) + 1) * 1000)
-                == (X // 1000 * 1000)
-            ).all()
+        folds = result[i * len(session_list) : (i + 1) * len(session_list)]
+        assert np.array_equal(
+            np.logical_or.reduce([d.test_mask for d in folds]), epochs.subject == i
+        )
+        for j, dataset in enumerate(folds):
+            assert dataset.get_name() == f"Subject-{i + 1}_{j}"
+            assert set(epochs.subject[dataset.test_mask]) == {i}
+            test_sessions = set(epochs.session[dataset.test_mask])
+            assert len(test_sessions) == 1
+            assert not test_sessions & set(
+                epochs.session[dataset.train_mask | dataset.val_mask]
+            )
+            assert dataset.get_test_len() == block_size
+            assert dataset.get_val_len() == block_size // 4
 
 
 def test_dataset_generator_handle_full(
@@ -157,15 +157,16 @@ def test_dataset_generator_handle_full(
     assert len(result) == 1
     result = result[0]
     assert result.get_name() == "Fold_0"
-    X, _ = result.get_training_data()
-    assert ((X // 100000 * 100000) != (1 * 100000)).all()
-    assert len(X) == block_size * ((len(subject_list) - 1) * (len(session_list) - 1))
-    X, _ = result.get_val_data()
-    assert ((X // 100000 * 100000) != (1 * 100000)).all()
-    assert len(X) == block_size * ((len(subject_list) - 1) * 1)
-    X, _ = result.get_test_data()
-    assert ((X // 100000 * 100000) == (1 * 100000)).all()
-    assert len(X) == block_size * len(session_list)
+    test_subjects = set(epochs.subject[result.test_mask])
+    assert len(test_subjects) == 1
+    assert not test_subjects & set(epochs.subject[result.train_mask | result.val_mask])
+    assert result.get_test_len() == block_size * len(session_list)
+    assert result.get_val_len() == block_size * (len(subject_list) - 1)
+    assert result.get_train_len() == block_size * (len(subject_list) - 1)
+    for subject in set(epochs.subject) - test_subjects:
+        assert (
+            len(set(epochs.session[result.val_mask & (epochs.subject == subject)])) == 1
+        )
 
 
 def test_dataset_generator_handle_full_cross_validation(
@@ -185,25 +186,27 @@ def test_dataset_generator_handle_full_cross_validation(
     generator = DatasetGenerator(epochs, config)
     result = generator.generate()
     assert len(result) == len(subject_list)
-    for i in range(len(subject_list)):
-        assert result[i].get_name() == "Fold_" + str(i)
-        X, _ = result[i].get_training_data()
-        assert (((i + 1) * 100000) != (X // 100000 * 100000)).all()
-        assert len(X) == block_size * (
-            (len(subject_list) - 1) * (len(session_list) - 1)
+    assert np.all(np.sum([dataset.test_mask for dataset in result], axis=0) == 1)
+    for i, dataset in enumerate(result):
+        assert dataset.get_name() == f"Fold_{i}"
+        test_subjects = set(epochs.subject[dataset.test_mask])
+        assert len(test_subjects) == 1
+        assert not test_subjects & set(
+            epochs.subject[dataset.train_mask | dataset.val_mask]
         )
-        X, _ = result[i].get_val_data()
-        assert (((i + 1) * 100000) != (X // 100000 * 100000)).all()
-        assert len(X) == block_size * ((len(subject_list) - 1) * 1)
-        X, _ = result[i].get_test_data()
-        assert (((i + 1) * 100000) == (X // 100000 * 100000)).all()
-        assert len(X) == block_size * len(session_list)
+        assert dataset.get_test_len() == block_size * len(session_list)
+        assert dataset.get_val_len() == block_size * (len(subject_list) - 1)
+        assert dataset.get_train_len() == block_size * (len(subject_list) - 1)
 
 
 def test_dataset_generator_trial_kfold_cross_validation_is_non_leaking(
     preprocessed_data_list,  # noqa: F811
 ):
     for preprocessed_data in preprocessed_data_list:
+        # Trusted provenance must describe disjoint windows: this fixture
+        # originally puts all six events inside one overlapping atomic group.
+        source = preprocessed_data.get_mne()
+        source.events[:, 0] = np.arange(len(source.events)) * len(source.times)
         epochs_module.mark_xbrainlab_raw_event_source_epochs(preprocessed_data)
     trusted_epochs = Epochs(preprocessed_data_list)
     config = DataSplittingConfig(
