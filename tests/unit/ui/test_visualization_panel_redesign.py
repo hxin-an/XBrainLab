@@ -945,11 +945,11 @@ def test_visualization_panel_layout_and_sidebar(qtbot):
     assert panel.sidebar.btn_saliency.text() == "Saliency Settings"
 
 
-def test_visualization_panel_keeps_aggregation_tooltip_and_empty_result_context(qtbot):
+def test_visualization_panel_keeps_aggregation_tooltip_without_extra_row(qtbot):
     panel = _make_panel(qtbot)
 
-    assert panel.explanation_context.text() == ""
-    assert panel.explanation_context.wordWrap()
+    layout = panel.ctrl_bar.parentWidget().layout()
+    assert layout.indexOf(panel.tabs) == layout.indexOf(panel.saliency_action_bar) + 1
     assert not hasattr(panel, "explanation_info_button")
     assert not hasattr(panel, "explanation_provenance_label")
     assert panel.tabs.toolTip() == "True class · Mean over EEG epochs"
@@ -4937,14 +4937,15 @@ def test_subject_choices_follow_render_and_preserve_all_four_views(
 ):
     panel, requests = subject_panel
     assert [panel.subject_combo.itemData(i) for i in range(3)] == [None, 4, 9]
-    assert "All subjects · Validation · 6 trials" in panel.explanation_context.text()
+    assert panel.tab_map.property("evaluationSplit") == "validation"
+    assert panel.tab_map.property("trialCount") == 6
     panel.subject_combo.setCurrentIndex(1)
     qtbot.waitUntil(
         lambda: panel.native_render_work_idle() and requests[-1].subject_id == 4
     )
-    assert (
-        "participant-four · Validation · 2 trials" in panel.explanation_context.text()
-    )
+    assert panel.subject_combo.currentText() == "participant-four"
+    assert panel.tab_map.property("subjectId") == 4
+    assert panel.tab_map.property("trialCount") == 2
     for tab_index in range(4):
         panel.tabs.setCurrentIndex(tab_index)
         qtbot.waitUntil(lambda: panel.native_render_work_idle())
@@ -4978,7 +4979,7 @@ def test_subject_missing_class_shows_no_data_without_recompute(
     view.update_plot.assert_not_called()
     assert "No trials for this subject and class" in view.show_message.call_args.args[0]
     assert panel.saliency_action_bar.isHidden()
-    assert "0 trials" in panel.explanation_context.text()
+    assert view.property("trialCount") == 0
     assert requests[-1].subject_id == 4
     assert view.property("saliencyNumericSummary")["finite_count"] == 12
 
@@ -4997,7 +4998,6 @@ def test_subject_resets_for_changed_run_but_survives_catalog_refresh(
     panel.run_combo.setCurrentIndex(panel.run_combo.findData(new_run))
     assert panel.subject_combo.currentData() is None
     assert panel.subject_combo.count() == 1
-    assert panel.explanation_context.text() == ""
 
 
 def test_subject_stale_result_cannot_replace_new_selection(
@@ -5027,13 +5027,6 @@ def test_subject_stale_result_cannot_replace_new_selection(
     panel._saliency_render_active_task = None
 
 
-def test_subject_context_survives_refresh_for_same_active_render(qtbot, subject_panel):
-    panel, _requests = subject_panel
-    before = panel.explanation_context.text()
-    panel._refresh_explanation_context()
-    assert panel.explanation_context.text() == before
-
-
 def test_subject_change_cancels_bound_native_render_before_update(
     qtbot, monkeypatch, subject_panel
 ):
@@ -5055,7 +5048,6 @@ def test_subject_change_cancels_bound_native_render_before_update(
     panel.subject_combo.setCurrentIndex(1)
     assert "old-native" in cancelled
     assert not panel._native_render_bindings
-    assert panel.explanation_context.text() == ""
 
 
 @pytest.mark.parametrize("compute_succeeded", (True, False))

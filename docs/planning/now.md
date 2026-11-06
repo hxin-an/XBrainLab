@@ -16,7 +16,7 @@
 沒有 subject，圖表依 class 平均目前 split 的全部 trials，無法檢查同一模型下某個受試者。
 
 Outcome：可選 All subjects 或該結果實際包含的一個 subject；同一 subject 的選擇一致作用於
-Map、Spectrogram、Topomap、3D，明示 Test／Validation 來源與 trial 數。保留現有每 trial 等權
+Map、Spectrogram、Topomap、3D，後端保留 Test／Validation 來源與 trial 數，UI 不另顯示資訊列。保留現有每 trial 等權
 的 All subjects 語意，不冒稱 subject 等權群體統計。切換只處理已計算結果，不重訓／重算歸因。
 
 ### Scope 與 non-goals
@@ -29,7 +29,7 @@ Map、Spectrogram、Topomap、3D，明示 Test／Validation 來源與 trial 數�
   trials、崩潰或要求無意義重算。All subjects 原結果保持一致。
 - 不改 split 策略、training、attribution 方法／目標、Test/Validation 選擇、模型／RAG、
   EEG／研究原始資料、Assistant 公開工具契約；不新增 trial selector 或群體統計政策。
-- UI 已批准增加 Subject 選項與必要資料來源／樣本數；保持既有風格與響應式控制列。
+- UI 已批准增加 Subject 選項；使用者要求移除額外資訊列，保持既有風格與響應式控制列。
 
 ### 步驟與責任
 
@@ -92,6 +92,21 @@ Linux 窄視窗要求 720px 卻被最小寬度撐至 723px；保持既有窄版�
 控制項的最小尺寸並驗證文字與幾何，不修改測試容許寬度。與既有 DPI／fixture 修復一起
 獨立覆核後送新 head CI，直到所有適用 checks 成功再開正式手測。
 
+### 手測 UI 修訂 — 移除圖表上方資訊行
+
+使用者明確要求整行 `All subjects · Test · N trials · True class · Mean over EEG epochs`
+小字移除。刪除該 QLabel、layout 項目與只為該行存在的組字／stale 清除機制，不能只隱藏留下
+空白列。不改 Subject 篩選、結果資料、render identity、空 class 提示與原有分頁 tooltip。
+先更新直接 UI assertions，以選中 subject／view property 驗證既有篩選與 trial 真值仍在；
+執行 focused UI／排版測試與 lint，開 Windows 原生更新預覽。這是已授權的 UI 修訂，
+先確認畫面，不把舊 head 綠燈當新版正式交付，不在每次文案迭代重跑重型 CI。
+完成條件：資訊行與佔位完整移除，四圖選人／無資料狀態正常，更新畫面可供確認。
+已完成此 UI 修訂：20 個 focused tests、lint／format 通過；Windows 寬／中／窄版預覽
+已開啟且有回應。使用者現已要求「帶我手測準備 merge」，視為此 UI 定稿並重新進入正式交付。
+下一步：提交此修訂，核對／必要時更新唯一受影響的 Visualization reference，不放寬門檻；
+同 head CI 全部適用 gates 完成，補 Windows Subject 排版證據並更新正式啟動器與手測清單。
+開啟完整程式與同一 console log，確認有回應後交付手測；不以此次準備要求自動合併。
+
 ### Current / next
 
 - PR #164 已合併；舊 worktree 已清理，驗證證據與使用者手測訓練結果保留於本機 ignored artifacts。
@@ -116,8 +131,8 @@ Linux 窄視窗要求 720px 卻被最小寬度撐至 723px；保持既有窄版�
   真實操作失效次數或 Subject／publication／training／run／method 快取隔離。
 - 窄版最低尺寸已以實際 DejaVu 字型重現 722 > 720；Saliency 最小寬 120→115，
   保持原 720px gate、排列與字體。23 個直接幾何／Subject 測試通過，Linux 原平台由新 CI 核對。
-- 上述 CI 修復已完成 focused 與獨立覆核；下一步提交 final candidate、同 head CI、
-  Windows 100／125／150% Subject 補充畫面與真實資料最後來源核對。
+- e0c0aef1 的 24 個適用 CI checks、Windows Subject 補驗及真實 A01/A02 路徑已通過。
+  目前唯一後續產品改動為使用者要求移除資訊行；此修訂需新 head CI，不沿用舊 head 宣稱。
 - 準備手測清單與綁定 candidate 的 Windows 完整程式
   啟動指令，隔離本機設定與輸出。全部適用 gates 完成才開正式手測，不以示例代替。
 - 本輪 endpoint 為 handoff-ready 並已開啟完整程式；等待使用者實測及新的 merge 同意，

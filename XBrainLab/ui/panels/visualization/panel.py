@@ -543,15 +543,6 @@ class VisualizationPanel(BasePanel):
         left_layout.addWidget(self.saliency_action_bar)
 
         # 3. Explanation canvas
-        self._explanation_context_text = ""
-        self.explanation_context = QLabel()
-        self.explanation_context.setWordWrap(True)
-        self.explanation_context.setStyleSheet(f"color: {Theme.TEXT_SECONDARY};")
-        self.explanation_context.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
-        )
-        left_layout.addWidget(self.explanation_context)
-
         # Tabs
         self.tabs = QTabWidget()
         self.tabs.setObjectName("SaliencyViewTabs")
@@ -1195,7 +1186,6 @@ class VisualizationPanel(BasePanel):
         for view in self._saliency_views():
             self._cancel_native_render_binding(view)
         self._invalidate_view_render_publications()
-        self.explanation_context.clear()
 
     def _on_run_changed(self, _text: str) -> None:
         self._reset_subject_choices()
@@ -1206,7 +1196,6 @@ class VisualizationPanel(BasePanel):
         for view in self._saliency_views():
             self._cancel_native_render_binding(view)
         self._invalidate_view_render_publications()
-        self.explanation_context.clear()
         self.on_update()
 
     def _sync_subject_choices(self, publication: SaliencyRenderPublication) -> None:
@@ -1390,21 +1379,14 @@ class VisualizationPanel(BasePanel):
         """Explain the selected result identity and scientific aggregation."""
         if not hasattr(self, "tabs"):
             return
-        self._explanation_context_text = explanation_provenance_text(
-            self.tabs.currentIndex(),
-            dataset_label=self._selected_dataset_label(),
-            plan_label=self._selected_plan_label(),
-            run_label=self._selected_run_label(),
+        self.tabs.setToolTip(
+            explanation_provenance_text(
+                self.tabs.currentIndex(),
+                dataset_label=self._selected_dataset_label(),
+                plan_label=self._selected_plan_label(),
+                run_label=self._selected_run_label(),
+            )
         )
-        self.tabs.setToolTip(self._explanation_context_text)
-        task = self._current_saliency_render_task()
-        context_identity = (
-            task.request if task is not None else None,
-            self.tabs.currentIndex(),
-            self.saliency_combo.currentData(),
-        )
-        if self.explanation_context.property("renderIdentity") != context_identity:
-            self.explanation_context.clear()
 
     def _selected_dataset_label(self) -> str:
         """Return the dataset identity bound to the selected finished result."""
@@ -2759,18 +2741,6 @@ class VisualizationPanel(BasePanel):
             if class_key is None or key == class_key
         )
         widget.setProperty("trialCount", trial_count)
-        subject_label = dict(publication.data.subject_choices).get(
-            publication.data.selected_subject_id, "All subjects"
-        )
-        split = publication.data.source_split.capitalize()
-        self.explanation_context.setProperty(
-            "renderIdentity", (publication.request, self.tabs.currentIndex(), class_key)
-        )
-        trial_label = "trial" if trial_count == 1 else "trials"
-        self.explanation_context.setText(
-            f"{subject_label} · {split} · {trial_count} {trial_label} · "
-            + explanation_provenance_text(self.tabs.currentIndex())
-        )
         widget.setProperty(
             "classLabels",
             [str(name) for _key, name in publication.data.class_map],
