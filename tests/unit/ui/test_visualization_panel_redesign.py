@@ -5123,3 +5123,68 @@ def test_first_computed_subject_choices_enable_at_native_terminal(qtbot, subject
     panel._on_native_render_terminal(panel.tab_map, 3, rendered.generation, "completed")
     assert not panel._saliency_compute_in_progress
     assert panel.subject_combo.isEnabled()
+
+
+def test_subject_controls_fit_720_pixels_with_linux_fallback_font(qtbot):
+    from pathlib import Path
+
+    from matplotlib import get_data_path
+    from PyQt6.QtGui import QFontDatabase
+
+    from XBrainLab.ui.styles.stylesheets import Stylesheets
+
+    panel = _make_panel(qtbot)
+    font_path = Path(get_data_path()) / "fonts" / "ttf" / "DejaVuSans.ttf"
+    font_id = QFontDatabase.addApplicationFont(str(font_path))
+    assert font_id >= 0
+    try:
+        panel.on_update = lambda: None
+        panel.setStyleSheet(
+            Stylesheets.MAIN_WINDOW.replace("'Segoe UI', 'Arial'", "'DejaVu Sans'")
+        )
+        for combo, text in (
+            (panel.plan_combo, "Fold 2"),
+            (panel.run_combo, "Run 2"),
+            (panel.method_combo, "SmoothGrad_Squared"),
+            (panel.saliency_combo, "right hand imagery"),
+        ):
+            with QSignalBlocker(combo):
+                combo.clear()
+                combo.addItem(text, text)
+        panel.show()
+        assert panel.plan_label.fontInfo().family() == "DejaVu Sans"
+        for width in (800, 720, 800, 720):
+            panel.resize(width, 520)
+            qtbot.wait(30)
+            assert panel.width() == width
+            controls = (
+                panel.plan_label,
+                panel.plan_combo,
+                panel.run_label,
+                panel.run_combo,
+                panel.subject_label,
+                panel.subject_combo,
+                panel.saliency_view_label,
+                panel.saliency_combo,
+                panel.method_label,
+                panel.method_combo,
+                panel.normalize_check,
+                panel.abs_check,
+            )
+            for index, control in enumerate(controls):
+                assert panel.ctrl_bar.rect().contains(control.geometry())
+                for other in controls[index + 1 :]:
+                    assert not control.geometry().intersects(other.geometry())
+            for label in (
+                panel.plan_label,
+                panel.run_label,
+                panel.subject_label,
+                panel.saliency_view_label,
+                panel.method_label,
+                panel.normalize_check,
+                panel.abs_check,
+            ):
+                assert label.width() >= label.minimumSizeHint().width()
+    finally:
+        panel.close()
+        QFontDatabase.removeApplicationFont(font_id)

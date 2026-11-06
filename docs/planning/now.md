@@ -68,6 +68,30 @@ Stop：授權功能及直接驗證完成、獨立 review 無 blocking finding，
 原生預覽。完成條件是各寬度皆維持要求的順序且無重疊；不因此重跑後端或重型 CI。
 已完成：22 個排列／幾何 focused tests 通過；Windows 寬／中／窄原生截圖確認順序與無重疊。
 
+### 正式驗證中的直接阻擋 — 高 DPI 圖表縮小
+
+Subject 控制列的 Windows 150% capture 顯示控制項排列正常，但圖表被縮到左下方、標籤重疊。
+追查既有 `fit_figure_subplots_to_canvas`：tightbbox 使用實體像素，canvas.get_width_height()
+預設回傳邏輯像素，兩者在 DPR > 1 不一致。此 helper 未由 Subject 功能修改；本輪驗證才發現。
+先用真實 Qt canvas 重現並對照主線 helper，確認不是截圖時序；若成立，只修正同一 helper
+的像素單位，補高 DPI 幾何回歸及重新擷取受影響畫面。不重構 renderer／新增 owner，不放寬
+檢查門檻；無高 DPI 副作用且 focused/native evidence 通過後，更新 PR 並以新 head 跑必要 CI。
+
+### CI fixture 對齊
+
+Linux integration-rest 的兩個 semantic label workflow 案例使用每類一筆的假 EvalRecord，
+與已建立的實際 Test mask／順序不符，新的 Subject 對應檢查正確拒絕。只修正該 fixture，
+使其 labels／outputs／逐類 saliency 行數符合真實 split，保留原標籤語意 assertions；
+不放寬 production 檢查。先重現，再執行該檔的 focused tests，與 DPI 修正一起送新 head CI。
+
+### CI UI 相容性補驗
+
+同 head CI 發現 Spectrogram normalize 測試仍寫死舊 cache key、兩個 mock invalidation
+案例可能混入 setup 的呼叫；逐項重現並以真實 reuse／失效邊界核對，不盲目放寬次數。
+Linux 窄視窗要求 720px 卻被最小寬度撐至 723px；保持既有窄版可用範圍，調整直接相關
+控制項的最小尺寸並驗證文字與幾何，不修改測試容許寬度。與既有 DPI／fixture 修復一起
+獨立覆核後送新 head CI，直到所有適用 checks 成功再開正式手測。
+
 ### Current / next
 
 - PR #164 已合併；舊 worktree 已清理，驗證證據與使用者手測訓練結果保留於本機 ignored artifacts。
@@ -82,7 +106,19 @@ Stop：授權功能及直接驗證完成、獨立 review 無 blocking finding，
 - 正式候選為 PR #165；核對同 head regression／static／source-diverse／跨平台／UI DPI gates；
   已依 CI exact-source 截圖與使用者確認版面更新唯一變動的 Visualization reference，
   保留原 drift 失敗證據且不放寬門檻。CI 已提供的同版本證據不重跑。
-- 補驗真實多受試者資料的 Subject 路徑；準備手測清單與綁定 candidate 的 Windows 完整程式
+- 真實 A01/A02 GDF 已經過 Command 匯入／前處理／epochs、實際 EEGNet／Gradient、逐人
+  篩選與安全結果重讀驗證；獨立 MNE event oracle 核對 274 epochs 與實際 Test rows。
+  此補驗使用 domain 建立的受控 masks，不冒稱使用者點擊完整流程；同 head source-diverse CI
+  另涵蓋多來源，Windows 手測仍待完成。
+- 高 DPI 修正已獨立覆核；預設 CI 可跑的真 Agg 125%／150% 回歸先失敗再通過，
+  QTAgg／Agg focused 共 11 passed。兩個 semantic fixture 已依實際 Test mask 修正，3 passed。
+  UI setup mock 與 cache identity 修正：兩檔 104 passed，擴充後直接案例 8 passed；沒有放寬
+  真實操作失效次數或 Subject／publication／training／run／method 快取隔離。
+- 窄版最低尺寸已以實際 DejaVu 字型重現 722 > 720；Saliency 最小寬 120→115，
+  保持原 720px gate、排列與字體。23 個直接幾何／Subject 測試通過，Linux 原平台由新 CI 核對。
+- 上述 CI 修復已完成 focused 與獨立覆核；下一步提交 final candidate、同 head CI、
+  Windows 100／125／150% Subject 補充畫面與真實資料最後來源核對。
+- 準備手測清單與綁定 candidate 的 Windows 完整程式
   啟動指令，隔離本機設定與輸出。全部適用 gates 完成才開正式手測，不以示例代替。
 - 本輪 endpoint 為 handoff-ready 並已開啟完整程式；等待使用者實測及新的 merge 同意，
   此次不合併。研究 checkout／使用者 settings.json／既有結果保持不變。

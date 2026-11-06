@@ -852,7 +852,7 @@ class VisualizationPanel(BasePanel):
         self.run_combo.setMaximumWidth(120)
         self.method_combo.setMinimumWidth(100)
         self.method_combo.setMaximumWidth(135)
-        self.saliency_combo.setMinimumWidth(120)
+        self.saliency_combo.setMinimumWidth(115)
         self.ctrl_layout.addWidget(self.plan_label, 0, 0)
         self.ctrl_layout.addWidget(self.plan_combo, 0, 1)
         self.ctrl_layout.addWidget(self.run_label, 0, 2)
