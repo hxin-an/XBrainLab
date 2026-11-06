@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import pytest
@@ -10,6 +10,7 @@ import pytest
 from XBrainLab.backend.application.resource_preflight import (
     ResourceConfirmationChallenge,
 )
+from XBrainLab.backend.training_state_contract import TrainingRunIdentity
 from XBrainLab.llm.agent.assembler import PromptToolPublication
 from XBrainLab.llm.agent.tool_attempt_coordinator import (
     ToolAttemptAction,
@@ -206,19 +207,26 @@ def test_unpublished_unregistered_tool_is_rejected_before_verification() -> None
     assert verifier.calls == []
 
 
-def test_stale_prompt_generation_blocks_immediate_execution() -> None:
-    coordinator, source, verifier = _coordinator(
-        _context("validate_interpretation", generation=22)
-    )
+@pytest.mark.parametrize(
+    "tool_name",
+    [
+        "validate_interpretation",
+        "apply_bandpass_filter",
+        "start_training",
+        "reset_preprocessing",
+    ],
+)
+def test_stale_prompt_generation_blocks_immediate_execution(tool_name) -> None:
+    coordinator, source, verifier = _coordinator(_context(tool_name, generation=22))
     publication = PromptToolPublication(
-        tool_names=frozenset({"validate_interpretation"}),
+        tool_names=frozenset({tool_name}),
         backend_generation=21,
     )
 
     decision = coordinator.evaluate(
         _request(
-            "validate_interpretation",
-            text="Validate the reviewed interpretation.",
+            tool_name,
+            text="Run the requested action.",
             publication=publication,
         )
     )
@@ -230,7 +238,7 @@ def test_stale_prompt_generation_blocks_immediate_execution() -> None:
         "prompt_generation": 21,
         "current_generation": 22,
     }
-    assert source.reads == ["validate_interpretation"]
+    assert source.reads == [tool_name]
     assert verifier.calls == []
 
 
@@ -673,3 +681,65 @@ def test_resource_warning_without_backend_receipt_fails_closed() -> None:
     assert blocked.result is not None
     assert blocked.result.error_type == "contract"
     assert blocked.resource_preflight_receipt is None
+
+
+@pytest.mark.parametrize("generation", [21, 22])
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "same_run",
+        "missing_identity",
+        "replacement",
+        "completed",
+        "unreliable",
+        "policy_error",
+        "disabled",
+    ],
+)
+def test_stop_proposal_requires_the_verified_prompt_run(generation, condition):
+    original = TrainingRunIdentity(trainer_id="original-trainer", run_id=1)
+    current = (
+        TrainingRunIdentity(trainer_id="replacement-trainer", run_id=1)
+        if condition == "replacement"
+        else original
+    )
+    context = replace(
+        _context(
+            "stop_training",
+            enabled=condition != "disabled",
+            generation=generation,
+            requires_confirmation=True,
+        ),
+        state={
+            "state_reliable": True,
+            "training_liveness_reliable": condition != "unreliable",
+            "training": {
+                "is_running": condition != "completed",
+                "terminal_outcome": {
+                    "state": "completed" if condition == "completed" else "running",
+                    "run": current.to_dict(),
+                },
+            },
+        },
+        policy_error="publication unavailable" if condition == "policy_error" else None,
+    )
+    coordinator, _source, _verifier = _coordinator(context)
+    publication = PromptToolPublication(
+        tool_names=frozenset({"stop_training"}),
+        backend_generation=21,
+        training_run=None if condition == "missing_identity" else original,
+    )
+    decision = coordinator.evaluate(
+        _request("stop_training", text="Stop training", publication=publication)
+    )
+    if condition == "same_run":
+        assert decision.action is ToolAttemptAction.CONFIRMATION_REQUIRED
+        confirmation = coordinator.build_confirmation_request(decision)
+        assert confirmation.expected_training_run == original
+    else:
+        assert decision.action in {
+            ToolAttemptAction.PUBLICATION_BLOCKED,
+            ToolAttemptAction.CAPABILITY_BLOCKED,
+        }
+        assert decision.result is not None
+        assert not decision.result.ok

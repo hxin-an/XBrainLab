@@ -114,3 +114,101 @@ def test_stop_confirmation_follows_original_live_run(
                 and service.training.wait_until_restart_safe(timeout=0),
                 timeout=WATCHDOG_MS,
             )
+
+
+@pytest.mark.parametrize("transition", ["progress", "terminal", "replaced_run"])
+def test_stop_generation_follows_original_live_run(
+    qtbot, monkeypatch, tmp_path, transition
+):
+    """Progress during model generation cannot invalidate Stop for the same run."""
+    with _runtime_harness(
+        qtbot, monkeypatch, use_real_workflow_router=True, use_real_main_window=True
+    ) as harness:
+        _release_initial_load(qtbot, harness)
+        service = get_application_service(harness.study)
+        operation_id = start_cpu_training(harness.study, tmp_path, epochs=10_000)
+        owned_operations = [operation_id]
+        terminals = QSignalSpy(harness.runtime.turn_finished)
+        commands = QSignalSpy(harness.controller.application_command_completed)
+        try:
+            original_run = service.training_runtime.terminal_outcome().run
+            assert original_run is not None
+            harness.engine.generation_output = (
+                '{"tool_name":"stop_training","parameters":{}}'
+            )
+            _send_request(harness, "Stop the current training run")
+            qtbot.waitUntil(
+                harness.engine.generation_started.is_set, timeout=WATCHDOG_MS
+            )
+            captured_generation = service.get_view_publication().generation
+            qtbot.waitUntil(
+                lambda: service.get_view_publication().generation > captured_generation,
+                timeout=WATCHDOG_MS,
+            )
+            current = service.training_runtime.terminal_outcome()
+            assert current.run == original_run
+            assert current.state is TrainingOutcomeState.RUNNING
+            if transition != "progress":
+                assert service.cancel_owned_operation(operation_id)
+                qtbot.waitUntil(
+                    lambda: service.get_owned_operation(operation_id).phase.terminal
+                    and service.training.wait_until_restart_safe(timeout=0),
+                    timeout=WATCHDOG_MS,
+                )
+                if transition == "replaced_run":
+                    command = TrainCommand(confirmed=True, interactive=True)
+                    replacement = service.begin_owned_operation(command)
+                    owned_operations.append(replacement.operation_id)
+                    assert service.execute(
+                        command, operation_id=replacement.operation_id
+                    ).ok
+                    replacement_run = service.training_runtime.terminal_outcome().run
+                    assert replacement_run != original_run
+            harness.engine.generation_release.set()
+            card = harness.panel.confirmation_card_widget
+            qtbot.waitUntil(
+                lambda: card.isVisibleTo(harness.panel) or bool(terminals),
+                timeout=WATCHDOG_MS,
+            )
+            if transition == "progress":
+                assert card.isVisibleTo(harness.panel), (
+                    "Ordinary progress rejected Stop before confirmation",
+                    [entry[0] for entry in terminals],
+                )
+                confirmation = harness.controller.pending_interactions.confirmation
+                assert confirmation is not None
+                assert confirmation.request.expected_training_run == original_run
+                qtbot.mouseClick(card.primary_button, Qt.MouseButton.LeftButton)
+            else:
+                assert not card.isVisibleTo(harness.panel)
+            qtbot.waitUntil(lambda: len(terminals) == 1, timeout=WATCHDOG_MS)
+            assert terminals[0][0].outcome == (
+                "completed" if transition == "progress" else "blocked"
+            )
+            assert len(commands) == int(transition == "progress")
+            if transition == "replaced_run":
+                current = service.training_runtime.terminal_outcome()
+                assert current.run == replacement_run
+                assert current.state is TrainingOutcomeState.RUNNING
+            else:
+                qtbot.waitUntil(
+                    lambda: service.get_owned_operation(operation_id).phase.terminal,
+                    timeout=WATCHDOG_MS,
+                )
+                current = service.training_runtime.terminal_outcome()
+                assert current.run == original_run
+                assert current.state is TrainingOutcomeState.CANCELLED
+            assert harness.engine.generation_calls == 1
+        finally:
+            harness.engine.generation_release.set()
+            for owned_operation in owned_operations:
+                if not service.get_owned_operation(owned_operation).phase.terminal:
+                    service.cancel_owned_operation(owned_operation)
+            qtbot.waitUntil(
+                lambda: all(
+                    service.get_owned_operation(item).phase.terminal
+                    for item in owned_operations
+                )
+                and service.training.wait_until_restart_safe(timeout=0),
+                timeout=WATCHDOG_MS,
+            )
