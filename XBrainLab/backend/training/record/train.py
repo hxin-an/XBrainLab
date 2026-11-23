@@ -1102,7 +1102,7 @@ class TrainRecord:
                 return
             with identity:
                 record_path = os.path.join(target_path, "record")
-                if os.path.exists(record_path):
+                if identity.regular_file_exists(record_path):
                     try:
                         data, arrays = read_json_npz_artifact(
                             record_path,

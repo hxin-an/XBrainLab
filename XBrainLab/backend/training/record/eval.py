@@ -871,9 +871,6 @@ class EvalRecord:
         if artifact_basename not in EVAL_ARTIFACT_BASENAMES:
             raise ValueError("Unsupported evaluation artifact basename")
         path = os.path.join(target_path, artifact_basename)
-        if not os.path.exists(path):
-            return None
-
         try:
             payload, arrays = read_json_npz_artifact(
                 path,
@@ -966,6 +963,8 @@ class EvalRecord:
                 ),
                 _from_artifact=True,
             )
+        except FileNotFoundError:
+            return None
         except (FilesystemIdentityError, UnsupportedArtifactError):
             raise
         except Exception as e:
