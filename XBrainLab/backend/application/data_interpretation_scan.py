@@ -147,6 +147,13 @@ class _ScanBudget:
         """Return directory identities already visited by this bounded walk."""
         return tuple(sorted(self._directory_cache))
 
+    def directory_memberships(self) -> dict[Path, frozenset[str]]:
+        """Keep names from the actual discovery pass for later freshness checks."""
+        return {
+            Path(directory): frozenset(entry.name for entry in entries)
+            for directory, entries in self._directory_cache.items()
+        }
+
     @property
     def traversal_complete(self) -> bool:
         """Return whether file, entry, and depth bounds retained the full tree."""

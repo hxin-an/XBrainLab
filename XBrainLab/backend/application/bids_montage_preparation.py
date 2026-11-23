@@ -935,7 +935,7 @@ def _resolve_resources(
             raise _MontageResourceError(
                 "Selected recording is outside the supplied BIDS dataset index."
             ) from exc
-        if not active_index.is_current():
+        if not active_index.is_current(recording_path=recording):
             raise _StaleBidsIndexError(
                 "BIDS dataset index changed before montage inheritance resolution."
             )
@@ -957,6 +957,11 @@ def _resolve_resources(
                 )
             active_index = build_bids_dataset_index(dataset_root)
         dataset_root = Path(active_index.root)
+    if not active_index.completeness.complete:
+        raise _StaleBidsIndexError(
+            "BIDS dataset index is incomplete; review the dataset again before "
+            "resolving montage inheritance."
+        )
     try:
         recording.relative_to(dataset_root)
     except ValueError as exc:

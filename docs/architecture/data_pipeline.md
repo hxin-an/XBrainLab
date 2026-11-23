@@ -106,7 +106,7 @@ generic folder 與 files 直接進既有 Import Review。Index 對使用者明�
 root 做 bounded walk，解析唯一 nested formal root，記錄 subject catalog、selected EEG recordings、
 entities、events / channels / electrodes / coordsystem / JSON sidecars、warnings 與 completeness。
 Scan、subject selection、review/apply、EEGLAB dependency preflight 和 montage preparation 只重用
-仍通過 retained directory identities 的同一 index；subject projection 不再各自重掃整棵資料樹。
+仍符合目錄身分與檔名清單的 index。查詢單筆 recording 時，核對其繼承路徑上已列舉的目錄；完整投影核對整份清單。掃描中發生變動或清單不完整時，不能用它套用 montage。
 
 Events/channels TSV 在同一 inventory 的祖先目錄中依 recording entities 配對，採最近的
 適用整份 TSV；不逐列合併。單一目錄有多份適用 TSV 時保留逐 recording 的歧義，
@@ -119,7 +119,7 @@ Events JSON 也由同一 selected inventory 依 filename entity subset 與祖先
 同層多個適用檔案不任選，受影響 carrier 必須先修正歧義。逐層繼承以整個欄位定義
 覆寫（含 `Levels`），不是合併該欄位的子鍵。所有適用 JSON 都進入既有 content identity；
 detached load 後、atomic publication 前再次確認 retained index，避免途中新增 sidecar
-繞過 review。這項檢查重用目錄身分，不重新走訪資料樹。
+繞過 review。目錄時間未變時仍核對已列舉的檔名。
 
 Small BIDS metadata、JSON、CSV / TSV sidecars 使用 content-identified parsed cache。Cache key 包含
 完整 bytes SHA-256、parser ID、schema version、payload size / kind，保留 immutable value 並限制

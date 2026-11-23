@@ -14,6 +14,7 @@ from XBrainLab.backend.application.bids_montage_preparation import (
     prepare_bids_montage,
     resolve_bids_montage_resource_paths,
 )
+from XBrainLab.backend.application.data_interpretation_scan import _ScanBudget
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.montage_preparation_lifecycle import (
     ManualMontageOverride,
@@ -182,8 +183,11 @@ def test_montage_inheritance_consumes_current_index_without_rewalking_root(
     assert resolve_bids_montage_resource_paths(recording) == resources
 
 
-def test_montage_rejects_changed_explicit_index_instead_of_using_stale_paths(
+@pytest.mark.parametrize("consumer", ["explicit", "automatic", "admitted"])
+def test_new_recording_geometry_is_detected_even_when_directory_times_collide(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    consumer: str,
 ) -> None:
     root = tmp_path / "bids"
     _write_bids_dataset(root)
@@ -194,14 +198,78 @@ def test_montage_rejects_changed_explicit_index_instead_of_using_stale_paths(
         rows=(("Cz", "0.1", "0", "0"),),
     )
     index = build_bids_dataset_index(root)
+    request = BidsMontageRecordingRequest(str(recording), ("Cz",))
+    receipt = admit_bids_montage_resources((request,), bids_index=index)
+    directory = recording.parent
+    original_status = directory.stat()
+    original_stat = Path.stat
+
+    # Some filesystems report the same directory identity across both writes.
+    # Keep the actual files and directory enumeration intact.
+    def same_directory_status(path, *, follow_symlinks=True):
+        if path == directory:
+            return original_status
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "stat", same_directory_status)
     _write_geometry(
         recording.parent,
         "sub-01_task-rest_run-1_",
         rows=(("Cz", "0.2", "0", "0"),),
     )
 
-    with pytest.raises(PreconditionError, match="index changed"):
+    if consumer == "explicit":
+        with pytest.raises(PreconditionError, match="index changed"):
+            resolve_bids_montage_resource_paths(recording, bids_index=index)
+    elif consumer == "automatic":
+        assert _prepare(recording).aggregate.positions_m == ((0.2, 0.0, 0.0),)
+    else:
+        snapshot = prepare_bids_montage(
+            (request,), generation=2, resource_receipt=receipt
+        )
+        assert snapshot.state == "failed"
+        assert "changed" in (snapshot.reason or "").lower()
+
+
+def test_first_automatic_montage_rejects_index_changed_during_discovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_bids_dataset(tmp_path)
+    recording = _write_recording(tmp_path, "01")
+    _write_geometry(tmp_path, "task-rest_", rows=(("Cz", "0.1", "0", "0"),))
+    revalidate = _ScanBudget.revalidate_traversed_directories
+
+    def add_override_after_discovery(budget):
+        _write_geometry(
+            recording.parent, "sub-01_task-rest_run-1_", rows=(("Cz", "0.2", "0", "0"),)
+        )
+        return revalidate(budget)
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            _ScanBudget,
+            "revalidate_traversed_directories",
+            add_override_after_discovery,
+        )
+        first = _prepare(recording)
+    assert first.state == "failed"
+    assert "index" in (first.reason or "").lower()
+    assert _prepare(recording).aggregate.positions_m == ((0.2, 0.0, 0.0),)
+
+
+def test_montage_rejects_still_current_but_incomplete_index(tmp_path: Path) -> None:
+    _write_bids_dataset(tmp_path)
+    recording = _write_recording(tmp_path, "01")
+    _write_geometry(tmp_path, "task-rest_", rows=(("Cz", "0.1", "0", "0"),))
+    (tmp_path / "deep" / "a" / "b" / "c").mkdir(parents=True)
+    index = build_bids_dataset_index(tmp_path, _scan_budget=_ScanBudget(max_depth=3))
+    assert not index.completeness.traversal_complete
+    assert index.contains_recording(recording)
+
+    with pytest.raises(PreconditionError, match="incomplete"):
         resolve_bids_montage_resource_paths(recording, bids_index=index)
+    assert _prepare(recording).state == "failed"
 
 
 def test_montage_registry_chooses_nested_exact_bids_root(tmp_path: Path) -> None:

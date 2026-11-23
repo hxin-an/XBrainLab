@@ -133,6 +133,20 @@ class _IndexedPathIdentity:
         return observed == self
 
 
+def _directory_members_match(directory: Path, expected: frozenset[str]) -> bool:
+    """Check direct entry names and stop as soon as the bounded inventory differs."""
+    try:
+        with os.scandir(directory) as children:
+            count = 0
+            for child in children:
+                count += 1
+                if count > len(expected) or child.name not in expected:
+                    return False
+            return count == len(expected)
+    except OSError:
+        return False
+
+
 @dataclass(frozen=True)
 class BidsDatasetProjection:
     """Immutable selected-subject projection from a complete dataset index."""
@@ -180,6 +194,7 @@ class BidsDatasetIndex:
     warnings: tuple[str, ...]
     completeness: BidsDatasetCompleteness
     _identities: tuple[_IndexedPathIdentity, ...]
+    _directory_members: Mapping[Path, frozenset[str]]
 
     @property
     def looks_like_bids(self) -> bool:
@@ -195,10 +210,20 @@ class BidsDatasetIndex:
             _path_key(Path(self.selection_root)),
         }
 
-    def is_current(self) -> bool:
-        """Recheck retained directory identities without walking the tree."""
-        return bool(self._identities) and all(
+    def is_current(self, *, recording_path: Path | None = None) -> bool:
+        """Verify filesystem identity and the directory names used by this lookup."""
+        if not self._identities or not all(
             identity.still_matches() for identity in self._identities
+        ):
+            return False
+        directories = (
+            self._directory_members.keys()
+            if recording_path is None
+            else (p for p in recording_path.parents if p in self._directory_members)
+        )
+        return all(
+            _directory_members_match(directory, self._directory_members[directory])
+            for directory in directories
         )
 
     @cached_property
@@ -535,9 +560,8 @@ def build_bids_dataset_index(
         traversal_complete=budget.traversal_complete,
         blocked_reasons=tuple(dict.fromkeys(blocked)),
     )
-    # Directory identities invalidate path projections on additions, removals,
-    # renames, and substitutions without restating every indexed file on each
-    # cache lookup. Payload freshness remains owned by resource admission.
+    # Directory metadata can stay identical after an insertion or removal.
+    # Keep the names actually enumerated; resource admission owns file contents.
     identity_paths = _unique_sorted(
         [str(selection_root), str(root), *budget.traversed_directories]
     )
@@ -563,8 +587,15 @@ def build_bids_dataset_index(
                     )
                 ),
             )
-    changed_directories = budget.revalidate_traversed_directories()
-    if changed_directories:
+    # A traversal cut short by its budget carries a blocking reason and has no
+    # complete namespace to compare. Preserve that original bounded outcome.
+    directory_members = (
+        budget.directory_memberships() if budget.traversal_complete else {}
+    )
+    if budget.revalidate_traversed_directories() or not all(
+        _directory_members_match(directory, names)
+        for directory, names in directory_members.items()
+    ):
         completeness = BidsDatasetCompleteness(
             complete=False,
             traversal_complete=False,
@@ -604,8 +635,9 @@ def build_bids_dataset_index(
         warnings=tuple(dict.fromkeys(warnings)),
         completeness=completeness,
         _identities=tuple(identities),
+        _directory_members=MappingProxyType(directory_members),
     )
-    if result.is_current():
+    if identities:
         remember_bids_dataset_index(result)
     return result
 
@@ -648,7 +680,11 @@ def current_bids_dataset_index_for_path(
                 for nested_root in index.skipped_nested_bids_roots
             ):
                 continue
-            is_current = index.is_current()
+            is_current = index.is_current(
+                recording_path=candidate
+                if index.contains_recording(candidate)
+                else None
+            )
             if index.looks_like_bids and is_current:
                 return index
             if not is_current:
