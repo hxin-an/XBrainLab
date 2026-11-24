@@ -1098,8 +1098,11 @@ def _create_fallback_output_directory(
     exclusive: bool,
     legacy_components: tuple[str, ...],
 ) -> ContainedOutputDirectory:
-    root.mkdir(parents=True, exist_ok=True)
-    resolved_root = root.resolve(strict=False)
+    # Keep Win32 directory creation, legacy lookup and containment checks in
+    # the same long-path namespace as our existing artifact operations.
+    native_root = Path(_windows_extended_path(root)) if _is_windows() else root
+    native_root.mkdir(parents=True, exist_ok=True)
+    resolved_root = native_root.resolve(strict=True)
     if legacy_components:
         legacy_candidate = resolved_root.joinpath(*legacy_components)
         if os.path.lexists(legacy_candidate):
@@ -1114,8 +1117,15 @@ def _create_fallback_output_directory(
             "Training output directory already exists; implicit resume is not "
             "supported."
         ) from exc
-    resolved_candidate = candidate.resolve(strict=False)
+    resolved_candidate = candidate.resolve(strict=True)
     _require_contained(resolved_candidate, resolved_root)
+    if native_root != root:
+        # Expose the caller's ordinary DOS or UNC spelling for the admitted path.
+        spelling = str(resolved_candidate)
+        if spelling.startswith("\\\\?\\UNC\\"):
+            resolved_candidate = Path("\\\\" + spelling[8:])
+        elif resolved_candidate.drive.endswith(":"):
+            resolved_candidate = Path(spelling.removeprefix("\\\\?\\"))
     return ContainedOutputDirectory(
         path=resolved_candidate,
         io_path=resolved_candidate,

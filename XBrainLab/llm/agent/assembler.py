@@ -8,6 +8,7 @@ from typing import Any
 
 from XBrainLab.backend.application.errors import PreconditionError
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
+from XBrainLab.backend.training_state_contract import TrainingRunIdentity
 from XBrainLab.chat_contract import (
     LOCAL_MODEL_INPUT_TOO_LONG_MESSAGE,
     MAX_CHAT_MODEL_REQUEST_UTF8_BYTES,
@@ -21,6 +22,7 @@ from ..tools.application_surface import (
 )
 from ..tools.schema_contract import tool_contract_for_llm
 from ..tools.tool_registry import ToolRegistry
+from .confirmation import running_training_identity
 from .context_encoding import (
     MAX_UNTRUSTED_CONTEXT_BYTES,
     MAX_UNTRUSTED_STRING_CHARS,
@@ -51,6 +53,7 @@ class PromptToolPublication:
     workflow_stage: str = "unavailable"
     backend_generation: int | None = None
     blocked_reasons: tuple[tuple[str, str], ...] = ()
+    training_run: TrainingRunIdentity | None = None
 
     @classmethod
     def empty(cls) -> PromptToolPublication:
@@ -365,6 +368,13 @@ Each parameters schema describes the complete arguments needed to execute an act
             workflow_stage=workflow_stage,
             backend_generation=policy_read.backend_generation,
             blocked_reasons=tuple(unavailable_actions.items()),
+            training_run=(
+                running_training_identity(publication.state.to_dict())
+                if publication is not None
+                and publication.usable
+                and "stop_training" in allowed_tools
+                else None
+            ),
         )
 
         context_items = [

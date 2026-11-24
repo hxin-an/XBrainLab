@@ -328,3 +328,277 @@ def test_unequal_subject_group_counts_keep_exact_cv_coverage_and_fold_unions(
                     ]
                 ),
             )
+
+
+def _uneven_group_epochs(class_counts, split_type, *, extra_training_class=False):
+    from XBrainLab.backend.dataset.epochs import EpochWindowProvenance
+
+    counts = list(class_counts)
+    if extra_training_class:
+        # This group is mandatory Train support for a new class. A repair that
+        # only handles a single all-class Train group cannot solve this case.
+        counts.append((0, 0, 0, 0, 3))
+    labels = [
+        label
+        for group in counts
+        for label, count in enumerate(group)
+        for _ in range(count)
+    ]
+    epochs = scoped_epochs(1, 1, len(labels))
+    epochs.label = np.asarray(labels)
+    epochs.label_map = {label: f"class-{label}" for label in set(labels)}
+    groups = np.repeat(np.arange(len(counts)), [sum(group) for group in counts])
+    epochs.trial_group = groups.copy()
+    if split_type is SplitByType.SESSION:
+        epochs.session = groups.copy()
+        epochs.session_map = {index: f"session-{index}" for index in range(len(counts))}
+    elif split_type is SplitByType.SUBJECT:
+        epochs.subject = groups.copy()
+        epochs.subject_map = {index: f"subject-{index}" for index in range(len(counts))}
+    epochs.epoch_window_provenance = tuple(
+        EpochWindowProvenance(
+            "content-sha256:" + "a" * 64,
+            int(group * 100),
+            int(group * 100),
+            int(group * 100 + 8),
+            100.0,
+            100.0,
+            0.0,
+            0.07,
+            True,
+        )
+        for group in groups
+    )
+    return epochs
+
+
+@pytest.mark.parametrize("split_type", list(SplitByType))
+@pytest.mark.parametrize("extra_training_class", [False, True])
+@pytest.mark.parametrize(
+    "class_counts,test_count,validation_unit,validation_value,train_group",
+    [
+        (
+            [
+                (0, 4, 6, 7),
+                (0, 7, 6, 7),
+                (0, 3, 6, 1),
+                (7, 3, 4, 0),
+                (7, 4, 0, 7),
+                (2, 2, 6, 2),
+            ],
+            4,
+            SplitUnit.RATIO,
+            "0.25",
+            5,
+        ),
+        (
+            [
+                (2, 0, 0, 6),
+                (4, 4, 0, 0),
+                (7, 4, 1, 0),
+                (0, 7, 4, 5),
+                (1, 6, 3, 2),
+                (1, 6, 6, 0),
+                (5, 0, 7, 3),
+            ],
+            5,
+            SplitUnit.NUMBER,
+            "1",
+            4,
+        ),
+    ],
+    ids=["six-groups-number-ratio", "seven-groups-number-number"],
+)
+def test_paired_holdout_retains_feasible_training_groups(
+    split_type,
+    extra_training_class,
+    class_counts,
+    test_count,
+    validation_unit,
+    validation_value,
+    train_group,
+):
+    """A proportional Test choice must not hide a feasible Validation/Train pair."""
+    from XBrainLab.backend.application.dataset_split_preview import (
+        DatasetSplitSpecification,
+    )
+    from XBrainLab.backend.dataset.split_audit import (
+        audit_dataset_splits,
+        split_protocols_for_config,
+    )
+
+    epochs = _uneven_group_epochs(
+        class_counts, split_type, extra_training_class=extra_training_class
+    )
+    groups = epochs.trial_group
+    group_count = len(np.unique(groups))
+    specification = config(
+        split_type,
+        str(test_count),
+        SplitUnit.NUMBER,
+        DataSplitter(
+            ValSplitByType(split_type.value), validation_value, validation_unit
+        ),
+    )
+    specification.seed = 173
+    specification = DatasetSplitSpecification.from_config(specification).to_config()
+    protocols = split_protocols_for_config(specification)
+    expected_train = {train_group}
+    if extra_training_class:
+        expected_train.add(group_count - 1)
+    # Establish a valid independent witness before asking the allocator to find
+    # one. Counts, atomic membership, temporal leakage and classes all matter.
+    available = [index for index in range(group_count) if index not in expected_train]
+    witness = Dataset(epochs, specification)
+    witness.set_test(np.isin(groups, available[:test_count]))
+    witness.set_val(np.isin(groups, available[test_count:]))
+    witness.set_remaining_to_train()
+    assert audit_dataset_splits([witness], protocols=protocols).ok
+    assert len(set(groups[witness.test_mask])) == test_count
+    assert len(set(groups[witness.val_mask])) == 1
+
+    generated = DatasetGenerator(epochs, specification).generate()[0]
+    repeated = DatasetGenerator(epochs, specification).generate()[0]
+    assert len(set(groups[generated.test_mask])) == test_count
+    assert len(set(groups[generated.val_mask])) == 1
+    assert set(groups[generated.train_mask]) == expected_train
+    assert audit_dataset_splits([generated], protocols=protocols).ok
+    for partition in ("train_mask", "val_mask", "test_mask"):
+        mask = getattr(generated, partition)
+        assert np.array_equal(mask, getattr(repeated, partition))
+        assert all(
+            np.unique(mask[groups == group]).size == 1 for group in range(group_count)
+        )
+    assert np.all(
+        generated.train_mask.astype(int) + generated.val_mask + generated.test_mask == 1
+    )
+
+
+def _six_group_paired_config(*, finer_validation=False):
+    epochs = _uneven_group_epochs(
+        [
+            (0, 4, 6, 7),
+            (0, 7, 6, 7),
+            (0, 3, 6, 1),
+            (7, 3, 4, 0),
+            (7, 4, 0, 7),
+            (2, 2, 6, 2),
+        ],
+        SplitByType.SESSION if finer_validation else SplitByType.TRIAL,
+    )
+    specification = config(
+        SplitByType.SESSION if finer_validation else SplitByType.TRIAL,
+        "4",
+        SplitUnit.NUMBER,
+        DataSplitter(
+            ValSplitByType.TRIAL,
+            "0.5" if finer_validation else "0.25",
+            SplitUnit.RATIO,
+        ),
+    )
+    specification.seed = 173
+    return epochs, specification
+
+
+def test_paired_repair_uses_remaining_scope_for_finer_validation():
+    from XBrainLab.backend.dataset.split_audit import (
+        audit_dataset_splits,
+        split_protocols_for_config,
+    )
+
+    epochs, specification = _six_group_paired_config(finer_validation=True)
+    dataset = DatasetGenerator(epochs, specification).generate()[0]
+    groups = epochs.trial_group
+    assert len(set(epochs.session[dataset.test_mask])) == 4
+    # Half of the two remaining atomic groups, not half of the six originals.
+    assert len(set(groups[dataset.val_mask])) == 1
+    assert set(groups[dataset.train_mask]) == {5}
+    assert audit_dataset_splits(
+        [dataset], protocols=split_protocols_for_config(specification)
+    ).ok
+
+
+def test_cancellation_during_paired_repair_rolls_back(monkeypatch):
+    epochs, specification = _six_group_paired_config()
+    generator = DatasetGenerator(epochs, specification)
+    original_validation = generator._validation_mask
+    repair_reached = False
+
+    def cancel_before_repaired_validation(scope, test_mask):
+        nonlocal repair_reached
+        # Every failed greedy attempt consumes group 5. Returning it to the
+        # remainder is the first observable repair that can support Train.
+        if 5 not in set(epochs.trial_group[test_mask]):
+            repair_reached = True
+            generator.set_interrupt()
+        return original_validation(scope, test_mask)
+
+    monkeypatch.setattr(
+        generator, "_validation_mask", cancel_before_repaired_validation
+    )
+    sequence = Dataset.SEQ
+    with pytest.raises(KeyboardInterrupt):
+        generator.generate()
+    assert repair_reached
+    assert generator.datasets == []
+    assert sequence == Dataset.SEQ
+    assert generator.interrupted
+    assert generator.preview_failed
+
+
+def test_paired_repair_rejects_impossible_train_without_partial_publication():
+    epochs, specification = _six_group_paired_config()
+    # Remove G5's only A support. No group now contains all four classes, so
+    # retaining one Train group cannot meet the exact requested counts.
+    epochs.label[(epochs.trial_group == 5) & (epochs.label == 0)] = 1
+    generator = DatasetGenerator(epochs, specification)
+    sequence = Dataset.SEQ
+    with pytest.raises(ValueError, match="requested group counts"):
+        generator.generate()
+    assert generator.datasets == []
+    assert sequence == Dataset.SEQ
+    assert generator.preview_failed
+
+
+@pytest.mark.parametrize("class_count,train_capacity", [(2, 1), (3, 2), (4, 2)])
+def test_impossible_train_class_capacity_does_not_repeat_validation_search(
+    monkeypatch, class_count, train_capacity
+):
+    epochs = scoped_epochs(1, 1, 100)
+    epochs.label = np.arange(100) % class_count
+    epochs.label_map = {label: f"class-{label}" for label in range(class_count)}
+    specification = config(
+        value="20",
+        unit=SplitUnit.NUMBER,
+        validation=DataSplitter(
+            ValSplitByType.TRIAL, str(80 - train_capacity), SplitUnit.NUMBER
+        ),
+    )
+    generator = DatasetGenerator(epochs, specification)
+    original_validation = generator._validation_mask
+    validation_attempts = 0
+    # Existing ordinary allocation retries have a bounded number of starts.
+    # A provably impossible class capacity must not multiply that work again.
+    ordinary_attempts = len(
+        generator._selection_offsets(
+            specification.test_splitter_list[0],
+            np.ones(epochs.get_data_length(), dtype=bool),
+        )
+    )
+
+    def count_validation_attempts(scope, test_mask):
+        nonlocal validation_attempts
+        validation_attempts += 1
+        assert validation_attempts <= ordinary_attempts, (
+            "Provably insufficient Train class capacity repeated Validation search"
+        )
+        return original_validation(scope, test_mask)
+
+    monkeypatch.setattr(generator, "_validation_mask", count_validation_attempts)
+    sequence = Dataset.SEQ
+    with pytest.raises(ValueError, match="requested group counts"):
+        generator.generate()
+    assert validation_attempts == ordinary_attempts
+    assert generator.datasets == []
+    assert sequence == Dataset.SEQ
+    assert generator.preview_failed

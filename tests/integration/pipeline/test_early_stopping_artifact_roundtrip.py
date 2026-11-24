@@ -92,10 +92,16 @@ def tiny_training(tmp_path):
     return dataset, option, model_holder
 
 
+@pytest.mark.parametrize("deep_output", [False, True], ids=["short-path", "long-path"])
 def test_early_stop_evaluates_nonfinal_best_weights_and_reloads_real_artifacts(
-    tiny_training,
+    tiny_training, deep_output
 ):
     dataset, option, model_holder = tiny_training
+    if deep_output:
+        root = Path(option.output_dir)
+        while len(str(root)) < 214:
+            root /= "nested-training-results"
+        option.output_dir = str(root)
     holder = TrainingPlanHolder(model_holder, dataset, option, {})
     holder.train()
 

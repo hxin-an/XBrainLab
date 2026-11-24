@@ -2287,6 +2287,13 @@ class LLMController(QObject):
             tool_names=frozenset({tool_name}),
             workflow_stage=workflow_stage,
             backend_generation=context.generation,
+            training_run=(
+                running_training_identity(context.state)
+                if tool_name == "stop_training"
+                and context.availability.enabled
+                and context.policy_error is None
+                else None
+            ),
         )
         self._turn_orchestrator.set_active_publication(publication)
         decision = self._tool_attempt_coordinator.evaluate(

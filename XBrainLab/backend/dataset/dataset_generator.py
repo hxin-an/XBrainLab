@@ -1,6 +1,7 @@
 """Dataset generator module for creating train/val/test splits from epoch data."""
 
 from collections.abc import Callable, Iterator
+from itertools import islice, product
 from typing import NoReturn
 from uuid import uuid4
 
@@ -19,6 +20,7 @@ from .option import (
 )
 
 MAX_CV_LOCAL_REPAIR_ATTEMPTS = 256
+MAX_PAIRED_LOCAL_REPAIR_ATTEMPTS = 256
 
 
 class DatasetGenerator:
@@ -599,8 +601,10 @@ class DatasetGenerator:
                     "Requested test and validation groups cannot leave non-empty train"
                 )
         last_error = None
+        repair_keys = None
         for offset in self._selection_offsets(test, scope):
             self._raise_if_interrupted()
+            test_keys = None
             try:
                 test_keys = self._select_non_cv_keys(
                     test,
@@ -614,10 +618,88 @@ class DatasetGenerator:
                 return test_mask, self._validation_mask(scope, test_mask)
             except ValueError as error:
                 last_error = error
+                if repair_keys is None and test_keys is not None:
+                    repair_keys = test_keys
+        if repair_keys is not None:
+            repaired = self._repair_paired_masks(scope, repair_keys)
+            if repaired is not None:
+                return repaired
         raise ValueError(
             "Test / validation split is infeasible at the requested group counts "
             f"while preserving all training classes: {last_error}"
         ) from last_error
+
+    def _repair_paired_masks(
+        self, scope: np.ndarray, test_keys: list[int]
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        """Repair a failed paired split with bounded, count-preserving Test swaps.
+
+        Greedy Test allocation can consume groups needed to leave class-complete
+        Train after Validation. Try a local alternative only after the ordinary
+        retries fail, preserving all already-successful allocations.
+        """
+        self._raise_if_interrupted()
+        test = self._required_test_splitter()
+        keys, group_indices = np.unique(
+            self._target_values(test)[scope], return_inverse=True
+        )
+        labels, label_indices, source_counts = np.unique(
+            self.epoch_data.get_label_list()[scope],
+            return_inverse=True,
+            return_counts=True,
+        )
+        group_counts = np.zeros((len(keys), len(labels)), dtype=int)
+        np.add.at(group_counts, (group_indices, label_indices), 1)
+        validation = self._active_validation_splitter()
+        if (
+            validation is not None
+            and validation.split_type.value == test.split_type.value
+        ):
+            train_capacity = (
+                len(keys) - len(test_keys) - self._requested_count(validation, scope)
+            )
+            maximum_support = int(np.count_nonzero(group_counts, axis=1).max())
+            # Even disjoint class supports cannot cover every class within this
+            # exact Train capacity. Avoid repeating expensive Validation searches
+            # for swaps that cannot possibly repair the split.
+            if train_capacity * maximum_support < len(labels):
+                return None
+        positions = {int(key): index for index, key in enumerate(keys)}
+        selected = set(test_keys)
+        remaining = [
+            key for key in self._ordered_keys(test, scope) if key not in selected
+        ]
+        test_counts = group_counts[[positions[key] for key in test_keys]].sum(axis=0)
+        proportions = source_counts / source_counts.sum()
+        candidates = []
+        # Each pair generates a different Test set; no full-mask candidate cache
+        # or repeated swap spends the bounded repair budget.
+        for order, (removed, added) in enumerate(
+            islice(product(test_keys, remaining), MAX_PAIRED_LOCAL_REPAIR_ATTEMPTS)
+        ):
+            self._raise_if_interrupted()
+            counts = (
+                test_counts
+                - group_counts[positions[removed]]
+                + group_counts[positions[added]]
+            )
+            if np.any(source_counts - counts <= 0):
+                continue
+            deviation = float(np.abs(counts - counts.sum() * proportions).sum())
+            candidates.append((deviation, order, removed, added))
+        # Retain the source-proportion objective among the bounded alternatives;
+        # seeded allocation order settles equal scores. Validation still uses its
+        # existing scope, counts, class policy and proportional allocator.
+        for _, _, removed, added in sorted(candidates):
+            self._raise_if_interrupted()
+            swapped = [key for key in test_keys if key != removed] + [added]
+            test_mask = self._mask_for_keys(test, scope, swapped)
+            try:
+                validation_mask = self._validation_mask(scope, test_mask)
+            except ValueError:
+                continue
+            return test_mask, validation_mask
+        return None
 
     def _validation_mask(self, scope: np.ndarray, test_mask: np.ndarray) -> np.ndarray:
         splitter = self._active_validation_splitter()

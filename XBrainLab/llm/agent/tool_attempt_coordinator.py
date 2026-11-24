@@ -17,6 +17,7 @@ from XBrainLab.backend.application.resource_preflight import (
     ResourcePreflightContractError,
     ResourcePreflightView,
 )
+from XBrainLab.backend.training_state_contract import TrainingRunIdentity
 from XBrainLab.llm.tools.application_surface import (
     READ_ONLY_TOOLS,
     TOOL_TO_COMMAND,
@@ -244,11 +245,21 @@ class ToolAttemptCoordinator:
         context = self.context_for(command_name)
         prompt_generation = request.publication.backend_generation
         current_generation = context.generation
-        if (
+        stale = (
             type(prompt_generation) is int
             and type(current_generation) is int
             and prompt_generation != current_generation
-        ):
+        )
+        if command_name == "stop_training":
+            # Progress changes publication generations without changing the run.
+            # Bind to the prompt's run; never retarget delayed output to a new run.
+            prompt_run = request.publication.training_run
+            stale = (
+                not isinstance(prompt_run, TrainingRunIdentity)
+                or prompt_run != running_training_identity(context.state)
+                or context.policy_error is not None
+            )
+        if stale:
             mapped_command = TOOL_TO_COMMAND.get(command_name)
             return ToolAttemptDecision(
                 ToolAttemptAction.PUBLICATION_BLOCKED,

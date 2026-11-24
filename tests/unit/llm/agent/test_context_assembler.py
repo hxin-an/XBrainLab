@@ -23,6 +23,11 @@ from XBrainLab.backend.application.state import (
 )
 from XBrainLab.backend.application.view_publication import ApplicationViewPublication
 from XBrainLab.backend.study import Study
+from XBrainLab.backend.training_state_contract import (
+    TrainingOutcomeState,
+    TrainingRunIdentity,
+    TrainingTerminalOutcome,
+)
 from XBrainLab.chat_contract import MAX_CHAT_MODEL_REQUEST_UTF8_BYTES
 from XBrainLab.llm.agent.assembler import ContextAssembler
 from XBrainLab.llm.agent.context_encoding import (
@@ -2037,3 +2042,55 @@ def test_product_prompt_does_not_publish_unmapped_stage_tool() -> None:
 
     assert "unique description for unmapped_mutation" not in prompt
     assert assembler.latest_tool_publication.tool_names == frozenset()
+
+
+@pytest.mark.parametrize("liveness_reliable", [True, False])
+def test_stop_prompt_retains_only_its_verified_training_run(liveness_reliable):
+    run = TrainingRunIdentity(trainer_id="prompt-trainer", run_id=3)
+    state = replace(
+        ApplicationStateSnapshot.empty(),
+        pipeline_stage="training",
+        training_liveness_reliable=liveness_reliable,
+        training=TrainingStateSnapshot(
+            has_trainer=True,
+            is_running=True,
+            terminal_outcome=TrainingTerminalOutcome(TrainingOutcomeState.RUNNING, run),
+        ),
+        active_training=ActiveTrainingSnapshot(is_running=True),
+    )
+    runtime = _ApplicationRuntimeFake(
+        ApplicationViewPublication(
+            generation=81, state=state, capabilities=build_capability_policy(state)
+        )
+    )
+    registry = ToolRegistry()
+    registry.register(_NamedTool("stop_training"))
+    assembler = ContextAssembler(registry, Study(), application_runtime=runtime)
+    assembler.get_generation_request([{"role": "user", "content": "Stop training"}])
+    original_prompt = assembler.latest_tool_publication
+    assert runtime.publication_reads == 1
+    assert original_prompt.training_run == (run if liveness_reliable else None)
+
+    replacement_run = TrainingRunIdentity(trainer_id="replacement-trainer", run_id=1)
+    replacement = replace(
+        state,
+        training=replace(
+            state.training,
+            terminal_outcome=TrainingTerminalOutcome(
+                TrainingOutcomeState.RUNNING, replacement_run
+            ),
+        ),
+    )
+    runtime._publication = ApplicationViewPublication(
+        generation=82,
+        state=replacement,
+        capabilities=build_capability_policy(replacement),
+    )
+    # This fake permits one backend read per assembly, so reset for the next turn.
+    runtime.publication_reads = 0
+    assembler.get_generation_request([{"role": "user", "content": "Stop training"}])
+    assert runtime.publication_reads == 1
+    assert original_prompt.training_run == (run if liveness_reliable else None)
+    assert assembler.latest_tool_publication.training_run == (
+        replacement_run if liveness_reliable else None
+    )
