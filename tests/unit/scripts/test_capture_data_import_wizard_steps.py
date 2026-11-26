@@ -164,7 +164,6 @@ def test_capture_specs_cover_responsive_and_semantic_review_evidence():
     assert {760, 1040, 1220} <= {spec.expected_size[0] for spec in wizard_specs}
     assert any(spec.label_carrier_count >= 12 for spec in wizard_specs)
     assert any(spec.bids_events for spec in wizard_specs)
-    assert any(spec.expanded_report for spec in wizard_specs)
     advanced = [spec for spec in wizard_specs if spec.expanded_advanced_details]
     assert [(spec.filename, spec.expected_size) for spec in advanced] == [
         ("04-match-labels-internal-advanced-760px.png", (760, 900))
@@ -174,7 +173,6 @@ def test_capture_specs_cover_responsive_and_semantic_review_evidence():
         for spec in wizard_specs
         if spec.step_title == "Review and Import"
     } == {
-        "05-review-and-import-report.png": capture_script.REVIEW_REPORT_SIZE,
         "05-review-and-import.png": capture_script.REVIEW_COMPACT_SIZE,
     }
     assert all(
@@ -417,20 +415,9 @@ def test_review_import_capture_has_no_unresolved_primary_decision(qtbot, tmp_pat
         dialog._review_summary_value_labels["Resource check"].text()
         == "Estimated RAM 2.0 GB / Available RAM 24.0 GB"
     )
-    assert not dialog.review_tree.isVisibleTo(dialog)
-    dialog.import_report_toggle.click()
-    qtbot.wait(1)
-    assert dialog.review_tree.isVisibleTo(dialog)
-    assert dialog.review_tree.topLevelItemCount() > 0
-    report_steps: set[str] = set()
-    report_issues: set[str] = set()
-    for index in range(dialog.review_tree.topLevelItemCount()):
-        item = dialog.review_tree.topLevelItem(index)
-        assert item is not None
-        report_steps.add(item.text(0))
-        report_issues.add(item.text(1))
-    assert "Match Labels" not in report_steps
-    assert report_issues == {"Optional session values were inferred"}
+    assert "Optional session values were inferred" in (
+        dialog._review_summary_value_labels["Metadata"].text()
+    )
 
 
 def test_review_import_releases_stale_conservative_summary_row_height(qtbot):
@@ -572,64 +559,39 @@ def test_review_import_live_action_matches_current_platform_control(qtbot, tmp_p
     )
 
 
-def test_expanded_report_guard_rejects_blank_review_header(qtbot, tmp_path):
-    spec = next(
-        spec
-        for spec in capture_script._canonical_capture_specs()
-        if spec.filename == "05-review-and-import-report.png"
-    )
+def test_review_guard_rejects_erased_recipe_summary(qtbot, tmp_path):
     dialog = capture_script._review_import_dialog()
     qtbot.addWidget(dialog)
-    dialog.resize(QSize(*spec.expected_size))
+    dialog.resize(QSize(*capture_script.REVIEW_COMPACT_SIZE))
     dialog.show()
     dialog._go_to_step(dialog._step_titles.index("Review and Import"))
-    dialog.import_report_toggle.click()
     qtbot.wait(1)
 
-    screenshot = tmp_path / "blank-review-header.png"
-    image = Image.new(
-        "RGB",
-        (dialog.width(), dialog.height()),
-        "#1e1e1e",
-    )
-    draw = ImageDraw.Draw(image)
-    for widget in (dialog.import_report_toggle, dialog.review_tree):
-        top_left = widget.mapTo(dialog, QPoint(0, 0))
-        draw.rectangle(
-            (
-                top_left.x(),
-                top_left.y(),
-                top_left.x() + widget.width() - 1,
-                top_left.y() + widget.height() - 1,
-            ),
-            fill="#242424",
-            outline="#5b7db1",
-        )
-    draw.text(
+    screenshot = tmp_path / "erased-recipe.png"
+    assert dialog.grab().save(str(screenshot))
+    recipe = dialog._review_summary_value_labels["Recipe"]
+    top_left = recipe.mapTo(dialog, QPoint(0, 0))
+    with Image.open(screenshot) as captured:
+        image = captured.convert("RGB")
+    ImageDraw.Draw(image).rectangle(
         (
-            dialog.import_report_toggle.mapTo(dialog, QPoint(0, 0)).x() + 8,
-            dialog.import_report_toggle.mapTo(dialog, QPoint(0, 0)).y() + 8,
+            top_left.x(),
+            top_left.y(),
+            top_left.x() + recipe.width() - 1,
+            top_left.y() + recipe.height() - 1,
         ),
-        "Hide import report",
-        fill="#ffffff",
+        fill="#242424",
     )
     image.save(screenshot)
 
     with pytest.raises(
-        RuntimeError,
-        match=r"Review header.*(reference render|not fully rendered)",
+        RuntimeError, match=r"Import review.*(reference render|not fully rendered)"
     ):
         capture_script._assert_review_surface_rendered(dialog, screenshot)
 
 
-@pytest.mark.parametrize(
-    "filename",
-    [
-        "05-review-and-import.png",
-        "05-review-and-import-report.png",
-    ],
-)
-def test_canonical_review_artifacts_have_full_review_header(qtbot, tmp_path, filename):
+def test_canonical_review_artifact_has_all_review_rows(qtbot, tmp_path):
+    filename = "05-review-and-import.png"
     spec = next(
         spec
         for spec in capture_script._canonical_capture_specs()
@@ -642,19 +604,22 @@ def test_canonical_review_artifacts_have_full_review_header(qtbot, tmp_path, fil
     dialog.show()
     dialog.resize(expected_size)
     dialog._go_to_step(dialog._step_titles.index("Review and Import"))
-    if spec.expanded_report:
-        dialog.import_report_toggle.click()
     qtbot.wait(20)
 
     screenshot = tmp_path / filename
     assert dialog.grab().save(str(screenshot))
     capture_script._normalize_png_for_artifact(screenshot)
-    capture_script._assert_canonical_review_artifact(screenshot)
+    capture_script._assert_review_surface_rendered(dialog, screenshot)
 
 
 def test_review_artifact_guard_rejects_qt_dpi_metadata(tmp_path):
-    screenshot = tmp_path / "qt-encoded-report.png"
-    Image.new("RGB", (1220, 926), "#eeeeee").save(screenshot, dpi=(96, 96))
+    spec = next(
+        spec
+        for spec in capture_script._canonical_capture_specs()
+        if spec.step_title == "Review and Import"
+    )
+    screenshot = tmp_path / spec.filename
+    Image.new("RGB", spec.expected_size, "#eeeeee").save(screenshot, dpi=(96, 96))
 
     with pytest.raises(RuntimeError, match="DPI metadata"):
-        capture_script._assert_canonical_review_artifact(screenshot)
+        capture_script._assert_canonical_png_artifact(screenshot, spec)

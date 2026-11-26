@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
+from collections.abc import Iterator
+from os.path import commonprefix
 from pathlib import Path
+from posixpath import splitext
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import QRect, QSize, Qt, QTimer
+from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -14,7 +18,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QSizePolicy,
-    QTreeWidgetItem,
     QVBoxLayout,
 )
 
@@ -22,7 +25,14 @@ from XBrainLab.backend.application.data_interpretation_pairing import (
     LabelPairingResult,
     resolve_label_file_pairing,
 )
-from XBrainLab.ui.dialogs.dataset.load_labels_step import LoadLabelsStepMixin
+from XBrainLab.backend.application.data_interpretation_path_identity import (
+    normalized_path_identity,
+    path_basename,
+)
+from XBrainLab.backend.application.data_interpretation_review import (
+    target_step_for_interpretation_text,
+)
+from XBrainLab.ui.components.presentation import ElidingLabel
 from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
     SubmissionFacts,
     SubmissionProjection,
@@ -41,7 +51,7 @@ from XBrainLab.ui.dialogs.dataset.review_import_presenter import (
 from XBrainLab.ui.dialogs.dataset.review_presenter import (
     ReviewRow,
     compact_review_rows,
-    format_capability_rows,
+    format_capability_notes,
     merge_review_rows,
     recipe_reload_rows,
 )
@@ -67,6 +77,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         # Parent the rows before rendering can show their controls. Otherwise Qt
         # briefly creates independent native windows for these labels/buttons.
         layout.addLayout(self._review_import_rows_layout)
+        self._build_recipe_replacements(layout)
         self._render_review_import_rows()
 
     def _render_review_import_rows(self) -> None:
@@ -90,8 +101,10 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             summary_label = QLabel(row["summary"])
             summary_label.setObjectName("DataImportReviewSummary")
             summary_label.setWordWrap(True)
+            summary_label.setToolTip(row.get("detail", ""))
+            summary_label.setAccessibleDescription(row.get("detail", ""))
             summary_label.setSizePolicy(
-                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Ignored,
                 QSizePolicy.Policy.Minimum,
             )
             summary_label.setAlignment(
@@ -208,6 +221,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             "Safe": "DataImportReviewStatusReady",
             "Saved": "DataImportReviewStatusReady",
             "Loaded": "DataImportReviewStatusNeutral",
+            "Skipped": "DataImportReviewStatusNeutral",
             "Ready with notes": "DataImportReviewStatusReadyWithNotes",
             "Will save": "DataImportReviewStatusNeutral",
             "Warning": "DataImportReviewStatusNeedsReview",
@@ -277,12 +291,8 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             metadata_row_summary = (
                 f"Optional {field_word} missing: {', '.join(ordered_notes)}"
             )
-            if self._is_bids_source():
-                metadata_row_summary = (
-                    f"BIDS entities reviewed · {metadata_row_summary}"
-                )
             affected_count = self._metadata_affected_file_count(missing_notes)
-            if affected_count:
+            if affected_count > 1:
                 file_word = "file" if affected_count == 1 else "files"
                 metadata_row_summary = (
                     f"{metadata_row_summary} · {affected_count} {file_word} affected"
@@ -304,13 +314,14 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
 
         label_source_status = "Ready"
         if (
-            self._label_source_mode() == "loaded_label_files"
+            not self._skip_labels
+            and self._label_source_mode() == "loaded_label_files"
             and self._active_label_carrier_count() <= 0
         ):
             label_source_status = "Missing"
-        label_placement_status = "Ready"
+        label_placement_status = "Skipped" if self._skip_labels else "Ready"
         label_placement_summary = self._review_label_placement_text()
-        if self._should_show_label_table_fallback():
+        if not self._skip_labels and self._should_show_label_table_fallback():
             label_placement_status = "Action required"
         elif self._label_placement_needs_review() or (
             self._has_review_action_for_step("Match Labels")
@@ -322,21 +333,18 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         recipe_selected = self.save_recipe_check.isChecked()
         if recipe_selected:
             recipe_status = "Will save"
-            recipe_summary = "Recipe will be saved after this import succeeds."
+            recipe_summary = "After successful import"
             recipe_action = "Cancel save"
         elif self._has_loaded_import_recipe() and not self._recipe_choices_changed():
             recipe_status = "Loaded"
-            recipe_summary = (
-                "A saved recipe was loaded. Save the current import settings "
-                "again to keep any changes."
-            )
+            recipe_summary = "Saved settings applied"
             recipe_action = "Save recipe"
         else:
             recipe_status = "Not saved"
             recipe_summary = self._review_recipe_note_text()
             recipe_action = "Save recipe"
 
-        return [
+        rows = [
             {
                 "item": "EEG data",
                 "status": "Ready" if self._file_count() else "Missing",
@@ -373,6 +381,195 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 "action": recipe_action,
             },
         ]
+
+        notes_by_row = self._review_notes_by_row()
+        for row in rows:
+            notes = notes_by_row.get(row["item"], [])
+            if notes:
+                titles = list(dict.fromkeys(title for title, _ in notes if title))
+                if titles:
+                    brief = titles[0]
+                    if len(titles) > 1:
+                        brief += f" (+{len(titles) - 1} more)"
+                    row["summary"] = f"{row['summary']} · {brief}"
+                row["detail"] = "\n".join(dict.fromkeys(detail for _, detail in notes))
+        return rows
+
+    def _review_notes_by_row(self) -> dict[str, list[tuple[str, str]]]:
+        notes: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        for item, title, detail in self._validation_review_notes():
+            notes[item].append((title, detail))
+        for item, title, detail in self._format_review_notes():
+            notes[item].append((title, detail))
+        for _step, issue, detail, status in recipe_reload_rows(
+            self.preview.get("recipe_reload_summary")
+        ):
+            if status.casefold() == "changed":
+                notes["Recipe"].append((f"{issue} changed", f"{issue}: {detail}"))
+        return notes
+
+    def _format_review_notes(self) -> Iterator[tuple[str, str, str]]:
+        capabilities = self.preview.get("format_capabilities") or self.scan_result.get(
+            "format_capabilities"
+        )
+        if not capabilities:
+            return
+        scanned = self.scan_result.get("eeg_files") or []
+        selected = self.preview.get(
+            "selected_eeg_files",
+            self._initial_choices.get("selected_eeg_files", scanned),
+        )
+        eeg_paths = {normalized_path_identity(str(path)) for path in selected or []}
+        narrowed_scope = bool(
+            {normalized_path_identity(str(path)) for path in scanned} - eeg_paths
+        )
+        use_label_files = (
+            not self._skip_labels and self._label_source_mode() == "loaded_label_files"
+        )
+        label_paths = set()
+        if use_label_files:
+            for tree_item, carrier in self._label_carrier_items:
+                key = self._label_carrier_key(tree_item, carrier)
+                if key and not self._is_label_carrier_excluded(key):
+                    label_paths.add(normalized_path_identity(key))
+        associated_paths = eeg_paths | label_paths
+        associated_stems = associated_paths | {
+            splitext(path)[0] for path in associated_paths
+        }
+        by_item: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for capability in capabilities or []:
+            if not isinstance(capability, dict) or capability.get("status") not in {
+                "needs_review",
+                "limited",
+                "blocked",
+                "unsupported",
+            }:
+                continue
+            role = str(capability.get("role") or "")
+            path = normalized_path_identity(str(capability.get("path") or ""))
+            if role == "eeg" and path and path not in eeg_paths:
+                continue
+            if role == "external_labels" and (
+                not use_label_files or (path and path not in label_paths)
+            ):
+                continue
+            if (
+                role in {"sidecar", "device_export"}
+                and narrowed_scope
+                and path
+                and path not in associated_paths
+                and splitext(path)[0] not in associated_stems
+            ):
+                continue
+            item = {
+                "external_labels": "Label source",
+                "sidecar": "Label source",
+                "metadata": "Metadata",
+            }.get(role, "EEG data")
+            if item == "Label source" and (
+                self._skip_labels
+                or self._is_label_carrier_excluded(str(capability.get("path") or ""))
+            ):
+                continue
+            by_item[item].append(capability)
+        for item, group in by_item.items():
+            for title, detail in format_capability_notes(group):
+                yield item, title, detail
+
+    def _validation_review_notes(self) -> Iterator[tuple[str, str, str]]:
+        review = self._validation_review_contract()
+        notes: list[ReviewRow] = []
+        if review.is_valid:
+            notes = self._unresolved_review_rows(
+                [
+                    item.to_review_row()
+                    for item in review.action_items
+                    if (
+                        item.severity in {"warning", "limited"}
+                        or (
+                            review.decision == "blocked"
+                            and item.severity == "needs_confirmation"
+                        )
+                    )
+                ]
+            )
+        known_issues = {row[1] for row in notes}
+        for issue in self._bids_carrier_notes():
+            if issue not in known_issues:
+                notes.append(("Match Labels", issue, "", ""))
+                known_issues.add(issue)
+
+        target_items = {
+            "Choose EEG Data": "EEG data",
+            "Review Metadata": "Metadata",
+            "Load Labels": "Label source",
+            "Match Labels": "Label placement",
+        }
+        for step, issue, impact, action in merge_review_rows(notes):
+            target = (
+                target_step_for_interpretation_text(issue)
+                if step == "Review and Import"
+                else step
+            )
+            item = target_items.get(
+                target, "Recipe" if "recipe" in issue.casefold() else "EEG data"
+            )
+            if self._skip_labels and item in {"Label source", "Label placement"}:
+                continue
+            details = [issue]
+            for text in (impact, action):
+                if (
+                    text
+                    and text not in details
+                    and not self._review_note_detail_is_generic(text)
+                ):
+                    details.append(text)
+            title = issue
+            count, _, _ = impact.partition(":")
+            if count.endswith(" files affected"):
+                title = f"{issue.rstrip('.')} ({count})"
+            yield item, title, " ".join(details)
+
+    def _bids_carrier_notes(self) -> Iterator[str]:
+        if not (
+            self._is_bids_source()
+            and self._label_source_mode() == "loaded_label_files"
+            and not self._skip_labels
+        ):
+            return
+        for tree_item, carrier in self._label_carrier_items:
+            if carrier.get("format") != "BIDS events":
+                continue
+            path = self._label_carrier_key(tree_item, carrier)
+            if self._is_label_carrier_excluded(path):
+                continue
+            name = str(carrier.get("name") or Path(path).name)
+            sidecar = carrier.get("events_json_sidecar_present")
+            warnings = [
+                str(value)
+                for value in carrier.get("warnings", []) or []
+                if value
+                and not (
+                    sidecar is True and "events.json sidecar is missing" in str(value)
+                )
+            ]
+            if sidecar is False and not any(
+                "events.json" in value for value in warnings
+            ):
+                warnings.append("events.json sidecar is missing.")
+            for warning in warnings:
+                yield warning if name in warning else f"{name}: {warning}"
+
+    @classmethod
+    def _review_note_detail_is_generic(cls, text: str) -> bool:
+        return cls._review_action_detail_is_generic(text) or text.casefold() in {
+            "open the report for details.",
+            "no action needed.",
+            "no action is required unless the import summary is unexpected.",
+            "import may still be usable, but downstream labels or "
+            "metadata may need review.",
+            "open the target step and resolve or confirm this item before import.",
+        }
 
     def _has_loaded_import_recipe(self) -> bool:
         summary = self.preview.get("recipe_reload_summary")
@@ -558,82 +755,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
     def _refresh_review_import_summary(self) -> None:
         if hasattr(self, "_review_import_rows_layout"):
             self._render_review_import_rows()
-        self._refresh_import_report_summary()
-
-    def _refresh_import_report_summary(self) -> None:
-        if not hasattr(self, "import_report_summary"):
-            return
-        self.import_report_summary.setText(self._import_report_summary_text())
-
-    def _import_report_summary_text(self) -> str:
-        eeg_names = self._selected_eeg_file_names()
-        eeg_summary = self._event_code_list_text(eeg_names, limit=5) or "None"
-        label_names = [
-            Path(self._label_carrier_key(item, original)).name
-            for item, original in self._label_carrier_items
-            if not self._is_label_carrier_excluded(
-                self._label_carrier_key(item, original),
-            )
-        ]
-        label_summary = self._event_code_list_text(label_names, limit=5) or "None"
-        review_rows = {row["item"]: row for row in self._review_import_status_rows()}
-        metadata = review_rows.get("Metadata", {})
-        resource = review_rows.get("Resource check", {})
-        if self._label_source_mode() == "loaded_label_files":
-            pairing = self._loaded_label_pairing_result()
-            alignment = (
-                f"{pairing.matched_count}/{len(eeg_names)} EEG files paired"
-                if eeg_names
-                else "No EEG files selected"
-            )
-        else:
-            alignment = "Labels are read from EEG events; file pairing is not required"
-
-        optional_notes = self._import_report_optional_notes_text(metadata)
-        blocking_issues = self._import_report_blocking_issues_text()
-        return "\n".join(
-            (
-                f"EEG files: {eeg_summary}",
-                f"Label files: {label_summary}",
-                "Metadata: "
-                f"{metadata.get('status', 'Unknown')} - "
-                f"{metadata.get('summary', 'No metadata status available')}",
-                f"Label alignment: {alignment}",
-                f"Label placement: {self._review_label_placement_text()}",
-                "Resource check: "
-                f"{resource.get('status', 'Unknown')} - "
-                f"{resource.get('summary', 'No resource status available')}",
-                f"Optional notes: {optional_notes}",
-                f"Blocking issues: {blocking_issues}",
-            )
-        )
-
-    def _import_report_optional_notes_text(
-        self,
-        metadata_row: dict[str, str],
-    ) -> str:
-        notes: list[str] = []
-        if metadata_row.get("status") == "Ready with notes":
-            notes.append(str(metadata_row.get("summary") or "").strip())
-        notes.extend(
-            item.issue
-            for item in self._validation_review_contract().action_items
-            if item.severity not in {"blocked", "needs_confirmation"}
-        )
-        return "; ".join(dict.fromkeys(note for note in notes if note)) or "None"
-
-    def _import_report_blocking_issues_text(self) -> str:
-        """Return only issues that currently block applying the import."""
-        review = self._validation_review_contract()
-        if not review.is_valid:
-            return "Import requirements are incomplete"
-        issues: list[str] = []
-        for item in review.items_with_severity("blocked"):
-            row = item.to_review_row()
-            current_row = self._current_review_row(row)
-            if not self._review_row_is_resolved(current_row):
-                issues.append(current_row[1])
-        return "; ".join(dict.fromkeys(issues)) if issues else "None"
+            self._settle_review_step_layout()
 
     def _default_review_action_row(self) -> tuple[str, str, str, str]:
         review = self._validation_review_contract()
@@ -658,7 +780,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         return eeg_data_summary(
             selected_names=names,
             file_count=self._file_count() or len(names),
-            preview_text=self._event_code_list_text(names, limit=3),
+            preview_text=names[0] if len(names) == 1 else "",
         )
 
     def _review_label_source_text(self) -> str:
@@ -704,13 +826,8 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             )
             unresolved = editor.unresolved_values()
             if unresolved:
-                return (
-                    f"{field} · {method} · {len(unresolved)} event values need review"
-                )
-            return (
-                f"{field} · {method} · {editor.row_count()} event values reviewed · "
-                "BIDS onset and duration preserved"
-            )
+                return f"{len(unresolved)} event values need review"
+            return f"{field} · {method} · {editor.row_count()} event values reviewed"
         if not hasattr(self, "rule_placement_method_combo"):
             return self._label_rule_status_text()
 
@@ -904,15 +1021,20 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         layout = QVBoxLayout(row)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(5)
-        issue_label = QLabel(
-            self._review_action_issue_title(target_step, issue, impact, next_action)
-        )
+        title = self._review_action_issue_title(target_step, issue, impact, next_action)
+        issue_label = QLabel(title)
         issue_label.setObjectName("DataImportActionIssue")
         issue_label.setWordWrap(True)
         layout.addWidget(issue_label)
 
         details: list[str] = []
         is_local_review_item = target_step == "Review and Import"
+        if (
+            not is_local_review_item
+            and issue not in (title, impact, next_action)
+            and not self._review_action_detail_is_generic(issue)
+        ):
+            details.append(issue)
         if impact and not self._review_action_detail_is_generic(impact):
             details.append(impact)
         if (
@@ -954,8 +1076,12 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             "this choice affects imported metadata, labels, and downstream "
             "training readiness.",
             "this choice affects training readiness.",
+            "this import cannot be applied until the issue is fixed.",
+            "fix this item before importing.",
             "review the target step and confirm the choice.",
             "review match labels.",
+            "review metadata",
+            "confirm label placement.",
             "confirm the choice.",
         )
         return lowered in generic_phrases
@@ -1030,214 +1156,88 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
         if target_step == "Load Labels" and hasattr(self, "label_carrier_tree"):
             self.label_carrier_tree.setFocus(Qt.FocusReason.OtherFocusReason)
 
-    def _populate_review_tree(self) -> None:
-        self._eeg_file_remap_report_items = {}
-        self._label_carrier_remap_report_items = {}
-        rows = self._review_rows()
-        remap_added = False
-        for remap in self._eeg_file_remap_options():
-            saved = str(remap.get("saved") or "").strip()
-            if not saved:
-                continue
-            saved_name = str(remap.get("saved_name") or Path(saved).name or saved)
-            tree_item = self._review_report_item(
-                (
-                    "Review and Import",
-                    "Recipe EEG file",
-                    f"Saved recipe file is missing: {saved_name}.",
-                    "Choose file",
+    def _build_recipe_replacements(self, layout: QVBoxLayout) -> None:
+        """Keep selectors mounted below Recipe while the six status rows refresh."""
+        groups = (
+            ("EEG", self._eeg_file_remap_options(), self._eeg_file_remap_widgets),
+            (
+                "label",
+                self._label_carrier_remap_options(),
+                self._label_carrier_remap_widgets,
+            ),
+        )
+        for kind, options, widgets in groups:
+            saved_labels = self._recipe_file_labels(options, "saved", "saved_name")
+            for remap in options:
+                saved = str(remap.get("saved") or "").strip()
+                if not saved:
+                    continue
+                description = f"Replace {kind} file {saved_labels[saved]}"
+                line = QHBoxLayout()
+                layout.addLayout(line)
+                label = ElidingLabel(description, layout.parentWidget())
+                label.setSizePolicy(
+                    QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
                 )
-            )
-            self.review_tree.addTopLevelItem(tree_item)
-            selector = self._remap_selector(
-                remap,
-                "Choose the replacement EEG file.",
-            )
-            self._eeg_file_remap_widgets[saved] = selector
-            self._eeg_file_remap_report_items[saved] = tree_item
-            self.review_tree.setItemWidget(tree_item, 3, selector)
-            remap_added = True
-        for remap in self._label_carrier_remap_options():
-            saved = str(remap.get("saved") or "").strip()
-            if not saved:
-                continue
-            saved_name = str(remap.get("saved_name") or Path(saved).name or saved)
-            tree_item = self._review_report_item(
-                (
-                    "Review and Import",
-                    "Recipe label file",
-                    f"Saved recipe label is missing: {saved_name}.",
-                    "Choose file",
+                label.setToolTip(saved)
+                selector = QComboBox(layout.parentWidget())
+                self._prepare_table_combo(selector)
+                selector.setAccessibleName(description)
+                label.setBuddy(selector)
+                selector.addItem("Choose replacement", "")
+                candidates = self._recipe_file_labels(
+                    remap.get("candidates") or [], "path", "name"
                 )
-            )
-            self.review_tree.addTopLevelItem(tree_item)
-            selector = self._remap_selector(
-                remap,
-                "Choose the replacement label/event carrier.",
-            )
-            self._label_carrier_remap_widgets[saved] = selector
-            self._label_carrier_remap_report_items[saved] = tree_item
-            self.review_tree.setItemWidget(tree_item, 3, selector)
-            remap_added = True
-        rows = self._merged_review_rows(rows)
-        for target_step, issue, impact, next_action in rows:
-            tree_item = self._review_report_item(
-                (target_step, issue, impact, next_action)
-            )
-            self.review_tree.addTopLevelItem(tree_item)
-        if (
-            not rows
-            and not remap_added
-            and self.decision == "blocked"
-            and not self._review_ready_for_recheck()
-        ):
-            target_step, issue, impact, next_action = self._default_review_action_row()
-            self.review_tree.addTopLevelItem(
-                self._review_report_item(
-                    (target_step, issue, impact, next_action),
+                for path, name in candidates.items():
+                    selector.addItem(name, path)
+                    selector.setItemData(
+                        selector.count() - 1, path, Qt.ItemDataRole.ToolTipRole
+                    )
+                selector.currentIndexChanged.connect(
+                    lambda _index, combo=selector: combo.setToolTip(
+                        str(combo.currentData() or combo.currentText())
+                    )
                 )
-            )
-        self._sync_remap_report_rows()
-        self._sync_review_report_empty_state()
-
-    def _sync_review_report_empty_state(self) -> None:
-        """Show a real ready state instead of manufacturing an issue row."""
-        if not hasattr(self, "import_report_card"):
-            return
-        if not hasattr(self, "review_report_empty_label"):
-            self.review_report_empty_label = QLabel(
-                "No review items. This import is ready to apply.",
-                self.import_report_card,
-            )
-            self.review_report_empty_label.setObjectName("DataImportReportEmptyState")
-            self.review_report_empty_label.setWordWrap(True)
-            self.review_report_empty_label.setAlignment(
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            )
-            layout = self.import_report_card.layout()
-            if layout is not None:
-                layout.addWidget(self.review_report_empty_label)
-
-        has_report_items = self.review_tree.topLevelItemCount() > 0
-        self.review_tree.setVisible(has_report_items)
-        self.review_report_empty_label.setVisible(not has_report_items)
+                selector.setToolTip(selector.currentText())
+                if selector.count() == 2:
+                    selector.setCurrentIndex(1)
+                widgets[saved] = selector
+                selector.currentIndexChanged.connect(self._on_remap_selection_changed)
+                line.addWidget(label, 1)
+                line.addWidget(selector, 1)
 
     @staticmethod
-    def _review_report_item(values: tuple[str, str, str, str]) -> QTreeWidgetItem:
-        """Build one report row whose tooltip matches each visible cell."""
-        item = QTreeWidgetItem(list(values))
-        for column, value in enumerate(values):
-            item.setToolTip(column, value)
-        return item
-
-    def _fit_review_report_rows(self) -> None:
-        """Size report rows for their wrapped text at the current column widths."""
-        if not hasattr(self, "review_tree"):
-            return
-        tree = self.review_tree
-        text_flags = (
-            Qt.TextFlag.TextWordWrap
-            | Qt.TextFlag.TextExpandTabs
-            | Qt.AlignmentFlag.AlignLeft
-            | Qt.AlignmentFlag.AlignVCenter
-        )
-        vertical_padding = 12
-        horizontal_padding = 18
-        for row in range(tree.topLevelItemCount()):
-            item = tree.topLevelItem(row)
-            if item is None:
+    def _recipe_file_labels(
+        entries: list[dict[str, Any]], path_key: str, name_key: str
+    ) -> dict[str, str]:
+        labels = {}
+        groups: dict[str, list[str]] = defaultdict(list)
+        for entry in entries:
+            if not isinstance(entry, dict):
                 continue
-            row_height = tree.fontMetrics().height() + vertical_padding
-            for column in range(tree.columnCount()):
-                widget = tree.itemWidget(item, column)
-                if widget is not None:
-                    row_height = max(
-                        row_height,
-                        widget.sizeHint().height() + vertical_padding,
-                    )
-                    continue
-                text = item.text(column)
-                if not text:
-                    continue
-                available_width = max(
-                    tree.columnWidth(column) - horizontal_padding,
-                    40,
-                )
-                bounds = tree.fontMetrics().boundingRect(
-                    QRect(0, 0, available_width, 10_000),
-                    int(text_flags),
-                    text,
-                )
-                row_height = max(row_height, bounds.height() + vertical_padding)
-            row_size = QSize(0, row_height)
-            for column in range(tree.columnCount()):
-                item.setSizeHint(column, row_size)
-
-    def _remap_selector(self, remap: dict[str, Any], tooltip: str) -> QComboBox:
-        selector = QComboBox(self.review_tree)
-        self._prepare_table_combo(selector)
-        selector.setToolTip(tooltip)
-        selector.addItem("Choose replacement", "")
-        for candidate in remap.get("candidates", []) or []:
-            if not isinstance(candidate, dict):
+            path = str(entry.get(path_key) or "").strip()
+            if not path or path in labels:
                 continue
-            path = str(candidate.get("path") or "").strip()
-            if not path:
-                continue
-            name = str(candidate.get("name") or Path(path).name or path)
-            selector.addItem(name, path)
-        if selector.count() == 2:
-            selector.setCurrentIndex(1)
-        selector.currentIndexChanged.connect(self._on_remap_selection_changed)
-        if selector.currentData():
-            self._schedule_remap_review_refresh()
-        return selector
+            name = str(entry.get(name_key) or path_basename(path))
+            labels[path] = name
+            groups[name.casefold()].append(path)
+        for paths in groups.values():
+            if len(paths) > 1:
+                normalized = [path.replace("\\", "/") for path in paths]
+                prefix = commonprefix(normalized)
+                start = prefix.rfind("/") + 1
+                for path in paths:
+                    labels[path] = path[start:]
+        return labels
 
     def _review_ready_for_recheck(self) -> bool:
         return self._submission_projection().recheck_kind is not None
 
-    def _on_remap_selection_changed(self, *_args: Any) -> None:
-        """Synchronize every visible review surface after a remap choice."""
-        if getattr(self, "_refreshing_remap_review", False):
-            return
+    def _on_remap_selection_changed(self) -> None:
         self._sync_apply_state()
-        self._sync_remap_status_copy()
-        if hasattr(self, "review_actions_layout"):
-            self._refresh_review_action_cards()
-        self._refresh_review_import_summary()
-        self._sync_remap_report_rows()
-        self._schedule_remap_review_refresh()
-
-    def _schedule_remap_review_refresh(self) -> None:
-        if getattr(self, "_refreshing_remap_review", False) or getattr(
-            self,
-            "_remap_review_refresh_scheduled",
-            False,
-        ):
-            return
-        self._remap_review_refresh_scheduled = True
-        QTimer.singleShot(0, self._finish_remap_review_refresh)
-
-    def _finish_remap_review_refresh(self) -> None:
-        self._remap_review_refresh_scheduled = False
-        if not hasattr(self, "review_tree"):
-            return
-        self._refreshing_remap_review = True
-        try:
-            self._refresh_review_tree()
-            self._sync_remap_report_rows()
-            self._sync_apply_state()
-            self._sync_remap_status_copy()
-            if hasattr(self, "review_actions_layout"):
-                self._refresh_review_action_cards()
-            self._refresh_review_import_summary()
-            self._fit_tree_columns_to_viewport(self.review_tree)
-            self._fit_review_tree_height()
-        finally:
-            self._refreshing_remap_review = False
-
-    def _sync_remap_status_copy(self) -> None:
         self._sync_review_status_copy()
+        self._refresh_review_action_cards()
+        self._refresh_review_import_summary()
 
     def _sync_review_status_copy(self) -> None:
         if not hasattr(self, "decision_label"):
@@ -1260,105 +1260,6 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
                 final_step and bool(self.confirmation_label.text())
             )
 
-    def _sync_remap_report_rows(self) -> None:
-        for widgets_name, items_name in (
-            ("_eeg_file_remap_widgets", "_eeg_file_remap_report_items"),
-            (
-                "_label_carrier_remap_widgets",
-                "_label_carrier_remap_report_items",
-            ),
-        ):
-            widgets = getattr(self, widgets_name, {})
-            items = getattr(self, items_name, {})
-            for saved, selector in widgets.items():
-                item = items.get(saved)
-                if item is None:
-                    continue
-                replacement = self._combo_current_data(selector)
-                saved_name = Path(saved).name or saved
-                if replacement:
-                    detail = (
-                        f"Replacement selected for {saved_name}: "
-                        f"{Path(replacement).name}."
-                    )
-                    item.setText(2, detail)
-                    item.setToolTip(2, detail)
-                    continue
-                detail = f"Saved recipe file is missing: {saved_name}."
-                item.setText(2, detail)
-                item.setToolTip(2, detail)
-
-    def _review_rows(self) -> list[ReviewRow]:
-        review = self._validation_review_contract()
-        rows = self._action_item_review_rows(
-            review.action_items if review.is_valid else ()
-        )
-        if not review.is_valid:
-            rows.append(self._default_review_action_row())
-        rows.extend(recipe_reload_rows(self.preview.get("recipe_reload_summary")))
-        format_capabilities = self.preview.get(
-            "format_capabilities"
-        ) or self.scan_result.get("format_capabilities")
-        rows.extend(format_capability_rows(format_capabilities))
-        rows.extend(self._bids_event_provenance_rows())
-        rows = compact_review_rows(rows)
-        return [
-            self._current_review_row(row)
-            for row in rows
-            if not self._review_row_is_resolved(row)
-        ]
-
-    def _bids_event_provenance_rows(self) -> list[ReviewRow]:
-        if not self._is_bids_source():
-            return []
-        carriers = self.preview.get("label_carrier_preview")
-        if not isinstance(carriers, list):
-            return []
-        rows: list[ReviewRow] = []
-        for index, carrier in enumerate(carriers, start=1):
-            if not isinstance(carrier, dict):
-                continue
-            if str(carrier.get("format") or "") != "BIDS events":
-                continue
-            events_name = Path(str(carrier.get("path") or "")).name
-            eeg_name = LoadLabelsStepMixin._bids_paired_eeg_name(carrier)
-            field = str(carrier.get("selected_label_field") or "").strip()
-            start = str(carrier.get("selected_anchor") or "").strip()
-            duration = str(carrier.get("selected_duration_field") or "").strip()
-            columns = carrier.get("bids_event_columns")
-            column_text = (
-                ", ".join(str(value) for value in columns if str(value).strip())
-                if isinstance(columns, list)
-                else ""
-            )
-            timing = " + ".join(value for value in (start, duration) if value)
-            sidecar = (
-                "events.json present"
-                if carrier.get("events_json_sidecar_present") is True
-                else "events.json missing"
-                if carrier.get("events_json_sidecar_present") is False
-                else "events.json status unavailable"
-            )
-            details = [
-                f"{events_name} paired with {eeg_name}"
-                if eeg_name
-                else f"{events_name} pairing needs review",
-                f"labels from {field}" if field else "label field needs review",
-                timing or "timing fields need review",
-                sidecar,
-            ]
-            if column_text:
-                details.append(f"columns: {column_text}")
-            rows.append(
-                (
-                    "Match Labels",
-                    f"BIDS event provenance {index}",
-                    "; ".join(details) + ".",
-                    "Recorded in the reviewed import plan.",
-                )
-            )
-        return rows
-
     def _primary_review_rows(self) -> list[ReviewRow]:
         review = self._validation_review_contract()
         if not review.is_valid:
@@ -1371,12 +1272,7 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             )
         else:
             rows = []
-        rows = compact_review_rows(rows)
-        return [
-            self._current_review_row(row)
-            for row in rows
-            if not self._review_row_is_resolved(row)
-        ]
+        return self._unresolved_review_rows(compact_review_rows(rows))
 
     @staticmethod
     def _action_item_review_rows(
@@ -1401,77 +1297,21 @@ class ReviewImportStepMixin(DataImportWizardStepHostProtocol):
             impact = current_reason
         return target_step, issue, impact, next_action
 
-    def _review_row_is_resolved(self, row: ReviewRow) -> bool:
-        if self._review_row_is_resolved_by_remap(row):
-            return True
-        return bool(
-            self._review_ready_for_recheck() and row[0] in self._edited_action_targets()
+    def _unresolved_review_rows(self, rows: list[ReviewRow]) -> list[ReviewRow]:
+        if not rows:
+            return []
+        resolved = (
+            self._edited_action_targets() if self._review_ready_for_recheck() else set()
         )
-
-    def _review_row_is_resolved_by_remap(self, row: ReviewRow) -> bool:
         eeg_options = self._eeg_file_remap_options()
         label_options = self._label_carrier_remap_options()
-        snapshots = getattr(self, "_remap_review_choice_snapshot", None)
-        if snapshots is None:
-            eeg_choices = self._eeg_file_remap_choices()
-            label_choices = self._label_carrier_remap_choices()
-        else:
-            eeg_choices, label_choices = snapshots
-        eeg_complete = bool(eeg_options) and len(eeg_choices) == len(eeg_options)
-        label_complete = bool(label_options) and len(label_choices) == len(
+        if eeg_options and len(self._eeg_file_remap_choices()) == len(eeg_options):
+            resolved.add("Choose EEG Data")
+        if label_options and len(self._label_carrier_remap_choices()) == len(
             label_options
-        )
-        if eeg_complete and row[0] == "Choose EEG Data":
-            return True
-        return label_complete and row[0] in {"Load Labels", "Match Labels"}
-
-    def _toggle_import_report(self) -> None:
-        visible = not self.import_report_card.isVisible()
-        if visible:
-            self._refresh_review_tree()
-            self._refresh_import_report_summary()
-        self.import_report_card.setVisible(visible)
-        self.import_report_toggle.setText(
-            "Hide import report" if visible else "View import report"
-        )
-        if visible:
-            self._fit_tree_columns_to_viewport(self.review_tree)
-        self._fit_review_tree_height()
-        if visible:
-            self.review_tree.updateGeometry()
-        self.import_report_card.updateGeometry()
-        self._sync_review_dialog_geometry()
-        self._sync_scroll_policy()
-        QTimer.singleShot(0, self._refit_review_tree_after_layout)
-
-    def _refit_review_tree_after_layout(self) -> None:
-        """Fill the settled report viewport without a trailing header gap."""
-        if hasattr(self, "review_tree") and self.import_report_card.isVisible():
-            self._fit_tree_columns_to_viewport(self.review_tree)
-
-    def _refresh_review_tree(self) -> None:
-        """Rebuild the detailed report without losing current remap choices."""
-        eeg_choices = self._eeg_file_remap_choices()
-        label_choices = self._label_carrier_remap_choices()
-        self._remap_review_choice_snapshot = (eeg_choices, label_choices)
-        try:
-            self._eeg_file_remap_widgets.clear()
-            self._label_carrier_remap_widgets.clear()
-            self._eeg_file_remap_report_items = {}
-            self._label_carrier_remap_report_items = {}
-            self.review_tree.clear()
-            self._populate_review_tree()
-            for saved, replacement in eeg_choices.items():
-                selector = self._eeg_file_remap_widgets.get(saved)
-                if selector is not None:
-                    self._set_combo_current_data(selector, replacement)
-            for saved, replacement in label_choices.items():
-                selector = self._label_carrier_remap_widgets.get(saved)
-                if selector is not None:
-                    self._set_combo_current_data(selector, replacement)
-            self._sync_remap_report_rows()
-        finally:
-            del self._remap_review_choice_snapshot
+        ):
+            resolved.update({"Load Labels", "Match Labels"})
+        return [self._current_review_row(row) for row in rows if row[0] not in resolved]
 
     @staticmethod
     def _merged_review_rows(rows: list[ReviewRow]) -> list[ReviewRow]:

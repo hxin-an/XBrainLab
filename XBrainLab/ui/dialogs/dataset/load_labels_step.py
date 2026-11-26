@@ -11,9 +11,11 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
 )
 
+from XBrainLab.ui.components.presentation import ElidingLabel
 from XBrainLab.ui.dialogs.dataset.wizard_state import WizardStateChange
 
 if TYPE_CHECKING:
@@ -45,14 +47,6 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
             for source in self._extra_label_sources
             if not self._looks_like_file(source)
         ]
-        if (
-            not carriers
-            and not self._extra_label_sources
-            and not self._has_internal_event_evidence()
-        ):
-            layout.addWidget(
-                self._empty_state("No nearby label/event source detected.")
-            )
         for source in folder_sources:
             layout.addWidget(self._source_scope_row(source))
         for carrier in carriers:
@@ -123,6 +117,9 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
     def _refresh_label_source_rows(self) -> None:
         self._clear_layout(self.label_source_rows_layout)
         self._add_label_source_rows(self.label_source_rows_layout)
+        self.label_source_rows_widget.setVisible(
+            self.label_source_rows_layout.count() > 0
+        )
 
     @staticmethod
     def _clear_layout(layout: QVBoxLayout) -> None:
@@ -199,6 +196,9 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
         source_label = QLabel(f"Label source: {source}")
         source_label.setObjectName("DataImportSourceScopeText")
         source_label.setWordWrap(True)
+        source_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
         source_label.setToolTip(source)
         source_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
@@ -230,10 +230,16 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
         layout = QHBoxLayout(row)
         layout.setContentsMargins(10, 6 if compact else 8, 10, 6 if compact else 8)
         layout.setSpacing(10)
-        title_label = QLabel(title)
+        title_label = ElidingLabel(title, row, mode=Qt.TextElideMode.ElideMiddle)
+        title_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
         title_label.setObjectName("DataImportSourceTitle")
         title_label.setToolTip(title)
-        detail_label = QLabel(detail)
+        detail_label = ElidingLabel(detail, row) if compact else QLabel(detail, row)
+        detail_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
         detail_label.setObjectName("DataImportSourceDetail")
         detail_label.setWordWrap(not compact)
         detail_label.setToolTip(detail_tooltip or detail)
@@ -242,7 +248,7 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
         )
         if compact:
             title_label.setMinimumWidth(150)
-            layout.addWidget(title_label)
+            layout.addWidget(title_label, stretch=1)
             if detail:
                 layout.addWidget(detail_label, stretch=1)
             else:
@@ -357,6 +363,11 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
             if carrier_path and self._carrier_belongs_to_source(carrier, source):
                 self._wizard_state.label_sources.exclude_carrier(carrier_path)
 
+    def _refresh_label_detection(self) -> None:
+        message = self._label_detection_text()
+        self.label_detection_label.setText(message)
+        self.label_detection_label.setVisible(bool(message))
+
     def _refresh_load_labels_static_state(self) -> None:
         is_bids_source = self._is_bids_source()
         if hasattr(self, "label_sources_card_title_label"):
@@ -364,7 +375,7 @@ class LoadLabelsStepMixin(DataImportWizardStepHostProtocol):
                 "BIDS events.tsv" if is_bids_source else "Label files"
             )
         if hasattr(self, "label_detection_label"):
-            self.label_detection_label.setText(self._label_detection_text())
+            self._refresh_label_detection()
         if hasattr(self, "add_label_file_btn"):
             self.add_label_file_btn.setText("Load label file")
             self.add_label_file_btn.setVisible(not is_bids_source)

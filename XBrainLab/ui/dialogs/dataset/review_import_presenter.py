@@ -317,4 +317,4 @@ def internal_label_placement_summary(
 
 def recipe_note() -> str:
     """Describe the optional load-only recipe saved after a successful import."""
-    return "Save the current data import and label mapping settings for reuse."
+    return "Reuse import settings"

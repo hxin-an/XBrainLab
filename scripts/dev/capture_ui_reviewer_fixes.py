@@ -133,7 +133,7 @@ REVIEWER_FIX_SURFACES = (
     "smart-parser-regex.png",
     "smart-parser-folder.png",
     "smart-parser-fixed.png",
-    "import-report-ready.png",
+    "import-review-ready.png",
     "import-review-will-save.png",
     "import-review-loaded-recipe.png",
     "saliency-setting-empty.png",
@@ -203,8 +203,7 @@ def main(argv: list[str] | None = None) -> int:
             review = _ready_import_dialog()
             review.resize(QSize(1100, 800))
             review._go_to_step(review._step_titles.index("Review and Import"))
-            review.import_report_toggle.click()
-            _capture(app, review, "import-report-ready.png", output_dir=staging_dir)
+            _capture(app, review, "import-review-ready.png", output_dir=staging_dir)
 
             review = _ready_import_dialog()
             review.resize(QSize(1100, 800))

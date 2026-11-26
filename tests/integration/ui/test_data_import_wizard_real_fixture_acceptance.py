@@ -210,6 +210,7 @@ class _WizardDriver:
     timer: QTimer
     source_picker: str = "files"
     skip_labels: bool = False
+    restore_labels: bool = False
     resolve_bids_values: bool = False
     resolve_openneuro_trial_types: bool = False
     resolve_bbci_internal_events: bool = False
@@ -432,6 +433,7 @@ def _start_wizard_driver(
     *,
     source_picker: str = "files",
     skip_labels: bool = False,
+    restore_labels: bool = False,
     resolve_bids_values: bool = False,
     resolve_openneuro_trial_types: bool = False,
     resolve_bbci_internal_events: bool = False,
@@ -445,6 +447,7 @@ def _start_wizard_driver(
         timer=QTimer(),
         source_picker=source_picker,
         skip_labels=skip_labels,
+        restore_labels=restore_labels,
         resolve_bids_values=resolve_bids_values,
         resolve_openneuro_trial_types=resolve_openneuro_trial_types,
         resolve_bbci_internal_events=resolve_bbci_internal_events,
@@ -652,7 +655,8 @@ def _start_wizard_driver(
                 return
 
             if driver.phase == 1:
-                if driver.skip_labels:
+                driver.phase = 2
+                if driver.skip_labels or driver.restore_labels:
                     if not modal.skip_labels_btn.isVisibleTo(modal):
                         _fail(
                             "Load Labels did not expose Continue without labels.", modal
@@ -669,8 +673,20 @@ def _start_wizard_driver(
                         )
                         return
                     driver.trace.append("continue without labels")
-                driver.phase = 2
-                QTEST.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
+                    if driver.restore_labels:
+                        _assert_step_surface(modal, 2)
+                        QTEST.mouseClick(modal.back_button, Qt.MouseButton.LeftButton)
+                        _assert_step_surface(modal, 1)
+                        assert modal.skip_labels_btn.text() == "Use labels"
+                        QTEST.mouseClick(
+                            modal.skip_labels_btn, Qt.MouseButton.LeftButton
+                        )
+                        _assert_step_surface(modal, 1)
+                        assert not modal.get_result()["choices"].get("skip_labels")
+                        driver.trace.append("restore labels")
+                        QTEST.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
+                else:
+                    QTEST.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
                 return
 
             if driver.phase == 2:
@@ -2139,6 +2155,7 @@ def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(
 
     recovery_driver = _start_wizard_driver(
         resolve_bids_values=True,
+        restore_labels=True,
         source_picker="folder",
         runtime=runtime,
     )
@@ -2161,6 +2178,8 @@ def test_bids_missing_events_preserves_data_state_then_valid_root_recovers(
         "select BIDS subjects: 01",
         "Choose EEG Data",
         "Load Labels",
+        "continue without labels",
+        "restore labels",
         "Review Metadata",
         "Match Labels",
         "review BIDS event values",

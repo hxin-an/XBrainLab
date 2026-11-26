@@ -29,9 +29,6 @@ class LabelSourceState:
     def label_sources_changed(self) -> bool:
         return self.extra_sources != self.initial_sources
 
-    def mark_skip(self) -> None:
-        self.skip_labels = True
-
     def exclude_carrier(self, carrier_path: str) -> bool:
         carrier = str(carrier_path).strip()
         if not carrier or carrier in self.excluded_carriers:

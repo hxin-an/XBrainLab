@@ -19,7 +19,7 @@ def test_chooser_stays_detached_until_user_accepts(qtbot) -> None:
     assert dialog.get_result() is None
     assert dialog.windowTitle() == "Import EEG Data"
     assert dialog.heading_label.text() == "Choose EEG data"
-    assert "BIDS is detected automatically" in dialog.guidance_label.text()
+    assert dialog.selection_summary.isHidden()
     assert dialog.choose_files_button.parent() is dialog.source_bar
     assert dialog.choose_folder_button.parent() is dialog.source_bar
     assert dialog.choose_files_button.text() == "Files…"
@@ -72,9 +72,7 @@ def test_chooser_replaces_file_selection_with_one_folder(qtbot) -> None:
     dialog.choose_folder_button.click()
     assert dialog.path_edit.text() == "/data/bids"
     assert dialog.path_edit.cursorPosition() == 0
-    assert dialog.selection_summary.text() == (
-        "Folder selected · BIDS is detected after Continue"
-    )
+    assert dialog.selection_summary.isHidden()
     dialog.accept()
 
     assert dialog.get_result() == EegSourceSelection(

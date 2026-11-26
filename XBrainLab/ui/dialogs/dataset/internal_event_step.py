@@ -16,10 +16,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from XBrainLab.backend.application.data_interpretation_pairing import (
-    resolve_label_file_pairing,
-)
-
 if TYPE_CHECKING:
     from XBrainLab.ui.dialogs.dataset.wizard_host_protocol import (
         DataImportWizardStepHostProtocol,
@@ -347,12 +343,6 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
             )
         )
 
-    def _bids_label_source_summary(self) -> QWidget:
-        return self._event_rules_table(
-            ["Item", "Detected", "Import behavior"],
-            self._bids_label_source_rows(),
-        )
-
     def _bids_source_rows(self) -> list[tuple[str, str, str]]:
         return [
             (
@@ -364,37 +354,6 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
                 "events.tsv",
                 self._bids_event_count_text(),
                 "Used as the default label and timing source.",
-            ),
-        ]
-
-    def _bids_label_source_rows(self) -> list[tuple[str, str, str]]:
-        carriers = self._bids_event_carriers()
-        events = self._bids_event_count_text()
-        matched = (
-            self._matched_eeg_pair_count()
-            if self._label_carrier_items
-            else self._preview_matched_eeg_pair_count()
-        )
-        total = len(self._selected_eeg_file_names())
-        if not carriers:
-            return [
-                (
-                    "events.tsv",
-                    "Not detected",
-                    "Required for this BIDS import. Return to Import Data for "
-                    "non-BIDS labels.",
-                )
-            ]
-        return [
-            (
-                "events.tsv",
-                events,
-                "Automatically loaded from the BIDS folder.",
-            ),
-            (
-                "EEG pairing",
-                f"{matched}/{total} EEG files paired",
-                "Adjust only rows that are matched incorrectly.",
             ),
         ]
 
@@ -417,13 +376,6 @@ class InternalEventStepMixin(DataImportWizardStepHostProtocol):
             return "No events.tsv"
         file_word = "file" if len(events) == 1 else "files"
         return f"{len(events)} events.tsv {file_word}"
-
-    def _preview_matched_eeg_pair_count(self) -> int:
-        pairing = resolve_label_file_pairing(
-            self._bids_event_carriers(),
-            self._selected_eeg_file_names(),
-        )
-        return pairing.matched_count
 
     def _bids_payload(self) -> dict[str, Any]:
         bids = self.scan_result.get("bids") or {}

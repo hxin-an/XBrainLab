@@ -50,11 +50,11 @@ panel。
 | Load Labels | 載入要和 EEG 對應的 labels / events。 | 自動找到附近 label carrier；提供 `Load label file`、`Load label folder`、`Continue without labels`。 | 假設 label 一定和 EEG 在同一資料夾。 |
 | Review Metadata | 檢查 subject / session / task / run。 | metadata table、empty metadata compact state、`Smart Parse`、manual edit。 | 空 metadata 佔滿大表格。 |
 | Match Labels | 設定 label 如何套到 EEG。 | Pairing board：每個 selected EEG row 選一個 `Label file`，狀態放在 label 右側；label placement：`Read labels from`、`Use as`、`Place labels by` 和 mode-specific placement panel。 | `Anchor`、`Time`、`Granularity`、`Role`、`Label unit` 作為第一層術語。 |
-| Review and Import | 只確認真正需要行動的項目。 | compact `Import review`、blocking / decision cards、`View import report` secondary details。 | 長串 warning / confirmation / format rows，沒有下一步。 |
+| Review and Import | 只確認真正需要行動的項目。 | 六列 `Import review` 顯示狀態、相關警告與可用動作；缺少的 recipe 檔案在 Recipe 列下方選擇替代來源。 | 長串 warning / confirmation / format rows，沒有下一步。 |
 
 這五步可以在同一 dialog 裡用 stepper / tabs 呈現，也可以拆成多個 panel；目標不是增加畫面數量，
-而是讓每個畫面只服務一個使用者任務。進階資訊例如 format capability、recipe trace、raw event role、
-class map diagnostics 應放在 `View import report` 或其他 advanced details，而不是和主操作平起平坐。
+而是讓每個畫面只服務一個使用者任務。進階資訊例如 format capability、recipe trace、raw event role 與
+class map diagnostics 保留在對應的專業設定或診斷資料。
 
 資料入口命名也應貼近一般使用者語言：
 
@@ -85,15 +85,14 @@ class map diagnostics 應放在 `View import report` 或其他 advanced details�
   只有最後的 `Review and Import` step 顯示 primary import / apply action。
 - EEG selected scope 和 scan location 用 summary cards 分開顯示。
 - 使用者可以 `Load label file`、`Load label folder` 或 `Continue without labels`；額外 label sources
-  會重新 scan 並和 auto-discovered carriers 合併。
+  會重新 scan 並和 auto-discovered carriers 合併。略過後按 Back，可在同一位置按 Use labels 恢復使用原選擇。
 - Match Labels 第一層分成 pairing board 和 label placement：pairing board 只列 selected EEG，
   每列讓使用者選對應的 `Label file`，狀態放在 label 右側；接著設定
   `Read labels from`、`Use as`、`Place labels by`，並由 placement mode 顯示專屬設定 panel；
   class names 放在同一個 step 內。
 - preview / validation command result 會帶 structured action items，UI 以 target step grouping、
-  issue、impact、next action 呈現。最後頁第一層只顯示 blockers / required decisions；
-  report-only warnings、format capability、recipe trace 和 per-file diagnostics 收在
-  `View import report`。
+  issue、impact、next action 呈現。目前最後頁將影響操作的警告放在對應的狀態列；
+  需要修正的項目保留原本的前往步驟或替代檔案操作。
 
 最後一步的 `Recipe` 是 optional reuse action。`Not saved` 使用中性狀態，不能阻止本次 import；
 只有資料、必要 label mapping、必要 metadata 或 blocking resource check 才能停用 `Confirm and Import`。

@@ -328,11 +328,9 @@ class DataInterpretationPreviewDialog(
         self._initial_step = str(initial_step or "")
         self._publication_generation = publication_generation
         self._resume_step_after_accept = ""
-        self._review_restore_size: QSize | None = None
+        self._working_step_height: int | None = None
         self.workflow_steps_label: QLabel
         self.step_labels: list[QLabel]
-        self.summary_label: QLabel
-        self.source_summary_label: QLabel
         self.decision_label: QLabel
         self.confirmation_label: QLabel
         self.label_sources_label: QLabel
@@ -387,11 +385,8 @@ class DataInterpretationPreviewDialog(
         self.label_carrier_tree: QTreeWidget
         self.event_group: QGroupBox
         self.event_tree: QTreeWidget
-        self.review_tree: QTreeWidget
         self.review_actions_panel: QWidget
         self.review_actions_layout: QVBoxLayout
-        self.import_report_toggle: QPushButton
-        self.import_report_card: QFrame
         self.event_layout: QVBoxLayout
         self.scroll_area: QScrollArea
         self.step_stack: QStackedWidget
@@ -459,7 +454,7 @@ class DataInterpretationPreviewDialog(
             parent=parent,
             title="Import EEG Data",
             width=1040,
-            height=760,
+            height=640,
             defer_first_frame=True,
         )
 
@@ -495,6 +490,17 @@ class DataInterpretationPreviewDialog(
     @_skip_labels.setter
     def _skip_labels(self, value: bool) -> None:
         self._wizard_state.label_sources.skip_labels = bool(value)
+        self._sync_skip_labels_action()
+
+    def _sync_skip_labels_action(self) -> None:
+        self.skip_labels_btn.setText(
+            "Use labels" if self._skip_labels else "Continue without labels"
+        )
+        self.skip_labels_btn.setToolTip(
+            "Use the selected label sources."
+            if self._skip_labels
+            else "Continue without labels; supervised workflows may be limited."
+        )
 
     def init_ui(self) -> None:
         self._apply_product_tree_style()
@@ -525,13 +531,6 @@ class DataInterpretationPreviewDialog(
         root_layout.addLayout(stepper_layout)
 
         source_path = str(self.scan_result.get("source_path", ""))
-        self.summary_label = QLabel(
-            str(self.preview.get("summary") or "Review the interpreted EEG source.")
-        )
-        self.summary_label.setObjectName("InterpretationSummary")
-        self.summary_label.setWordWrap(True)
-        root_layout.addWidget(self.summary_label)
-
         self.step_stack = _CurrentStepStackedWidget(self)
         self.step_stack.setObjectName("DataImportWizardSteps")
 
@@ -543,13 +542,12 @@ class DataInterpretationPreviewDialog(
         source_panel_layout.addWidget(
             self._panel_header(
                 "Choose EEG Data",
-                "Selected data and scan location are tracked separately.",
             )
         )
         source_overview_layout = QGridLayout()
         source_overview_layout.setContentsMargins(0, 0, 0, 0)
-        source_overview_layout.setHorizontalSpacing(12)
-        source_overview_layout.setVerticalSpacing(12)
+        source_overview_layout.setHorizontalSpacing(8)
+        source_overview_layout.setVerticalSpacing(6)
         source_overview_layout.addWidget(
             self._metric_card(
                 "Selected scope",
@@ -594,11 +592,12 @@ class DataInterpretationPreviewDialog(
         self.step_stack.addWidget(source_panel)
 
         attach_panel, attach_panel_layout = self._step_panel()
+        self.skip_labels_btn = QPushButton()
+        self.skip_labels_btn.setObjectName("DataImportTertiaryButton")
+        self._sync_skip_labels_action()
+        self.skip_labels_btn.clicked.connect(self._toggle_skip_labels)
         attach_panel_layout.addWidget(
-            self._panel_header(
-                "Load Labels",
-                self._load_labels_panel_detail(),
-            )
+            self._panel_header("Load Labels", action=self.skip_labels_btn)
         )
         label_sources_card, label_sources_layout = self._card(
             "BIDS events.tsv" if self._is_bids_source() else "Label files"
@@ -606,24 +605,6 @@ class DataInterpretationPreviewDialog(
         self.label_sources_card_title_label = label_sources_card.findChild(
             QLabel,
             "DataImportCardTitle",
-        )
-        self.label_detection_label = self._wrapped_label(self._label_detection_text())
-        label_sources_layout.addWidget(self.label_detection_label)
-        if self._has_bids_events():
-            label_sources_layout.addWidget(self._bids_label_source_summary())
-        self.label_source_rows_widget = QWidget()
-        self.label_source_rows_widget.setObjectName("DataImportSourceRows")
-        self.label_source_rows_layout = QVBoxLayout(self.label_source_rows_widget)
-        self.label_source_rows_layout.setContentsMargins(0, 0, 0, 0)
-        self.label_source_rows_layout.setSpacing(8)
-        self._refresh_label_source_rows()
-        label_sources_layout.addWidget(self.label_source_rows_widget)
-        self.label_sources_label = QLabel(self._label_sources_status_text())
-        self.label_sources_label.setObjectName("DataImportStatusLabel")
-        self.label_sources_label.setWordWrap(True)
-        label_sources_layout.addWidget(self.label_sources_label)
-        self.label_sources_label.setVisible(
-            self._label_sources_changed() or self._skip_labels
         )
         label_button_layout = QHBoxLayout()
         label_button_layout.setContentsMargins(0, 0, 0, 0)
@@ -638,19 +619,27 @@ class DataInterpretationPreviewDialog(
             "Load a folder of label files from another location.",
         )
         self.add_label_folder_btn.clicked.connect(self._add_label_folder)
-        self.skip_labels_btn = QPushButton("Continue without labels")
-        self.skip_labels_btn.setObjectName("DataImportTertiaryButton")
-        self.skip_labels_btn.setToolTip(
-            "Continue this import without labels; supervised workflows may be limited.",
-        )
-        self.skip_labels_btn.clicked.connect(self._skip_labels_for_now)
         label_button_layout.addWidget(self.add_label_file_btn)
         label_button_layout.addWidget(self.add_label_folder_btn)
         label_button_layout.addStretch()
-        label_button_layout.addWidget(self.skip_labels_btn)
         label_sources_layout.addLayout(label_button_layout)
         self.add_label_file_btn.setVisible(not self._is_bids_source())
         self.add_label_folder_btn.setVisible(not self._is_bids_source())
+        self.label_detection_label = self._wrapped_label("")
+        label_sources_layout.addWidget(self.label_detection_label)
+        self._refresh_label_detection()
+        self.label_sources_label = QLabel(self._label_sources_status_text())
+        self.label_sources_label.setObjectName("DataImportStatusLabel")
+        self.label_sources_label.setWordWrap(True)
+        label_sources_layout.addWidget(self.label_sources_label)
+        self.label_sources_label.setVisible(bool(self.label_sources_label.text()))
+        self.label_source_rows_widget = QWidget()
+        self.label_source_rows_widget.setObjectName("DataImportSourceRows")
+        self.label_source_rows_layout = QVBoxLayout(self.label_source_rows_widget)
+        self.label_source_rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.label_source_rows_layout.setSpacing(8)
+        label_sources_layout.addWidget(self.label_source_rows_widget)
+        self._refresh_label_source_rows()
         attach_panel_layout.addWidget(label_sources_card)
         attach_panel_layout.addStretch()
         self.step_stack.addWidget(attach_panel)
@@ -659,7 +648,6 @@ class DataInterpretationPreviewDialog(
         metadata_panel_layout.addWidget(
             self._panel_header(
                 "Review Metadata",
-                self._metadata_panel_detail(),
             )
         )
         self.smart_parse_btn = QPushButton(
@@ -736,7 +724,6 @@ class DataInterpretationPreviewDialog(
         label_panel_layout.addWidget(
             self._panel_header(
                 "Match Labels",
-                "Choose the label source, then map label values onto the EEG.",
                 action=self.match_advanced_toggle,
             )
         )
@@ -848,7 +835,6 @@ class DataInterpretationPreviewDialog(
         review_panel_layout.addWidget(
             self._panel_header(
                 "Review and Import",
-                "Review what will be imported before applying.",
             )
         )
         review_panel_layout.addWidget(self.confirmation_label)
@@ -860,59 +846,9 @@ class DataInterpretationPreviewDialog(
         review_panel_layout.addWidget(self.review_actions_panel)
         self._populate_review_action_cards()
 
-        self.import_report_toggle = QPushButton("View import report")
-        self.import_report_toggle.setObjectName("DataImportReviewAction")
-        self.import_report_toggle.clicked.connect(self._toggle_import_report)
         self.import_review_card, import_review_layout = self._card("Import review")
         self._build_review_import_summary(import_review_layout)
         review_panel_layout.addWidget(self.import_review_card)
-        review_panel_layout.addWidget(
-            self.import_report_toggle,
-            alignment=Qt.AlignmentFlag.AlignLeft,
-        )
-
-        self.review_tree = QTreeWidget()
-        self.review_tree.setObjectName("InterpretationReviewSummary")
-        self.review_tree.setHeaderLabels(
-            ["Target step", "Issue", "Impact", "Next action"],
-        )
-        self.review_tree.setRootIsDecorated(False)
-        self.review_tree.setAlternatingRowColors(True)
-        self.review_tree.setUniformRowHeights(False)
-        self.review_tree.setMinimumHeight(132)
-        self.review_tree.setMaximumHeight(220)
-        self._fit_tree_columns(
-            self.review_tree,
-            (135, 220, 315, 245),
-        )
-        self.review_tree.setTextElideMode(Qt.TextElideMode.ElideNone)
-        self.review_tree.setWordWrap(True)
-        self._populate_review_tree()
-        self._fit_review_tree_height()
-        self.import_report_card, import_report_layout = self._card(
-            "Recipe replacements" if self._has_remap_options() else "Import report"
-        )
-        self.import_report_card.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
-            QSizePolicy.Policy.Maximum,
-        )
-        self.import_report_summary = QLabel()
-        self.import_report_summary.setObjectName("DataImportReportSummary")
-        self.import_report_summary.setWordWrap(True)
-        self.import_report_summary.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse,
-        )
-        import_report_layout.addWidget(self.import_report_summary)
-        self.review_tree.setSizePolicy(
-            QSizePolicy.Policy.Preferred,
-            QSizePolicy.Policy.Maximum,
-        )
-        import_report_layout.addWidget(self.review_tree)
-        self._refresh_import_report_summary()
-        review_panel_layout.addWidget(self.import_report_card)
-        self.import_report_card.setVisible(self._has_remap_options())
-        if self._has_remap_options():
-            self.import_report_toggle.setText("Hide import report")
         review_panel_layout.addStretch()
         self.step_stack.addWidget(review_panel)
 
@@ -1014,7 +950,6 @@ class DataInterpretationPreviewDialog(
     def _panel_header(
         self,
         title: str,
-        detail: str,
         *,
         action: QWidget | None = None,
     ) -> QFrame:
@@ -1023,18 +958,9 @@ class DataInterpretationPreviewDialog(
         layout = QHBoxLayout(header)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
-        text = QWidget(header)
-        text_layout = QVBoxLayout(text)
-        text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.setSpacing(4)
         title_label = QLabel(title)
         title_label.setObjectName("DataImportPanelTitle")
-        detail_label = QLabel(detail)
-        detail_label.setObjectName("DataImportPanelSubtitle")
-        detail_label.setWordWrap(True)
-        text_layout.addWidget(title_label)
-        text_layout.addWidget(detail_label)
-        layout.addWidget(text, 1)
+        layout.addWidget(title_label, 1)
         if action is not None:
             layout.addWidget(action, 0, Qt.AlignmentFlag.AlignTop)
         return header
@@ -1063,8 +989,8 @@ class DataInterpretationPreviewDialog(
             QSizePolicy.Policy.Maximum,
         )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(5)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(2)
         title_label = QLabel(title)
         title_label.setObjectName("DataImportMetricTitle")
         value_label = QLabel(value)
@@ -1726,21 +1652,12 @@ class DataInterpretationPreviewDialog(
             self._sync_review_status_copy()
             self._refresh_review_action_cards()
             self._refresh_review_import_summary()
-            if not self.import_report_card.isHidden():
-                self._refresh_review_tree()
-                self._fit_tree_columns_to_viewport(self.review_tree)
             self._sync_apply_state()
-        self._fit_review_tree_height()
         # Settle the final-step window size before returning to the event loop.
         # Deferring this resize paints one frame at the previous step's height.
-        self._sync_review_dialog_geometry()
+        self._sync_step_dialog_geometry()
         self._sync_scroll_policy()
         if final_step:
-            # The first pass establishes the final viewport height; settle once
-            # more synchronously so wrapped summary rows do not paint using the
-            # previous step's geometry until the report is toggled.
-            self._sync_review_dialog_geometry()
-            self._sync_scroll_policy()
             QTimer.singleShot(0, self._settle_review_step_layout)
 
     def _settle_review_step_layout(self) -> None:
@@ -1751,26 +1668,29 @@ class DataInterpretationPreviewDialog(
         ):
             return
         self._sync_review_import_row_heights()
-        self._sync_review_dialog_geometry()
+        self._sync_step_dialog_geometry()
         self._sync_scroll_policy()
 
-    def _sync_review_dialog_geometry(self) -> None:
-        """Compact the final review while preserving the working-step size."""
-        if not hasattr(self, "step_stack") or not hasattr(self, "scroll_area"):
+    def _sync_step_dialog_geometry(self) -> None:
+        """Fit short pages to their content and restore the working height on return."""
+        if not self.isVisible() or not hasattr(self, "scroll_area"):
             return
-        final_step = self.step_stack.currentIndex() == self.step_stack.count() - 1
-        if not final_step:
-            if self._review_restore_size is not None:
-                restore_size = self._review_restore_size
-                self._review_restore_size = None
-                self.resize_preserving_center(restore_size)
+        title = self._step_titles[self.step_stack.currentIndex()]
+        if title not in {
+            "Choose EEG Data",
+            "Load Labels",
+            "Review Metadata",
+            "Review and Import",
+        }:
+            if self._working_step_height is not None:
+                restore_height = self._working_step_height
+                self._working_step_height = None
+                self.resize_preserving_center(QSize(self.width(), restore_height))
             return
 
-        if self._review_restore_size is None:
-            self._review_restore_size = QSize(self.size())
-        restore_size = self._review_restore_size
-        if restore_size is None:
-            return
+        if self._working_step_height is None:
+            self._working_step_height = self.height()
+        restore_height = self._working_step_height
         current_page = self.step_stack.currentWidget()
         viewport = self.scroll_area.viewport()
         if current_page is None or viewport is None or viewport.height() <= 0:
@@ -1782,42 +1702,14 @@ class DataInterpretationPreviewDialog(
             page_layout.activate()
         content_height = self._step_content_height(current_page)
         chrome_height = max(self.height() - viewport.height(), 150)
-        # Keep one stable compact baseline. The first layout pass can understate
-        # wrapped review rows by a few pixels; using that transient height makes
-        # the text look compressed until the report is expanded and collapsed.
-        desired_height = max(content_height + chrome_height + 8, 560)
-        restore_height = restore_size.height()
-        collapsed_ceiling = max(560, restore_height - 48)
-        if self.import_report_card.isHidden():
-            # Native title bars can clamp the working dialog to the screen's
-            # available height. Keep the collapsed review observably compact
-            # even when its transient size hint matches that clamped height.
-            target_height = min(desired_height, collapsed_ceiling)
-        else:
-            target_height = min(desired_height, restore_height)
-        if self.import_report_card.isHidden():
-            projected_viewport_height = max(
-                original_viewport_height + target_height - original_height,
-                1,
+        target_height = min(content_height + chrome_height, restore_height)
+        if target_height != original_height:
+            projected_height = max(
+                1, original_viewport_height + target_height - original_height
             )
-            overflow = content_height - projected_viewport_height + 4
-            if overflow > 0:
-                target_height = min(target_height + overflow, collapsed_ceiling)
-            projected_viewport_height = max(
-                original_viewport_height + target_height - original_height,
-                1,
-            )
-            # The previous step leaves the stack at its working-page fixed
-            # height. Release that constraint before resizing the top-level
-            # dialog so native Windows geometry cannot clamp the compact step.
-            self._sync_scroll_policy_for_height(projected_viewport_height)
-        if target_height != self.height():
+            self._sync_scroll_policy_for_height(projected_height)
             self.resize_preserving_center(QSize(self.width(), target_height))
-        if self.import_report_card.isHidden():
-            # Native Windows geometry notifications can arrive after this
-            # method returns. Apply the policy to the projected viewport now so
-            # the final step never paints one stale, scrollable frame.
-            self._sync_scroll_policy_for_height(projected_viewport_height)
+            self._sync_scroll_policy_for_height(projected_height)
 
     def _step_content_height(self, current_page: QWidget) -> int:
         """Return the settled content height for scroll and window sizing."""
@@ -1831,13 +1723,16 @@ class DataInterpretationPreviewDialog(
             page_layout = current_page.layout()
             if page_layout is not None:
                 page_layout.activate()
-        report_collapsed = (
-            final_page
-            and hasattr(self, "import_report_card")
-            and self.import_report_card.isHidden()
-        )
-        if report_collapsed:
             return current_page.minimumSizeHint().height()
+        if current_page.hasHeightForWidth() and current_page in (
+            self.step_stack.widget(0),
+            self.step_stack.widget(1),
+            self.step_stack.widget(2),
+        ):
+            return max(
+                current_page.minimumSizeHint().height(),
+                current_page.heightForWidth(current_page.width()),
+            )
         return max(
             current_page.sizeHint().height(),
             current_page.minimumSizeHint().height(),
@@ -1942,23 +1837,21 @@ class DataInterpretationPreviewDialog(
     def resizeEvent(self, event):  # noqa: N802
         super().resizeEvent(event)
         self._sync_step_label_text()
-        if hasattr(self, "review_tree"):
+        if hasattr(self, "scroll_area"):
             self._fit_metadata_tree_height()
             self._fit_label_carrier_tree_height()
             self._fit_all_tree_columns_to_viewport()
             self._fit_event_tree_height()
-            self._fit_review_tree_height()
             self._sync_scroll_policy()
 
     def showEvent(self, event):  # noqa: N802
         super().showEvent(event)
-        self._sync_review_dialog_geometry()
+        self._sync_step_dialog_geometry()
         QTimer.singleShot(0, self._fit_metadata_tree_height)
         QTimer.singleShot(0, self._fit_label_carrier_tree_height)
         QTimer.singleShot(0, self._fit_all_tree_columns_to_viewport)
         QTimer.singleShot(0, self._fit_event_tree_height)
-        QTimer.singleShot(0, self._fit_review_tree_height)
-        QTimer.singleShot(0, self._sync_review_dialog_geometry)
+        QTimer.singleShot(0, self._sync_step_dialog_geometry)
         QTimer.singleShot(0, self._sync_scroll_policy)
 
     def _sync_scroll_policy(self) -> None:
@@ -2002,8 +1895,10 @@ class DataInterpretationPreviewDialog(
     def get_result(self) -> dict[str, Any]:
         submission = self._submission_projection()
         choices = self._edited_choices()
-        if self._skip_labels:
-            choices["skip_labels"] = True
+        if self._skip_labels or self._initial_choices.get("skip_labels"):
+            choices["skip_labels"] = self._skip_labels
+            if self._resume_step_after_accept and self._excluded_label_carriers:
+                choices["excluded_label_carriers"] = list(self._excluded_label_carriers)
         result: dict[str, Any] = {
             "confirmed": submission.confirmed_on_accept,
             "save_recipe": self.save_recipe_check.isChecked(),
@@ -2038,25 +1933,20 @@ class DataInterpretationPreviewDialog(
         return self._wizard_state.label_sources.label_sources_changed()
 
     def _label_detection_text(self) -> str:
-        if self._is_bids_source() and self._has_bids_events():
-            return (
-                f"{self._bids_event_count_text()} will be used as the default "
-                "label and timing source."
-            )
+        if (
+            self._skip_labels
+            or self._extra_label_sources
+            or self._label_carrier_preview_rows()
+        ):
+            return ""
+        if self._has_internal_event_evidence():
+            return "Events are available inside the EEG files."
         if self._is_bids_source():
             return (
-                "No events.tsv is attached for the selected BIDS runs. Add the "
-                "missing BIDS sidecar, or choose Continue without labels for "
-                "inspection and preprocessing only."
+                "No events.tsv is selected. Continue without labels for "
+                "inspection and preprocessing, or choose a source with labels."
             )
-        if "label_carrier_preview" in self.preview:
-            carriers = self.preview.get("label_carrier_preview")
-        else:
-            carriers = self.scan_result.get("label_carriers") or []
-        count = len(carriers) if isinstance(carriers, list) else 0
-        if count:
-            return f"{count} label/event file(s) will be reviewed for this import."
-        return "No label/event file was detected near the selected EEG data."
+        return "No label file selected."
 
     def _label_sources_status_text(self) -> str:
         if self._skip_labels:
@@ -2065,17 +1955,6 @@ class DataInterpretationPreviewDialog(
                 "training remain limited until labels or events are added."
             )
         return ""
-
-    def _load_labels_panel_detail(self) -> str:
-        if self._is_bids_source():
-            return (
-                "BIDS events.tsv files are detected automatically and saved with "
-                "the import recipe."
-            )
-        return "Load the label files that will be matched to this EEG data."
-
-    def _metadata_panel_detail(self) -> str:
-        return "Review subject, session, task, and run."
 
     def _user_label_source_row(self, source: str) -> tuple[str, str]:
         source_path = Path(source)
@@ -2326,12 +2205,18 @@ class DataInterpretationPreviewDialog(
             if self._is_duplicate_label_source(text):
                 skipped_duplicate = True
                 if self._skip_labels:
-                    self._skip_labels = False
                     changed = True
                 continue
             self._extra_label_sources.append(text)
             changed = True
         if changed:
+            if (
+                self._skip_labels
+                and self._initial_choices.get("skip_labels")
+                and not self._label_sources_changed()
+            ):
+                self._toggle_skip_labels()
+                return
             self._skip_labels = False
             self._refresh_label_source_rows()
             self._notify_wizard_state_changed(WizardStateChange.LABEL_SOURCES)
@@ -2361,11 +2246,17 @@ class DataInterpretationPreviewDialog(
         self._refresh_load_labels_static_state()
         self._sync_label_placement_after_label_sources_changed()
 
-    def _skip_labels_for_now(self) -> None:
-        self._wizard_state.label_sources.mark_skip()
+    def _toggle_skip_labels(self) -> None:
+        self._skip_labels = not self._skip_labels
+        self._refresh_label_detection()
         self.label_sources_label.setText(self._label_sources_status_text())
-        self.label_sources_label.setVisible(True)
-        self._sync_scroll_policy()
+        self.label_sources_label.setVisible(bool(self.label_sources_label.text()))
+        if self._skip_labels:
+            self._go_next_step()
+        elif self._initial_choices.get("skip_labels"):
+            # A validated skip preview has no carrier plans to restore locally.
+            self._resume_step_after_accept = "Load Labels"
+            self.accept()
 
     def _run_smart_parse(self) -> None:
         filepaths = self._metadata_filepaths_for_smart_parse()
@@ -2453,12 +2344,6 @@ class DataInterpretationPreviewDialog(
                 color: {Theme.TEXT_MUTED};
                 background-color: transparent;
                 border: none;
-            }}
-            QLabel#InterpretationSummary {{
-                color: #e8e8e8;
-                font-size: 13px;
-                font-weight: 600;
-                padding: 2px 0 0 0;
             }}
             QLabel#InterpretationDecision {{
                 color: {Theme.TEXT_MUTED};
@@ -3117,10 +3002,6 @@ class DataInterpretationPreviewDialog(
                 selection-background-color: {Theme.TABLE_SELECTION};
                 selection-color: {Theme.TEXT_MUTED};
             }}
-            QTreeWidget#InterpretationReviewSummary {{
-                background-color: #212121;
-                alternate-background-color: #232323;
-            }}
             QTreeWidget::item {{
                 padding: 5px 7px;
                 border-bottom: 1px solid #2a2a2a;
@@ -3194,7 +3075,6 @@ class DataInterpretationPreviewDialog(
             "file_tree",
             "label_carrier_tree",
             "event_tree",
-            "review_tree",
         ):
             tree = getattr(self, tree_name, None)
             if isinstance(tree, QTreeWidget):
@@ -3275,24 +3155,6 @@ class DataInterpretationPreviewDialog(
             if remaining <= 0:
                 break
 
-    def _fit_review_tree_height(self) -> None:
-        if not hasattr(self, "review_tree"):
-            return
-        tree = self.review_tree
-        self._fit_review_report_rows()
-        tree.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        row_heights = [
-            max(tree.sizeHintForRow(row), 0) for row in range(tree.topLevelItemCount())
-        ]
-        if not row_heights:
-            row_heights = [tree.fontMetrics().height() + 12]
-        header = tree.header()
-        header_height = header.height() if header is not None else 28
-        target_height = header_height + sum(row_heights) + (tree.frameWidth() * 2) + 4
-        bounded_height = max(target_height, 92)
-        tree.setMinimumHeight(bounded_height)
-        tree.setMaximumHeight(bounded_height)
-
     def _fit_metadata_tree_height(self) -> None:
         if not hasattr(self, "file_tree"):
             return
@@ -3353,14 +3215,9 @@ class DataInterpretationPreviewDialog(
     @staticmethod
     def _apply_tree_palette(tree: QTreeWidget) -> None:
         palette = tree.palette()
-        if tree.objectName() == "InterpretationReviewSummary":
-            base = QColor("#212121")
-            alternate = QColor("#232323")
-        else:
-            base = QColor("#202020")
-            alternate = QColor("#242424")
+        base = QColor("#202020")
         palette.setColor(QPalette.ColorRole.Base, base)
-        palette.setColor(QPalette.ColorRole.AlternateBase, alternate)
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#242424"))
         palette.setColor(QPalette.ColorRole.Window, base)
         palette.setColor(QPalette.ColorRole.Button, base)
         palette.setColor(QPalette.ColorRole.Text, QColor(Theme.TEXT_MUTED))
@@ -3905,7 +3762,7 @@ class DataInterpretationPreviewDialog(
         eeg_file_remap = self._eeg_file_remap_choices()
         if eeg_file_remap:
             choices["eeg_file_remap"] = eeg_file_remap
-        if self._skip_labels:
+        if self._skip_labels or self._resume_step_after_accept == "Load Labels":
             return choices
         internal_event_selection: dict[str, Any] = {}
         using_internal_events = bool(

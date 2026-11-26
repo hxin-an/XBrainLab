@@ -59,14 +59,13 @@ class EegSourceChooserDialog(BaseDialog):
         self._result: EegSourceSelection | None = None
         self.source_bar: QFrame
         self.heading_label: QLabel
-        self.guidance_label: QLabel
         self.path_edit: QLineEdit
         self.selection_summary: QLabel
         self.choose_files_button: QPushButton
         self.choose_folder_button: QPushButton
         self.button_box: QDialogButtonBox
         self._suggested_path = str(suggested_path).strip()
-        super().__init__(parent, title="Import EEG Data", width=560, height=250)
+        super().__init__(parent, title="Import EEG Data", width=560, height=148)
 
     def init_ui(self) -> None:
         self.setObjectName("EegSourceChooserDialog")
@@ -77,13 +76,6 @@ class EegSourceChooserDialog(BaseDialog):
         self.heading_label = QLabel("Choose EEG data")
         self.heading_label.setObjectName("EegSourceHeading")
         layout.addWidget(self.heading_label)
-
-        self.guidance_label = QLabel(
-            "Select files or a dataset folder. BIDS is detected automatically."
-        )
-        self.guidance_label.setObjectName("EegSourceGuidance")
-        self.guidance_label.setWordWrap(True)
-        layout.addWidget(self.guidance_label)
 
         self.source_bar = QFrame(self)
         self.source_bar.setObjectName("EegSourceBar")
@@ -119,7 +111,8 @@ class EegSourceChooserDialog(BaseDialog):
         source_bar_layout.addWidget(self.choose_folder_button)
         layout.addWidget(self.source_bar)
 
-        self.selection_summary = QLabel("No source selected")
+        self.selection_summary = QLabel()
+        self.selection_summary.hide()
         self.selection_summary.setObjectName("EegSourceSelectionSummary")
         self.selection_summary.setWordWrap(True)
         layout.addWidget(self.selection_summary)
@@ -188,26 +181,19 @@ class EegSourceChooserDialog(BaseDialog):
 
     def _set_pending(self, selection: EegSourceSelection | None) -> None:
         self._pending = selection
-        if selection is None:
-            summary = "No source selected"
-            tooltip = ""
-        elif selection.kind == "files":
-            count = len(selection.paths)
-            first_name = Path(selection.paths[0]).name or selection.paths[0]
-            summary = f"{count} file selected · {first_name}"
-            if count > 1:
-                summary = f"{count} files selected · {first_name} +{count - 1} more"
+        summary = ""
+        tooltip = ""
+        if selection is not None:
             tooltip = "\n".join(selection.paths)
-            self._sync_path_display(selection.paths[0])
-        elif selection.kind == "folder":
-            summary = "Folder selected · BIDS is detected after Continue"
-            tooltip = selection.paths[0]
-            self._sync_path_display(selection.paths[0])
-        else:
-            summary = "Path ready · Source type is detected after Continue"
-            tooltip = selection.paths[0]
+            if selection.kind in {"files", "folder"}:
+                self._sync_path_display(selection.paths[0])
+            count = len(selection.paths)
+            if count > 1:
+                first_name = Path(selection.paths[0]).name or selection.paths[0]
+                summary = f"{count} files selected · {first_name} +{count - 1} more"
         self.path_edit.setToolTip(tooltip)
         self.selection_summary.setText(summary)
+        self.selection_summary.setVisible(bool(summary))
         continue_button = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
         if continue_button is not None:
             continue_button.setEnabled(selection is not None)
@@ -233,9 +219,6 @@ class EegSourceChooserDialog(BaseDialog):
                 color: #f1f1f1;
                 font-size: 17px;
                 font-weight: 700;
-            }}
-            QLabel#EegSourceGuidance {{
-                color: {Theme.TEXT_SECONDARY};
             }}
             QFrame#EegSourceBar {{
                 background-color: #252526;

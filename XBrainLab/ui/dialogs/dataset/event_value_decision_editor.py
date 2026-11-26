@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QEvent, QObject, Qt, pyqtSignal
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -18,6 +18,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from XBrainLab.ui.components.presentation import ElidingLabel
 
 _ROLE_CHOICES = (
     ("Choose role", ""),
@@ -35,43 +37,6 @@ _USE_CHOICES = (
     ("Training class", "class"),
     ("Do not use", "ignore"),
 )
-
-
-class _ElidingValueEventFilter(QObject):
-    """Keep eliding inside Qt's object lifetime instead of queued Python events."""
-
-    def __init__(self, label: _ElidingValueLabel) -> None:
-        super().__init__(label)
-        self._label = label
-
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
-        if watched is self._label and event.type() in {
-            QEvent.Type.Resize,
-            QEvent.Type.Show,
-        }:
-            self._label._fit_text()
-        return False
-
-
-class _ElidingValueLabel(QLabel):
-    """Render a raw event value without clipping its accessible full text."""
-
-    def __init__(self, text: str, parent: QWidget | None = None) -> None:
-        super().__init__(text, parent)
-        self._full_text = text
-        self.setAccessibleName(text)
-        self._eliding_filter = _ElidingValueEventFilter(self)
-        self.installEventFilter(self._eliding_filter)
-
-    def _fit_text(self) -> None:
-        available = max(self.contentsRect().width(), 1)
-        rendered = self.fontMetrics().elidedText(
-            self._full_text,
-            Qt.TextElideMode.ElideRight,
-            available,
-        )
-        if self.text() != rendered:
-            self.setText(rendered)
 
 
 @dataclass(frozen=True)
@@ -136,14 +101,7 @@ class EventValueDecisionEditor(QWidget):
         self.setVisible(True)
         title = QLabel("Event value decisions")
         title.setObjectName("DataImportSubsectionTitle")
-        detail = QLabel(
-            "Choose what each observed value means and whether it becomes a "
-            "training class. Suggested names remain editable."
-        )
-        detail.setObjectName("DataImportSourceDetail")
-        detail.setWordWrap(True)
         self._layout.addWidget(title)
-        self._layout.addWidget(detail)
 
         table = QFrame()
         table.setObjectName("DataImportValueDecisionTable")
@@ -582,7 +540,7 @@ class EventValueDecisionEditor(QWidget):
         layout.setSpacing(0)
         raw_value = occurrences[0].raw_value
         tooltip = self._value_tooltip(occurrences)
-        value_label = _ElidingValueLabel(raw_value, cell)
+        value_label = ElidingLabel(raw_value, cell)
         value_label.setObjectName("DataImportValueDecisionValue")
         value_label.setToolTip(f"{tooltip}\nValue: {raw_value}".strip())
         value_label.setWordWrap(False)

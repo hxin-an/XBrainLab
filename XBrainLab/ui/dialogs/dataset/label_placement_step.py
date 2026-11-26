@@ -70,7 +70,7 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         self.rule_label_field_combo = self._rule_combo(
             self._label_field_rule_choices(),
             self._common_carrier_value("selected_label_field"),
-            "Choose the column, variable, or sequence that becomes the label value.",
+            "",
         )
         self.rule_use_as_combo = self._rule_combo(
             self._label_use_choices(),
@@ -107,11 +107,12 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             values_grid.addWidget(carrier_use_control, 0, 1)
         else:
             self.rule_use_as_combo.hide()
-        self.label_values_status_label = QLabel(self._label_values_status_text())
+        self.label_values_status_label = QLabel()
         self.label_values_status_label.setObjectName("DataImportRuleStatus")
         self.label_values_status_label.setWordWrap(True)
         values_grid.addWidget(self.label_values_status_label, 1, 0, 1, 2)
         layout.addLayout(values_grid)
+        self._refresh_label_values_status()
 
         for selector in (
             self.rule_label_field_combo,
@@ -796,37 +797,27 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
         anchor = self._default_alignment_value(placement_method)
         return self._inferred_time_model_for_anchor(anchor)
 
-    def _label_values_status_text(self) -> str:
+    def _refresh_label_values_status(self) -> None:
+        field = str(self.rule_label_field_combo.currentData() or "").strip()
+        message = ""
+        recommendation = ""
         if not self._label_carrier_items:
-            return "No loaded label files are available."
-        field_value = str(self.rule_label_field_combo.currentData() or "").strip()
-        field = self.rule_label_field_combo.currentText()
-        use_as = self.rule_use_as_combo.currentText()
-        if not field_value:
-            return "Choose the field that contains the label values."
-        value_summary = self._label_value_count_summary()
-        if self._is_bids_source():
-            details: list[str] = []
-            recommendation = self._common_label_field_recommendation(field_value)
-            recommendation_text = self._bids_label_field_recommendation_text(
-                recommendation
+            message = "No loaded label files are available."
+        elif not field:
+            message = "Choose the field that contains the label values."
+        elif self._is_bids_source():
+            recommendation = self._bids_label_field_recommendation_text(
+                self._common_label_field_recommendation(field)
             )
-            if recommendation_text:
-                details.append(recommendation_text)
             if self._bids_class_names_need_review():
-                details.append("Class names need review.")
-            detail_text = " " + " ".join(details) if details else ""
-            if value_summary:
-                return (
-                    f"{field}: {value_summary}. BIDS timing is saved for import "
-                    f"and EEG epoch setup.{detail_text}"
+                message = (
+                    "Choose which values are training classes and check their names."
                 )
-            return f"{field} values will be imported from BIDS events.tsv.{detail_text}"
-        if value_summary:
-            return (
-                f"{field}: {value_summary}. Use the preview below to verify placement."
-            )
-        return f"{field} values will be imported as {use_as.lower()}."
+        self.rule_label_field_combo.setToolTip(
+            recommendation or "Choose the field containing the label values."
+        )
+        self.label_values_status_label.setText(message)
+        self.label_values_status_label.setVisible(bool(message))
 
     def _common_label_field_recommendation(
         self,
@@ -1510,33 +1501,9 @@ class LabelPlacementStepMixin(DataImportWizardStepHostProtocol):
             return str(int(value))
         return f"{value:g}"
 
-    def _label_value_count_summary(self) -> str:
-        row_count = self._active_label_row_count()
-        value_counts: dict[str, int] = {}
-        for _item, original in self._label_carrier_items:
-            raw_counts = original.get("label_value_counts")
-            if not isinstance(raw_counts, dict):
-                continue
-            for value, count in raw_counts.items():
-                text = str(value).strip()
-                if not text:
-                    continue
-                if isinstance(count, int):
-                    value_counts[text] = value_counts.get(text, 0) + count
-                    continue
-                count_text = str(count or "").strip()
-                if count_text.isdigit():
-                    value_counts[text] = value_counts.get(text, 0) + int(count_text)
-        parts: list[str] = []
-        if row_count is not None:
-            parts.append(f"{row_count} values")
-        if value_counts:
-            parts.append(f"{len(value_counts)} unique labels")
-        return " across ".join(parts)
-
     def _refresh_label_rule_status(self) -> None:
         if hasattr(self, "label_values_status_label"):
-            self.label_values_status_label.setText(self._label_values_status_text())
+            self._refresh_label_values_status()
         if hasattr(self, "target_event_status_label"):
             self.target_event_status_label.setText(self._target_event_status_text())
         self._refresh_time_field_review()
