@@ -913,31 +913,23 @@ class DataInterpretationActionCoordinator:
             choices,
             dialog_choices,
         )
-        next_label_sources = self._dialog_label_sources(
-            dialog_result,
-            label_sources,
-        )
 
         def _continue_after_review() -> InteractionOutcome:
-            continuation_choices = updated_choices
-            if next_label_sources != label_sources:
-                continuation_choices = self._choices_after_label_source_change(
-                    continuation_choices
-                )
-                return self._start_interpretation_review_async(
-                    source_path,
-                    source_hint,
-                    continuation_choices,
-                    next_label_sources,
-                    initial_step=str(dialog_result.get("resume_step") or ""),
-                ) or InteractionOutcome.blocked(
-                    "Data interpretation review could not be started."
-                )
-
+            resumed = self._resume_interpretation_review_async(
+                source_path=source_path,
+                source_hint=source_hint,
+                choices=updated_choices,
+                label_sources=label_sources,
+                review_state=review_state,
+                dialog_result=dialog_result,
+                pending_review_state=pending_review_state,
+            )
+            if resumed is not None:
+                return resumed
             if (
                 pending_review_state is None
                 and str(review_state.decision.get("decision")) == "blocked"
-                and continuation_choices == comparison_choices
+                and updated_choices == comparison_choices
             ):
                 if import_confirmed:
                     self._show_status(
@@ -949,25 +941,12 @@ class DataInterpretationActionCoordinator:
 
             if (
                 pending_review_state is not None
-                or continuation_choices != comparison_choices
+                or updated_choices != comparison_choices
             ):
-                resume_step = str(dialog_result.get("resume_step") or "").strip()
-                if resume_step in {"Match Labels", "Review and Import"}:
-                    return self._repreview_interpretation_async(
-                        source_path=source_path,
-                        source_hint=source_hint,
-                        choices=continuation_choices,
-                        label_sources=label_sources,
-                        review_state=review_state,
-                        initial_step=resume_step,
-                        pending_review_state=pending_review_state,
-                    ) or InteractionOutcome.blocked(
-                        "Data interpretation preview could not be refreshed."
-                    )
                 return self._review_interpretation_for_apply_async(
                     source_path=source_path,
                     source_hint=source_hint,
-                    choices=continuation_choices,
+                    choices=updated_choices,
                     validated_choices=comparison_choices,
                     label_sources=label_sources,
                     review_state=review_state,
@@ -1038,6 +1017,57 @@ class DataInterpretationActionCoordinator:
             return InteractionOutcome.failed(message)
         return InteractionOutcome.accepted(
             "Dataset import will continue after the review closes."
+        )
+
+    def _resume_interpretation_review_async(
+        self,
+        *,
+        source_path: str,
+        source_hint: str,
+        choices: dict[str, Any],
+        label_sources: list[str],
+        review_state: _InterpretationReviewState,
+        dialog_result: dict[str, Any],
+        pending_review_state: _InterpretationReviewState | None = None,
+    ) -> InteractionOutcome | None:
+        """Handle an intermediate wizard submission from import or recipe reload."""
+        resume_step = str(dialog_result.get("resume_step") or "").strip()
+        next_sources = self._dialog_label_sources(dialog_result, label_sources)
+        restore_unscanned_labels = (
+            resume_step == "Load Labels" and not review_state.scan.get("label_carriers")
+        )
+        sources_changed = next_sources != label_sources
+        if sources_changed or restore_unscanned_labels:
+            if sources_changed:
+                choices = self._choices_after_label_source_change(choices)
+            return self._start_interpretation_review_async(
+                source_path,
+                source_hint,
+                choices,
+                next_sources,
+                initial_step=resume_step,
+                expected_publication_generation=(
+                    pending_review_state or review_state
+                ).publication_generation,
+            ) or InteractionOutcome.blocked(
+                "Data interpretation review could not be started."
+            )
+        if not resume_step:
+            return None
+        if resume_step not in {"Load Labels", "Match Labels", "Review and Import"}:
+            return InteractionOutcome.blocked(
+                "The requested review step is unavailable."
+            )
+        return self._repreview_interpretation_async(
+            source_path=source_path,
+            source_hint=source_hint,
+            choices=choices,
+            label_sources=label_sources,
+            review_state=review_state,
+            initial_step=resume_step,
+            pending_review_state=pending_review_state,
+        ) or InteractionOutcome.blocked(
+            "Data interpretation preview could not be refreshed."
         )
 
     def _preview_context_is_available(self) -> bool:
@@ -1179,6 +1209,7 @@ class DataInterpretationActionCoordinator:
         label_sources: list[str],
         *,
         initial_step: str = "",
+        expected_publication_generation: int | None = None,
     ) -> InteractionOutcome | None:
         """Run scan/preview/validate off the Qt thread for real Study-backed UI."""
 
@@ -1265,6 +1296,7 @@ class DataInterpretationActionCoordinator:
                     resource_preflight_token=resource_preflight_token,
                 ),
                 on_result=_handle_review_result,
+                expected_publication_generation=expected_publication_generation,
                 error_title="Interpretation failed",
                 on_error=lambda error: self._show_loading_error(
                     loading_token,
@@ -1544,10 +1576,14 @@ class DataInterpretationActionCoordinator:
         def _retry_cancelled_repreview(
             current_state: _InterpretationReviewState,
         ) -> InteractionOutcome:
+            draft_choices = dict(choices)
+            if initial_step == "Load Labels":
+                # The preserved preview still represents a skipped-label candidate.
+                draft_choices["skip_labels"] = True
             return self._continue_data_interpretation_import(
                 source_path=source_path,
                 source_hint=source_hint,
-                choices=dict(choices),
+                choices=draft_choices,
                 label_sources=list(label_sources),
                 review_state=review_state,
                 initial_step=initial_step,
@@ -1573,7 +1609,11 @@ class DataInterpretationActionCoordinator:
                 return InteractionOutcome.cancelled(
                     "Data interpretation preview was cancelled."
                 )
-            reopen_step = self._repreview_step_for_decision(validated_state.decision)
+            reopen_step = (
+                "Load Labels"
+                if initial_step == "Load Labels"
+                else self._repreview_step_for_decision(validated_state.decision)
+            )
             self._show_status(f"Import review updated · Continue in {reopen_step}")
             return self._continue_data_interpretation_import(
                 source_path=source_path,

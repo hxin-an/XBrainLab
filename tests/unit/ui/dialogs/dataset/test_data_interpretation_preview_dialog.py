@@ -6,7 +6,8 @@ from itertools import pairwise
 from pathlib import Path
 
 import pytest
-from PyQt6.QtCore import QEvent, QObject, Qt
+from PyQt6.QtCore import QEvent, QObject, QRect, Qt
+from PyQt6.QtGui import QScreen
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -3727,6 +3728,35 @@ def test_load_labels_duplicate_source_after_skip_reenables_existing_labels(
     assert "A01T.mat" in _tree_text(dialog.label_carrier_tree)
 
 
+def test_reselect_external_file_after_validated_skip_reopens_label_review(
+    qtbot, monkeypatch
+):
+    source = "/tmp/labels/A01T.mat"
+    dialog = DataInterpretationPreviewDialog(
+        scan_result={
+            "eeg_files": ["/tmp/data/A01T.gdf"],
+            "label_sources": [source],
+            "label_carriers": [],
+        },
+        preview={"label_carrier_preview": []},
+        validation_decision={"decision": "safe"},
+        choices={"skip_labels": True},
+        initial_step="Load Labels",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    monkeypatch.setattr(
+        "XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog.QFileDialog.getOpenFileNames",
+        lambda *_args, **_kwargs: ([source], ""),
+    )
+    qtbot.mouseClick(dialog.add_label_file_btn, Qt.MouseButton.LeftButton)
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    result = dialog.get_result()
+    assert result.get("resume_step") == "Load Labels"
+    assert result["choices"] == {"skip_labels": False}
+    assert "label_sources_changed" not in result
+
+
 def test_attach_labels_buttons_use_clear_action_hierarchy(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -5300,7 +5330,13 @@ def test_bids_optional_task_and_run_do_not_block_import_or_recipe(qtbot):
 
 
 @pytest.mark.parametrize("width", [752, 1040])
-def test_review_recipe_action_is_optional_and_reports_pending_selection(qtbot, width):
+def test_review_recipe_action_is_optional_and_reports_pending_selection(
+    qtbot, monkeypatch, width
+):
+    # Give both requested widget widths room inside the dialog's screen margins.
+    monkeypatch.setattr(
+        QScreen, "availableGeometry", lambda self: QRect(0, 0, 1440, 900)
+    )
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
@@ -5355,6 +5391,7 @@ def test_review_recipe_action_is_optional_and_reports_pending_selection(qtbot, w
     before = row_positions()
     for saving in (True, False, True, False):
         qtbot.mouseClick(dialog.save_recipe_check, Qt.MouseButton.LeftButton)
+        assert dialog.width() == width
         assert dialog.get_result()["save_recipe"] is saving
         assert dialog.save_recipe_check.text() == (
             "Cancel save" if saving else "Save recipe"

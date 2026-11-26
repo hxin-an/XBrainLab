@@ -292,7 +292,7 @@ def _accept_eeg_source_chooser(modal: QWidget | None) -> bool:
     return True
 
 
-def _start_wizard_driver(*, save_recipe: bool) -> _WizardDriver:
+def _start_wizard_driver(*, save_recipe: bool, restore_labels: bool) -> _WizardDriver:
     driver = _WizardDriver(timer=QTimer(), save_recipe=save_recipe)
     driver.timer.setInterval(5)
 
@@ -345,21 +345,42 @@ def _start_wizard_driver(*, save_recipe: bool) -> _WizardDriver:
                 if not modal.add_label_file_btn.isVisibleTo(modal):
                     _fail("Load label file is not visible.", modal)
                     return
+                if restore_labels:
+                    QTest.mouseClick(
+                        _visible_button(modal, "Remove file"), Qt.MouseButton.LeftButton
+                    )
                 driver.trace.append("Load label file")
                 QTest.mouseClick(
                     modal.add_label_file_btn,
                     Qt.MouseButton.LeftButton,
                 )
+                advance = modal.skip_labels_btn if restore_labels else modal.next_button
+                driver.trace.append(advance.text())
+                driver.phase = 20 if restore_labels else 2
+                QTest.mouseClick(advance, Qt.MouseButton.LeftButton)
+                return
+
+            if driver.phase == 20 and len(driver.dialogs) == 2:
+                assert modal.step_stack.currentIndex() == 2
+                _complete_metadata(modal)
+                QTest.mouseClick(modal.back_button, Qt.MouseButton.LeftButton)
+                assert modal.skip_labels_btn.text() == "Use labels"
+                driver.trace.append("Use labels")
+                driver.phase = 21
+                QTest.mouseClick(modal.skip_labels_btn, Qt.MouseButton.LeftButton)
+                return
+
+            if driver.phase == 21:
+                if modal.step_stack.currentIndex() != 1:
+                    return
+                assert _visible_label_source_titles(modal) == [LABEL_PATH.name]
                 driver.trace.append(modal.next_button.text())
                 driver.phase = 2
                 QTest.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
                 return
 
-            if (
-                driver.phase == 2
-                and len(driver.dialogs) == 2
-                and modal is driver.dialogs[1]
-            ):
+            metadata_dialog_count = 3 if restore_labels else 2
+            if driver.phase == 2 and len(driver.dialogs) >= 2:
                 if modal.step_stack.currentIndex() != 2:
                     return
                 metadata_item = modal.file_tree.topLevelItem(0)
@@ -368,22 +389,23 @@ def _start_wizard_driver(*, save_recipe: bool) -> _WizardDriver:
                         "Review Metadata did not expose the selected EEG file.", modal
                     )
                     return
-                metadata_item.setText(1, "A01")
-                metadata_item.setText(3, "motor-imagery")
-                if modal._metadata_required_missing_fields(
-                    modal._metadata_completion_counts()[1]
-                ):
-                    _fail("Required metadata remains incomplete.", modal)
-                    return
+                if restore_labels:
+                    assert metadata_item.text(1) == "A01"
+                    assert metadata_item.text(3) == "motor-imagery"
+                else:
+                    _complete_metadata(modal)
                 driver.trace.append("complete Review Metadata controls")
                 driver.trace.append(modal.next_button.text())
                 driver.phase = 3
                 QTest.mouseClick(modal.next_button, Qt.MouseButton.LeftButton)
                 return
 
-            if driver.phase == 3 and modal is driver.dialogs[1]:
+            if driver.phase == 3 and len(driver.dialogs) >= 2:
                 if modal.step_stack.currentIndex() != 3:
                     return
+                assert (
+                    modal.label_source_mode_combo.currentData() == "loaded_label_files"
+                )
                 _complete_visible_external_label_controls(modal)
                 driver.trace.append("complete Match Labels controls")
                 driver.trace.append(modal.next_button.text())
@@ -392,9 +414,9 @@ def _start_wizard_driver(*, save_recipe: bool) -> _WizardDriver:
                 return
 
             if driver.phase == 4:
-                if len(driver.dialogs) < 3:
+                if len(driver.dialogs) < metadata_dialog_count + 1:
                     return
-                if len(driver.dialogs) > 3 or modal is not driver.dialogs[2]:
+                if len(driver.dialogs) != metadata_dialog_count + 1:
                     _fail("Mapping opened an unexpected review dialog.", modal)
                     return
                 if modal.step_stack.currentIndex() != 4:
@@ -739,12 +761,17 @@ def _start_label_source_lifecycle_driver(
     return driver
 
 
-@pytest.mark.parametrize("save_recipe", [False, True])
+@pytest.mark.parametrize(
+    ("save_recipe", "restore_labels"),
+    [(False, False), (True, False), (False, True)],
+    ids=["False", "True", "restore-after-skip-rescan"],
+)
 def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
     qtbot: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     save_recipe: bool,
+    restore_labels: bool,
 ) -> None:
     """The visible Dataset action must publish one reviewed label import."""
     if not GDF_PATH.exists() or not LABEL_PATH.exists():
@@ -759,6 +786,9 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
     recipe_path = tmp_path / "import-recipe.json"
     shutil.copyfile(GDF_PATH, selected_gdf)
     shutil.copyfile(LABEL_PATH, external_label)
+    if restore_labels:
+        # Removing the auto-detected copy must survive restoring the external one.
+        shutil.copyfile(LABEL_PATH, eeg_dir / LABEL_PATH.name)
     source_bytes = {path: path.read_bytes() for path in (selected_gdf, external_label)}
 
     chooser_calls: list[str] = []
@@ -800,7 +830,9 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
 
     runtime = application_ui_runtime(panel)
     assert runtime is not None
-    driver = _start_wizard_driver(save_recipe=save_recipe)
+    driver = _start_wizard_driver(
+        save_recipe=save_recipe, restore_labels=restore_labels
+    )
 
     assert panel.sidebar.import_btn.isVisibleTo(panel)
     assert panel.sidebar.import_btn.isEnabled()
@@ -822,7 +854,7 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
     qtbot.waitUntil(lambda: panel.table.rowCount() == 1, timeout=5_000)
     driver.timer.stop()
     assert driver.phase == 5
-    assert len(driver.dialogs) == 3
+    assert len(driver.dialogs) == (4 if restore_labels else 3)
     assert chooser_calls == [
         "Choose EEG files",
         "Load label file",
@@ -830,6 +862,7 @@ def test_dataset_action_handler_imports_real_gdf_with_external_mat_labels(
     expected_trace = [
         "Next: Load Labels",
         "Load label file",
+        *(["Continue without labels", "Use labels"] if restore_labels else []),
         "Next: Review Metadata",
         "complete Review Metadata controls",
         "Next: Match Labels",

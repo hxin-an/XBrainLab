@@ -2260,8 +2260,14 @@ def test_choice_repreview_uses_existing_scan_without_rescanning(monkeypatch) -> 
     assert execute.call_args.kwargs["expected_publication_generation"] == 17
 
 
-def test_repreview_safe_result_hands_loading_ownership_to_final_review(
+@pytest.mark.parametrize(
+    ("requested_step", "reopened_step"),
+    [("Match Labels", "Review and Import"), ("Load Labels", "Load Labels")],
+)
+def test_repreview_safe_result_hands_loading_ownership_to_review(
     monkeypatch,
+    requested_step,
+    reopened_step,
 ) -> None:
     handler = DatasetActionHandler(MagicMock())
     loading = MagicMock()
@@ -2293,7 +2299,7 @@ def test_repreview_safe_result_hands_loading_ownership_to_final_review(
         choices={"label_carrier_choices": {}},
         label_sources=[],
         review_state=_review_state(publication_generation=17),
-        initial_step="Match Labels",
+        initial_step=requested_step,
     )
 
     assert outcome is not None
@@ -2301,7 +2307,7 @@ def test_repreview_safe_result_hands_loading_ownership_to_final_review(
     loading.accept.assert_not_called()
     loading_token = continue_flow.call_args.kwargs["loading_token"]
     assert loading_token is handler._data_interpretation._loading_session.token
-    assert continue_flow.call_args.kwargs["initial_step"] == "Review and Import"
+    assert continue_flow.call_args.kwargs["initial_step"] == reopened_step
 
 
 def test_repreview_needs_confirmation_reopens_final_review(monkeypatch) -> None:
@@ -2450,8 +2456,10 @@ def test_repreview_fresh_blocked_target_reopens_match_labels_without_apply(
     apply.assert_not_called()
 
 
-def test_repreview_cancel_reopens_the_exact_preserved_match_labels_draft(
+@pytest.mark.parametrize("restoring", [False, True])
+def test_repreview_cancel_reopens_the_preserved_label_draft(
     monkeypatch,
+    restoring,
 ) -> None:
     """Orange Cancel Import must restore the edited review, not its defaults."""
     handler = DatasetActionHandler(MagicMock())
@@ -2461,7 +2469,12 @@ def test_repreview_cancel_reopens_the_exact_preserved_match_labels_draft(
     cast(Any, coordinator)._loading_dialog_class = lambda: (
         lambda *_args, **_kwargs: loading
     )
-    choices = {"label_carrier_choices": {"events.tsv": "trial_type"}}
+    choices = (
+        {"skip_labels": False}
+        if restoring
+        else {"label_carrier_choices": {"events.tsv": "trial_type"}}
+    )
+    step = "Load Labels" if restoring else "Match Labels"
     review_state = _review_state(publication_generation=17)
     reopened = MagicMock(return_value=InteractionOutcome.accepted("Reopened."))
     continue_flow = MagicMock(return_value=InteractionOutcome.accepted("Review ready."))
@@ -2485,14 +2498,17 @@ def test_repreview_cancel_reopens_the_exact_preserved_match_labels_draft(
         choices=choices,
         label_sources=["events.tsv"],
         review_state=review_state,
-        initial_step="Match Labels",
+        initial_step=step,
     )
 
     assert outcome is not None
     assert outcome.status is InteractionStatus.ACCEPTED
     retry = reopened.call_args.args[0]
     retry()
-    assert continue_flow.call_args.kwargs["choices"] == choices
+    assert continue_flow.call_args.kwargs["initial_step"] == step
+    assert continue_flow.call_args.kwargs["choices"] == (
+        {"skip_labels": True} if restoring else choices
+    )
     assert continue_flow.call_args.kwargs["label_sources"] == ["events.tsv"]
     assert continue_flow.call_args.kwargs["review_state"].scan == review_state.scan
     assert (
@@ -4155,6 +4171,83 @@ def test_reload_warning_confirmation_retries_with_receipt_and_same_continuation(
     assert commands[1].resource_preflight_confirmed is True
     assert commands[1].resource_preflight_token == expected_receipt
     assert single_shot.call_count == 0
+
+
+def test_restore_labels_in_skipped_recipe_reopens_original_source_before_apply(
+    qtbot, monkeypatch, tmp_path: Path
+) -> None:
+    from tests.integration.ui.data_import_wizard_harness import build_dataset_panel
+    from XBrainLab.backend.application.data_interpretation_metadata import (
+        file_metadata_from_dict,
+    )
+    from XBrainLab.backend.application.data_interpretation_recipe import ImportRecipe
+    from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
+        DataInterpretationPreviewDialog,
+    )
+
+    source = tmp_path / "recordings"
+    source.mkdir()
+    eeg = source / "sub-01_task-rest_raw.fif"
+    mne.io.RawArray(
+        np.zeros((1, 128)),
+        mne.create_info(["Cz"], sfreq=128, ch_types="eeg"),
+        verbose=False,
+    ).save(eeg, verbose=False)
+    events = source / "sub-01_task-rest_events.tsv"
+    events.write_text("onset\ttrial_type\n0.25\tleft\n", encoding="utf-8")
+    recipe_path = tmp_path / "skipped.json"
+    ImportRecipe(
+        recipe_id="rest-recipe",
+        interpretation_id="previous-import",
+        source_path=str(source),
+        source_kind="folder",
+        selected_eeg_files=[str(eeg)],
+        metadata=[
+            file_metadata_from_dict({"file": str(eeg), "run": {"override": "7"}})
+        ],
+        skip_labels=True,
+    ).write_json(str(recipe_path))
+    reviews = []
+
+    class _Review(DataInterpretationPreviewDialog):
+        def exec(self) -> int:
+            step = self._step_titles[self.step_stack.currentIndex()]
+            reviews.append((step, self.scan_result))
+            if len(reviews) == 1:
+                self._go_to_step(self._step_titles.index("Load Labels"))
+                self.skip_labels_btn.click()
+            else:
+                self.reject()
+            return self.result()
+
+    host, panel, runtime = build_dataset_panel(qtbot)
+    monkeypatch.setattr(actions, "DataInterpretationPreviewDialog", _Review)
+    monkeypatch.setattr(
+        actions.QFileDialog, "getOpenFileName", lambda *_args: (str(recipe_path), "")
+    )
+    try:
+        panel.action_handler.reload_interpretation_recipe()
+        qtbot.waitUntil(
+            lambda: bool(reviews)
+            and application_command_registry().active_count(panel) == 0,
+            timeout=5000,
+        )
+
+        assert len(reviews) == 2
+        (_, skipped_scan), (step, restored_scan) = reviews
+        assert skipped_scan["label_carriers"] == []
+        assert restored_scan["scan_id"] != skipped_scan["scan_id"]
+        assert step == "Load Labels"
+        restored = runtime.get_interpretation_review()
+        assert restored["choices"]["recipe_id"] == "rest-recipe"
+        assert restored["choices"]["selected_eeg_files"] == [str(eeg)]
+        assert restored["choices"]["metadata_overrides"][eeg.name]["run"] == "7"
+        assert not restored["choices"].get("skip_labels")
+        assert Path(restored["source_path"]) == source
+        assert str(events) in restored["scan_result"]["label_carriers"]
+        assert not host.study.loaded_data_list
+    finally:
+        runtime.close()
 
 
 def test_reloaded_preview_warning_retries_with_receipt_and_same_continuation(

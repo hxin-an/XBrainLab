@@ -96,6 +96,17 @@ class DataInterpretationRecipeReloadHost(Protocol):
         decision: dict[str, Any],
     ) -> Any: ...
 
+    def _resume_interpretation_review_async(
+        self,
+        *,
+        source_path: str,
+        source_hint: str,
+        choices: dict[str, Any],
+        label_sources: list[str],
+        review_state: Any,
+        dialog_result: dict[str, Any],
+    ) -> InteractionOutcome | None: ...
+
     def _apply_interpretation_async(
         self,
         review_state: Any,
@@ -180,8 +191,7 @@ class DataInterpretationRecipeReloadCoordinator:
             )
             if resource_outcome is not None:
                 return resource_outcome
-            self._continue_reloaded_interpretation_recipe(result)
-            return None
+            return self._continue_reloaded_interpretation_recipe(result)
 
         def _dispatch(
             *,
@@ -214,7 +224,9 @@ class DataInterpretationRecipeReloadCoordinator:
                 "Data Interpretation command service is unavailable.",
             )
 
-    def _continue_reloaded_interpretation_recipe(self, reload_result: Any) -> None:
+    def _continue_reloaded_interpretation_recipe(
+        self, reload_result: Any
+    ) -> InteractionOutcome | None:
         """Open the recipe review after its backend state is ready."""
         if self._result_failed(reload_result, "Recipe reload failed"):
             return
@@ -267,6 +279,17 @@ class DataInterpretationRecipeReloadCoordinator:
             base_choices,
             dialog_choices,
         )
+        if dialog_result.get("resume_step") or dialog_result.get(
+            "label_sources_changed"
+        ):
+            return self._host._resume_interpretation_review_async(
+                source_path=scan["source_path"],
+                source_hint=scan["source_hint"],
+                choices=dialog_choices,
+                label_sources=list(scan["label_sources"]),
+                review_state=review_state,
+                dialog_result=dialog_result,
+            )
         if (
             str(decision.get("decision")) == "blocked"
             and dialog_choices == base_choices

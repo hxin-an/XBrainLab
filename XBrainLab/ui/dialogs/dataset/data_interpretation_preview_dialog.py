@@ -1897,6 +1897,8 @@ class DataInterpretationPreviewDialog(
         choices = self._edited_choices()
         if self._skip_labels or self._initial_choices.get("skip_labels"):
             choices["skip_labels"] = self._skip_labels
+            if self._resume_step_after_accept and self._excluded_label_carriers:
+                choices["excluded_label_carriers"] = list(self._excluded_label_carriers)
         result: dict[str, Any] = {
             "confirmed": submission.confirmed_on_accept,
             "save_recipe": self.save_recipe_check.isChecked(),
@@ -2203,12 +2205,18 @@ class DataInterpretationPreviewDialog(
             if self._is_duplicate_label_source(text):
                 skipped_duplicate = True
                 if self._skip_labels:
-                    self._skip_labels = False
                     changed = True
                 continue
             self._extra_label_sources.append(text)
             changed = True
         if changed:
+            if (
+                self._skip_labels
+                and self._initial_choices.get("skip_labels")
+                and not self._label_sources_changed()
+            ):
+                self._toggle_skip_labels()
+                return
             self._skip_labels = False
             self._refresh_label_source_rows()
             self._notify_wizard_state_changed(WizardStateChange.LABEL_SOURCES)
@@ -2245,6 +2253,10 @@ class DataInterpretationPreviewDialog(
         self.label_sources_label.setVisible(bool(self.label_sources_label.text()))
         if self._skip_labels:
             self._go_next_step()
+        elif self._initial_choices.get("skip_labels"):
+            # A validated skip preview has no carrier plans to restore locally.
+            self._resume_step_after_accept = "Load Labels"
+            self.accept()
 
     def _run_smart_parse(self) -> None:
         filepaths = self._metadata_filepaths_for_smart_parse()
@@ -3750,7 +3762,7 @@ class DataInterpretationPreviewDialog(
         eeg_file_remap = self._eeg_file_remap_choices()
         if eeg_file_remap:
             choices["eeg_file_remap"] = eeg_file_remap
-        if self._skip_labels:
+        if self._skip_labels or self._resume_step_after_accept == "Load Labels":
             return choices
         internal_event_selection: dict[str, Any] = {}
         using_internal_events = bool(
