@@ -2,6 +2,7 @@
 
 import inspect
 import re
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -182,30 +183,37 @@ def test_data_interpretation_preview_dialog_renders_payload(qtbot):
         if label.text().strip()
     )
     assert "Labels inside EEG files" in event_group_text
-    assert "Found 1 EEG file" in dialog.summary_label.text()
+    assert dialog.findChild(QLabel, "InterpretationSummary") is None
     assert "Review these choices" in dialog.decision_label.text()
-    review_text = _tree_text(dialog.review_tree)
     scope_text = _group_text(dialog, "Choose EEG Data")
     assert "Selected scope" in scope_text
     assert "Single file" in scope_text
     assert "Scan location" in scope_text
     assert "Type" not in scope_text
-    review_header = dialog.review_tree.headerItem()
-    assert review_header is not None
-    assert [
-        review_header.text(index) for index in range(dialog.review_tree.columnCount())
-    ] == ["Target step", "Issue", "Impact", "Next action"]
     assert dialog.confirmation_label.text() == ""
-    assert "Review import choices" not in review_text
-    assert dialog.review_tree.topLevelItemCount() == 1
     dialog.resize(1040, 760)
     dialog.show()
     _show_step(dialog, "Review and Import")
     qtbot.wait(0)
-    dialog.import_report_toggle.click()
-    qtbot.wait(0)
-    assert dialog.review_tree.isVisibleTo(dialog)
-    assert not dialog.review_report_empty_label.isVisibleTo(dialog)
+    review_text = _visible_step_text(dialog, "Review and Import")
+    assert [
+        label.text()
+        for label in dialog.import_review_card.findChildren(
+            QLabel, "DataImportReviewItem"
+        )
+        if label.isVisibleTo(dialog)
+    ] == [
+        "EEG data",
+        "Metadata",
+        "Label source",
+        "Label placement",
+        "Resource check",
+        "Recipe",
+    ]
+    assert not any(
+        "import report" in button.text().lower()
+        for button in dialog.findChildren(QPushButton)
+    )
     assert "Confirm session metadata." not in review_text
     assert "After import" not in review_text
     assert "Training uses this recipe trace." not in review_text
@@ -410,7 +418,10 @@ def test_edited_draft_cannot_recheck_legacy_blocker_without_typed_actions(qtbot)
     assert dialog._edited_choices_can_resolve_blocker() is False
     assert dialog.can_submit_for_backend_review() is False
     assert dialog.apply_button.isEnabled() is False
-    assert "Subject metadata is missing." not in _tree_text(dialog.review_tree)
+    _show_step(dialog, "Review and Import")
+    assert "Subject metadata is missing." not in _visible_step_text(
+        dialog, "Review and Import"
+    )
 
 
 def test_review_resource_check_uses_contract_risk_language(qtbot):
@@ -702,6 +713,36 @@ def test_load_labels_many_file_rows_use_compact_source_context(qtbot):
         for detail in details
         if detail is not None
     )
+
+
+def test_long_bids_label_filenames_keep_remove_and_load_controls_reachable(qtbot):
+    names = [f"{'session' * 18}{index}_events.tsv" for index in range(8)]
+    dialog = DataInterpretationPreviewDialog(
+        scan_result={"source_kind": "bids", "bids": {"is_bids": True}},
+        preview={
+            "label_carrier_preview": [
+                {"name": name, "path": f"/data/{name}", "format": "BIDS events"}
+                for name in names
+            ]
+        },
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(740, 480)
+    dialog.show()
+    _show_step(dialog, "Load Labels")
+    qtbot.wait(0)
+    viewport = dialog.scroll_area.viewport()
+    assert viewport.rect().contains(
+        dialog.skip_labels_btn.mapTo(viewport, dialog.skip_labels_btn.rect().center())
+    )
+    row = _visible_source_rows(dialog)[-1]
+    dialog.scroll_area.ensureWidgetVisible(row)
+    title = row.findChild(QLabel, "DataImportSourceTitle")
+    remove = row.findChild(QPushButton)
+    assert title.toolTip() == title.accessibleName() == names[-1]
+    assert "…" in title.text()
+    assert viewport.rect().contains(remove.mapTo(viewport, remove.rect().bottomRight()))
 
 
 def test_data_interpretation_preview_dialog_uses_task_oriented_label_headers(qtbot):
@@ -3356,9 +3397,11 @@ def test_data_interpretation_preview_dialog_rejects_duplicate_label_folder(
     assert "Already included" in dialog.label_sources_label.text()
 
 
+@pytest.mark.parametrize("skip_labels", [False, True])
 def test_data_interpretation_preview_dialog_add_label_folder_requests_rescan(
     qtbot,
     monkeypatch,
+    skip_labels,
 ):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -3418,13 +3461,16 @@ def test_data_interpretation_preview_dialog_add_label_folder_requests_rescan(
     dialog.add_label_folder_btn.click()
     assert "external-labels" in _group_text(dialog, "Load Labels")
 
-    dialog.next_button.click()
+    button = dialog.skip_labels_btn if skip_labels else dialog.next_button
+    qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
     qtbot.wait(0)
     assert dialog.result() == QDialog.DialogCode.Accepted
 
     result = dialog.get_result()
     assert result["label_sources"] == ["/tmp/external-labels"]
     assert result["label_sources_changed"] is True
+    assert result["resume_step"] == "Review Metadata"
+    assert result["choices"].get("skip_labels", False) is skip_labels
 
 
 def test_data_interpretation_preview_dialog_skip_labels_marks_choice(qtbot):
@@ -3439,7 +3485,13 @@ def test_data_interpretation_preview_dialog_skip_labels_marks_choice(qtbot):
     )
     qtbot.addWidget(dialog)
 
-    dialog.skip_labels_btn.click()
+    dialog.show()
+    dialog.next_button.click()
+    assert _visible_group_titles(dialog) == ["Load Labels"]
+    qtbot.mouseClick(dialog.skip_labels_btn, Qt.MouseButton.LeftButton)
+    assert _visible_group_titles(dialog) == ["Review Metadata"]
+    qtbot.mouseClick(dialog.back_button, Qt.MouseButton.LeftButton)
+    assert _visible_group_titles(dialog) == ["Load Labels"]
 
     result = dialog.get_result()
     assert result["choices"]["skip_labels"] is True
@@ -3451,6 +3503,13 @@ def test_data_interpretation_preview_dialog_skip_labels_marks_choice(qtbot):
         "Supervised epoching and training are unavailable"
         in dialog._review_label_placement_text()
     )
+
+    assert dialog.skip_labels_btn.text() == "Use labels"
+    qtbot.mouseClick(dialog.skip_labels_btn, Qt.MouseButton.LeftButton)
+    assert _visible_group_titles(dialog) == ["Load Labels"]
+    assert not dialog.get_result()["choices"].get("skip_labels")
+    assert not dialog.label_sources_label.isVisible()
+    assert dialog.skip_labels_btn.text() == "Continue without labels"
 
 
 @pytest.mark.parametrize(
@@ -3486,11 +3545,20 @@ def test_skip_labels_only_rechecks_new_label_edits(
         choices={"skip_labels": True} if already_skipped else {},
     )
     qtbot.addWidget(dialog)
-    dialog.skip_labels_btn.click()
+    _show_step(dialog, "Load Labels")
+    if already_skipped:
+        assert dialog.skip_labels_btn.text() == "Use labels"
+        dialog.next_button.click()
+    else:
+        dialog.skip_labels_btn.click()
     assert dialog.get_result()["choices"]["skip_labels"] is True
     assert dialog._edited_choices_can_resolve_blocker() is can_recheck
     assert dialog.decision == "blocked"
     assert not dialog.get_result()["confirmed"]
+    if already_skipped:
+        dialog.back_button.click()
+        dialog.skip_labels_btn.click()
+        assert dialog.get_result()["choices"]["skip_labels"] is False
 
 
 def test_match_labels_selecting_source_after_skip_clears_skip_choice(qtbot):
@@ -3636,6 +3704,8 @@ def test_load_labels_duplicate_source_after_skip_reenables_existing_labels(
     qtbot.wait(0)
     assert dialog.get_result()["choices"]["skip_labels"] is True
 
+    dialog.back_button.click()
+    assert _visible_group_titles(dialog) == ["Load Labels"]
     monkeypatch.setattr(
         "XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog.QFileDialog.getOpenFileNames",
         lambda *_args, **_kwargs: ([auto_label], ""),
@@ -3809,14 +3879,10 @@ def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
 
     assert dialog.label_carrier_tree.textElideMode() == Qt.TextElideMode.ElideRight
     assert dialog.event_tree.textElideMode() == Qt.TextElideMode.ElideRight
-    assert dialog.review_tree.textElideMode() == Qt.TextElideMode.ElideNone
-    assert dialog.review_tree.wordWrap()
-    assert not dialog.review_tree.uniformRowHeights()
     for tree in (
         dialog.file_tree,
         dialog.label_carrier_tree,
         dialog.event_tree,
-        dialog.review_tree,
     ):
         header = tree.header()
         assert header is not None
@@ -3829,9 +3895,7 @@ def test_data_interpretation_preview_dialog_tables_fit_product_layout(qtbot):
         assert viewport is not None
         assert abs(header.length() - viewport.width()) <= 2
         assert tree.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    assert dialog.review_tree.alternatingRowColors()
     assert "alternate-background-color" in dialog.styleSheet()
-    assert "#232323" in dialog.styleSheet().lower()
     assert "#ffffff" not in dialog.styleSheet().lower()
     assert "#000000" not in dialog.styleSheet().lower()
 
@@ -3935,8 +3999,12 @@ def test_match_labels_step_keeps_bids_decisions_without_duplicate_event_card(qtb
     assert "EEG/event pairing" not in text
     assert "Timing fields" not in text
     assert "Read labels from" in text
-    assert "Trial type" in text
-    assert "Recommended because Trial type contains the task labels." in text
+    assert dialog.rule_label_field_combo.currentText() == "Trial type"
+    assert (
+        "Trial type contains the task labels."
+        in dialog.rule_label_field_combo.toolTip()
+    )
+    assert dialog.label_values_status_label.isHidden()
     assert "generic event-role taxonomy" not in text
     assert "semantic-refinement" not in text
     assert "untouched runs" not in text
@@ -3948,7 +4016,7 @@ def test_match_labels_step_keeps_bids_decisions_without_duplicate_event_card(qtb
     )
     assert "3 · 1/1" in text
     assert "events.json sidecar is missing" not in text
-    assert "Class names need review" not in text
+    assert "Choose which values are training classes" not in text
     assert "BIDS label values" in text
     assert "File pairing" not in text
     assert "Place labels by" not in text
@@ -4071,7 +4139,10 @@ def test_bids_present_sidecar_without_selected_field_levels_requests_class_revie
 
     _show_step(dialog, "Match Labels")
 
-    assert "Class names need review" in dialog.label_values_status_label.text()
+    assert (
+        "Choose which values are training classes"
+        in dialog.label_values_status_label.text()
+    )
 
 
 def test_bids_value_decisions_are_returned_to_backend_choices(qtbot):
@@ -4511,6 +4582,8 @@ def test_load_labels_removing_bids_events_refreshes_active_bids_state(qtbot):
     qtbot.wait(0)
 
     assert not dialog._has_bids_events()
+    assert _visible_group_titles(dialog) == ["Load Labels"]
+    assert not dialog.get_result()["choices"].get("skip_labels")
     assert dialog.skip_labels_btn.isVisibleTo(dialog)
     assert not dialog.add_label_file_btn.isVisibleTo(dialog)
     assert not dialog.add_label_folder_btn.isVisibleTo(dialog)
@@ -4607,7 +4680,7 @@ def test_bids_preset_uses_compact_actionable_first_layer(qtbot):
     _show_step(dialog, "Load Labels")
     load_text = _visible_step_text(dialog, "Load Labels")
     assert "BIDS events.tsv" in load_text
-    assert "default label and timing source" in load_text
+    assert dialog.label_detection_label.isHidden()
     assert "Paired with sub-01_task-mi_run-01_raw.fif" in load_text
     assert "Detected nearby" not in load_text
     assert "events.json" not in load_text
@@ -4617,7 +4690,7 @@ def test_bids_preset_uses_compact_actionable_first_layer(qtbot):
 
     _show_step(dialog, "Review Metadata")
     metadata_text = _visible_step_text(dialog, "Review Metadata")
-    assert "Review subject, session, task, and run." in metadata_text
+    assert "Review subject, session, task, and run." not in metadata_text
     assert "BIDS metadata" not in metadata_text
     assert "participants.tsv" not in metadata_text
     assert "Metadata" in metadata_text
@@ -4627,15 +4700,16 @@ def test_bids_preset_uses_compact_actionable_first_layer(qtbot):
     match_text = _visible_step_text(dialog, "Match Labels")
     assert not hasattr(dialog, "bids_event_review_card")
     assert "events.tsv columns" not in match_text
-    assert "Class names need review" in match_text
+    assert "Choose which values are training classes" in match_text
 
     _show_step(dialog, "Review and Import")
     qtbot.wait(0)
     review_text = _visible_step_text(dialog, "Review and Import")
-    assert "BIDS entities reviewed" in review_text
+    assert "Optional field missing: session" in review_text
     assert "BIDS events.tsv" in review_text
-    assert "Trial type" in review_text
-    assert "Label interval" in review_text
+    assert "event value" in review_text
+    placement = dialog._review_summary_value_labels["Label placement"].text()
+    assert placement.count("events.json sidecar is missing.") == 1
     assert "Recipe" in review_text
     action_text = "\n".join(
         label.text()
@@ -4649,21 +4723,6 @@ def test_bids_preset_uses_compact_actionable_first_layer(qtbot):
     assert not any(
         button.text() == "Fix Match Labels"
         for button in dialog.review_actions_panel.findChildren(QPushButton)
-    )
-    dialog.import_report_toggle.click()
-    report_rows = [
-        " | ".join(
-            dialog.review_tree.topLevelItem(index).text(column)
-            for column in range(dialog.review_tree.columnCount())
-        )
-        for index in range(dialog.review_tree.topLevelItemCount())
-    ]
-    assert any(
-        "BIDS event provenance" in row
-        and "sub-01_task-mi_run-01_events.tsv" in row
-        and "sub-01_task-mi_run-01_raw.fif" in row
-        and "onset + duration" in row
-        for row in report_rows
     )
 
 
@@ -4719,15 +4778,6 @@ def test_shared_bids_events_display_both_reviewed_recordings(qtbot):
     capture_teacher_ui(dialog, "bids-shared-events-load-labels.png")
     _show_step(dialog, "Review and Import")
     assert "2/2 EEG files paired" in _visible_step_text(dialog, "Review and Import")
-    dialog.import_report_toggle.click()
-    provenance = "\n".join(
-        dialog.review_tree.topLevelItem(index).text(column)
-        for index in range(dialog.review_tree.topLevelItemCount())
-        for column in range(dialog.review_tree.columnCount())
-    )
-    assert "pairing needs review" not in provenance
-    for eeg in eeg_files:
-        assert Path(eeg).name in provenance
     capture_teacher_ui(dialog, "bids-shared-events-review.png")
 
 
@@ -4885,13 +4935,9 @@ def test_data_interpretation_preview_dialog_tables_shrink_without_overflow(qtbot
         ("Review Metadata", dialog.file_tree),
         ("Match Labels", dialog.label_carrier_tree),
         ("Match Labels", dialog.event_tree),
-        ("Review and Import", dialog.review_tree),
     ):
         _show_step(dialog, step_title)
         qtbot.wait(0)
-        if tree is dialog.review_tree and not tree.isVisible():
-            assert not dialog.review_actions_panel.isVisible()
-            continue
         dialog._fit_all_tree_columns_to_viewport()
         qtbot.wait(0)
         header = tree.header()
@@ -5008,84 +5054,6 @@ def test_data_interpretation_preview_dialog_label_selectors_fit_review_text(qtbo
         assert rendered_text == selector.currentText() or "…" in rendered_text
 
 
-def test_data_interpretation_preview_dialog_review_summary_shows_whole_rows(qtbot):
-    action_items = [
-        _review_action(
-            target_step="Review Metadata",
-            issue="Review subject metadata.",
-            severity="warning",
-        ),
-        _review_action(
-            target_step="Load Labels",
-            issue="Review external label carriers.",
-            severity="warning",
-        ),
-        _review_action(
-            target_step="Match Labels",
-            issue="Confirm label carrier alignment.",
-            severity="needs_confirmation",
-        ),
-        _review_action(
-            target_step="Review Metadata",
-            issue="Confirm session metadata for sub-01.",
-            severity="needs_confirmation",
-        ),
-        _review_action(
-            target_step="Match Labels",
-            issue="Confirm event role mapping.",
-            severity="needs_confirmation",
-        ),
-    ]
-    dialog = DataInterpretationPreviewDialog(
-        parent=None,
-        scan_result={"source_path": "/tmp/source"},
-        preview={
-            "warnings": [
-                "Multiple EEG files were discovered; review subject/session mapping.",
-                "External label/event carriers require preview before apply.",
-            ],
-            "confirmation_items": [
-                "Confirm label carrier alignment.",
-                "Confirm session metadata for sub-01.",
-                "Confirm event role mapping.",
-            ],
-            "downstream_impacts": [
-                "Training will use the confirmed recipe.",
-                "Evaluation will use the same class map.",
-            ],
-        },
-        validation_decision=_validation_decision(
-            "needs_confirmation",
-            action_items,
-        ),
-    )
-    qtbot.addWidget(dialog)
-    dialog.resize(1040, 760)
-    dialog.show()
-    qtbot.wait(0)
-    _show_step(dialog, "Review and Import")
-    qtbot.wait(0)
-
-    review_tree = dialog.review_tree
-    dialog.import_report_toggle.click()
-    qtbot.wait(0)
-    assert dialog.import_report_card.isVisibleTo(dialog)
-    assert review_tree.topLevelItemCount() == 4
-    viewport = review_tree.viewport()
-    assert viewport is not None
-    viewport_rect = viewport.rect()
-
-    for row in range(review_tree.topLevelItemCount()):
-        item = review_tree.topLevelItem(row)
-        assert item is not None
-        row_rect = review_tree.visualItemRect(item)
-        if row_rect.isValid() and row_rect.top() < viewport_rect.bottom():
-            assert row_rect.bottom() <= viewport_rect.bottom()
-    assert (
-        review_tree.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    )
-
-
 def test_import_review_refresh_detaches_previous_rows_before_rebuild(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
@@ -5114,78 +5082,6 @@ def test_import_review_refresh_detaches_previous_rows_before_rebuild(qtbot):
 
     assert all(widget.parent() is None for widget in previous_rows)
     assert all(not widget.isVisibleTo(dialog) for widget in previous_rows)
-
-
-def test_import_report_wraps_long_cells_and_uses_column_specific_tooltips(qtbot):
-    issue = (
-        "Label alignment is unresolved for the selected EEG and label files, so "
-        "the imported labels cannot yet be assigned to the intended recordings."
-    )
-    impact = (
-        "Training classes may be attached to the wrong trials and produce a "
-        "misleading dataset if this mapping is imported without review."
-    )
-    next_action = (
-        "Return to Match Labels and choose the label file that belongs to each EEG "
-        "recording before applying the import recipe."
-    )
-    dialog = DataInterpretationPreviewDialog(
-        parent=None,
-        scan_result={
-            "source_path": "/tmp/source",
-            "eeg_files": ["/tmp/source/A01T.gdf"],
-        },
-        preview={
-            "action_items": [
-                {
-                    "target_step": "Review and Import",
-                    "issue": issue,
-                    "impact": impact,
-                    "next_action": next_action,
-                    "severity": "needs_confirmation",
-                }
-            ]
-        },
-        validation_decision=_validation_decision(
-            "needs_confirmation",
-            [
-                _review_action(
-                    target_step="Review and Import",
-                    issue=issue,
-                    impact=impact,
-                    next_action=next_action,
-                    severity="needs_confirmation",
-                )
-            ],
-        ),
-    )
-    qtbot.addWidget(dialog)
-    dialog.resize(1040, 760)
-    dialog.show()
-    _show_step(dialog, "Review and Import")
-    dialog.import_report_toggle.click()
-    qtbot.wait(0)
-
-    report = dialog.review_tree
-    assert report.topLevelItemCount() == 1
-    item = report.topLevelItem(0)
-    assert item is not None
-    assert [item.text(column) for column in range(4)] == [
-        "Review and Import",
-        issue,
-        impact,
-        next_action,
-    ]
-    assert [item.toolTip(column) for column in range(4)] == [
-        "Review and Import",
-        issue,
-        impact,
-        next_action,
-    ]
-    assert report.textElideMode() == Qt.TextElideMode.ElideNone
-    assert report.wordWrap()
-    assert not report.uniformRowHeights()
-    assert report.sizeHintForRow(0) > report.fontMetrics().height() + 10
 
 
 def test_review_and_import_describes_a_load_only_recipe(qtbot):
@@ -5248,16 +5144,10 @@ def test_review_and_import_describes_a_load_only_recipe(qtbot):
     assert "target EEG events 768" in review_text
     assert "Recipe" in review_text
     assert "Not saved" in review_text
-    assert "Save the current data import and label mapping settings" in review_text
+    assert "Reuse import settings" in review_text
     assert "Epoch setup" not in review_text
     assert dialog.save_recipe_check.text() == "Save recipe"
     assert dialog.save_recipe_check.isVisibleTo(dialog)
-    assert dialog.import_report_toggle.text() == "View import report"
-    assert not dialog.import_review_card.isAncestorOf(dialog.import_report_toggle)
-    assert (
-        dialog.import_report_toggle.geometry().top()
-        >= dialog.import_review_card.geometry().bottom()
-    )
     assert "Ready to import" not in review_text
     assert "No blocking review items" not in review_text
     assert "Epoch setup will use" not in review_text
@@ -5409,7 +5299,8 @@ def test_bids_optional_task_and_run_do_not_block_import_or_recipe(qtbot):
     assert "Epoch" not in rows["Recipe"]["summary"]
 
 
-def test_review_recipe_action_is_optional_and_reports_pending_selection(qtbot):
+@pytest.mark.parametrize("width", [752, 1040])
+def test_review_recipe_action_is_optional_and_reports_pending_selection(qtbot, width):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
@@ -5431,35 +5322,77 @@ def test_review_recipe_action_is_optional_and_reports_pending_selection(qtbot):
             "class_map": {"769": "left hand"},
             "event_roles": {"internal_events": "event role candidates"},
         },
-        validation_decision=_validation_decision("safe"),
+        validation_decision=_validation_decision(
+            "safe",
+            [
+                _review_action(
+                    target_step="Review Metadata",
+                    issue="Optional session values were inferred from the selected EEG files.",
+                    severity="warning",
+                )
+            ],
+        ),
     )
     qtbot.addWidget(dialog)
+    dialog.resize(width, 640)
+    dialog.show()
     _show_step(dialog, "Review and Import")
+    dialog.resize(width, dialog.height())
+    qtbot.wait(20)
+    assert dialog.width() == width
 
     assert isinstance(dialog.save_recipe_check, QPushButton)
     assert dialog.save_recipe_check.isCheckable()
     assert dialog.save_recipe_check.text() == "Save recipe"
     assert dialog.apply_button.isEnabled()
 
-    dialog.save_recipe_check.click()
-    rows = {row["item"]: row for row in dialog._review_import_status_rows()}
-    assert rows["Recipe"]["status"] == "Will save"
-    assert rows["Recipe"]["summary"] == (
-        "Recipe will be saved after this import succeeds."
-    )
-    assert rows["Recipe"]["action"] == "Cancel save"
-    assert dialog.apply_button.isEnabled()
+    def row_positions():
+        return {
+            item: label.geometry()
+            for item, label in dialog._review_summary_value_labels.items()
+        }
+
+    before = row_positions()
+    for saving in (True, False, True, False):
+        qtbot.mouseClick(dialog.save_recipe_check, Qt.MouseButton.LeftButton)
+        assert dialog.get_result()["save_recipe"] is saving
+        assert dialog.save_recipe_check.text() == (
+            "Cancel save" if saving else "Save recipe"
+        )
+        recipe = dialog._review_summary_value_labels["Recipe"]
+        assert recipe.text() == (
+            "After successful import" if saving else "Reuse import settings"
+        )
+        assert dialog.apply_button.isEnabled()
+        assert any(
+            badge.isVisibleTo(dialog)
+            and badge.text() == ("Will save" if saving else "Not saved")
+            for badge in dialog.import_review_card.findChildren(
+                QLabel, "DataImportReviewStatusNeutral"
+            )
+        )
+        positions = row_positions()
+        for item in before.keys() - {"Recipe"}:
+            assert positions[item] == before[item], item
+        assert all(a.bottom() < b.top() for a, b in pairwise(positions.values()))
 
 
-def test_import_report_includes_import_facts_and_issue_summary(qtbot):
+def test_skipped_labels_review_keeps_metadata_notes_and_resource_estimate(qtbot):
+    events = "/tmp/source/A01T_events.tsv"
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
             "source_path": "/tmp/source",
+            "source_kind": "bids",
+            "bids": {"is_bids": True, "events_files": [events]},
             "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": [events],
         },
         preview={
             "selected_eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carrier_preview": [
+                {"path": events, "name": Path(events).name, "format": "BIDS events"}
+            ],
             "metadata_preview": [
                 {
                     "file": "A01T.gdf",
@@ -5498,32 +5431,23 @@ def test_import_report_includes_import_facts_and_issue_summary(qtbot):
                 )
             ],
         ),
+        choices={"skip_labels": True},
     )
     qtbot.addWidget(dialog)
     _show_step(dialog, "Review and Import")
-
-    dialog.import_report_toggle.click()
-    report = dialog.import_report_summary.text()
-
-    assert dialog.import_report_card.isVisibleTo(dialog)
-    for heading in (
-        "EEG files:",
-        "Label files:",
-        "Metadata:",
-        "Label alignment:",
-        "Label placement:",
-        "Resource check:",
-        "Optional notes:",
-        "Blocking issues:",
-    ):
-        assert heading in report
-    assert "A01T.gdf" in report
-    assert "Ready with notes" in report
-    assert "Safe" in report
-    assert "Optional notes:" in report
-    assert "Labels skipped for now." in report.split("Blocking issues:", 1)[0]
-    assert "Blocking issues: None" in report
-    assert "Labels skipped for now" not in report.split("Blocking issues:", 1)[1]
+    assert "A01T.gdf" in dialog._review_summary_value_labels["EEG data"].text()
+    assert (
+        "skipped" in dialog._review_summary_value_labels["Label source"].text().lower()
+    )
+    assert Path(events).name not in _visible_step_text(dialog, "Review and Import")
+    assert not any(
+        button.text() == "Go to Match Labels"
+        for button in dialog.import_review_card.findChildren(QPushButton)
+        if button.isVisibleTo(dialog.import_review_card)
+    )
+    visible_review = _visible_step_text(dialog, "Review and Import")
+    assert "Optional fields missing: session, task, run" in visible_review
+    assert "Estimated RAM" in visible_review
 
 
 def test_review_and_import_optional_task_uses_compact_note_row(qtbot):
@@ -5689,143 +5613,63 @@ def test_review_and_import_drops_stale_metadata_action_after_manual_edits(qtbot)
     assert "Subject metadata is missing" not in review_text
 
 
-def test_review_and_import_groups_repeated_file_action_items(qtbot):
+@pytest.mark.parametrize(
+    ("issue", "impact"),
+    [
+        ("Review subject metadata.", "Subject ID inferred from {name}."),
+        ("Review the subject ID inferred from {name}.", "Confirm the parsed subject."),
+    ],
+)
+def test_metadata_row_groups_file_scoped_warnings(qtbot, issue, impact):
+    files = [f"/tmp/source/A0{index}T.gdf" for index in range(1, 4)]
+    actions = [
+        _review_action(
+            target_step="Review Metadata",
+            issue=issue.format(name=Path(path).name),
+            impact=impact.format(name=Path(path).name),
+            next_action="Review the subject in Review Metadata.",
+            severity="warning",
+        )
+        for path in files
+    ]
     dialog = DataInterpretationPreviewDialog(
-        parent=None,
-        scan_result={"source_path": "/tmp/source"},
-        preview={
-            "summary": "Found 3 EEG file(s).",
-            "action_items": [
-                {
-                    "target_step": "Review Metadata",
-                    "issue": "Confirm subject metadata.",
-                    "impact": f"Subject metadata is missing in A0{index}T.gdf.",
-                    "next_action": "Confirm subject in Review Metadata.",
-                }
-                for index in range(1, 4)
-            ],
-        },
-        validation_decision=_validation_decision(
-            "safe",
-            [
-                _review_action(
-                    target_step="Review Metadata",
-                    issue="Confirm subject metadata.",
-                    impact=f"Subject metadata is missing in A0{index}T.gdf.",
-                    next_action="Confirm subject in Review Metadata.",
-                    severity="warning",
-                )
-                for index in range(1, 4)
-            ],
-        ),
+        scan_result={"source_path": "/tmp/source", "eeg_files": files},
+        preview={},
+        validation_decision=_validation_decision("safe", actions),
+        initial_step="Review and Import",
     )
     qtbot.addWidget(dialog)
-    dialog.resize(1040, 760)
     dialog.show()
-    qtbot.wait(0)
-    _show_step(dialog, "Review and Import")
-    qtbot.wait(0)
 
-    action_cards = dialog.review_actions_panel.findChildren(
-        QFrame,
-        "DataImportActionCard",
-    )
-    action_text = "\n".join(
-        label.text()
-        for label in dialog.review_actions_panel.findChildren(QLabel)
-        if label.text().strip()
-    )
-
-    assert len(action_cards) == 0
     assert not dialog.review_actions_panel.isVisibleTo(dialog)
-    assert "Review metadata" not in action_text
-    assert dialog.review_tree.topLevelItemCount() == 1
-    review_item = dialog.review_tree.topLevelItem(0)
-    assert review_item is not None
-    assert "3 files" in review_item.text(2)
-    assert "A01T.gdf" in review_item.text(2)
-    assert "A02T.gdf" in review_item.text(2)
-    assert "A03T.gdf" in review_item.text(2)
+    summary = dialog._review_summary_value_labels["Metadata"]
+    assert summary.isVisibleTo(dialog)
+    assert "3 files affected" in summary.text()
+    for path in files:
+        assert Path(path).name not in summary.text()
+        assert Path(path).name in summary.toolTip()
 
 
-def test_review_and_import_groups_file_scoped_issues_by_problem(qtbot):
+def test_actionable_label_warning_is_visible_in_label_source_row(qtbot):
+    warning = "Review the label file encoding before supervised training."
     dialog = DataInterpretationPreviewDialog(
-        parent=None,
-        scan_result={"source_path": "/tmp/source"},
+        scan_result={
+            "eeg_files": ["/tmp/source/A01T.gdf"],
+            "label_carriers": ["/tmp/source/A01T.csv"],
+        },
         preview={
-            "summary": "Found 3 EEG file(s).",
-            "action_items": [
-                {
-                    "target_step": "Review Metadata",
-                    "issue": f"A0{index}T.gdf needs subject metadata review.",
-                    "impact": "Subject metadata is missing.",
-                    "next_action": "Confirm subject in Review Metadata.",
-                }
-                for index in range(1, 4)
+            "label_carrier_preview": [
+                {"path": "/tmp/source/A01T.csv", "name": "A01T.csv", "format": "CSV"}
             ],
         },
         validation_decision=_validation_decision(
             "safe",
             [
                 _review_action(
-                    target_step="Review Metadata",
-                    issue=f"A0{index}T.gdf needs subject metadata review.",
-                    impact="Subject metadata is missing.",
-                    next_action="Confirm subject in Review Metadata.",
-                    severity="warning",
-                )
-                for index in range(1, 4)
-            ],
-        ),
-    )
-    qtbot.addWidget(dialog)
-    dialog.resize(1040, 760)
-    dialog.show()
-    qtbot.wait(0)
-    _show_step(dialog, "Review and Import")
-    qtbot.wait(0)
-
-    action_cards = dialog.review_actions_panel.findChildren(
-        QFrame,
-        "DataImportActionCard",
-    )
-    action_text = "\n".join(
-        label.text()
-        for label in dialog.review_actions_panel.findChildren(QLabel)
-        if label.text().strip()
-    )
-
-    assert len(action_cards) == 0
-    assert not dialog.review_actions_panel.isVisibleTo(dialog)
-    assert action_text == ""
-    assert dialog.review_tree.topLevelItemCount() == 1
-
-
-def test_review_and_import_keeps_warning_items_in_report_not_primary_actions(qtbot):
-    warning = "Saved recipe choices were reapplied."
-    dialog = DataInterpretationPreviewDialog(
-        parent=None,
-        scan_result={"source_path": "/tmp/source"},
-        preview={
-            "summary": "Found 3 EEG file(s).",
-            "action_items": [
-                {
-                    "target_step": "Review and Import",
-                    "issue": warning,
-                    "impact": "Import may still be usable.",
-                    "next_action": "Open the report for details.",
-                    "severity": "warning",
-                },
-            ],
-        },
-        validation_decision=_validation_decision(
-            "safe",
-            [
-                _review_action(
-                    target_step="Review and Import",
+                    target_step="Load Labels",
                     issue=warning,
-                    impact="Import may still be usable.",
-                    next_action="Open the report for details.",
+                    impact="The imported class names may be incomplete.",
+                    next_action="Review the encoding.",
                     severity="warning",
                 )
             ],
@@ -5839,21 +5683,61 @@ def test_review_and_import_keeps_warning_items_in_report_not_primary_actions(qtb
     qtbot.wait(0)
 
     assert not dialog.review_actions_panel.isVisibleTo(dialog)
-    assert warning not in _visible_step_text(dialog, "Review and Import")
-    assert dialog.import_report_toggle.text() == "View import report"
-    assert warning in _tree_text(dialog.review_tree)
-
-    dialog.import_report_toggle.click()
-    qtbot.wait(0)
-
-    assert dialog.import_report_card.isVisibleTo(dialog)
-    assert dialog.import_report_toggle.text() == "Hide import report"
+    summaries = dialog._review_summary_value_labels
+    assert warning in summaries["Label source"].text()
+    assert summaries["Label source"].isVisibleTo(dialog)
+    assert all(
+        warning not in label.text()
+        for key, label in summaries.items()
+        if key != "Label source"
+    )
     assert dialog.apply_button.isVisibleTo(dialog)
     apply_bottom_right = dialog.apply_button.mapTo(
         dialog,
         dialog.apply_button.rect().bottomRight(),
     )
     assert dialog.rect().contains(apply_bottom_right)
+
+
+@pytest.mark.parametrize("count", [1, 40])
+def test_source_and_metadata_fit_content_and_keep_footer_reachable(qtbot, count):
+    files = [f"/tmp/sub-{i:02d}_eeg.fif" for i in range(count)]
+    dialog = DataInterpretationPreviewDialog(
+        parent=None,
+        scan_result={"source_path": "/tmp", "eeg_files": files},
+        preview={"metadata_preview": [{"file": path} for path in files]},
+        validation_decision={"decision": "safe"},
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.wait(0)
+    chooser_height = dialog.height()
+    _show_step(dialog, "Match Labels")
+    working_height = dialog.height()
+    assert chooser_height < working_height
+
+    _show_step(dialog, "Review Metadata")
+    qtbot.wait(0)
+    assert dialog.file_tree.topLevelItemCount() == count
+    scroll = dialog.scroll_area.verticalScrollBar()
+    if count == 1:
+        assert dialog.height() < working_height
+        assert scroll.maximum() == 0
+    else:
+        assert dialog.height() <= working_height
+        assert scroll.maximum() > 0
+        scroll.setValue(scroll.maximum())
+        last = dialog.file_tree.topLevelItem(count - 1)
+        rect = dialog.file_tree.visualItemRect(last)
+        viewport = dialog.scroll_area.viewport()
+        assert viewport.rect().contains(
+            dialog.file_tree.viewport().mapTo(viewport, rect.center())
+        )
+    assert dialog.rect().contains(
+        dialog.next_button.mapTo(dialog, dialog.next_button.rect().center())
+    )
+    _show_step(dialog, "Match Labels")
+    assert dialog.height() == working_height
 
 
 def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
@@ -5882,6 +5766,7 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     dialog.resize(700, max(900, dialog.minimumSizeHint().height() + 160))
     dialog.show()
     qtbot.wait(0)
+    _show_step(dialog, "Match Labels")
     working_height = dialog.height()
     working_center = dialog.geometry().center()
 
@@ -5890,19 +5775,6 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     review_center = dialog.geometry().center()
     assert abs(review_center.x() - working_center.x()) <= 2
     assert abs(review_center.y() - working_center.y()) <= 2
-    compact_height = dialog.height()
-
-    dialog.import_report_toggle.click()
-    assert dialog.height() > compact_height
-    assert dialog.height() <= working_height
-    report_center = dialog.geometry().center()
-    assert abs(report_center.x() - working_center.x()) <= 2
-    assert abs(report_center.y() - working_center.y()) <= 2
-    review_header = dialog.review_tree.header()
-    review_viewport = dialog.review_tree.viewport()
-    assert review_header is not None
-    assert review_viewport is not None
-    assert review_header.length() == review_viewport.width()
 
     _show_step(dialog, "Match Labels")
     assert dialog.height() == working_height
@@ -5911,7 +5783,7 @@ def test_review_step_compacts_and_restores_the_wizard_height(qtbot):
     assert abs(restored_center.y() - working_center.y()) <= 2
 
 
-def test_collapsed_review_geometry_is_stable_before_and_after_report_roundtrip(qtbot):
+def test_review_geometry_is_stable_when_reopened(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
@@ -5951,9 +5823,8 @@ def test_collapsed_review_geometry_is_stable_before_and_after_report_roundtrip(q
         if label.isVisibleTo(dialog)
     }
 
-    dialog.import_report_toggle.click()
-    qtbot.wait(0)
-    dialog.import_report_toggle.click()
+    _show_step(dialog, "Match Labels")
+    _show_step(dialog, "Review and Import")
     qtbot.wait(0)
 
     assert dialog.size() == initial_size
@@ -5964,7 +5835,7 @@ def test_collapsed_review_geometry_is_stable_before_and_after_report_roundtrip(q
     } == initial_rows
 
 
-def test_collapsed_review_opened_before_show_removes_trailing_scroll_gutter(qtbot):
+def test_review_opened_before_show_fits_card_and_footer(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
@@ -5996,14 +5867,14 @@ def test_collapsed_review_opened_before_show_removes_trailing_scroll_gutter(qtbo
 
     separator = dialog.findChild(QFrame, "DataImportFooterSeparator")
     assert separator is not None
-    report_action_bottom = dialog.import_report_toggle.mapTo(
+    card_bottom = dialog.import_review_card.mapTo(
         dialog,
-        dialog.import_report_toggle.rect().bottomRight(),
+        dialog.import_review_card.rect().bottomRight(),
     ).y()
     separator_top = separator.mapTo(dialog, separator.rect().topLeft()).y()
     scrollbar = dialog.scroll_area.verticalScrollBar()
     assert scrollbar is not None
-    assert separator_top - report_action_bottom <= 96
+    assert separator_top - card_bottom <= 96
     if scrollbar.maximum() == 0:
         assert (
             dialog.scroll_area.verticalScrollBarPolicy()
@@ -6023,20 +5894,8 @@ def test_collapsed_review_opened_before_show_removes_trailing_scroll_gutter(qtbo
         )
     )
 
-    dialog.import_report_toggle.click()
-    qtbot.wait(0)
 
-    assert dialog.import_report_card.isVisibleTo(dialog)
-    assert dialog.apply_button.isVisibleTo(dialog)
-    assert dialog.rect().contains(
-        dialog.apply_button.mapTo(
-            dialog,
-            dialog.apply_button.rect().bottomRight(),
-        )
-    )
-
-
-def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
+def test_review_and_import_primary_actions_exclude_informational_notes(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={"source_path": "/tmp/source"},
@@ -6061,7 +5920,7 @@ def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
                     "target_step": "Review and Import",
                     "issue": "Saved recipe choices were reapplied.",
                     "impact": "No action needed.",
-                    "next_action": "Open the report for details.",
+                    "next_action": "No action needed.",
                     "severity": "warning",
                 },
             ],
@@ -6087,7 +5946,7 @@ def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
                     target_step="Review and Import",
                     issue="Saved recipe choices were reapplied.",
                     impact="No action needed.",
-                    next_action="Open the report for details.",
+                    next_action="No action needed.",
                     severity="warning",
                 ),
             ],
@@ -6117,7 +5976,6 @@ def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
     assert "Confirm label placement." not in action_text
     assert "Label placement is ambiguous" in action_text
     assert "Saved recipe choices were reapplied." not in action_text
-    assert "Saved recipe choices were reapplied." in _tree_text(dialog.review_tree)
     action_bottom = dialog.review_actions_panel.mapTo(
         dialog,
         dialog.review_actions_panel.rect().bottomLeft(),
@@ -6148,6 +6006,54 @@ def test_review_and_import_primary_actions_exclude_report_only_warnings(qtbot):
     review_rows = {row["item"]: row for row in dialog._review_import_status_rows()}
     assert review_rows["Label placement"]["status"] == "Needs review"
     assert review_rows["Label placement"]["action"] == "Go to Match Labels"
+
+
+@pytest.mark.parametrize(
+    ("decision", "issue", "detail", "impact", "next_action"),
+    [
+        (
+            "blocked",
+            "BIDS events field value review for run-01.vhdr is blocked: "
+            "row 4 (known duration is negative)",
+            "run-01.vhdr is blocked: row 4 (known duration is negative)",
+            "This import cannot be applied until the issue is fixed.",
+            "Fix this item before importing.",
+        ),
+        (
+            "needs_confirmation",
+            "Confirm label placement for labels.tsv: Interval placement needs a duration or end field.",
+            "labels.tsv: Interval placement needs a duration or end field.",
+            "Labels could be paired with the wrong EEG recording or event sequence.",
+            "Review EEG-to-label pairing and alignment in Match Labels.",
+        ),
+    ],
+)
+def test_review_preserves_actionable_event_or_label_issue(
+    qtbot, decision, issue, detail, impact, next_action
+):
+    dialog = DataInterpretationPreviewDialog(
+        scan_result={"eeg_files": ["/data/run-01.vhdr"]},
+        preview={},
+        validation_decision=_validation_decision(
+            decision,
+            [
+                _review_action(
+                    target_step="Match Labels",
+                    issue=issue,
+                    impact=impact,
+                    next_action=next_action,
+                    severity=decision,
+                )
+            ],
+        ),
+        initial_step="Review and Import",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    if decision == "blocked":
+        assert not dialog.apply_button.isEnabled()
+    assert detail in _visible_step_text(dialog, "Review and Import")
 
 
 def test_blocked_import_only_promotes_true_blockers_to_first_layer(qtbot):
@@ -6280,6 +6186,7 @@ def test_data_interpretation_preview_dialog_skip_labels_keeps_metadata_edits(qtb
     assert metadata_item is not None
     metadata_item.setText(2, "session-01")
 
+    _show_step(dialog, "Load Labels")
     dialog.skip_labels_btn.click()
 
     result = dialog.get_result()
@@ -6803,11 +6710,6 @@ def test_data_interpretation_preview_dialog_returns_manual_label_target_mapping(
     assert "0/2 EEG files paired" not in review_text
     assert not dialog.apply_button.isEnabled()
 
-    dialog.import_report_toggle.click()
-    qtbot.wait(0)
-    report_text = _tree_text(dialog.review_tree)
-    assert "0/2 selected EEG files are paired" not in report_text
-
     result = dialog.get_result()
 
     assert result["choices"]["label_carrier_choices"] == {
@@ -6850,13 +6752,58 @@ def test_data_interpretation_preview_dialog_shows_format_boundaries(qtbot):
     )
     qtbot.addWidget(dialog)
 
-    details = _tree_text(dialog.review_tree)
-
-    assert "Format support" in details
-    assert "Check format" in details
-    assert "BrainVision: needs review" in details
-    assert "XDF / LSL: blocked" in details
+    _show_step(dialog, "Review and Import")
+    label = dialog._review_summary_value_labels["EEG data"]
+    assert "BrainVision" not in label.text()
+    assert "XDF / LSL: blocked" in label.text()
+    details = label.toolTip()
+    assert "BrainVision" in details
+    assert "Review stimulus, response, sync, and segment markers." in details
+    assert "XDF / LSL" in details
     assert "stream selection is not available" in details
+
+
+def test_review_hides_format_warnings_for_inactive_sources(qtbot):
+    eeg = "/data/selected.fif"
+    unused_eeg = "/data/unselected.cnt"
+    unused_labels = "/data/labels.mat"
+    dialog = DataInterpretationPreviewDialog(
+        scan_result={"eeg_files": [eeg, unused_eeg], "label_carriers": [unused_labels]},
+        preview={
+            "file_count": 1,
+            "selected_eeg_files": [eeg],
+            "class_map": {"1": "left"},
+            "event_roles": {"1": "class label candidate"},
+            "format_capabilities": [
+                {
+                    "path": unused_eeg,
+                    "format": "Neuroscan CNT",
+                    "role": "eeg",
+                    "status": "needs_review",
+                    "message": "Review CNT channel metadata.",
+                },
+                {
+                    "path": unused_labels,
+                    "format": "MAT labels",
+                    "role": "external_labels",
+                    "status": "needs_review",
+                    "message": "Review MAT label variable selection.",
+                },
+            ],
+        },
+        choices={"selected_eeg_files": [eeg], "label_carrier": "embedded_events"},
+        validation_decision=_validation_decision("safe"),
+        initial_step="Review and Import",
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+
+    eeg_text = dialog._review_summary_value_labels["EEG data"].text()
+    assert "selected.fif" in eeg_text
+    assert "Neuroscan CNT" not in eeg_text
+    source_text = dialog._review_summary_value_labels["Label source"].text()
+    assert "Labels inside EEG files" in source_text
+    assert "MAT labels" not in source_text
 
 
 def test_data_interpretation_preview_dialog_shows_recipe_reload_summary(qtbot):
@@ -6875,25 +6822,17 @@ def test_data_interpretation_preview_dialog_shows_recipe_reload_summary(qtbot):
     )
     qtbot.addWidget(dialog)
 
-    details = _tree_text(dialog.review_tree)
-
-    assert "Reloaded recipe" in details
-    assert "Review any changed files" in details
-    assert "Saved recipe choices were reapplied before validation" in details
     _show_step(dialog, "Review and Import")
     rows = {row["item"]: row for row in dialog._review_import_status_rows()}
     assert rows["Recipe"] == {
         "item": "Recipe",
         "status": "Loaded",
-        "summary": (
-            "A saved recipe was loaded. Save the current import settings "
-            "again to keep any changes."
-        ),
+        "summary": "Saved settings applied",
         "action": "Save recipe",
     }
 
 
-def test_collapsed_review_keeps_wrapped_recipe_summary_fully_visible(qtbot):
+def test_review_keeps_wrapped_recipe_summary_fully_visible(qtbot):
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
@@ -6950,7 +6889,8 @@ def test_data_interpretation_preview_dialog_keeps_recipe_trace_out_of_review_act
     )
     qtbot.addWidget(dialog)
 
-    details = _tree_text(dialog.review_tree)
+    _show_step(dialog, "Review and Import")
+    details = _visible_step_text(dialog, "Review and Import")
 
     assert "Source scan" not in details
     assert "Interpretation candidate" not in details
@@ -6994,12 +6934,14 @@ def test_data_interpretation_preview_dialog_shows_recipe_reload_diff(qtbot):
     )
     qtbot.addWidget(dialog)
 
-    details = _tree_text(dialog.review_tree)
-
-    assert "EEG files" in details
-    assert "Changed" in details
+    _show_step(dialog, "Review and Import")
+    recipe = dialog._review_summary_value_labels["Recipe"]
+    assert "EEG files changed" in recipe.text()
+    assert "missing.fif" not in recipe.text()
+    details = recipe.toolTip()
     assert "missing.fif" in details
-    assert "Saved choices" in details
+    assert "sub-02.fif" in details
+    assert "metadata overrides, event roles" not in details
 
 
 def test_data_interpretation_preview_dialog_returns_label_carrier_remap(qtbot):
@@ -7057,10 +6999,8 @@ def test_data_interpretation_preview_dialog_returns_label_carrier_remap(qtbot):
     assert dialog.confirmation_label.parentWidget() is not None
     assert dialog.isAncestorOf(dialog.confirmation_label)
 
-    details = _tree_text(dialog.review_tree)
-    assert "Recipe label file" in details
-    assert "Choose file" in details
-    assert "old_events.tsv" in details
+    _show_step(dialog, "Review and Import")
+    assert "old_events.tsv" in _visible_step_text(dialog, "Review and Import")
 
     selector = next(iter(dialog._label_carrier_remap_widgets.values()))
     assert isinstance(selector, QComboBox)
@@ -7125,10 +7065,8 @@ def test_data_interpretation_preview_dialog_returns_eeg_file_remap(qtbot):
     )
     assert "replacement EEG file" in dialog.confirmation_label.text()
 
-    details = _tree_text(dialog.review_tree)
-    assert "Recipe EEG file" in details
-    assert "Choose file" in details
-    assert "old_raw.fif" in details
+    _show_step(dialog, "Review and Import")
+    assert "old_raw.fif" in _visible_step_text(dialog, "Review and Import")
 
     selector = next(iter(dialog._eeg_file_remap_widgets.values()))
     assert isinstance(selector, QComboBox)
@@ -7199,6 +7137,69 @@ def test_data_interpretation_preview_dialog_requires_each_remap_choice(qtbot):
     }
 
 
+@pytest.mark.parametrize(
+    ("kind", "name", "target"),
+    [
+        ("eeg_file", "long_recording_name_" * 9 + "eeg.fif", "Choose EEG Data"),
+        ("label_carrier", "events.tsv", "Load Labels"),
+    ],
+)
+def test_recipe_replacements_disambiguate_same_named_files(qtbot, kind, name, target):
+    saved = [f"/old/{subject}/{name}" for subject in ("sub-01", "sub-02")]
+    current = [f"/new/{subject}/{name}" for subject in ("sub-01", "sub-02")]
+    options = [
+        {
+            "saved": old,
+            "saved_name": name,
+            "candidates": [{"path": path, "name": name} for path in current],
+        }
+        for old in saved
+    ]
+    dialog = DataInterpretationPreviewDialog(
+        scan_result={
+            "eeg_files": current if kind == "eeg_file" else ["/data/raw.fif"],
+            "label_carriers": current if kind == "label_carrier" else [],
+        },
+        preview={"recipe_reload_summary": {f"{kind}_remap_options": options}},
+        validation_decision=_validation_decision(
+            "blocked",
+            [
+                _review_action(
+                    target_step=target,
+                    issue="Choose a replacement.",
+                    severity="blocked",
+                )
+            ],
+        ),
+        initial_step="Review and Import",
+    )
+    qtbot.addWidget(dialog)
+    dialog.resize(752, 700)
+    dialog.show()
+    qtbot.wait(0)
+    assert dialog.scroll_area.horizontalScrollBar().maximum() == 0
+    summaries = dialog.import_review_card
+    selectors = [
+        widget
+        for widget in summaries.findChildren(QComboBox)
+        if widget.isVisibleTo(dialog)
+    ]
+    assert len(selectors) == 2
+    for old, new in zip(saved, reversed(current), strict=True):
+        selector = next(
+            box for box in selectors if Path(old).parent.name in box.accessibleName()
+        )
+        texts = {selector.itemText(selector.findData(path)) for path in current}
+        assert len(texts) == 2
+        for path in current:
+            assert Path(path).parent.name in selector.itemText(selector.findData(path))
+        selector.setCurrentIndex(selector.findData(new))
+    assert dialog.apply_button.isEnabled()
+    assert dialog.get_result()["choices"][f"{kind}_remap"] == dict(
+        zip(saved, reversed(current), strict=True)
+    )
+
+
 def test_recipe_remap_selection_refreshes_every_visible_review_state(qtbot):
     old_eeg = "/tmp/source/old_raw.fif"
     old_events = "/tmp/source/old_events.tsv"
@@ -7263,6 +7264,15 @@ def test_recipe_remap_selection_refreshes_every_visible_review_state(qtbot):
     qtbot.wait(10)
 
     eeg_selector = dialog._eeg_file_remap_widgets[old_eeg]
+    label_selector = dialog._label_carrier_remap_widgets[old_events]
+    recipe_label = dialog._review_summary_value_labels["Recipe"]
+    for selector in (eeg_selector, label_selector):
+        assert selector.isVisibleTo(dialog)
+        assert dialog.import_review_card.isAncestorOf(selector)
+        assert recipe_label.mapTo(dialog, recipe_label.rect().bottomLeft()).y() < (
+            selector.mapTo(dialog, selector.rect().topLeft()).y()
+        )
+    assert label_selector.currentData() == new_events
     assert not dialog.apply_button.isEnabled()
 
     eeg_selector.setCurrentIndex(eeg_selector.findData(second_eeg))
@@ -7274,7 +7284,6 @@ def test_recipe_remap_selection_refreshes_every_visible_review_state(qtbot):
         for label in dialog.review_actions_panel.findChildren(QLabel)
         if label.text().strip()
     )
-    report_text = _tree_text(dialog.review_tree)
 
     assert dialog.apply_button.isEnabled()
     assert dialog.decision_label.text() == "Ready to apply remap."
@@ -7283,12 +7292,18 @@ def test_recipe_remap_selection_refreshes_every_visible_review_state(qtbot):
     assert "Resolve blocking items" not in review_rows["Recipe"]["summary"]
     assert "Cannot import yet" not in action_text
     assert not dialog.review_actions_panel.isVisibleTo(dialog)
-    assert "Replacement selected" in report_text
-    assert "were not found in the current scan" not in report_text
-    assert "Blocking issues: None" in dialog._import_report_summary_text()
-    assert "were not found in the current scan" not in (
-        dialog._import_report_summary_text()
-    )
+    _show_step(dialog, "Match Labels")
+    _show_step(dialog, "Review and Import")
+    assert eeg_selector.isVisibleTo(dialog)
+    assert eeg_selector.currentData() == second_eeg
+    assert label_selector.isVisibleTo(dialog)
+    assert label_selector.currentData() == new_events
+    assert dialog.apply_button.text() == "Apply Remap"
+    qtbot.mouseClick(dialog.apply_button, Qt.MouseButton.LeftButton)
+    assert dialog.result() == QDialog.DialogCode.Accepted
+    choices = dialog.get_result()["choices"]
+    assert choices["eeg_file_remap"] == {old_eeg: second_eeg}
+    assert choices["label_carrier_remap"] == {old_events: new_events}
 
 
 def test_data_interpretation_preview_dialog_blocks_apply(qtbot):

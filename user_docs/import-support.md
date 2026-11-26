@@ -94,7 +94,9 @@ dataset target, not evidence that a valid BIDS dataset is invalid.
 ## Labels: internal, external, combined, or absent
 
 The five-step import workflow covers all four choices. Both ordinary files and
-BIDS folders expose **Continue without labels**. For BIDS this works whether an
+BIDS folders offer **Continue without labels**. Choose it to go directly to **Review Metadata**.
+To undo this choice, select **Back**, then **Use labels**. Your selected sources are available again.
+For BIDS this works whether an
 events.tsv is present or absent; the changed choice is revalidated before import.
 Skipping labels does not remove the source event files or make supervised epoching ready.
 

@@ -3444,14 +3444,11 @@ def test_step_navigation_pixel_guard_rejects_unpainted_label(qtbot, tmp_path) ->
     apply_button.setObjectName("DataImportConfirmButton")
     apply_button.setGeometry(primary_left, 60, 200, 34)
     apply_button.hide()
-    summary = QLabel("Found 1 EEG file and 1 label carrier.", widget)
-    summary_width = summary.fontMetrics().horizontalAdvance(summary.text()) + 20
-    summary_height = summary.fontMetrics().lineSpacing() + 4
-    summary.setGeometry(300, 44, summary_width, summary_height)
-    summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    title = QLabel("Choose EEG Data", widget)
+    title.setObjectName("DataImportPanelTitle")
+    title.setGeometry(300, 44, 150, 24)
     state = cast(Any, widget)
     state.step_labels = labels
-    state.summary_label = summary
     state.cancel_button = cancel
     state.next_button = next_button
     state.apply_button = apply_button
@@ -3492,7 +3489,7 @@ def test_step_navigation_pixel_guard_rejects_unpainted_label(qtbot, tmp_path) ->
     _assert_step_navigation_rendered(widget, text_painted)
 
 
-@pytest.mark.parametrize("missing", ["step", "cancel", "primary"])
+@pytest.mark.parametrize("missing", ["step", "title", "cancel", "primary"])
 def test_step_navigation_contract_rejects_missing_expected_controls(
     qtbot,
     tmp_path,
@@ -3525,18 +3522,19 @@ def test_step_navigation_contract_rejects_missing_expected_controls(
     hidden_apply = QPushButton("Confirm and Import", widget)
     hidden_apply.setObjectName("DataImportConfirmButton")
     hidden_apply.hide()
-    summary = QLabel("Found 1 EEG file and 1 label carrier.", widget)
-    summary.setGeometry(300, 44, 300, 18)
-    summary.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    title = QLabel("Choose EEG Data", widget)
+    title.setObjectName("DataImportPanelTitle")
+    title.setGeometry(300, 44, 150, 24)
     state = cast(Any, widget)
     state.step_labels = labels[:-1] if missing == "step" else labels
-    state.summary_label = summary
     state.cancel_button = cancel
     state.next_button = primary
     state.apply_button = hidden_apply
     widget.show()
     qtbot.wait(20)
-    if missing == "cancel":
+    if missing == "title":
+        title.hide()
+    elif missing == "cancel":
         cancel.hide()
     elif missing == "primary":
         primary.hide()
@@ -6092,11 +6090,11 @@ def test_build_ui_quality_review_flags_overflowing_table_geometry() -> None:
             "workflow_state": {},
             "notes": {
                 "ui_geometry": {
-                    "review_summary": {
+                    "metadata": {
                         "header_length": 1200,
                         "viewport_width": 900,
                         "horizontal_scrollbar_max": 40,
-                        "headers": ["Item", "Status", "Details"],
+                        "headers": ["File", "Subject", "Session"],
                     }
                 }
             },
@@ -6153,13 +6151,13 @@ def test_build_ui_quality_review_flags_clipped_table_rows() -> None:
             "workflow_state": {},
             "notes": {
                 "ui_geometry": {
-                    "review_summary": {
+                    "metadata": {
                         "header_length": 900,
                         "viewport_width": 900,
                         "horizontal_scrollbar_max": 0,
                         "vertical_scrollbar_max": 4,
                         "partial_visible_rows": [5],
-                        "headers": ["Item", "Status", "Details"],
+                        "headers": ["File", "Subject", "Session"],
                     }
                 }
             },

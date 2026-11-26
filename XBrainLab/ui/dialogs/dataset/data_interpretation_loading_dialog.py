@@ -45,7 +45,7 @@ class DataInterpretationLoadingDialog(BaseDialog):
             parent=parent,
             title="Import EEG Data",
             width=1040,
-            height=760,
+            height=640,
             defer_first_frame=True,
         )
         self.setModal(True)

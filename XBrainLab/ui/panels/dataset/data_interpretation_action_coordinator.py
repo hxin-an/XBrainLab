@@ -2286,7 +2286,6 @@ class DataInterpretationActionCoordinator:
         """Invalidate decisions derived from the previous label-carrier set."""
         result = dict(choices)
         for key in (
-            "skip_labels",
             "label_carrier",
             "label_sources",
             "required_label_carriers",

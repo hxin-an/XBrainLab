@@ -7,6 +7,7 @@ from typing import Any
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QAbstractScrollArea,
     QDialogButtonBox,
     QHeaderView,
     QLabel,
@@ -38,7 +39,8 @@ class BidsSubjectSelectionDialog(BaseDialog):
         self.subject_table: QTableWidget
         self.selection_summary: QLabel
         self.continue_button = None
-        super().__init__(parent, title="Choose BIDS Subjects", width=780, height=430)
+        super().__init__(parent, title="Choose BIDS Subjects")
+        self.fit_to_content(minimum_width=780, maximum_width=780, maximum_height=520)
 
     def init_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -49,14 +51,6 @@ class BidsSubjectSelectionDialog(BaseDialog):
         title.setObjectName("DialogSectionTitle")
         layout.addWidget(title)
 
-        helper = QLabel(
-            "Only the selected subjects will be scanned and loaded. "
-            "Sessions, tasks, and runs are summarized for review."
-        )
-        helper.setObjectName("DialogMutedText")
-        helper.setWordWrap(True)
-        layout.addWidget(helper)
-
         self.subject_table = QTableWidget(len(self.subject_rows), 5, self)
         self.subject_table.setHorizontalHeaderLabels(
             ["Subject", "EEG files", "Sessions", "Tasks", "Runs"]
@@ -65,6 +59,9 @@ class BidsSubjectSelectionDialog(BaseDialog):
             self.subject_table,
             object_name="BidsSubjectSelectionTable",
             no_selection=True,
+        )
+        self.subject_table.setSizeAdjustPolicy(
+            QAbstractScrollArea.SizeAdjustPolicy.AdjustToContents
         )
         self.subject_table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.subject_table.setHorizontalScrollBarPolicy(

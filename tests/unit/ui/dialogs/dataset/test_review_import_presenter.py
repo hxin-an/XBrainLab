@@ -325,6 +325,4 @@ def test_internal_label_placement_summary_and_recipe_note():
         internal_label_placement_summary(selected_class_count=4, event_role_count=0)
         == "4 EEG events selected as class labels"
     )
-    assert recipe_note() == (
-        "Save the current data import and label mapping settings for reuse."
-    )
+    assert recipe_note() == ("Reuse import settings")

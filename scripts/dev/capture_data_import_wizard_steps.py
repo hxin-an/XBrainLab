@@ -77,7 +77,6 @@ DEFAULT_OUTPUT_DIR = Path(
 )
 WINDOW_SIZE = QSize(1220, 1320)
 REVIEW_COMPACT_SIZE = (1220, 560)
-REVIEW_REPORT_SIZE = (1220, 926)
 WIZARD_STEP_TEXT = (
     "1. Choose EEG Data",
     "2. Load Labels",
@@ -114,9 +113,7 @@ class CanonicalCaptureSpec:
     dialog_factory: Callable[[], QWidget]
     title: str
     primary_action: str
-    summary: str | None = None
     step_title: str | None = None
-    expanded_report: bool = False
     expanded_advanced_details: bool = False
     expected_size: tuple[int, int] = (1220, 1320)
     label_carrier_count: int = 0
@@ -611,15 +608,12 @@ def _capture_specs_in_process(
 
 
 def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
-    common_summary = "Found 3 EEG file(s) and 3 label/event carrier(s)."
-    one_file_summary = "Found 1 EEG file(s) and 1 label/event carrier(s)."
     return (
         CanonicalCaptureSpec(
             filename="01-choose-eeg-data-760px.png",
             dialog_factory=_main_dialog,
             step_title="Choose EEG Data",
             title="Choose EEG Data",
-            summary=common_summary,
             primary_action="Next: Load Labels",
             expected_size=(760, 900),
             label_carrier_count=3,
@@ -629,7 +623,6 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             dialog_factory=_main_dialog,
             step_title="Choose EEG Data",
             title="Choose EEG Data",
-            summary=common_summary,
             primary_action="Next: Load Labels",
             label_carrier_count=3,
         ),
@@ -638,7 +631,6 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             dialog_factory=_many_labels_dialog,
             step_title="Load Labels",
             title="Load Labels",
-            summary="Found 3 EEG file(s) and 12 label/event carrier(s).",
             primary_action="Next: Review Metadata",
             expected_size=(1040, 1100),
             label_carrier_count=12,
@@ -648,7 +640,6 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             dialog_factory=_many_labels_dialog,
             step_title="Load Labels",
             title="Load Labels",
-            summary="Found 3 EEG file(s) and 12 label/event carrier(s).",
             primary_action="Next: Review Metadata",
             label_carrier_count=12,
         ),
@@ -657,7 +648,6 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             dialog_factory=_main_dialog,
             step_title="Review Metadata",
             title="Review Metadata",
-            summary=common_summary,
             primary_action="Next: Match Labels",
             label_carrier_count=3,
         ),
@@ -666,7 +656,6 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             dialog_factory=_bids_events_dialog,
             step_title="Match Labels",
             title="Match Labels",
-            summary=one_file_summary,
             primary_action="Next: Review and Import",
             label_carrier_count=1,
             bids_events=True,
@@ -676,7 +665,6 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             dialog_factory=_conversion_fallback_dialog,
             step_title="Match Labels",
             title="Match Labels",
-            summary=one_file_summary,
             primary_action="Next: Review and Import",
             label_carrier_count=1,
         ),
@@ -692,7 +680,6 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             dialog_factory=_loaded_label_files_dialog,
             step_title="Match Labels",
             title="Match Labels",
-            summary=one_file_summary,
             primary_action="Next: Review and Import",
             label_carrier_count=1,
         ),
@@ -701,28 +688,15 @@ def _canonical_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             dialog_factory=_internal_events_dialog,
             step_title="Match Labels",
             title="Match Labels",
-            summary="Found 3 EEG file(s).",
             primary_action="Next: Review and Import",
             expanded_advanced_details=True,
             expected_size=(760, 900),
-        ),
-        CanonicalCaptureSpec(
-            filename="05-review-and-import-report.png",
-            dialog_factory=_review_import_dialog,
-            step_title="Review and Import",
-            title="Review and Import",
-            summary=common_summary,
-            primary_action="Confirm and Import",
-            expanded_report=True,
-            expected_size=REVIEW_REPORT_SIZE,
-            label_carrier_count=3,
         ),
         CanonicalCaptureSpec(
             filename="05-review-and-import.png",
             dialog_factory=_review_import_dialog,
             step_title="Review and Import",
             title="Review and Import",
-            summary=common_summary,
             primary_action="Confirm and Import",
             expected_size=REVIEW_COMPACT_SIZE,
             label_carrier_count=3,
@@ -737,7 +711,6 @@ def _placement_mode_capture_specs() -> tuple[CanonicalCaptureSpec, ...]:
             dialog_factory=partial(build_placement_mode_dialog, mode),
             step_title="Match Labels",
             title="Match Labels",
-            summary="Found 1 EEG file(s) and 1 label/event carrier(s).",
             primary_action="Next: Review and Import",
             label_carrier_count=1,
             placement_mode=mode,
@@ -761,9 +734,6 @@ def _prepare_capture(
             widget.match_advanced_toggle.click()
             app.processEvents()
             _settle_window_for_capture(widget)
-        if spec.expanded_report:
-            _expand_report_for_capture(widget, app)
-            _assert_report_row_visible(widget)
         return
 
     widget.resize(QSize(*spec.expected_size))
@@ -807,28 +777,11 @@ def _show_step(
     _wait_for_paint(50)
     dialog._go_to_step(dialog._step_titles.index(step_title))
     app.processEvents()
+    # Navigation may fit or restore the working height. Capture the requested viewport.
+    dialog.resize(expected_size)
+    app.processEvents()
     dialog.repaint()
     _wait_for_paint(50)
-
-
-def _assert_report_row_visible(dialog: DataInterpretationPreviewDialog) -> None:
-    tree = dialog.review_tree
-    first = tree.topLevelItem(0)
-    if first is None:
-        raise RuntimeError("Import report contains no review rows.")
-    row_rect = tree.visualItemRect(first)
-    viewport = tree.viewport()
-    if viewport is None or not row_rect.intersects(viewport.rect()):
-        raise RuntimeError("Import report does not show a review row in the viewport.")
-
-
-def _expand_report_for_capture(
-    dialog: DataInterpretationPreviewDialog,
-    app: QApplication,
-) -> None:
-    dialog.import_report_toggle.click()
-    app.processEvents()
-    _settle_window_for_capture(dialog)
 
 
 def _capture(
@@ -878,11 +831,8 @@ def _assert_complete_capture_frame(
 ) -> None:
     _assert_step_navigation_visible(widget, screenshot)
     _assert_key_text_rendered(widget, screenshot)
-    _assert_review_surface_rendered(
-        widget,
-        screenshot,
-        logical_name=logical_name,
-    )
+    if spec.step_title == "Review and Import":
+        _assert_review_surface_rendered(widget, screenshot)
     _assert_canonical_capture_artifact(
         widget,
         screenshot,
@@ -1000,7 +950,7 @@ def _assert_key_text_rendered(widget: QWidget, screenshot: Path) -> None:
         for label in step_labels
         if isinstance(label, QLabel) and label.isVisible()
     ]
-    for name in ("summary_label", "cancel_button", "next_button", "apply_button"):
+    for name in ("cancel_button", "next_button", "apply_button"):
         control = getattr(widget, name, None)
         if isinstance(control, QWidget) and control.isVisible():
             controls.append(control)
@@ -1012,45 +962,44 @@ def _assert_key_text_rendered(widget: QWidget, screenshot: Path) -> None:
     )
 
 
-def _assert_review_surface_rendered(
-    widget: QWidget,
-    screenshot: Path,
-    *,
-    logical_name: str | None = None,
-) -> None:
-    """Reject expanded-report captures whose review header was not painted."""
-    review_summaries = getattr(widget, "_review_summary_value_labels", None)
-    if not isinstance(review_summaries, dict) or not review_summaries:
-        return
+def _assert_review_surface_rendered(widget: QWidget, screenshot: Path) -> None:
+    """Verify all six decisions and the visible recipe action in the final frame."""
+    items = widget.findChildren(QLabel, "DataImportReviewItem")
+    visible_items = {label.text() for label in items if label.isVisibleTo(widget)}
+    expected = {
+        "EEG data",
+        "Metadata",
+        "Label source",
+        "Label placement",
+        "Resource check",
+        "Recipe",
+    }
+    if visible_items != expected:
+        raise RuntimeError(f"Import review rows changed: {sorted(visible_items)}")
     controls: list[QWidget] = [
         label
-        for label in getattr(widget, "step_labels", [])
-        if isinstance(label, QLabel) and label.isVisible()
-    ]
-    summary = getattr(widget, "summary_label", None)
-    if isinstance(summary, QLabel) and summary.isVisible():
-        controls.append(summary)
-    controls.extend(
-        label
         for label in widget.findChildren(QLabel)
-        if label.isVisible()
-        and (
-            label.objectName().startswith("DataImportReview")
-            or label.text().strip() in {"Review and Import", "Import review"}
-        )
+        if label.isVisibleTo(widget)
+        and label.objectName().startswith("DataImportReview")
+    ]
+    for name in ("DataImportReviewSummary", "DataImportReviewStatus"):
+        if sum(control.objectName().startswith(name) for control in controls) != len(
+            expected
+        ):
+            raise RuntimeError(f"Import review must show six {name} labels.")
+    controls.append(_visible_label_with_text(widget, "Import review"))
+    controls.extend(
+        button
+        for button in widget.findChildren(QPushButton)
+        if button.isVisibleTo(widget)
+        and button.objectName() == "DataImportReviewAction"
     )
-    for name in ("save_recipe_check", "import_report_toggle"):
-        control = getattr(widget, name, None)
-        if isinstance(control, QWidget) and control.isVisible():
-            controls.append(control)
     _assert_text_controls_rendered(
         widget,
         screenshot,
         controls,
-        surface_name="Review header",
+        surface_name="Import review",
     )
-    if (logical_name or screenshot.name).startswith("05-review-and-import"):
-        _assert_canonical_review_artifact(screenshot)
 
 
 def _assert_canonical_capture_artifact(
@@ -1067,17 +1016,12 @@ def _assert_canonical_capture_artifact(
         )
     _assert_canonical_png_artifact(screenshot, spec)
 
-    controls, summary_label = _canonical_text_controls(widget, spec)
     _assert_text_controls_rendered(
         widget,
         screenshot,
-        controls,
+        _canonical_text_controls(widget, spec),
         surface_name="Canonical capture text",
     )
-    if summary_label is not None:
-        if spec.summary is None:
-            raise RuntimeError(f"Wizard capture has no summary: {spec.filename}")
-        _assert_line_tokens_rendered(widget, screenshot, summary_label, spec.summary)
 
 
 def _assert_canonical_png_artifact(
@@ -1127,23 +1071,6 @@ def _assert_canonical_png_artifact(
             screenshot=screenshot,
         )
 
-    if spec.summary is None:
-        raise RuntimeError(f"Wizard capture has no summary: {spec.filename}")
-    for description, bounds, minimum in _summary_text_probes(spec.summary):
-        _assert_bright_region(
-            grayscale,
-            bounds,
-            minimum_bright_pixels=minimum,
-            description=description,
-            screenshot=screenshot,
-        )
-    _assert_bright_region(
-        grayscale,
-        (20, 98, 450, 123),
-        minimum_bright_pixels=100,
-        description=f"title {spec.title!r}",
-        screenshot=screenshot,
-    )
     _assert_bright_region(
         grayscale,
         (25, spec.expected_size[1] - 45, 96, spec.expected_size[1] - 14),
@@ -1165,18 +1092,6 @@ def _assert_canonical_png_artifact(
     )
 
 
-def _summary_text_probes(
-    summary: str,
-) -> tuple[tuple[str, tuple[int, int, int, int], int], ...]:
-    common = (
-        (f"summary prefix in {summary!r}", (20, 68, 80, 86), 100),
-        (f"summary middle in {summary!r}", (80, 68, 140, 86), 100),
-    )
-    if summary == "Found 3 EEG file(s).":
-        return (*common, (f"summary tail in {summary!r}", (140, 68, 175, 86), 50))
-    return (*common, (f"summary tail in {summary!r}", (330, 68, 390, 86), 100))
-
-
 def _assert_bright_region(
     grayscale: Image.Image,
     bounds: tuple[int, int, int, int],
@@ -1195,7 +1110,7 @@ def _assert_bright_region(
 def _canonical_text_controls(
     widget: QWidget,
     spec: CanonicalCaptureSpec,
-) -> tuple[list[QWidget], QLabel | None]:
+) -> list[QWidget]:
     title_label = _visible_label_with_text(widget, spec.title)
     controls: list[QWidget] = [title_label]
     if not spec.has_wizard_chrome:
@@ -1207,7 +1122,7 @@ def _canonical_text_controls(
         ):
             raise RuntimeError(f"Close action contract changed for {spec.filename}.")
         controls.append(close_button)
-        return controls, None
+        return controls
 
     step_labels = getattr(widget, "step_labels", None)
     if not isinstance(step_labels, list):
@@ -1233,13 +1148,6 @@ def _canonical_text_controls(
         raise RuntimeError(f"Wizard steps are hidden in {spec.filename}.")
     controls.extend(step_labels)
 
-    summary_label = getattr(widget, "summary_label", None)
-    if not isinstance(summary_label, QLabel) or spec.summary is None:
-        raise RuntimeError(f"Missing wizard summary for {spec.filename}.")
-    if summary_label.text() != spec.summary or not summary_label.isVisibleTo(widget):
-        raise RuntimeError(f"Wizard summary contract changed for {spec.filename}.")
-    controls.append(summary_label)
-
     cancel_button = getattr(widget, "cancel_button", None)
     if (
         not isinstance(cancel_button, QPushButton)
@@ -1260,7 +1168,7 @@ def _canonical_text_controls(
     ):
         raise RuntimeError(f"Primary action contract changed for {spec.filename}.")
     controls.append(primary_button)
-    return controls, summary_label
+    return controls
 
 
 def _visible_label_with_text(widget: QWidget, expected_text: str) -> QLabel:
@@ -1274,65 +1182,6 @@ def _visible_label_with_text(widget: QWidget, expected_text: str) -> QLabel:
             f"Expected one visible title {expected_text!r}, found {len(matches)}."
         )
     return matches[0]
-
-
-def _assert_line_tokens_rendered(
-    widget: QWidget,
-    screenshot: Path,
-    label: QLabel,
-    expected_text: str,
-) -> None:
-    """Check every summary token at its expected painted x-position."""
-    top_left = label.mapTo(widget, QPoint(0, 0))
-    metrics = label.fontMetrics()
-    cursor = 0
-    with Image.open(screenshot) as captured:
-        grayscale = captured.convert("L")
-        for token in expected_text.split():
-            start = expected_text.index(token, cursor)
-            end = start + len(token)
-            cursor = end
-            left = top_left.x() + metrics.horizontalAdvance(expected_text[:start]) - 1
-            right = top_left.x() + metrics.horizontalAdvance(expected_text[:end]) + 1
-            bounds = (
-                max(left, 0),
-                max(top_left.y(), 0),
-                min(right, grayscale.width),
-                min(top_left.y() + label.height(), grayscale.height),
-            )
-            histogram = grayscale.crop(bounds).histogram()
-            if sum(histogram[110:]) < 3:
-                raise RuntimeError(
-                    f"Canonical summary token {token!r} was not rendered in "
-                    f"{screenshot.name}."
-                )
-
-
-def _assert_canonical_review_artifact(screenshot: Path) -> None:
-    """Reject decoder-incompatible or visibly blank canonical review artifacts."""
-    with Image.open(screenshot) as captured:
-        if captured.mode != "RGB":
-            raise RuntimeError(
-                f"Canonical review artifact must be an RGB PNG: {screenshot.name}"
-            )
-        if "dpi" in captured.info:
-            raise RuntimeError(
-                "Canonical review artifact retains Qt DPI metadata that can render "
-                f"as a blank header: {screenshot.name}"
-            )
-        grayscale = captured.convert("L")
-        width, height = captured.size
-
-    for name, bounds, minimum_bright_pixels in (
-        ("navigation and title", (0, 0, width, min(150, height)), 5_000),
-        ("import review rows", (0, 150, width, min(410, height)), 5_000),
-    ):
-        histogram = grayscale.crop(bounds).histogram()
-        bright_pixels = sum(histogram[110:])
-        if bright_pixels < minimum_bright_pixels:
-            raise RuntimeError(
-                f"Canonical review artifact has a blank {name} band: {screenshot.name}"
-            )
 
 
 def _assert_text_controls_rendered(
@@ -1379,6 +1228,13 @@ def _assert_text_controls_rendered(
             histogram = region.convert("L").histogram()
             pixel_count = sum(histogram)
             glyph_pixels = sum(histogram[110:])
+            # A short summary can occupy only a fraction of its grid column.
+            if (
+                isinstance(control, QLabel)
+                and control.objectName() == "DataImportReviewSummary"
+            ):
+                text_width = control.fontMetrics().horizontalAdvance(control.text())
+                pixel_count = min(pixel_count, text_width * region.height)
             if not pixel_count or glyph_pixels < pixel_count * 0.01:
                 text_getter = getattr(control, "text", None)
                 text = (
@@ -1423,7 +1279,6 @@ def _assert_required_capture_regions(widget: QWidget, screenshot: Path) -> None:
     if not isinstance(widget, DataInterpretationPreviewDialog):
         return
     required: dict[str, QWidget] = {
-        "Wizard summary": widget.summary_label,
         "Wizard content": widget.scroll_area,
         "Wizard Cancel": widget.cancel_button,
     }

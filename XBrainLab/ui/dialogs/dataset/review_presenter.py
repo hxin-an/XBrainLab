@@ -195,7 +195,7 @@ def review_grouped_impact_text(files: list[str], details: list[str]) -> str:
     return text
 
 
-def format_capability_rows(values: Any) -> list[ReviewRow]:
+def format_capability_notes(values: Any) -> list[tuple[str, str]]:
     if not isinstance(values, list):
         return []
     grouped: dict[tuple[str, str, str], int] = {}
@@ -208,15 +208,15 @@ def format_capability_rows(values: Any) -> list[ReviewRow]:
         grouped[(format_name, status, message)] = (
             grouped.get((format_name, status, message), 0) + 1
         )
-    rows: list[ReviewRow] = []
+    notes = []
     for (format_name, status, message), count in grouped.items():
-        detail = f"{format_name}: {status}."
+        title = f"{format_name}: {status}"
         if count > 1:
-            detail = f"{detail} {count} matching source(s)."
-        if message:
-            detail = f"{detail} {message}"
-        rows.append(("Review and Import", "Format support", detail, "Check format"))
-    return rows
+            title += f" ({count} files)"
+        # Format guidance is available on hover. Surface actual limits in the row.
+        visible = title if status in {"limited", "blocked", "unsupported"} else ""
+        notes.append((visible, f"{title}. {message}".strip()))
+    return notes
 
 
 def recipe_reload_rows(value: Any) -> list[ReviewRow]:

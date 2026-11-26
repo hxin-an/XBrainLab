@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from PyQt6.QtCore import QEvent, QSize, Qt, QTimer
+from PyQt6.QtCore import QEvent, QObject, QSize, Qt, QTimer
 from PyQt6.QtGui import QPaintEvent, QResizeEvent
 from PyQt6.QtWidgets import (
     QAbstractScrollArea,
@@ -20,6 +20,50 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+
+class _LabelElideFilter(QObject):
+    """Keep eliding inside Qt's object lifetime instead of queued Python events."""
+
+    def __init__(self, label: ElidingLabel) -> None:
+        super().__init__(label)
+        self._label = label
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self._label and event.type() in {
+            QEvent.Type.Resize,
+            QEvent.Type.Show,
+        }:
+            self._label._fit_text()
+        return False
+
+
+class ElidingLabel(QLabel):
+    """Fit a value to its cell while keeping the full accessible name."""
+
+    def __init__(
+        self,
+        text: str,
+        parent: QWidget | None = None,
+        *,
+        mode: Qt.TextElideMode = Qt.TextElideMode.ElideRight,
+    ) -> None:
+        super().__init__(text, parent)
+        self._full_text = text
+        self._mode = mode
+        self.setAccessibleName(text)
+        self._eliding_filter = _LabelElideFilter(self)
+        self.installEventFilter(self._eliding_filter)
+
+    def _fit_text(self) -> None:
+        available = max(self.contentsRect().width(), 1)
+        rendered = self.fontMetrics().elidedText(
+            self._full_text,
+            self._mode,
+            available,
+        )
+        if self.text() != rendered:
+            self.setText(rendered)
 
 
 class ElidingComboBox(QComboBox):

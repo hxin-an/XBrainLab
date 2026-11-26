@@ -1,3 +1,4 @@
+import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QAbstractItemView, QDialogButtonBox
@@ -235,3 +236,31 @@ def test_summary_and_display_cells_are_read_only(qtbot) -> None:
     for column in range(1, dialog.subject_table.columnCount()):
         flags = dialog.subject_table.item(0, column).flags()
         assert flags == Qt.ItemFlag.ItemIsEnabled
+
+
+@pytest.mark.parametrize("count", [1, 2, 5, 40])
+def test_initial_height_fits_subject_rows_and_keeps_footer_visible(qtbot, count):
+    dialog = BidsSubjectSelectionDialog(
+        None,
+        catalog=_catalog(*[_subject(str(i), eeg_file_count=1) for i in range(count)]),
+    )
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitExposed(dialog)
+    table = dialog.subject_table
+    scrollbar = table.verticalScrollBar()
+    if count <= 5:
+        unused = table.viewport().height() - table.verticalHeader().length()
+        assert 0 <= unused < table.rowHeight(0)
+        assert scrollbar.maximum() == 0
+    else:
+        assert scrollbar.maximum() > 0
+        initial_height = table.viewport().height()
+        dialog.resize(dialog.width(), dialog.height() + table.rowHeight(0))
+        qtbot.waitUntil(lambda: table.viewport().height() > initial_height)
+        table.scrollToBottom()
+
+    last = table.visualItemRect(table.item(count - 1, 0))
+    assert table.viewport().rect().contains(last.center())
+    button = dialog.continue_button
+    assert dialog.rect().contains(button.mapTo(dialog, button.rect().bottomRight()))

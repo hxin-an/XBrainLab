@@ -73,11 +73,11 @@ from scripts.dev.capture_data_interpretation_replay import (
     SOURCE_PATH,
     apply_replay_review_choices,
     pairing_rows,
-    pairing_rows_state,
+    review_summary_rows,
     show_dialog_step,
     table_state,
     tree_rows,
-    tree_state,
+    wizard_tables,
     write_synthetic_raw_fif,
 )
 from scripts.dev.chatpanel_guided_boundary.artifact_integrity import (
@@ -911,7 +911,7 @@ def _run_walkthrough_steps(
             "input_mode": "file",
             "eeg_files": len(scan_payload["scan_result"]["eeg_files"]),
             "label_carriers": len(scan_payload["scan_result"]["label_carriers"]),
-            "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
+            "ui_geometry": sanitize(wizard_tables(dialog, app)),
         },
     )
     append_phase_alias(
@@ -934,7 +934,7 @@ def _run_walkthrough_steps(
             "decision": validation_payload["validation_decision"]["decision"],
             "eeg_files": len(scan_payload["scan_result"]["eeg_files"]),
             "label_carriers": len(scan_payload["scan_result"]["label_carriers"]),
-            "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
+            "ui_geometry": sanitize(wizard_tables(dialog, app)),
         },
     )
 
@@ -952,7 +952,7 @@ def _run_walkthrough_steps(
             "active_step": active_dialog_step(dialog),
             "review_choices": sanitize(review_choices),
             "metadata_rows": tree_rows(dialog.file_tree),
-            "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
+            "ui_geometry": sanitize(wizard_tables(dialog, app)),
         },
     )
     show_dialog_step(dialog, "Match Labels", app)
@@ -964,7 +964,7 @@ def _run_walkthrough_steps(
         notes=lambda: {
             "active_step": active_dialog_step(dialog),
             "file_pairing_rows": pairing_rows(dialog),
-            "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
+            "ui_geometry": sanitize(wizard_tables(dialog, app)),
         },
     )
     show_dialog_step(dialog, "Review and Import", app)
@@ -977,8 +977,8 @@ def _run_walkthrough_steps(
             "active_step": active_dialog_step(dialog),
             "apply_enabled": dialog.apply_button.isEnabled(),
             "save_recipe_selected": dialog.save_recipe_check.isChecked(),
-            "review_summary_rows": tree_rows(dialog.review_tree),
-            "ui_geometry": sanitize(interpretation_dialog_geometry(dialog)),
+            "review_summary_rows": review_summary_rows(dialog),
+            "ui_geometry": sanitize(wizard_tables(dialog, app)),
         },
     )
     if dialog.save_recipe_check.isChecked():
@@ -1271,8 +1271,8 @@ def _run_walkthrough_steps(
             "validation": command_summary(reload_validation),
             "reapply": command_summary(reload_apply),
             "strict_review_handoff": reload_handoff,
-            "review_summary_rows": tree_rows(reload_dialog.review_tree),
-            "ui_geometry": sanitize(interpretation_dialog_geometry(reload_dialog)),
+            "review_summary_rows": review_summary_rows(reload_dialog),
+            "ui_geometry": sanitize(wizard_tables(reload_dialog, app)),
         },
     )
     reload_dialog.close()
@@ -1679,77 +1679,6 @@ def dataset_page_geometry(window: Any) -> dict[str, Any]:
             panel=window.dataset_panel.sidebar.info_panel,
         ),
     }
-
-
-def interpretation_dialog_geometry(
-    dialog: DataInterpretationPreviewDialog,
-) -> dict[str, Any]:
-    """Return table/tree geometry evidence for Data Interpretation review panes."""
-    return {
-        "metadata": tree_state_for_visible_dialog_step(
-            dialog,
-            "Review Metadata",
-            dialog.file_tree,
-        ),
-        "file_pairing": pairing_rows_state_for_visible_dialog_step(
-            dialog,
-            "Match Labels",
-        ),
-        "events": tree_state_for_visible_dialog_step(
-            dialog,
-            "Match Labels",
-            dialog.event_tree,
-        ),
-        "review_summary": tree_state_for_visible_dialog_step(
-            dialog,
-            "Review and Import",
-            dialog.review_tree,
-        ),
-    }
-
-
-def tree_state_for_visible_dialog_step(
-    dialog: DataInterpretationPreviewDialog,
-    step_title: str,
-    tree,
-) -> dict[str, Any]:
-    """Measure wizard tree geometry while the owning step is visible."""
-    app = QApplication.instance()
-    current_index = dialog.step_stack.currentIndex()
-    try:
-        step_titles = getattr(dialog, "_step_titles", [])
-        if step_title in step_titles:
-            dialog._go_to_step(step_titles.index(step_title))
-        if app is not None:
-            app.processEvents()
-        dialog._fit_all_tree_columns_to_viewport()
-        if app is not None:
-            app.processEvents()
-        return tree_state(tree)
-    finally:
-        dialog._go_to_step(current_index)
-        if app is not None:
-            app.processEvents()
-
-
-def pairing_rows_state_for_visible_dialog_step(
-    dialog: DataInterpretationPreviewDialog,
-    step_title: str,
-) -> dict[str, Any]:
-    """Measure the visible EEG-to-label pairing rows on their owning step."""
-    app = QApplication.instance()
-    current_index = dialog.step_stack.currentIndex()
-    try:
-        step_titles = getattr(dialog, "_step_titles", [])
-        if step_title in step_titles:
-            dialog._go_to_step(step_titles.index(step_title))
-        if app is not None:
-            app.processEvents()
-        return pairing_rows_state(dialog)
-    finally:
-        dialog._go_to_step(current_index)
-        if app is not None:
-            app.processEvents()
 
 
 def data_interpretation_decision_probe(
@@ -2333,16 +2262,17 @@ def _assert_step_navigation_rendered(widget: QWidget, screenshot: Path) -> None:
         raise RuntimeError(
             "Import Review capture has an invalid or stale primary action."
         )
-    summary = getattr(widget, "summary_label", None)
-    if not isinstance(summary, QLabel):
-        raise RuntimeError("Import Review capture is missing its visible summary.")
-    summary_label = cast(QLabel, summary)
-    if not summary_label.isVisibleTo(widget) or not summary_label.text().strip():
-        raise RuntimeError("Import Review capture is missing its visible summary.")
+    titles = [
+        label
+        for label in widget.findChildren(QLabel, "DataImportPanelTitle")
+        if label.isVisibleTo(widget)
+    ]
+    if len(titles) != 1 or titles[0].text() not in DATA_IMPORT_STEP_TITLES:
+        raise RuntimeError("Import Review capture is missing its active page title.")
     _assert_text_controls_rendered(
         widget,
         screenshot,
-        [*step_labels, summary_label, cancel_button, primary],
+        [*step_labels, titles[0], cancel_button, primary],
         surface_name="Import Review controls",
     )
 

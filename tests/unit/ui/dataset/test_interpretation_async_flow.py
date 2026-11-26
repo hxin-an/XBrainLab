@@ -464,6 +464,7 @@ def test_label_configuration_merge_clears_external_state_for_embedded_events():
 def test_label_source_change_invalidates_decisions_from_previous_carrier_set():
     choices = DataInterpretationActionCoordinator._choices_after_label_source_change(
         {
+            "skip_labels": True,
             "selected_eeg_files": ["/eeg/A01T.gdf"],
             "metadata_overrides": {"A01T.gdf": {"subject": "01"}},
             "excluded_label_carriers": ["/labels/rejected.mat"],
@@ -479,6 +480,7 @@ def test_label_source_change_invalidates_decisions_from_previous_carrier_set():
     )
 
     assert choices == {
+        "skip_labels": True,
         "selected_eeg_files": ["/eeg/A01T.gdf"],
         "metadata_overrides": {"A01T.gdf": {"subject": "01"}},
         "excluded_label_carriers": ["/labels/rejected.mat"],

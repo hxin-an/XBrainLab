@@ -46,6 +46,7 @@ from PyQt6.QtWidgets import (
 from scripts.dev.capture_config import isolated_capture_config
 from scripts.dev.ui_navigation import open_workflow_panel
 from XBrainLab.backend.application import (
+    ApplicationService,
     ApplyInterpretationCommand,
     PreviewInterpretationCommand,
     ScanSourceCommand,
@@ -343,7 +344,6 @@ def dataset_sidebar_state(sidebar: Any) -> dict[str, dict[str, Any]]:
     return {
         "import_source": button_state(sidebar.import_btn),
         "reload_recipe": button_state(sidebar.reload_recipe_btn),
-        "import_labels": button_state(sidebar.import_label_btn),
         "channel_selection": button_state(sidebar.chan_select_btn),
     }
 
@@ -433,6 +433,41 @@ def tree_rows(tree: QTreeWidget) -> list[list[str]]:
             else:
                 row.append(item.text(column))
         rows.append(row)
+    return rows
+
+
+def review_summary_rows(dialog: DataInterpretationPreviewDialog) -> list[list[str]]:
+    """Read the six item, status and summary labels from the displayed review."""
+    layout = dialog._review_import_rows_layout
+    rows = []
+    for row in range(layout.rowCount()):
+        first = layout.itemAtPosition(row, 0)
+        item = first.widget() if first is not None else None
+        if not isinstance(item, QLabel) or item.objectName() != "DataImportReviewItem":
+            continue
+        values = []
+        for col in range(3):
+            cell = layout.itemAtPosition(row, col)
+            label = cell.widget() if cell is not None else None
+            if (
+                not isinstance(label, QLabel)
+                or not label.isVisibleTo(dialog)
+                or not label.text()
+            ):
+                raise RuntimeError(
+                    f"Missing visible import review cell ({row}, {col})."
+                )
+            values.append(label.text())
+        rows.append(values)
+    if [row[0] for row in rows] != [
+        "EEG data",
+        "Metadata",
+        "Label source",
+        "Label placement",
+        "Resource check",
+        "Recipe",
+    ]:
+        raise RuntimeError("The import review must display all six status rows.")
     return rows
 
 
@@ -913,6 +948,61 @@ def pairing_rows_state_for_step(
     return pairing_rows_state(dialog)
 
 
+def wizard_tables(
+    dialog: DataInterpretationPreviewDialog, app: QApplication
+) -> dict[str, Any]:
+    """Measure each wizard table and return to the captured step."""
+    current_step = dialog._step_titles[dialog.step_stack.currentIndex()]
+    try:
+        return {
+            "metadata": tree_state_for_step(
+                dialog, "Review Metadata", dialog.file_tree, app
+            ),
+            "file_pairing": pairing_rows_state_for_step(dialog, "Match Labels", app),
+            "events": tree_state_for_step(
+                dialog, "Match Labels", dialog.event_tree, app
+            ),
+        }
+    finally:
+        show_dialog_step(dialog, current_step, app)
+
+
+def select_replay_replacements(
+    dialog: DataInterpretationPreviewDialog, app: QApplication
+) -> None:
+    """Choose the two saved-file replacements and require recheck to become available."""
+    for controls, saved_name, replacement in (
+        (dialog._eeg_file_remap_widgets, "old_raw.fif", SOURCE_PATH),
+        (dialog._label_carrier_remap_widgets, "old_events.tsv", LABEL_PATH),
+    ):
+        selector = controls[str(SOURCE_DIR / saved_name)]
+        index = selector.findData(str(replacement))
+        if not selector.isVisibleTo(dialog) or index < 0:
+            raise RuntimeError(f"Replacement unavailable for {saved_name}.")
+        selector.setCurrentIndex(index)
+        app.processEvents()
+    if not dialog.apply_button.isEnabled():
+        raise RuntimeError("Complete recipe replacements must enable recheck.")
+
+
+def probe_replay_confirmation(
+    service: ApplicationService, decision: str
+) -> dict[str, Any] | None:
+    """Probe the confirmation boundary only when the backend requires it."""
+    if decision == "safe":
+        return None
+    if decision != "needs_confirmation":
+        raise RuntimeError(f"Cannot apply the reviewed interpretation: {decision}.")
+    probe = service.execute(ApplyInterpretationCommand())
+    if (
+        probe.ok
+        or probe.error_type is None
+        or probe.error_type.value != "confirmation_required"
+    ):
+        raise RuntimeError("The unconfirmed apply must require confirmation.")
+    return sanitized(probe.to_dict())
+
+
 def capture_replay(app: QApplication) -> int:
     """Run the replay and write JSON / screenshot artifacts."""
     result: dict[str, int] = {"code": 1}
@@ -930,18 +1020,8 @@ def capture_replay(app: QApplication) -> int:
     def run_steps() -> None:
         try:
             dataset_panel.sidebar.update_sidebar()
-            empty_sidebar_buttons = dataset_sidebar_state(dataset_panel.sidebar)
             empty_sidebar_state = {
-                "buttons": empty_sidebar_buttons,
-                "import_label_button_text": (
-                    dataset_panel.sidebar.import_label_btn.text()
-                ),
-                "import_label_button_enabled": (
-                    dataset_panel.sidebar.import_label_btn.isEnabled()
-                ),
-                "import_label_button_tooltip": (
-                    dataset_panel.sidebar.import_label_btn.toolTip()
-                ),
+                "buttons": dataset_sidebar_state(dataset_panel.sidebar)
             }
             scan = service.execute(
                 ScanSourceCommand(source_path=str(source_path.parent))
@@ -983,34 +1063,8 @@ def capture_replay(app: QApplication) -> int:
                 "metadata_rows": tree_rows(dialog.file_tree),
                 "file_pairing_rows": pairing_rows(dialog),
                 "event_rows": tree_rows(dialog.event_tree),
-                "review_summary_rows": sanitized(tree_rows(dialog.review_tree)),
-                "tables": sanitized(
-                    {
-                        "metadata": tree_state_for_step(
-                            dialog,
-                            "Review Metadata",
-                            dialog.file_tree,
-                            app,
-                        ),
-                        "file_pairing": pairing_rows_state_for_step(
-                            dialog,
-                            "Match Labels",
-                            app,
-                        ),
-                        "events": tree_state_for_step(
-                            dialog,
-                            "Match Labels",
-                            dialog.event_tree,
-                            app,
-                        ),
-                        "review_summary": tree_state_for_step(
-                            dialog,
-                            "Review and Import",
-                            dialog.review_tree,
-                            app,
-                        ),
-                    }
-                ),
+                "review_summary_rows": sanitized(review_summary_rows(dialog)),
+                "tables": sanitized(wizard_tables(dialog, app)),
                 "review_choices": sanitized(dialog_choices),
                 "apply_button_enabled": (
                     ok_button.isEnabled() if ok_button is not None else False
@@ -1073,19 +1127,25 @@ def capture_replay(app: QApplication) -> int:
                         "Selected EEG file(s) were not found in the current scan: old_raw.fif.",
                         "Saved label/event carrier(s) were not found in the current scan: old_events.tsv.",
                     ],
+                    "action_items": [
+                        {
+                            "target_step": step,
+                            "issue": f"Saved file is missing: {filename}.",
+                            "impact": "The saved recipe refers to this missing file.",
+                            "next_action": "Choose a replacement file.",
+                            "severity": "blocked",
+                        }
+                        for step, filename in (
+                            ("Choose EEG Data", "old_raw.fif"),
+                            ("Load Labels", "old_events.tsv"),
+                        )
+                    ],
                 },
             )
             remap_dialog.show()
             app.processEvents()
-            for selector in [
-                *getattr(remap_dialog, "_eeg_file_remap_widgets", {}).values(),
-                *getattr(remap_dialog, "_label_carrier_remap_widgets", {}).values(),
-            ]:
-                if isinstance(selector, QComboBox) and not selector.currentData():
-                    next_index = 1 if selector.count() > 1 else 0
-                    selector.setCurrentIndex(next_index)
-            app.processEvents()
             show_dialog_step(remap_dialog, "Review and Import", app)
+            select_replay_replacements(remap_dialog, app)
             remap_dialog.repaint()
             app.processEvents()
             capture_widget(remap_dialog, ARTIFACT_PATHS.remap_screenshot)
@@ -1095,34 +1155,8 @@ def capture_replay(app: QApplication) -> int:
                 "decision": remap_dialog.decision,
                 "current_step": "Review and Import",
                 "visible_text": visible_texts(remap_dialog),
-                "review_summary_rows": sanitized(tree_rows(remap_dialog.review_tree)),
-                "tables": sanitized(
-                    {
-                        "metadata": tree_state_for_step(
-                            remap_dialog,
-                            "Review Metadata",
-                            remap_dialog.file_tree,
-                            app,
-                        ),
-                        "file_pairing": pairing_rows_state_for_step(
-                            remap_dialog,
-                            "Match Labels",
-                            app,
-                        ),
-                        "events": tree_state_for_step(
-                            remap_dialog,
-                            "Match Labels",
-                            remap_dialog.event_tree,
-                            app,
-                        ),
-                        "review_summary": tree_state_for_step(
-                            remap_dialog,
-                            "Review and Import",
-                            remap_dialog.review_tree,
-                            app,
-                        ),
-                    }
-                ),
+                "review_summary_rows": sanitized(review_summary_rows(remap_dialog)),
+                "tables": sanitized(wizard_tables(remap_dialog, app)),
                 "remap_choices": sanitized(
                     remap_dialog.get_result().get("choices", {})
                 ),
@@ -1142,7 +1176,10 @@ def capture_replay(app: QApplication) -> int:
                 )
             )
             reviewed_validation = service.execute(ValidateInterpretationCommand())
-            apply_without_confirmation = service.execute(ApplyInterpretationCommand())
+            decision = reviewed_validation.diagnostics["validation_decision"][
+                "decision"
+            ]
+            apply_without_confirmation = probe_replay_confirmation(service, decision)
             apply_confirmed = service.execute(
                 ApplyInterpretationCommand(confirmed=True),
             )
@@ -1179,8 +1216,7 @@ def capture_replay(app: QApplication) -> int:
                     "Mapped generic events.tsv to the selected EEG file in the wizard.",
                     "Reviewed label column, anchor, time model, granularity, and role.",
                     "Confirmed trial_type as the class cue event role.",
-                    "Validation required confirmation for missing metadata.",
-                    "Unconfirmed apply was blocked.",
+                    f"Reviewed validation decision: {decision}.",
                     "Confirmed apply loaded the interpreted source.",
                 ],
                 "commands": {
@@ -1189,9 +1225,7 @@ def capture_replay(app: QApplication) -> int:
                     "validate_interpretation": sanitized(validation.to_dict()),
                     "reviewed_preview": sanitized(reviewed_preview.to_dict()),
                     "reviewed_validation": sanitized(reviewed_validation.to_dict()),
-                    "apply_without_confirmation": sanitized(
-                        apply_without_confirmation.to_dict(),
-                    ),
+                    "apply_without_confirmation": apply_without_confirmation,
                     "apply_confirmed": sanitized(apply_confirmed.to_dict()),
                 },
                 "ui_state": {
@@ -1204,15 +1238,6 @@ def capture_replay(app: QApplication) -> int:
                         "import_button_text": (dataset_panel.sidebar.import_btn.text()),
                         "import_button_enabled": (
                             dataset_panel.sidebar.import_btn.isEnabled()
-                        ),
-                        "import_label_button_text": (
-                            dataset_panel.sidebar.import_label_btn.text()
-                        ),
-                        "import_label_button_enabled": (
-                            dataset_panel.sidebar.import_label_btn.isEnabled()
-                        ),
-                        "import_label_button_tooltip": (
-                            dataset_panel.sidebar.import_label_btn.toolTip()
                         ),
                         "table_rows": dataset_panel.table.rowCount(),
                         "table": table_state(

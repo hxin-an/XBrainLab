@@ -21,14 +21,14 @@ from scripts.dev.capture_data_interpretation_replay import (
     dataset_sidebar_state,
     ensure_confirmed_apply_succeeded,
     pairing_rows,
-    pairing_rows_state_for_step,
     request_window_close,
+    review_summary_rows,
     source_event_field_matches,
     source_file_manifest,
     source_fingerprint,
     table_state,
     tree_rows,
-    tree_state,
+    wizard_tables,
 )
 from XBrainLab.ui.dialogs.dataset.data_interpretation_preview_dialog import (
     DataInterpretationPreviewDialog,
@@ -232,7 +232,6 @@ def test_dataset_sidebar_state_records_button_tooltips(qtbot) -> None:
     for name, text in {
         "import_btn": "Import Data",
         "reload_recipe_btn": "Reload Import Recipe",
-        "import_label_btn": "Add labels",
         "chan_select_btn": "Channel Selection",
     }.items():
         button = QPushButton(text)
@@ -302,7 +301,7 @@ def test_table_state_records_main_panel_fill_gap(qtbot) -> None:
     assert state["widget_width"] > state["viewport_width"]
 
 
-def test_tree_state_records_rows_and_fit_geometry(qtbot) -> None:
+def test_replay_records_visible_six_row_import_review(qtbot) -> None:
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
@@ -334,8 +333,8 @@ def test_tree_state_records_rows_and_fit_geometry(qtbot) -> None:
                 {
                     "target_step": "Review and Import",
                     "issue": "Import assumptions need review",
-                    "impact": "Review the complete import report before applying.",
-                    "next_action": "Review the report.",
+                    "impact": "Check the inferred timing before applying.",
+                    "next_action": "Check the timing.",
                     "severity": "needs_confirmation",
                 }
             ],
@@ -346,26 +345,17 @@ def test_tree_state_records_rows_and_fit_geometry(qtbot) -> None:
     dialog.show()
     qtbot.wait(0)
     _show_dialog_step(dialog, "Review and Import", qtbot)
-    dialog._fit_all_tree_columns_to_viewport()
-
-    state = tree_state(dialog.review_tree)
-
-    assert state["headers"] == ["Target step", "Issue", "Impact", "Next action"]
-    assert state["rows"]
-    assert state["resize_modes"] == [
-        "Interactive",
-        "Interactive",
-        "Interactive",
-        "Interactive",
+    rows = review_summary_rows(dialog)
+    assert [row[0] for row in rows] == [
+        "EEG data",
+        "Metadata",
+        "Label source",
+        "Label placement",
+        "Resource check",
+        "Recipe",
     ]
-    assert state["stretch_last_section"] is False
-    assert abs(state["header_length"] - state["viewport_width"]) <= 2
-    assert state["horizontal_scrollbar_max"] == 0
-    assert state["vertical_scrollbar_max"] >= 0
-    assert state["partial_visible_rows"] == []
-    assert state["text_elide_mode"] == "ElideNone"
-    assert state["alternating_row_colors"] is True
-    flat_rows = " ".join(" ".join(row) for row in state["rows"])
+    assert rows[-1][1] == "Not saved"
+    flat_rows = " ".join(" ".join(row) for row in rows)
     assert "Source scan" not in flat_rows
     assert "Interpretation candidate" not in flat_rows
     assert "scan:scan-1" not in flat_rows
@@ -404,7 +394,7 @@ def test_visible_text_review_allows_humanized_recipe_trace_rows() -> None:
     assert review["passed"] is True
 
 
-def test_replay_geometry_review_checks_all_wizard_tables(qtbot) -> None:
+def test_replay_geometry_review_checks_all_wizard_tables(qtbot, qapp) -> None:
     dialog = DataInterpretationPreviewDialog(
         parent=None,
         scan_result={
@@ -437,45 +427,17 @@ def test_replay_geometry_review_checks_all_wizard_tables(qtbot) -> None:
     dialog.show()
     qtbot.wait(0)
 
-    review = build_replay_geometry_review(
-        {
-            "dialog": {
-                "tables": {
-                    "metadata": _tree_state_for_step(
-                        dialog,
-                        "Review Metadata",
-                        dialog.file_tree,
-                        qtbot,
-                    ),
-                    "file_pairing": pairing_rows_state_for_step(
-                        dialog,
-                        "Match Labels",
-                        qtbot,
-                    ),
-                    "events": _tree_state_for_step(
-                        dialog,
-                        "Match Labels",
-                        dialog.event_tree,
-                        qtbot,
-                    ),
-                    "review_summary": _tree_state_for_step(
-                        dialog,
-                        "Review and Import",
-                        dialog.review_tree,
-                        qtbot,
-                    ),
-                },
-            },
-        },
-    )
+    _show_dialog_step(dialog, "Review and Import", qtbot)
+    tables = wizard_tables(dialog, qapp)
+    assert dialog._step_titles[dialog.step_stack.currentIndex()] == "Review and Import"
+    review = build_replay_geometry_review({"dialog": {"tables": tables}})
 
     assert review["passed"] is True
-    assert review["checked_widgets"] == 4
+    assert review["checked_widgets"] == 3
     assert {row["widget"] for row in review["rows"]} == {
         "dialog.tables.metadata",
         "dialog.tables.file_pairing",
         "dialog.tables.events",
-        "dialog.tables.review_summary",
     }
 
 
@@ -582,12 +544,6 @@ def test_request_window_close_times_out_once_when_widget_rejects_close(qtbot) ->
 
 def table_item(text: str) -> QTableWidgetItem:
     return QTableWidgetItem(text)
-
-
-def _tree_state_for_step(dialog, step_title: str, tree, qtbot) -> dict:
-    _show_dialog_step(dialog, step_title, qtbot)
-    dialog._fit_all_tree_columns_to_viewport()
-    return tree_state(tree)
 
 
 def _show_dialog_step(dialog, step_title: str, qtbot) -> None:

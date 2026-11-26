@@ -1078,5 +1078,5 @@ def test_outer_async_review_remove_then_readd_keeps_one_real_label_source(
     assert interpretation.label_carriers == [str(external_label)]
     assert len(interpretation.label_carrier_plan) == 1
     assert interpretation.label_carrier_plan[0]["path"] == str(external_label)
-    assert panel.table.rowCount() == 1
+    qtbot.waitUntil(lambda: panel.table.rowCount() == 1, timeout=5_000)
     assert panel.table.item(0, 6).text() == "Labels (288)"

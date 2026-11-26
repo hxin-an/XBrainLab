@@ -127,7 +127,7 @@ def test_surface_inventory_preserves_capture_artifacts_in_order() -> None:
         "smart-parser-regex.png",
         "smart-parser-folder.png",
         "smart-parser-fixed.png",
-        "import-report-ready.png",
+        "import-review-ready.png",
         "import-review-will-save.png",
         "import-review-loaded-recipe.png",
         "saliency-setting-empty.png",
